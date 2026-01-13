@@ -250,6 +250,97 @@
     }
     #thumbWrap canvas{ width:100%; height:100%; position:static; }
 
+    /* Toggle-able scalebar overlay (µm if available, else pixels) */
+    #scaleBar{
+      position:absolute;
+      right:10px;
+      bottom:10px;
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.55);
+      box-shadow:0 8px 18px var(--shadow);
+      pointer-events:none;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width:160px;
+      max-width:320px;
+      color:#fff;
+      font-family:var(--mono);
+      font-size:12px;
+      z-index: 40;
+    }
+    #scaleBar .sb-bar{
+      height:8px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.06);
+      overflow:hidden;
+    }
+    #scaleBar .sb-fill{
+      height:100%;
+      width:120px;
+      background:rgba(220,235,255,.92);
+    }
+    #scaleBar .sb-label{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      color:#e7efff;
+      white-space:nowrap;
+    }
+
+    /* Spectrum panel (double-click on view) */
+    #specPanel{
+      position:absolute;
+      left:10px;
+      bottom:10px;
+      width:360px;
+      height:240px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(0,0,0,.62);
+      box-shadow:0 10px 24px var(--shadow);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      z-index: 45;
+    }
+    #specPanel .head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:8px 10px;
+      background:rgba(255,255,255,.06);
+      border-bottom:1px solid rgba(255,255,255,.10);
+    }
+    #specPanel .title{
+      font-weight:700;
+      letter-spacing:.02em;
+      font-size:12px;
+    }
+    #specPanel .meta{
+      padding:6px 10px;
+      font-size:11px;
+      color:var(--muted);
+      font-family:var(--mono);
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    #specCanvas{
+      width:100%;
+      height:150px;
+      display:block;
+    }
+    #specPanel .footer{
+      padding:6px 10px;
+      font-size:11px;
+      color:var(--muted);
+      font-family:var(--mono);
+      border-top:1px solid rgba(255,255,255,.06);
+      background:rgba(255,255,255,.03);
+    }
+
     /* Simple progress bars (cache / read coverage) */
     .bar-label{
       display:flex;
@@ -495,8 +586,8 @@
         <input type="checkbox" id="chkThumb" checked />
         <span class="tiny">Thumbnail</span>
       </label>
-      <label class="toggle" title="Show scalebar (lower right)">
-        <input type="checkbox" id="chkScale" />
+      <label class="toggle" title="Show scalebar (uses µm if scale is known)">
+        <input type="checkbox" id="chkScale" checked />
         <span class="tiny">Scalebar</span>
       </label>
     </div>
@@ -584,6 +675,21 @@
 
     <div id="thumbWrap">
       <canvas id="thumb"></canvas>
+    </div>
+
+    <div id="scaleBar" style="display:none" aria-label="Scale bar">
+      <div class="sb-bar"><div class="sb-fill" id="scaleFill"></div></div>
+      <div class="sb-label" id="scaleLabel">—</div>
+    </div>
+
+    <div id="specPanel" style="display:none" aria-label="Spectrum">
+      <div class="head">
+        <div class="title">Spectrum</div>
+        <button class="btn tiny danger" id="btnSpecClose" title="Close">×</button>
+      </div>
+      <div class="meta" id="specMeta">—</div>
+      <canvas id="specCanvas"></canvas>
+      <div class="footer" id="specHint">Double‑click anywhere to update • values are read locally</div>
     </div>
   </main>
 
@@ -873,6 +979,14 @@
     hudVal: $('#hudVal'),
     thumbWrap: $('#thumbWrap'),
     thumb: $('#thumb'),
+    scaleBar: $('#scaleBar'),
+    scaleFill: $('#scaleFill'),
+    scaleLabel: $('#scaleLabel'),
+    specPanel: $('#specPanel'),
+    specCanvas: $('#specCanvas'),
+    specMeta: $('#specMeta'),
+    specHint: $('#specHint'),
+    btnSpecClose: $('#btnSpecClose'),
 
     // right
     btnAuto: $('#btnAuto'),
@@ -923,6 +1037,7 @@
   const thumbCtx = els.thumb.getContext('2d', {alpha:false});
   const overlayCtx = els.overlayCanvas.getContext('2d', {alpha:true});
   const cpuCtx = els.cpuCanvas.getContext('2d', {alpha:false});
+  const specCtx = els.specCanvas.getContext('2d', {alpha:true});
 
   // ========= Status =========
 
@@ -1119,12 +1234,16 @@
   }
 
   function parseUmPerPixelFromMapInfo(mapInfo){
-    // ENVI's "map info" often looks like:
+    // ENVI "map info" usually looks like:
     // {projection, ref_px_x, ref_px_y, x0, y0, x_pixel_size, y_pixel_size, ... , units=Meters}
     if (!Array.isArray(mapInfo) || mapInfo.length < 7) return null;
+
+    const proj = String(mapInfo[0] ?? '').toLowerCase();
+
     const xPix = Number(mapInfo[5]);
     const yPix = Number(mapInfo[6]);
     if (!isFinite(xPix) || !isFinite(yPix) || xPix <= 0 || yPix <= 0) return null;
+
     let units = null;
     for (const it of mapInfo.slice(7)){
       if (typeof it !== 'string') continue;
@@ -1135,69 +1254,103 @@
         units = it.trim();
       }
     }
+
+    // Many ENVI writers omit units; in practice this is often meters.
+    // Avoid guessing for geographic lat/lon (degrees).
+    let assumed = false;
+    if (!units){
+      if (/(geographic|lat\/?lon|latitude|longitude|degree)/i.test(proj)) return null;
+      units = 'meters';
+      assumed = true;
+    }
+
     const f = unitToMicronsFactor(units);
     if (!f) return null;
-    return { umPerPixelX: xPix * f, umPerPixelY: yPix * f, source: 'map info' };
+    return { umPerPixelX: xPix * f, umPerPixelY: yPix * f, source: assumed ? 'map info (assumed meters)' : 'map info' };
   }
 
   function parseUmPerPixelFromCustomFields(raw){
     // Common non-standard fields used in microscopy-ish ENVI exports.
-    // NOTE: Ambiguous fields like "pixel size" are frequently stored in *meters* (SI).
-    // We only assume µm when the key explicitly indicates µm/um/microns.
-    const unitHints = [
-      raw['pixel size units'], raw['pixel_size_units'],
-      raw['pixel units'], raw['pixel_units'],
-      raw['units'], raw['unit']
-    ].map(x => (typeof x === 'string' ? x : '')).find(s => s && s.trim());
-    const hintedFactor = unitToMicronsFactor(unitHints);
+    // This viewer prefers µm/pixel when it can infer it safely.
 
-    const candidates = [
-      // Explicit microns/µm
-      ['microns per pixel', 1],
-      ['microns_per_pixel', 1],
-      ['micrometers per pixel', 1],
-      ['um per pixel', 1],
-      ['um_per_pixel', 1],
-      ['pixel size um', 1],
-      ['pixel_size_um', 1],
-
-      // Ambiguous (treat as meters unless units are provided elsewhere)
-      ['pixel size', 'm'],
-      ['pixel_size', 'm'],
-    ];
-
-    const parseXY = (v) => {
+    const toXY = (v) => {
       if (Array.isArray(v) && v.length >= 2){
-        const x = Number(v[0]);
-        const y = Number(v[1]);
-        if (isFinite(x) && isFinite(y) && x > 0 && y > 0) return {x,y};
-      } else {
-        const x = Number(v);
-        if (isFinite(x) && x > 0) return {x, y:x};
+        return [Number(v[0]), Number(v[1])];
+      }
+      const n = Number(v);
+      return [n, n];
+    };
+
+    const findUnitHint = () => {
+      const keys = [
+        'pixel size units', 'pixel_size_units', 'pixel_size units', 'pixel size unit', 'pixel_size_unit',
+        'spatial units', 'spatial_units', 'unit', 'units'
+      ];
+      for (const k of keys){
+        if (!(k in raw)) continue;
+        const v = raw[k];
+        if (typeof v === 'string' && v.trim()) return v.trim();
       }
       return null;
     };
 
-    for (const [k, unitOrFactor] of candidates){
-      if (!(k in raw)) continue;
-      const parsed = parseXY(raw[k]);
-      if (!parsed) continue;
+    const inferFactorForGenericPixelSize = (x, y) => {
+      const mag = Math.max(Math.abs(x), Math.abs(y));
+      if (!isFinite(mag) || mag <= 0) return null;
 
-      let f = 1;
-      if (typeof unitOrFactor === 'number'){
-        f = unitOrFactor;
-      } else if (typeof unitOrFactor === 'string'){
-        if (hintedFactor){
-          f = hintedFactor;
-        } else if (unitOrFactor === 'm'){
-          // Assume meters -> microns
-          f = 1e6;
-        } else {
-          f = unitToMicronsFactor(unitOrFactor) ?? 1;
-        }
+      // Heuristic:
+      //  - Very small values are likely meters (e.g., 5e-6 m => 5 µm)
+      //  - Small-but-not-tiny values are often millimeters (e.g., 0.00625 mm => 6.25 µm)
+      //  - Otherwise assume µm.
+      if (mag < 1e-3) return {f: 1e6, assumed: 'm'};
+      if (mag < 0.1)  return {f: 1e3, assumed: 'mm'};
+      if (mag < 1e3)  return {f: 1, assumed: 'µm'};
+      if (mag < 1e6)  return {f: 1e-3, assumed: 'nm'};
+      return null;
+    };
+
+    const mk = (x, y, f, source) => {
+      if (!isFinite(x) || !isFinite(y) || x <= 0 || y <= 0) return null;
+      return { umPerPixelX: x * f, umPerPixelY: y * f, source };
+    };
+
+    // Explicit µm fields (trusted)
+    const explicit = [
+      'microns per pixel',
+      'microns_per_pixel',
+      'micrometers per pixel',
+      'um per pixel',
+      'um_per_pixel',
+      'pixel size um',
+      'pixel_size_um',
+    ];
+    for (const k of explicit){
+      if (!(k in raw)) continue;
+      const v = raw[k];
+      const [x, y] = toXY(v);
+      const got = mk(x, y, 1, k);
+      if (got) return got;
+    }
+
+    // Generic, ambiguous fields: "pixel size" / "pixel_size"
+    const genericKeys = ['pixel size', 'pixel_size'];
+    const hint = findUnitHint();
+    const hintF = unitToMicronsFactor(hint);
+
+    for (const k of genericKeys){
+      if (!(k in raw)) continue;
+      const v = raw[k];
+      const [x, y] = toXY(v);
+
+      if (hintF){
+        const got = mk(x, y, hintF, hint ? `${k} (units=${hint})` : k);
+        if (got) return got;
       }
 
-      return { umPerPixelX: parsed.x * f, umPerPixelY: parsed.y * f, source: k };
+      const inf = inferFactorForGenericPixelSize(x, y);
+      if (!inf) continue;
+      const got = mk(x, y, inf.f, `${k} (assumed ${inf.assumed})`);
+      if (got) return got;
     }
 
     return null;
@@ -1983,6 +2136,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     histViewDebounce: null,
 
     exportKind: null,
+
+    spec: {open:false, x:0, y:0, seq:0},
   };
 
   // ========= Zoom mapping =========
@@ -3176,191 +3331,50 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     cpuCtx.restore();
   }
 
-  function roundRect(ctx, x, y, w, h, r){
-    const rr = Math.max(0, Math.min(r, Math.min(w,h)/2));
-    ctx.beginPath();
-    ctx.moveTo(x+rr, y);
-    ctx.arcTo(x+w, y, x+w, y+h, rr);
-    ctx.arcTo(x+w, y+h, x, y+h, rr);
-    ctx.arcTo(x, y+h, x, y, rr);
-    ctx.arcTo(x, y, x+w, y, rr);
-    ctx.closePath();
-  }
-
-  function formatDistanceUm(um){
-    const a = Math.abs(um);
-    if (a >= 1000){
-      const mm = um / 1000;
-      const s = (Math.abs(mm - Math.round(mm)) < 1e-9)
-        ? String(Math.round(mm))
-        : mm.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
-      return `${s} mm`;
-    }
-    if (a >= 1){
-      const s = (Math.abs(um - Math.round(um)) < 1e-9)
-        ? String(Math.round(um))
-        : um.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
-      return `${s} µm`;
-    }
-    const nm = um * 1000;
-    const s = (Math.abs(nm - Math.round(nm)) < 1e-9)
-      ? String(Math.round(nm))
-      : nm.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
-    return `${s} nm`;
-  }
-
-  function chooseNiceValue(ideal, toCssLen){
-    if (!isFinite(ideal) || ideal <= 0) return null;
-    const target = 140;   // CSS px target
-    const minOk = 60;
-    const maxOk = 240;
-
-    const exp = Math.floor(Math.log10(ideal));
-    const mults = [1,2,5];
-
-    let best = null;
-    let bestScore = Infinity;
-
-    for (let e = exp-2; e <= exp+2; e++){
-      const pow = Math.pow(10, e);
-      for (const m of mults){
-        const v = m * pow;
-        const len = toCssLen(v);
-        if (!isFinite(len) || len <= 0) continue;
-
-        const penalty = (len < minOk) ? 500 : ((len > maxOk) ? 500 : 0);
-        const score = Math.abs(len - target) + penalty;
-
-        if (score < bestScore){
-          bestScore = score;
-          best = v;
-        }
-      }
-    }
-    return best ?? ideal;
-  }
-
-  function drawScaleBar(ds){
-    if (!els.chkScale.checked) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const eff = ds.view.scale * dpr;
-    const canvasW = els.overlayCanvas.width;
-    const canvasH = els.overlayCanvas.height;
-
-    let barImgPx = 0;
-    let label = '';
-    const sc = ds.meta.scale;
-
-    if (sc && isFinite(sc.umPerPixelX) && sc.umPerPixelX > 0){
-      const umPerPx = Number(sc.umPerPixelX);
-      const idealUm = 140 * umPerPx / Math.max(1e-9, ds.view.scale);
-      const niceUm = chooseNiceValue(idealUm, (um) => (um / umPerPx) * ds.view.scale);
-      barImgPx = niceUm / umPerPx;
-      label = formatDistanceUm(niceUm);
-    } else {
-      const idealPx = 140 / Math.max(1e-9, ds.view.scale);
-      const nicePx = chooseNiceValue(idealPx, (px) => px * ds.view.scale);
-      barImgPx = Math.max(1, Math.round(nicePx));
-      label = `${fmtNoGroup(barImgPx)} px`;
-    }
-
-    const barDevPx = barImgPx * eff;
-
-    const pad = 12 * dpr;
-    const innerPad = 10 * dpr;
-    const barYGap = 10 * dpr;
-    const fontPx = 12 * dpr;
-
-    overlayCtx.save();
-    overlayCtx.setTransform(1,0,0,1,0,0);
-    overlayCtx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    overlayCtx.textAlign = 'right';
-    overlayCtx.textBaseline = 'top';
-
-    const textW = overlayCtx.measureText(label).width;
-    const boxW = Math.max(barDevPx, textW) + innerPad*2;
-    const boxH = (fontPx + barYGap + 8*dpr + innerPad*2);
-
-    const x1 = canvasW - pad;
-    const y1 = canvasH - pad;
-    const x0 = x1 - boxW;
-    const y0 = y1 - boxH;
-
-    overlayCtx.fillStyle = 'rgba(0,0,0,0.55)';
-    overlayCtx.strokeStyle = 'rgba(255,255,255,0.22)';
-    overlayCtx.lineWidth = 1 * dpr;
-    roundRect(overlayCtx, x0, y0, boxW, boxH, 8*dpr);
-    overlayCtx.fill();
-    overlayCtx.stroke();
-
-    overlayCtx.fillStyle = 'rgba(255,255,255,0.92)';
-    overlayCtx.fillText(label, x1 - innerPad, y0 + innerPad);
-
-    const barX1 = x1 - innerPad;
-    const barX0 = barX1 - barDevPx;
-    const barY  = y1 - innerPad - 2*dpr;
-
-    overlayCtx.strokeStyle = 'rgba(255,255,255,0.92)';
-    overlayCtx.lineWidth = 2 * dpr;
-    overlayCtx.beginPath();
-    overlayCtx.moveTo(barX0, barY);
-    overlayCtx.lineTo(barX1, barY);
-    overlayCtx.moveTo(barX0, barY - 6*dpr);
-    overlayCtx.lineTo(barX0, barY + 1*dpr);
-    overlayCtx.moveTo(barX1, barY - 6*dpr);
-    overlayCtx.lineTo(barX1, barY + 1*dpr);
-    overlayCtx.stroke();
-
-    overlayCtx.restore();
-  }
-
-  function drawOverlays(ds){
+  function drawGridOverlay(ds){
     overlayCtx.save();
     overlayCtx.setTransform(1,0,0,1,0,0);
     overlayCtx.clearRect(0,0,els.overlayCanvas.width, els.overlayCanvas.height);
 
-    if (!ds){
+    if (!els.chkGrid.checked || !ds){
       overlayCtx.restore();
       return;
     }
 
-    if (els.chkGrid.checked){
-      const dpr = window.devicePixelRatio || 1;
-      const eff = ds.view.scale * dpr;
-      const canvasW = els.overlayCanvas.width;
-      const canvasH = els.overlayCanvas.height;
-      const viewW = canvasW / eff;
-      const viewH = canvasH / eff;
+    // simple grid at power-of-two spacing in image pixels, adjusted by zoom
+    const dpr = window.devicePixelRatio || 1;
+    const eff = ds.view.scale * dpr;
+    const canvasW = els.overlayCanvas.width;
+    const canvasH = els.overlayCanvas.height;
+    const viewW = canvasW / eff;
+    const viewH = canvasH / eff;
 
-      const targetPx = 100;
-      const imgSpacing = Math.max(1, targetPx / eff);
-      const pow = Math.pow(2, Math.round(Math.log2(imgSpacing)));
-      const step = pow;
+    const targetPx = 100; // aim ~100 screen px between grid lines
+    const imgSpacing = Math.max(1, targetPx / eff);
+    // nearest power-of-two
+    const pow = Math.pow(2, Math.round(Math.log2(imgSpacing)));
+    const step = pow;
 
-      const startX = Math.floor(ds.view.x / step) * step;
-      const endX = ds.view.x + viewW;
-      const startY = Math.floor(ds.view.y / step) * step;
-      const endY = ds.view.y + viewH;
+    const startX = Math.floor(ds.view.x / step) * step;
+    const endX = ds.view.x + viewW;
+    const startY = Math.floor(ds.view.y / step) * step;
+    const endY = ds.view.y + viewH;
 
-      overlayCtx.strokeStyle = 'rgba(255,255,255,0.12)';
-      overlayCtx.lineWidth = 1 * dpr;
-      overlayCtx.beginPath();
+    overlayCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+    overlayCtx.lineWidth = 1 * dpr;
+    overlayCtx.beginPath();
 
-      for (let x = startX; x <= endX; x += step){
-        const sx = (x - ds.view.x) * eff;
-        overlayCtx.moveTo(sx, 0);
-        overlayCtx.lineTo(sx, canvasH);
-      }
-      for (let y = startY; y <= endY; y += step){
-        const sy = (y - ds.view.y) * eff;
-        overlayCtx.moveTo(0, sy);
-        overlayCtx.lineTo(canvasW, sy);
-      }
-      overlayCtx.stroke();
+    for (let x = startX; x <= endX; x += step){
+      const sx = (x - ds.view.x) * eff;
+      overlayCtx.moveTo(sx, 0);
+      overlayCtx.lineTo(sx, canvasH);
     }
-
-    drawScaleBar(ds);
+    for (let y = startY; y <= endY; y += step){
+      const sy = (y - ds.view.y) * eff;
+      overlayCtx.moveTo(0, sy);
+      overlayCtx.lineTo(canvasW, sy);
+    }
+    overlayCtx.stroke();
 
     overlayCtx.restore();
   }
@@ -3375,6 +3389,9 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       cpuCtx.fillRect(0,0,els.cpuCanvas.width, els.cpuCanvas.height);
       overlayCtx.setTransform(1,0,0,1,0,0);
       overlayCtx.clearRect(0,0,els.overlayCanvas.width, els.overlayCanvas.height);
+      state.spec.open = false;
+      els.specPanel.style.display = 'none';
+      updateScaleBar();
       return;
     }
 
@@ -3445,11 +3462,12 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       setStatus('ready','ok');
 
       // overlays
-      drawOverlays(ds);
+      drawGridOverlay(ds);
 
       updatePerf();
       renderThumbnail();
       updateHud();
+      updateScaleBar();
 
       // view histogram mode: debounce recompute to avoid heavy updates during pan
       if (state.histMode === 'view'){
@@ -3681,6 +3699,317 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     }, 40);
   }
 
+
+  // ========= Scalebar =========
+
+  function niceScaleLength(targetUm){
+    // Return a "nice" length close to target: 1/2/5 × 10^n
+    const t = Math.max(1e-12, Number(targetUm));
+    const p = Math.pow(10, Math.floor(Math.log10(t)));
+    const n = t / p;
+    const s = (n <= 1) ? 1 : (n <= 2) ? 2 : (n <= 5) ? 5 : 10;
+    return s * p;
+  }
+
+  function formatLengthUm(um){
+    const v = Number(um);
+    if (!isFinite(v)) return '—';
+    if (v >= 1000){
+      const mm = v / 1000;
+      if (mm >= 10) return `${mm.toFixed(0)} mm`;
+      if (mm >= 1) return `${mm.toFixed(1)} mm`;
+      return `${mm.toFixed(2)} mm`;
+    }
+    if (v >= 10) return `${v.toFixed(0)} µm`;
+    if (v >= 1) return `${v.toFixed(1)} µm`;
+    return `${v.toFixed(2)} µm`;
+  }
+
+  function updateScaleBar(){
+    if (!els.scaleBar) return;
+    const ds = getActive();
+    if (!ds || !els.chkScale.checked){
+      els.scaleBar.style.display = 'none';
+      return;
+    }
+
+    const sc = ds.meta.scale;
+    const has = sc && isFinite(sc.umPerPixelX) && sc.umPerPixelX > 0;
+
+    // Target bar length in screen (CSS) pixels.
+    const targetCssPx = 140;
+
+    let cssLen = 0;
+    let label = '';
+
+    if (has){
+      const umPerCssPx = sc.umPerPixelX / Math.max(1e-9, ds.view.scale);
+      let targetUm = targetCssPx * umPerCssPx;
+      if (!isFinite(targetUm) || targetUm <= 0) targetUm = sc.umPerPixelX * 100;
+      const niceUm = niceScaleLength(targetUm);
+      cssLen = niceUm / umPerCssPx;
+      cssLen = clamp(cssLen, 40, 260);
+      label = formatLengthUm(niceUm);
+    } else {
+      // Fall back to pixels when no spatial scale is present.
+      const pxShown = 200;
+      cssLen = pxShown * ds.view.scale;
+      cssLen = clamp(cssLen, 40, 260);
+      const px = Math.max(1, Math.round(cssLen / Math.max(1e-9, ds.view.scale)));
+      label = `${fmt(px)} px`;
+    }
+
+    els.scaleFill.style.width = `${cssLen}px`;
+    els.scaleLabel.textContent = label;
+    els.scaleBar.style.display = 'flex';
+  }
+
+
+  // ========= Spectrum probe (double-click) =========
+
+  function resizeSpecCanvas(){
+    if (!els.specCanvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = els.specCanvas.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+    if (els.specCanvas.width !== w || els.specCanvas.height !== h){
+      els.specCanvas.width = w;
+      els.specCanvas.height = h;
+    }
+  }
+
+  function dvGetScalar(meta, dv, off){
+    const le = !!meta.littleEndian;
+    switch (meta.dataType){
+      case 1:  return dv.getUint8(off);
+      case 2:  return dv.getInt16(off, le);
+      case 3:  return dv.getInt32(off, le);
+      case 4:  return dv.getFloat32(off, le);
+      case 5:  return dv.getFloat64(off, le);
+      case 12: return dv.getUint16(off, le);
+      case 13: return dv.getUint32(off, le);
+      case 14: return Number(dv.getBigInt64(off, le));
+      case 15: return Number(dv.getBigUint64(off, le));
+      default: return NaN;
+    }
+  }
+
+  async function readSpectrumAt(ds, x, y){
+    const meta = ds.meta;
+    const bytes = meta.dataTypeInfo.bytes;
+    const B = meta.bands;
+
+    // Fast path: BIP stores all bands contiguously for a pixel.
+    if (meta.interleave === 'bip'){
+      const offset = pixelOffset(meta, x, y, 0);
+      const u8 = await ds.ds.read(offset, B * bytes);
+      const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+      const out = new Float64Array(B);
+      for (let i=0; i<B; i++){
+        out[i] = dvGetScalar(meta, dv, i * bytes);
+      }
+      return out;
+    }
+
+    // BIL / BSQ: values are not contiguous. Use chunk grouping to reduce reads.
+    const out = new Float64Array(B);
+    out.fill(NaN);
+
+    const cs = ds.ds.chunkSize || (1<<20);
+    const groups = new Map(); // chunkIndex -> [{b, off}]
+
+    for (let b=0; b<B; b++){
+      const off = pixelOffset(meta, x, y, b);
+      const ci = Math.floor(off / cs);
+      let arr = groups.get(ci);
+      if (!arr){ arr = []; groups.set(ci, arr); }
+      arr.push({b, off});
+    }
+
+    const keys = Array.from(groups.keys()).sort((a,b)=>a-b);
+    for (const ci of keys){
+      const chunk = await ds.ds._getChunk(ci);
+      const base = ci * cs;
+      const arr = groups.get(ci);
+      for (const it of arr){
+        const inChunk = it.off - base;
+        if (inChunk < 0 || inChunk + bytes > chunk.byteLength) continue;
+        const dv = new DataView(chunk.buffer, chunk.byteOffset + inChunk, bytes);
+        out[it.b] = dvGetScalar(meta, dv, 0);
+      }
+    }
+
+    return out;
+  }
+
+  function drawSpecMessage(msg){
+    resizeSpecCanvas();
+    const w = els.specCanvas.width, h = els.specCanvas.height;
+    specCtx.setTransform(1,0,0,1,0,0);
+    specCtx.clearRect(0,0,w,h);
+    specCtx.fillStyle = 'rgba(255,255,255,.75)';
+    const dpr = window.devicePixelRatio || 1;
+    specCtx.font = `${12*dpr}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
+    specCtx.fillText(msg, 12*dpr, 20*dpr);
+  }
+
+  function plotSpectrum(ds, xsRaw, ys){
+    resizeSpecCanvas();
+    const W = els.specCanvas.width;
+    const H = els.specCanvas.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    specCtx.setTransform(1,0,0,1,0,0);
+    specCtx.clearRect(0,0,W,H);
+
+    const B = ds.meta.bands;
+
+    // Coerce x values to numbers; if not numeric, use indices.
+    const xs = new Float64Array(B);
+    let numeric = true;
+    for (let i=0; i<B; i++){
+      const n = Number(xsRaw[i]);
+      if (!isFinite(n)){ numeric = false; break; }
+      xs[i] = n;
+    }
+    if (!numeric){
+      for (let i=0; i<B; i++) xs[i] = i;
+    }
+
+    // Y range (ignore NaNs).
+    let yMin = Infinity, yMax = -Infinity;
+    for (let i=0; i<B; i++){
+      const v = ys[i];
+      if (!isFinite(v)) continue;
+      if (v < yMin) yMin = v;
+      if (v > yMax) yMax = v;
+    }
+    if (!isFinite(yMin) || !isFinite(yMax)){
+      drawSpecMessage('Spectrum: no finite values');
+      return;
+    }
+    if (yMax === yMin){
+      yMax = yMin + 1;
+      yMin = yMin - 1;
+    }
+
+    let xMin = Infinity, xMax = -Infinity;
+    for (let i=0; i<B; i++){
+      const v = xs[i];
+      if (!isFinite(v)) continue;
+      if (v < xMin) xMin = v;
+      if (v > xMax) xMax = v;
+    }
+    if (!isFinite(xMin) || !isFinite(xMax) || xMax === xMin){
+      xMin = 0; xMax = B-1;
+    }
+
+    const padL = 46*dpr, padR = 12*dpr, padT = 10*dpr, padB = 24*dpr;
+    const x0 = padL, x1 = W - padR;
+    const y0 = padT, y1 = H - padB;
+
+    // Axes
+    specCtx.strokeStyle = 'rgba(255,255,255,.22)';
+    specCtx.lineWidth = Math.max(1, 1*dpr);
+    specCtx.beginPath();
+    specCtx.moveTo(x0, y0);
+    specCtx.lineTo(x0, y1);
+    specCtx.lineTo(x1, y1);
+    specCtx.stroke();
+
+    const mapX = (x) => x0 + (x - xMin) / (xMax - xMin) * (x1 - x0);
+    const mapY = (y) => y1 - (y - yMin) / (yMax - yMin) * (y1 - y0);
+
+    // Line
+    specCtx.strokeStyle = 'rgba(210,228,255,.95)';
+    specCtx.lineWidth = Math.max(1, 1.25*dpr);
+    specCtx.beginPath();
+    for (let i=0; i<B; i++){
+      const x = mapX(xs[i]);
+      const y = mapY(ys[i]);
+      if (!isFinite(x) || !isFinite(y)) continue;
+      if (i === 0) specCtx.moveTo(x,y);
+      else specCtx.lineTo(x,y);
+    }
+    specCtx.stroke();
+
+    // Active band marker
+    const b = ds.activeBand ?? 0;
+    if (b >= 0 && b < B){
+      const xb = mapX(xs[b]);
+      specCtx.strokeStyle = 'rgba(255,214,102,.85)';
+      specCtx.lineWidth = Math.max(1, 1*dpr);
+      specCtx.beginPath();
+      specCtx.moveTo(xb, y0);
+      specCtx.lineTo(xb, y1);
+      specCtx.stroke();
+    }
+
+    // Labels
+    specCtx.fillStyle = 'rgba(255,255,255,.75)';
+    specCtx.font = `${11*dpr}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
+    specCtx.fillText(yMax.toPrecision(5), 6*dpr, (y0 + 12*dpr));
+    specCtx.fillText(yMin.toPrecision(5), 6*dpr, (y1));
+
+    const xLbl = numeric ? `${xMin.toPrecision(5)} … ${xMax.toPrecision(5)}` : `0 … ${B-1}`;
+    specCtx.fillText(xLbl, x0, H - 6*dpr);
+
+    const wlUnits = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : '';
+    const aVal = (b >= 0 && b < B && isFinite(ys[b])) ? ys[b].toPrecision(6) : '—';
+    els.specHint.textContent = `${B} bands • ${wlUnits || 'index'} • active: ${bandLabel(ds, b)} = ${aVal}`;
+  }
+
+  function onMainDblClick(ev){
+    const ds = getActive();
+    if (!ds || ds.activeBand == null) return;
+    if (state.selection.drawing) return;
+
+    const rect = els.main.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const sx = (ev.clientX - rect.left) * dpr;
+    const sy = (ev.clientY - rect.top) * dpr;
+
+    const img = screenToImage(sx, sy);
+    const ix = Math.floor(img.x);
+    const iy = Math.floor(img.y);
+
+    if (ix < 0 || iy < 0 || ix >= ds.meta.samples || iy >= ds.meta.lines) return;
+
+    state.spec.open = true;
+    state.spec.x = ix;
+    state.spec.y = iy;
+    const mySeq = ++state.spec.seq;
+
+    els.specPanel.style.display = 'flex';
+
+    // Header text (include µm if available)
+    const sc = ds.meta.scale;
+    if (sc && isFinite(sc.umPerPixelX) && isFinite(sc.umPerPixelY)){
+      const xUm = ix * Number(sc.umPerPixelX);
+      const yUm = iy * Number(sc.umPerPixelY);
+      els.specMeta.textContent = `${ds.name} • x:${fmt(ix)} y:${fmt(iy)}  (${fmtUm(xUm)} µm, ${fmtUm(yUm)} µm)`;
+      els.specMeta.title = `px x:${ix} y:${iy}`;
+    } else {
+      els.specMeta.textContent = `${ds.name} • x:${fmt(ix)} y:${fmt(iy)} (px)`;
+      els.specMeta.title = '';
+    }
+
+    drawSpecMessage('loading spectrum…');
+
+    // Read + plot
+    readSpectrumAt(ds, ix, iy).then(ys => {
+      if (!state.spec.open || mySeq !== state.spec.seq) return;
+      const xs = ds.meta.wavelengths || Array.from({length: ds.meta.bands}, (_,i)=>i);
+      plotSpectrum(ds, xs, ys);
+    }).catch(err => {
+      console.error(err);
+      if (!state.spec.open || mySeq !== state.spec.seq) return;
+      drawSpecMessage('spectrum error');
+      els.specHint.textContent = (err && err.message) ? err.message : String(err);
+    });
+  }
+
   // ========= Mouse interaction =========
 
   function updateSelectionRect(){
@@ -3861,11 +4190,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     if (scope === 'sel'){
       const r = state.selection.imgRect;
       if (r){
-        const x0 = Number.isFinite(r.x0) ? r.x0 : 0;
-        const y0 = Number.isFinite(r.y0) ? r.y0 : 0;
-        const x1 = Number.isFinite(r.x1) ? r.x1 : (x0 + (Number.isFinite(r.w) ? r.w : 1));
-        const y1 = Number.isFinite(r.y1) ? r.y1 : (y0 + (Number.isFinite(r.h) ? r.h : 1));
-        return clampRect(ds, {x0, y0, x1, y1});
+        return clampRect(ds, {x0:r.x0, y0:r.y0, x1:(('x1' in r) ? r.x1 : (r.x0 + r.w)), y1:(('y1' in r) ? r.y1 : (r.y0 + r.h))});
       }
       // No selection -> fall back to current view
       return clampRect(ds, viewRect(ds));
@@ -4259,6 +4584,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   window.addEventListener('pointerup', onPointerUp);
   els.main.addEventListener('pointerleave', onPointerLeave);
   els.main.addEventListener('wheel', onWheel, {passive:false});
+  els.main.addEventListener('dblclick', onMainDblClick);
 
   els.thumb.addEventListener('click', onThumbClick);
 
@@ -4297,7 +4623,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   els.chkThumb.oninput = () => renderThumbnail();
   els.chkGrid.oninput = () => render();
-  els.chkScale.oninput = () => render();
+  els.chkScale.oninput = () => updateScaleBar();
 
   els.btnSelect.onclick = () => {
     const ds = getActive();
@@ -4315,6 +4641,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   els.btnExportPNG.onclick = () => openExportDialog('png');
   els.btnExportTIFF.onclick = () => openExportDialog('tiff');
+
+  els.btnSpecClose.onclick = () => { state.spec.open = false; els.specPanel.style.display = 'none'; };
 
   // Export dialog
   els.expModeRaw.oninput = () => updateExportDialogUI();
