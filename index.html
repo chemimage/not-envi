@@ -250,97 +250,6 @@
     }
     #thumbWrap canvas{ width:100%; height:100%; position:static; }
 
-    /* Toggle-able scalebar overlay (µm if available, else pixels) */
-    #scaleBar{
-      position:absolute;
-      right:10px;
-      bottom:10px;
-      padding:8px 10px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(0,0,0,.55);
-      box-shadow:0 8px 18px var(--shadow);
-      pointer-events:none;
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-      min-width:160px;
-      max-width:320px;
-      color:#fff;
-      font-family:var(--mono);
-      font-size:12px;
-      z-index: 40;
-    }
-    #scaleBar .sb-bar{
-      height:8px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.18);
-      background:rgba(255,255,255,.06);
-      overflow:hidden;
-    }
-    #scaleBar .sb-fill{
-      height:100%;
-      width:120px;
-      background:rgba(220,235,255,.92);
-    }
-    #scaleBar .sb-label{
-      display:flex;
-      justify-content:space-between;
-      gap:10px;
-      color:#e7efff;
-      white-space:nowrap;
-    }
-
-    /* Spectrum panel (double-click on view) */
-    #specPanel{
-      position:absolute;
-      left:10px;
-      bottom:10px;
-      width:360px;
-      height:240px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.14);
-      background:rgba(0,0,0,.62);
-      box-shadow:0 10px 24px var(--shadow);
-      overflow:hidden;
-      display:flex;
-      flex-direction:column;
-      z-index: 45;
-    }
-    #specPanel .head{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      padding:8px 10px;
-      background:rgba(255,255,255,.06);
-      border-bottom:1px solid rgba(255,255,255,.10);
-    }
-    #specPanel .title{
-      font-weight:700;
-      letter-spacing:.02em;
-      font-size:12px;
-    }
-    #specPanel .meta{
-      padding:6px 10px;
-      font-size:11px;
-      color:var(--muted);
-      font-family:var(--mono);
-      border-bottom:1px solid rgba(255,255,255,.06);
-    }
-    #specCanvas{
-      width:100%;
-      height:150px;
-      display:block;
-    }
-    #specPanel .footer{
-      padding:6px 10px;
-      font-size:11px;
-      color:var(--muted);
-      font-family:var(--mono);
-      border-top:1px solid rgba(255,255,255,.06);
-      background:rgba(255,255,255,.03);
-    }
-
     /* Simple progress bars (cache / read coverage) */
     .bar-label{
       display:flex;
@@ -559,7 +468,54 @@
       input[type="range"]{ width:120px; }
       #thumbWrap{ width:180px; height:130px; }
     }
-  </style>
+  
+
+    /* Floating spectrum panel */
+    .spec-panel{
+      position:absolute;
+      left:12px;
+      bottom:12px;
+      width:380px;
+      background:linear-gradient(180deg,var(--panel),var(--panel2));
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius:12px;
+      box-shadow:0 12px 36px rgba(0,0,0,.55);
+      padding:10px;
+      z-index:9;
+      pointer-events:auto;
+      user-select:none;
+    }
+    .spec-head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:8px;
+    }
+    .spec-title{
+      font-size:13px;
+      font-weight:700;
+      line-height:1.2;
+    }
+    .spec-sub{
+      font-size:12px;
+      opacity:0.9;
+      margin-top:2px;
+    }
+    .spec-canvas{
+      width:100%;
+      height:190px;
+      border-radius:10px;
+      background:#0a0d13;
+      border:1px solid rgba(255,255,255,0.08);
+      display:block;
+    }
+    .spec-foot{
+      margin-top:6px;
+      opacity:0.85;
+    }
+    .btn.tiny{ padding:4px 8px; font-size:11px; }
+</style>
 </head>
 <body>
 <div id="app">
@@ -586,8 +542,8 @@
         <input type="checkbox" id="chkThumb" checked />
         <span class="tiny">Thumbnail</span>
       </label>
-      <label class="toggle" title="Show scalebar (uses µm if scale is known)">
-        <input type="checkbox" id="chkScale" checked />
+      <label class="toggle" title="Show scalebar (lower right)">
+        <input type="checkbox" id="chkScale" />
         <span class="tiny">Scalebar</span>
       </label>
     </div>
@@ -677,19 +633,17 @@
       <canvas id="thumb"></canvas>
     </div>
 
-    <div id="scaleBar" style="display:none" aria-label="Scale bar">
-      <div class="sb-bar"><div class="sb-fill" id="scaleFill"></div></div>
-      <div class="sb-label" id="scaleLabel">—</div>
-    </div>
-
-    <div id="specPanel" style="display:none" aria-label="Spectrum">
-      <div class="head">
-        <div class="title">Spectrum</div>
-        <button class="btn tiny danger" id="btnSpecClose" title="Close">×</button>
+    <!-- Spectrum (z-profile) panel: double-click in the view to open -->
+    <div id="specPanel" class="spec-panel" style="display:none;">
+      <div class="spec-head">
+        <div class="spec-head-left">
+          <div class="spec-title" id="specTitle">Spectrum</div>
+          <div class="spec-sub" id="specSub">—</div>
+        </div>
+        <button class="btn ghost tiny" id="btnSpecClose" title="Close spectrum">✕</button>
       </div>
-      <div class="meta" id="specMeta">—</div>
-      <canvas id="specCanvas"></canvas>
-      <div class="footer" id="specHint">Double‑click anywhere to update • values are read locally</div>
+      <canvas id="specCanvas" class="spec-canvas"></canvas>
+      <div class="spec-foot tiny" id="specFoot">Double‑click another point to update.</div>
     </div>
   </main>
 
@@ -924,6 +878,28 @@
     return new Uint8Array(b)[0] === 0xff;
   })();
 
+  // ========= IO helpers =========
+
+  // A small, bounded amount of parallelism helps on SSDs (and reduces latency for scattered reads),
+  // but too much can overwhelm the browser. We keep it conservative.
+  const IO_CONCURRENCY = clamp(Math.floor(((navigator && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) / 2) + 1, 2, 8);
+
+  async function parallelFor(count, limit, fn){
+    const n = Math.min(Math.max(1, limit|0), count|0);
+    let next = 0;
+    const workers = [];
+    for (let w=0; w<n; w++){
+      workers.push((async () => {
+        while (true){
+          const i = next++;
+          if (i >= count) break;
+          await fn(i);
+        }
+      })());
+    }
+    await Promise.all(workers);
+  }
+
   // ========= Elements =========
 
   const els = {
@@ -979,13 +955,13 @@
     hudVal: $('#hudVal'),
     thumbWrap: $('#thumbWrap'),
     thumb: $('#thumb'),
-    scaleBar: $('#scaleBar'),
-    scaleFill: $('#scaleFill'),
-    scaleLabel: $('#scaleLabel'),
+
+    // spectrum
     specPanel: $('#specPanel'),
     specCanvas: $('#specCanvas'),
-    specMeta: $('#specMeta'),
-    specHint: $('#specHint'),
+    specTitle: $('#specTitle'),
+    specSub: $('#specSub'),
+    specFoot: $('#specFoot'),
     btnSpecClose: $('#btnSpecClose'),
 
     // right
@@ -1037,7 +1013,7 @@
   const thumbCtx = els.thumb.getContext('2d', {alpha:false});
   const overlayCtx = els.overlayCanvas.getContext('2d', {alpha:true});
   const cpuCtx = els.cpuCanvas.getContext('2d', {alpha:false});
-  const specCtx = els.specCanvas.getContext('2d', {alpha:true});
+  const specCtx = els.specCanvas.getContext('2d', {alpha:false});
 
   // ========= Status =========
 
@@ -1128,48 +1104,90 @@
   }
 
   class ChunkCacheDataSource {
-    constructor(inner, chunkSizeBytes = 1<<20, maxChunks = 64){
+    constructor(inner, chunkSizeBytes = 1<<20, maxBytes = 64 * (1<<20), opts = {}){
       this.inner = inner;
       this.chunkSize = chunkSizeBytes;
-      this.maxChunks = maxChunks;
-      this.cache = new Map(); // key-> {u8, t}
-      this._tick = 0;
+      this.maxBytes = Math.max(this.chunkSize, Math.floor(maxBytes || 0));
+
+      const hc = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4;
+      this.concurrency = clamp((opts && opts.concurrency) ? opts.concurrency : (Math.floor(hc/2) + 1), 2, 8);
+
+      this.cache = new Map();     // key -> {u8}
+      this.totalBytes = 0;
+
+      // Dedupe concurrent reads for the same chunk.
+      this.inflight = new Map();  // key -> Promise<Uint8Array>
     }
+
     get bytesRead(){ return this.inner.bytesRead || 0; }
     get size(){ return this.inner.size || 0; }
+
+    setMaxBytes(bytes){
+      const b = Number(bytes);
+      if (!isFinite(b) || b <= 0) return;
+      this.maxBytes = Math.max(this.chunkSize, Math.floor(b));
+      this._evict();
+    }
+
+    cacheBytes(){ return this.totalBytes; }
 
     _touch(key){
       const ent = this.cache.get(key);
       if (!ent) return;
-      ent.t = ++this._tick;
+      // Move to most-recent by reinserting.
+      this.cache.delete(key);
+      this.cache.set(key, ent);
     }
 
     _evict(){
-      if (this.cache.size <= this.maxChunks) return;
-      let lruKey = null;
-      let lruT = Infinity;
-      for (const [k,ent] of this.cache){
-        if (ent.t < lruT){ lruT = ent.t; lruKey = k; }
+      // Evict oldest entries (Map order) until within budget.
+      while (this.totalBytes > this.maxBytes && this.cache.size){
+        const oldestKey = this.cache.keys().next().value;
+        const ent = this.cache.get(oldestKey);
+        this.cache.delete(oldestKey);
+        if (ent && ent.u8) this.totalBytes -= ent.u8.byteLength;
       }
-      if (lruKey !== null) this.cache.delete(lruKey);
     }
 
-    async _getChunk(chunkIndex){
-      const key = String(chunkIndex);
-      const got = this.cache.get(key);
-      if (got){ this._touch(key); return got.u8; }
+    async _loadChunk(chunkIndex){
       const offset = chunkIndex * this.chunkSize;
       const len = Math.min(this.chunkSize, this.size - offset);
-      const u8 = await this.inner.read(offset, len);
-      this.cache.set(key, {u8, t: ++this._tick});
-      this._evict();
-      return u8;
+      return await this.inner.read(offset, len);
     }
 
-    cacheBytes(){
-      let total = 0;
-      for (const ent of this.cache.values()) total += ent.u8.byteLength;
-      return total;
+    _getChunk(chunkIndex){
+      const key = String(chunkIndex);
+
+      const got = this.cache.get(key);
+      if (got){
+        this._touch(key);
+        return Promise.resolve(got.u8);
+      }
+
+      const inflight = this.inflight.get(key);
+      if (inflight) return inflight;
+
+      const p = this._loadChunk(chunkIndex).then((u8) => {
+        this.inflight.delete(key);
+
+        // Might have been cached while inflight.
+        const again = this.cache.get(key);
+        if (again){
+          this._touch(key);
+          return again.u8;
+        }
+
+        this.cache.set(key, {u8});
+        this.totalBytes += u8.byteLength;
+        this._evict();
+        return u8;
+      }).catch((err) => {
+        this.inflight.delete(key);
+        throw err;
+      });
+
+      this.inflight.set(key, p);
+      return p;
     }
 
     async read(offset, length){
@@ -1185,9 +1203,30 @@
       }
 
       const out = new Uint8Array(length);
+
+      // Fetch chunks in parallel (bounded concurrency).
+      const idxs = [];
+      for (let ci = first; ci <= last; ci++) idxs.push(ci);
+
+      const chunks = new Array(idxs.length);
+      let next = 0;
+      const worker = async () => {
+        while (true){
+          const i = next++;
+          if (i >= idxs.length) break;
+          chunks[i] = await this._getChunk(idxs[i]);
+        }
+      };
+
+      const nWorkers = Math.min(this.concurrency, idxs.length);
+      const workers = [];
+      for (let i=0; i<nWorkers; i++) workers.push(worker());
+      await Promise.all(workers);
+
       let outPos = 0;
-      for (let ci = first; ci <= last; ci++){
-        const chunk = await this._getChunk(ci);
+      for (let i=0; i<idxs.length; i++){
+        const ci = idxs[i];
+        const chunk = chunks[i];
         const base = ci * this.chunkSize;
         const start = Math.max(offset, base);
         const stop = Math.min(end, base + chunk.byteLength);
@@ -1200,28 +1239,16 @@
     }
 
     async close(){
+      try{
+        this.cache.clear();
+        this.inflight.clear();
+        this.totalBytes = 0;
+      }catch(_){}
       if (this.inner && this.inner.close) await this.inner.close();
-      this.cache.clear();
     }
   }
 
-  // ========= ENVI binary decoding =========
-
-  const DATA_TYPES = new Map([
-    [1,  {name:'uint8',  bytes:1, ctor: Uint8Array,  dv:'getUint8'}],
-    [2,  {name:'int16',  bytes:2, ctor: Int16Array,  dv:'getInt16'}],
-    [3,  {name:'int32',  bytes:4, ctor: Int32Array,  dv:'getInt32'}],
-    [4,  {name:'float32',bytes:4, ctor: Float32Array,dv:'getFloat32'}],
-    [5,  {name:'float64',bytes:8, ctor: Float64Array,dv:'getFloat64'}],
-    [12, {name:'uint16', bytes:2, ctor: Uint16Array, dv:'getUint16'}],
-    [13, {name:'uint32', bytes:4, ctor: Uint32Array, dv:'getUint32'}],
-    [14, {name:'int64',  bytes:8, ctor: null,       dv:'getBigInt64'}],
-    [15, {name:'uint64', bytes:8, ctor: null,       dv:'getBigUint64'}],
-  ]);
-
-  // ========= Optional spatial scale parsing (µm/pixel) =========
-
-  function unitToMicronsFactor(unitStr){
+function unitToMicronsFactor(unitStr){
     if (!unitStr) return null;
     const u = String(unitStr).trim().toLowerCase();
     if (!u) return null;
@@ -1234,16 +1261,12 @@
   }
 
   function parseUmPerPixelFromMapInfo(mapInfo){
-    // ENVI "map info" usually looks like:
+    // ENVI's "map info" often looks like:
     // {projection, ref_px_x, ref_px_y, x0, y0, x_pixel_size, y_pixel_size, ... , units=Meters}
     if (!Array.isArray(mapInfo) || mapInfo.length < 7) return null;
-
-    const proj = String(mapInfo[0] ?? '').toLowerCase();
-
     const xPix = Number(mapInfo[5]);
     const yPix = Number(mapInfo[6]);
     if (!isFinite(xPix) || !isFinite(yPix) || xPix <= 0 || yPix <= 0) return null;
-
     let units = null;
     for (const it of mapInfo.slice(7)){
       if (typeof it !== 'string') continue;
@@ -1254,103 +1277,69 @@
         units = it.trim();
       }
     }
-
-    // Many ENVI writers omit units; in practice this is often meters.
-    // Avoid guessing for geographic lat/lon (degrees).
-    let assumed = false;
-    if (!units){
-      if (/(geographic|lat\/?lon|latitude|longitude|degree)/i.test(proj)) return null;
-      units = 'meters';
-      assumed = true;
-    }
-
     const f = unitToMicronsFactor(units);
     if (!f) return null;
-    return { umPerPixelX: xPix * f, umPerPixelY: yPix * f, source: assumed ? 'map info (assumed meters)' : 'map info' };
+    return { umPerPixelX: xPix * f, umPerPixelY: yPix * f, source: 'map info' };
   }
 
   function parseUmPerPixelFromCustomFields(raw){
     // Common non-standard fields used in microscopy-ish ENVI exports.
-    // This viewer prefers µm/pixel when it can infer it safely.
+    // NOTE: Ambiguous fields like "pixel size" are frequently stored in *meters* (SI).
+    // We only assume µm when the key explicitly indicates µm/um/microns.
+    const unitHints = [
+      raw['pixel size units'], raw['pixel_size_units'],
+      raw['pixel units'], raw['pixel_units'],
+      raw['units'], raw['unit']
+    ].map(x => (typeof x === 'string' ? x : '')).find(s => s && s.trim());
+    const hintedFactor = unitToMicronsFactor(unitHints);
 
-    const toXY = (v) => {
-      if (Array.isArray(v) && v.length >= 2){
-        return [Number(v[0]), Number(v[1])];
-      }
-      const n = Number(v);
-      return [n, n];
-    };
+    const candidates = [
+      // Explicit microns/µm
+      ['microns per pixel', 1],
+      ['microns_per_pixel', 1],
+      ['micrometers per pixel', 1],
+      ['um per pixel', 1],
+      ['um_per_pixel', 1],
+      ['pixel size um', 1],
+      ['pixel_size_um', 1],
 
-    const findUnitHint = () => {
-      const keys = [
-        'pixel size units', 'pixel_size_units', 'pixel_size units', 'pixel size unit', 'pixel_size_unit',
-        'spatial units', 'spatial_units', 'unit', 'units'
-      ];
-      for (const k of keys){
-        if (!(k in raw)) continue;
-        const v = raw[k];
-        if (typeof v === 'string' && v.trim()) return v.trim();
-      }
-      return null;
-    };
-
-    const inferFactorForGenericPixelSize = (x, y) => {
-      const mag = Math.max(Math.abs(x), Math.abs(y));
-      if (!isFinite(mag) || mag <= 0) return null;
-
-      // Heuristic:
-      //  - Very small values are likely meters (e.g., 5e-6 m => 5 µm)
-      //  - Small-but-not-tiny values are often millimeters (e.g., 0.00625 mm => 6.25 µm)
-      //  - Otherwise assume µm.
-      if (mag < 1e-3) return {f: 1e6, assumed: 'm'};
-      if (mag < 0.1)  return {f: 1e3, assumed: 'mm'};
-      if (mag < 1e3)  return {f: 1, assumed: 'µm'};
-      if (mag < 1e6)  return {f: 1e-3, assumed: 'nm'};
-      return null;
-    };
-
-    const mk = (x, y, f, source) => {
-      if (!isFinite(x) || !isFinite(y) || x <= 0 || y <= 0) return null;
-      return { umPerPixelX: x * f, umPerPixelY: y * f, source };
-    };
-
-    // Explicit µm fields (trusted)
-    const explicit = [
-      'microns per pixel',
-      'microns_per_pixel',
-      'micrometers per pixel',
-      'um per pixel',
-      'um_per_pixel',
-      'pixel size um',
-      'pixel_size_um',
+      // Ambiguous (treat as meters unless units are provided elsewhere)
+      ['pixel size', 'm'],
+      ['pixel_size', 'm'],
     ];
-    for (const k of explicit){
+
+    const parseXY = (v) => {
+      if (Array.isArray(v) && v.length >= 2){
+        const x = Number(v[0]);
+        const y = Number(v[1]);
+        if (isFinite(x) && isFinite(y) && x > 0 && y > 0) return {x,y};
+      } else {
+        const x = Number(v);
+        if (isFinite(x) && x > 0) return {x, y:x};
+      }
+      return null;
+    };
+
+    for (const [k, unitOrFactor] of candidates){
       if (!(k in raw)) continue;
-      const v = raw[k];
-      const [x, y] = toXY(v);
-      const got = mk(x, y, 1, k);
-      if (got) return got;
-    }
+      const parsed = parseXY(raw[k]);
+      if (!parsed) continue;
 
-    // Generic, ambiguous fields: "pixel size" / "pixel_size"
-    const genericKeys = ['pixel size', 'pixel_size'];
-    const hint = findUnitHint();
-    const hintF = unitToMicronsFactor(hint);
-
-    for (const k of genericKeys){
-      if (!(k in raw)) continue;
-      const v = raw[k];
-      const [x, y] = toXY(v);
-
-      if (hintF){
-        const got = mk(x, y, hintF, hint ? `${k} (units=${hint})` : k);
-        if (got) return got;
+      let f = 1;
+      if (typeof unitOrFactor === 'number'){
+        f = unitOrFactor;
+      } else if (typeof unitOrFactor === 'string'){
+        if (hintedFactor){
+          f = hintedFactor;
+        } else if (unitOrFactor === 'm'){
+          // Assume meters -> microns
+          f = 1e6;
+        } else {
+          f = unitToMicronsFactor(unitOrFactor) ?? 1;
+        }
       }
 
-      const inf = inferFactorForGenericPixelSize(x, y);
-      if (!inf) continue;
-      const got = mk(x, y, inf.f, `${k} (assumed ${inf.assumed})`);
-      if (got) return got;
+      return { umPerPixelX: parsed.x * f, umPerPixelY: parsed.y * f, source: k };
     }
 
     return null;
@@ -1513,36 +1502,20 @@
     const safeOutW = Math.floor((maxX - x0 + (step-1)) / step);
     const safeOutH = Math.floor((maxY - y0 + (step-1)) / step);
 
-    if (meta.interleave === 'bsq'){
-      // Each row of a band is contiguous
-      for (let sy = 0; sy < safeOutH; sy++){
-        const y = y0 + sy*step;
-        const rowOffset = pixelOffset(meta, x0, y, band);
-        const spanPixels = safeOutW * step;
-        const rowBytes = spanPixels * bytes;
-        const u8 = await ds.read(rowOffset, rowBytes);
-        const seg = makeSegmentReader(meta, u8);
-
-        for (let sx = 0; sx < safeOutW; sx++){
-          out[sy*outW + sx] = segGet(meta, seg, sx*step);
-        }
-      }
-      return out;
-    }
-
-    // BIL: each line has all bands for that line; band data is contiguous per band per line
-    for (let sy = 0; sy < safeOutH; sy++){
+    const rowWorker = async (sy) => {
       const y = y0 + sy*step;
-      const lineOffset = pixelOffset(meta, x0, y, band);
+      const rowOffset = pixelOffset(meta, x0, y, band);
       const spanPixels = safeOutW * step;
       const rowBytes = spanPixels * bytes;
-      const u8 = await ds.read(lineOffset, rowBytes);
+      const u8 = await ds.read(rowOffset, rowBytes);
       const seg = makeSegmentReader(meta, u8);
-
+      const baseOut = sy*outW;
       for (let sx = 0; sx < safeOutW; sx++){
-        out[sy*outW + sx] = segGet(meta, seg, sx*step);
+        out[baseOut + sx] = segGet(meta, seg, sx*step);
       }
-    }
+    };
+
+    await parallelFor(safeOutH, IO_CONCURRENCY, rowWorker);
     return out;
   }
 
@@ -1557,19 +1530,21 @@
     const maxY = clamp(y0 + outH*step, 0, L);
     const safeOutW = Math.floor((maxX - x0 + (step-1)) / step);
     const safeOutH = Math.floor((maxY - y0 + (step-1)) / step);
+    const spanPixels = safeOutW * step;
 
-    for (let sy = 0; sy < safeOutH; sy++){
+    const rowWorker = async (sy) => {
       const y = y0 + sy*step;
-      const spanPixels = safeOutW * step;
       const u8 = await readBipRowAllBands(meta, ds, x0, y, spanPixels);
       const seg = makeSegmentReader(meta, u8);
-
+      const baseOut = sy*outW;
       for (let sx = 0; sx < safeOutW; sx++){
         const rawPix = sx * step;
         const idx = rawPix * B + band;
-        out[sy*outW + sx] = segGet(meta, seg, idx);
+        out[baseOut + sx] = segGet(meta, seg, idx);
       }
-    }
+    };
+
+    await parallelFor(safeOutH, IO_CONCURRENCY, rowWorker);
     return out;
   }
 
@@ -1598,6 +1573,7 @@
     }
     pyr.tiles.clear();
     pyr.pending.clear();
+    if (pyr.inflight) pyr.inflight.clear();
     pyr.queued.clear();
     pyr.qHi.length = 0;
     pyr.qLo.length = 0;
@@ -1639,10 +1615,12 @@
     ds.pyramid = {
       tileSize,
       maxLevel,
-      limitBytes: 256 * 1024 * 1024,
+      limitBytes: ds.pyramidBudgetBytes || (256 * 1024 * 1024),
       totalBytes: 0,
       tiles: new Map(),     // key -> {band,level,tx,ty,data,w,h,bytes,t}
       pending: new Map(),   // key -> Promise
+      inflight: new Set(),  // active tile builds (bounded)
+      maxInflight: clamp(Math.floor(IO_CONCURRENCY/2) + 1, 1, 4),
       queued: new Set(),    // key strings
       tick: 0,
       cancelled: false,
@@ -1800,48 +1778,60 @@
     if (state.activeId !== ds.id) return;
     if (pyr._idleHandle) return;
 
-    pyr._idleHandle = requestIdle(async () => {
+    pyr._idleHandle = requestIdle(() => {
       pyr._idleHandle = null;
       if (!ds.pyramid || ds.pyramid.cancelled) return;
       if (state.activeId !== ds.id) return;
 
-      const task = (pyr.qHi.length ? pyr.qHi.shift() : pyr.qLo.shift()) || null;
-      if (!task){
-        // keep background fill going (for active band only)
-        if (ds.activeBand != null){
-          const dpr = window.devicePixelRatio || 1;
-          const eff = ds.view.scale * dpr;
-          const lvl = pyramidLevelForEff(ds, eff);
-          pumpBackgroundTasks(ds, ds.activeBand, Math.max(lvl, 2));
-        }
-        updatePerf();
-        if (ds.pyramid && !ds.pyramid.cancelled && (ds.pyramid.qHi.length || ds.pyramid.qLo.length)){
-          schedulePyramidWork(ds);
-        }
-        return;
+      const maxInflight = pyr.maxInflight || 2;
+
+      // Launch tasks until our inflight budget is full.
+      while (pyr.inflight && pyr.inflight.size < maxInflight){
+        const task = (pyr.qHi.length ? pyr.qHi.shift() : pyr.qLo.shift()) || null;
+        if (!task) break;
+
+        const p = getBandTile(ds, task.band, task.level, task.tx, task.ty)
+          .catch(() => {})
+          .finally(() => {
+            try{ if (pyr.inflight) pyr.inflight.delete(p); }catch(_){}
+            updatePerf();
+
+            // Progressive refinement: kick a re-render occasionally as tiles arrive.
+            const _tKick = now();
+            if (!pyr._lastKick || (_tKick - pyr._lastKick) > 90){
+              pyr._lastKick = _tKick;
+              scheduleRender();
+            }
+
+            // Keep background fill going (for active band only)
+            if (ds.activeBand != null && ds.pyramid && !ds.pyramid.cancelled){
+              const dpr = window.devicePixelRatio || 1;
+              const eff = ds.view.scale * dpr;
+              const lvl = pyramidLevelForEff(ds, eff);
+              pumpBackgroundTasks(ds, ds.activeBand, Math.max(lvl, 2));
+            }
+
+            if (ds.pyramid && !ds.pyramid.cancelled){
+              schedulePyramidWork(ds);
+            }
+          });
+
+        pyr.inflight.add(p);
       }
 
-      try{ await getBandTile(ds, task.band, task.level, task.tx, task.ty); }catch(_){}
-      updatePerf();
-
-      // Progressive refinement: kick a re-render occasionally as tiles arrive
-      const _tKick = now();
-      if (!pyr._lastKick || (_tKick - pyr._lastKick) > 90){
-        pyr._lastKick = _tKick;
-        scheduleRender();
-      }
-
-      if (ds.activeBand != null){
+      // If no queued tasks, keep background fill alive for active band.
+      if (!pyr.qHi.length && !pyr.qLo.length && ds.activeBand != null){
         const dpr = window.devicePixelRatio || 1;
         const eff = ds.view.scale * dpr;
         const lvl = pyramidLevelForEff(ds, eff);
         pumpBackgroundTasks(ds, ds.activeBand, Math.max(lvl, 2));
       }
 
-      if (ds.pyramid && !ds.pyramid.cancelled && (ds.pyramid.qHi.length || ds.pyramid.qLo.length)){
+      updatePerf();
+
+      if (ds.pyramid && !ds.pyramid.cancelled && (pyr.qHi.length || pyr.qLo.length || (pyr.inflight && pyr.inflight.size))){
         schedulePyramidWork(ds);
       } else {
-        // when tasks finish, re-render to show new tiles
         scheduleRender();
       }
     }, {timeout: 250});
@@ -2136,9 +2126,59 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     histViewDebounce: null,
 
     exportKind: null,
-
-    spec: {open:false, x:0, y:0, seq:0},
   };
+
+  // ========= Cache budgeting =========
+
+  // We size in-memory caches from the browser's best-effort memory hints.
+  // Target: ~40% of the available JS heap budget (or device RAM hint), shared across open datasets.
+  const CACHE_BUDGET = {
+    fracOfAvailable: 0.40,
+    minBytes: 256 * 1024 * 1024,
+    maxBytes: 3 * 1024 * 1024 * 1024,
+    fracChunk: 0.60,
+    fracPyramid: 0.40,
+    totalBytes: 0,
+  };
+
+  function estimateTotalCacheBudgetBytes(){
+    let heapLimit = 0;
+    try{
+      heapLimit = (performance && performance.memory && performance.memory.jsHeapSizeLimit) ? performance.memory.jsHeapSizeLimit : 0;
+    }catch(_){}
+    let devBytes = 0;
+    try{
+      devBytes = (navigator && navigator.deviceMemory) ? (navigator.deviceMemory * 1024 * 1024 * 1024) : 0;
+    }catch(_){}
+
+    let basis = heapLimit || devBytes || (1024 * 1024 * 1024);
+    if (heapLimit && devBytes) basis = Math.min(heapLimit, devBytes);
+
+    let budget = basis * CACHE_BUDGET.fracOfAvailable;
+    budget = clamp(budget, CACHE_BUDGET.minBytes, CACHE_BUDGET.maxBytes);
+    return budget;
+  }
+
+  function recomputeCacheBudgets(){
+    if (!CACHE_BUDGET.totalBytes){
+      CACHE_BUDGET.totalBytes = estimateTotalCacheBudgetBytes();
+    }
+    const n = Math.max(1, state.datasets.length);
+    const per = CACHE_BUDGET.totalBytes / n;
+
+    for (const ds of state.datasets){
+      const chunkSize = (ds.ds && ds.ds.chunkSize) ? ds.ds.chunkSize : (1<<20);
+      const chunkBytes = Math.max(chunkSize * 8, Math.floor(per * CACHE_BUDGET.fracChunk));
+      const pyramidBytes = Math.max(64 * 1024 * 1024, Math.floor(per * CACHE_BUDGET.fracPyramid));
+
+      ds.chunkBudgetBytes = chunkBytes;
+      ds.pyramidBudgetBytes = pyramidBytes;
+
+      if (ds.ds && ds.ds.setMaxBytes) ds.ds.setMaxBytes(chunkBytes);
+      if (ds.pyramid) ds.pyramid.limitBytes = pyramidBytes;
+    }
+    updatePerf();
+  }
 
   // ========= Zoom mapping =========
 
@@ -2191,6 +2231,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   function setActiveDataset(id, {fit=false} = {}){
     state.activeId = id;
+    closeSpectrum();
     rebuildDatasetList();
     rebuildBandTree();
     updateMetaUI();
@@ -2331,7 +2372,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
     setStatus('opening data…','warn');
     const base = new BlobDataSource(dataFile);
-    const cached = new ChunkCacheDataSource(base, 1<<20, 64);
+    const cached = new ChunkCacheDataSource(base, 1<<20, 128 * 1024 * 1024);
 
     const initialBand = (meta.defaultBands && meta.defaultBands.length) ? meta.defaultBands[0] : 0;
 
@@ -2356,6 +2397,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     ds.bandSettings.set(ds.activeBand, {min:null, max:null, gamma:1, gain:1, contrast:1});
 
     state.datasets.unshift(ds);
+    recomputeCacheBudgets();
     setActiveDataset(ds.id, {fit:true});
 
     // Kick off histogram for initial band (whole image sample)
@@ -2458,7 +2500,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     els.perfCache.textContent = humanBytes(chunkUsed);
     els.perfPyramid.textContent = humanBytes(pyramidUsed);
 
-    const chunkCap = (ds.ds && ds.ds.chunkSize && ds.ds.maxChunks) ? (ds.ds.chunkSize * ds.ds.maxChunks) : 0;
+    const chunkCap = (ds.ds && ds.ds.maxBytes) ? ds.ds.maxBytes : 0;
     const pyramidCap = (ds.pyramid && ds.pyramid.limitBytes) ? ds.pyramid.limitBytes : 0;
     const cap = Math.max(1, chunkCap + pyramidCap);
     const used = chunkUsed + pyramidUsed;
@@ -2473,8 +2515,9 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     els.perfBarReadText.textContent = `${humanBytes(bytesRead)} / ${humanBytes(full)}`;
   }
 
-  function rebuildBandTree(){
+  function rebuildBandTree({preserveScroll=false} = {}){
     const q = (els.bandSearch.value || '').trim().toLowerCase();
+    const prevScroll = preserveScroll ? els.bandTree.scrollTop : 0;
     els.bandTree.innerHTML = '';
 
     for (const ds of state.datasets){
@@ -2491,7 +2534,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       caret.onclick = (ev) => {
         ev.stopPropagation();
         ds.treeExpanded = !ds.treeExpanded;
-        rebuildBandTree();
+        rebuildBandTree({preserveScroll:true});
       };
 
       const name = document.createElement('div');
@@ -2562,6 +2605,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
       els.bandTree.appendChild(node);
     }
+
+    if (preserveScroll) els.bandTree.scrollTop = prevScroll;
   }
 
   // ========= Display settings =========
@@ -2587,7 +2632,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     band = clamp(band|0, 0, ds.meta.bands-1);
     ds.activeBand = band;
     getBandSettings(ds, band); // ensure exists
-    rebuildBandTree();
+    rebuildBandTree({preserveScroll:true});
     updateDisplayUI(true);
     render();
     // compute stats in background if missing (whole image)
@@ -3331,50 +3376,191 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     cpuCtx.restore();
   }
 
-  function drawGridOverlay(ds){
-    overlayCtx.save();
-    overlayCtx.setTransform(1,0,0,1,0,0);
-    overlayCtx.clearRect(0,0,els.overlayCanvas.width, els.overlayCanvas.height);
+  function roundRect(ctx, x, y, w, h, r){
+    const rr = Math.max(0, Math.min(r, Math.min(w,h)/2));
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.arcTo(x+w, y, x+w, y+h, rr);
+    ctx.arcTo(x+w, y+h, x, y+h, rr);
+    ctx.arcTo(x, y+h, x, y, rr);
+    ctx.arcTo(x, y, x+w, y, rr);
+    ctx.closePath();
+  }
 
-    if (!els.chkGrid.checked || !ds){
-      overlayCtx.restore();
-      return;
+  function formatDistanceUm(um){
+    const a = Math.abs(um);
+    if (a >= 1000){
+      const mm = um / 1000;
+      const s = (Math.abs(mm - Math.round(mm)) < 1e-9)
+        ? String(Math.round(mm))
+        : mm.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
+      return `${s} mm`;
     }
+    if (a >= 1){
+      const s = (Math.abs(um - Math.round(um)) < 1e-9)
+        ? String(Math.round(um))
+        : um.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
+      return `${s} µm`;
+    }
+    const nm = um * 1000;
+    const s = (Math.abs(nm - Math.round(nm)) < 1e-9)
+      ? String(Math.round(nm))
+      : nm.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
+    return `${s} nm`;
+  }
 
-    // simple grid at power-of-two spacing in image pixels, adjusted by zoom
+  function chooseNiceValue(ideal, toCssLen){
+    if (!isFinite(ideal) || ideal <= 0) return null;
+    const target = 140;   // CSS px target
+    const minOk = 60;
+    const maxOk = 240;
+
+    const exp = Math.floor(Math.log10(ideal));
+    const mults = [1,2,5];
+
+    let best = null;
+    let bestScore = Infinity;
+
+    for (let e = exp-2; e <= exp+2; e++){
+      const pow = Math.pow(10, e);
+      for (const m of mults){
+        const v = m * pow;
+        const len = toCssLen(v);
+        if (!isFinite(len) || len <= 0) continue;
+
+        const penalty = (len < minOk) ? 500 : ((len > maxOk) ? 500 : 0);
+        const score = Math.abs(len - target) + penalty;
+
+        if (score < bestScore){
+          bestScore = score;
+          best = v;
+        }
+      }
+    }
+    return best ?? ideal;
+  }
+
+  function drawScaleBar(ds){
+    if (!els.chkScale.checked) return;
+
     const dpr = window.devicePixelRatio || 1;
     const eff = ds.view.scale * dpr;
     const canvasW = els.overlayCanvas.width;
     const canvasH = els.overlayCanvas.height;
-    const viewW = canvasW / eff;
-    const viewH = canvasH / eff;
 
-    const targetPx = 100; // aim ~100 screen px between grid lines
-    const imgSpacing = Math.max(1, targetPx / eff);
-    // nearest power-of-two
-    const pow = Math.pow(2, Math.round(Math.log2(imgSpacing)));
-    const step = pow;
+    let barImgPx = 0;
+    let label = '';
+    const sc = ds.meta.scale;
 
-    const startX = Math.floor(ds.view.x / step) * step;
-    const endX = ds.view.x + viewW;
-    const startY = Math.floor(ds.view.y / step) * step;
-    const endY = ds.view.y + viewH;
+    if (sc && isFinite(sc.umPerPixelX) && sc.umPerPixelX > 0){
+      const umPerPx = Number(sc.umPerPixelX);
+      const idealUm = 140 * umPerPx / Math.max(1e-9, ds.view.scale);
+      const niceUm = chooseNiceValue(idealUm, (um) => (um / umPerPx) * ds.view.scale);
+      barImgPx = niceUm / umPerPx;
+      label = formatDistanceUm(niceUm);
+    } else {
+      const idealPx = 140 / Math.max(1e-9, ds.view.scale);
+      const nicePx = chooseNiceValue(idealPx, (px) => px * ds.view.scale);
+      barImgPx = Math.max(1, Math.round(nicePx));
+      label = `${fmtNoGroup(barImgPx)} px`;
+    }
 
-    overlayCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+    const barDevPx = barImgPx * eff;
+
+    const pad = 12 * dpr;
+    const innerPad = 10 * dpr;
+    const barYGap = 10 * dpr;
+    const fontPx = 12 * dpr;
+
+    overlayCtx.save();
+    overlayCtx.setTransform(1,0,0,1,0,0);
+    overlayCtx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    overlayCtx.textAlign = 'right';
+    overlayCtx.textBaseline = 'top';
+
+    const textW = overlayCtx.measureText(label).width;
+    const boxW = Math.max(barDevPx, textW) + innerPad*2;
+    const boxH = (fontPx + barYGap + 8*dpr + innerPad*2);
+
+    const x1 = canvasW - pad;
+    const y1 = canvasH - pad;
+    const x0 = x1 - boxW;
+    const y0 = y1 - boxH;
+
+    overlayCtx.fillStyle = 'rgba(0,0,0,0.55)';
+    overlayCtx.strokeStyle = 'rgba(255,255,255,0.22)';
+    overlayCtx.lineWidth = 1 * dpr;
+    roundRect(overlayCtx, x0, y0, boxW, boxH, 8*dpr);
+    overlayCtx.fill();
+    overlayCtx.stroke();
+
+    overlayCtx.fillStyle = 'rgba(255,255,255,0.92)';
+    overlayCtx.fillText(label, x1 - innerPad, y0 + innerPad);
+
+    const barX1 = x1 - innerPad;
+    const barX0 = barX1 - barDevPx;
+    const barY  = y1 - innerPad - 2*dpr;
+
+    overlayCtx.strokeStyle = 'rgba(255,255,255,0.92)';
     overlayCtx.lineWidth = 1 * dpr;
     overlayCtx.beginPath();
-
-    for (let x = startX; x <= endX; x += step){
-      const sx = (x - ds.view.x) * eff;
-      overlayCtx.moveTo(sx, 0);
-      overlayCtx.lineTo(sx, canvasH);
-    }
-    for (let y = startY; y <= endY; y += step){
-      const sy = (y - ds.view.y) * eff;
-      overlayCtx.moveTo(0, sy);
-      overlayCtx.lineTo(canvasW, sy);
-    }
+    overlayCtx.moveTo(barX0, barY);
+    overlayCtx.lineTo(barX1, barY);
+    overlayCtx.moveTo(barX0, barY - 6*dpr);
+    overlayCtx.lineTo(barX0, barY + 1*dpr);
+    overlayCtx.moveTo(barX1, barY - 6*dpr);
+    overlayCtx.lineTo(barX1, barY + 1*dpr);
     overlayCtx.stroke();
+
+    overlayCtx.restore();
+  }
+
+  function drawOverlays(ds){
+    overlayCtx.save();
+    overlayCtx.setTransform(1,0,0,1,0,0);
+    overlayCtx.clearRect(0,0,els.overlayCanvas.width, els.overlayCanvas.height);
+
+    if (!ds){
+      overlayCtx.restore();
+      return;
+    }
+
+    if (els.chkGrid.checked){
+      const dpr = window.devicePixelRatio || 1;
+      const eff = ds.view.scale * dpr;
+      const canvasW = els.overlayCanvas.width;
+      const canvasH = els.overlayCanvas.height;
+      const viewW = canvasW / eff;
+      const viewH = canvasH / eff;
+
+      const targetPx = 100;
+      const imgSpacing = Math.max(1, targetPx / eff);
+      const pow = Math.pow(2, Math.round(Math.log2(imgSpacing)));
+      const step = pow;
+
+      const startX = Math.floor(ds.view.x / step) * step;
+      const endX = ds.view.x + viewW;
+      const startY = Math.floor(ds.view.y / step) * step;
+      const endY = ds.view.y + viewH;
+
+      overlayCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+      overlayCtx.lineWidth = 1 * dpr;
+      overlayCtx.beginPath();
+
+      for (let x = startX; x <= endX; x += step){
+        const sx = (x - ds.view.x) * eff;
+        overlayCtx.moveTo(sx, 0);
+        overlayCtx.lineTo(sx, canvasH);
+      }
+      for (let y = startY; y <= endY; y += step){
+        const sy = (y - ds.view.y) * eff;
+        overlayCtx.moveTo(0, sy);
+        overlayCtx.lineTo(canvasW, sy);
+      }
+      overlayCtx.stroke();
+    }
+
+    drawScaleBar(ds);
 
     overlayCtx.restore();
   }
@@ -3389,9 +3575,6 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       cpuCtx.fillRect(0,0,els.cpuCanvas.width, els.cpuCanvas.height);
       overlayCtx.setTransform(1,0,0,1,0,0);
       overlayCtx.clearRect(0,0,els.overlayCanvas.width, els.overlayCanvas.height);
-      state.spec.open = false;
-      els.specPanel.style.display = 'none';
-      updateScaleBar();
       return;
     }
 
@@ -3462,12 +3645,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       setStatus('ready','ok');
 
       // overlays
-      drawGridOverlay(ds);
+      drawOverlays(ds);
 
       updatePerf();
       renderThumbnail();
       updateHud();
-      updateScaleBar();
 
       // view histogram mode: debounce recompute to avoid heavy updates during pan
       if (state.histMode === 'view'){
@@ -3699,318 +3881,271 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     }, 40);
   }
 
+  
+  // ========= Spectrum (z-profile) panel =========
 
-  // ========= Scalebar =========
+  let specSeq = 0;
+  const specState = {open:false, dsId:null, x:0, y:0, xVals:null, yVals:null};
 
-  function niceScaleLength(targetUm){
-    // Return a "nice" length close to target: 1/2/5 × 10^n
-    const t = Math.max(1e-12, Number(targetUm));
-    const p = Math.pow(10, Math.floor(Math.log10(t)));
-    const n = t / p;
-    const s = (n <= 1) ? 1 : (n <= 2) ? 2 : (n <= 5) ? 5 : 10;
-    return s * p;
+  function showSpectrumPanel(show){
+    if (!els.specPanel) return;
+    els.specPanel.style.display = show ? 'block' : 'none';
+    specState.open = !!show;
   }
-
-  function formatLengthUm(um){
-    const v = Number(um);
-    if (!isFinite(v)) return '—';
-    if (v >= 1000){
-      const mm = v / 1000;
-      if (mm >= 10) return `${mm.toFixed(0)} mm`;
-      if (mm >= 1) return `${mm.toFixed(1)} mm`;
-      return `${mm.toFixed(2)} mm`;
-    }
-    if (v >= 10) return `${v.toFixed(0)} µm`;
-    if (v >= 1) return `${v.toFixed(1)} µm`;
-    return `${v.toFixed(2)} µm`;
-  }
-
-  function updateScaleBar(){
-    if (!els.scaleBar) return;
-    const ds = getActive();
-    if (!ds || !els.chkScale.checked){
-      els.scaleBar.style.display = 'none';
-      return;
-    }
-
-    const sc = ds.meta.scale;
-    const has = sc && isFinite(sc.umPerPixelX) && sc.umPerPixelX > 0;
-
-    // Target bar length in screen (CSS) pixels.
-    const targetCssPx = 140;
-
-    let cssLen = 0;
-    let label = '';
-
-    if (has){
-      const umPerCssPx = sc.umPerPixelX / Math.max(1e-9, ds.view.scale);
-      let targetUm = targetCssPx * umPerCssPx;
-      if (!isFinite(targetUm) || targetUm <= 0) targetUm = sc.umPerPixelX * 100;
-      const niceUm = niceScaleLength(targetUm);
-      cssLen = niceUm / umPerCssPx;
-      cssLen = clamp(cssLen, 40, 260);
-      label = formatLengthUm(niceUm);
-    } else {
-      // Fall back to pixels when no spatial scale is present.
-      const pxShown = 200;
-      cssLen = pxShown * ds.view.scale;
-      cssLen = clamp(cssLen, 40, 260);
-      const px = Math.max(1, Math.round(cssLen / Math.max(1e-9, ds.view.scale)));
-      label = `${fmt(px)} px`;
-    }
-
-    els.scaleFill.style.width = `${cssLen}px`;
-    els.scaleLabel.textContent = label;
-    els.scaleBar.style.display = 'flex';
-  }
-
-
-  // ========= Spectrum probe (double-click) =========
 
   function resizeSpecCanvas(){
     if (!els.specCanvas) return;
     const dpr = window.devicePixelRatio || 1;
-    const rect = els.specCanvas.getBoundingClientRect();
-    const w = Math.max(1, Math.floor(rect.width * dpr));
-    const h = Math.max(1, Math.floor(rect.height * dpr));
+    const r = els.specCanvas.getBoundingClientRect();
+    const w = Math.max(10, Math.floor(r.width * dpr));
+    const h = Math.max(10, Math.floor(r.height * dpr));
     if (els.specCanvas.width !== w || els.specCanvas.height !== h){
       els.specCanvas.width = w;
       els.specCanvas.height = h;
     }
   }
 
-  function dvGetScalar(meta, dv, off){
-    const le = !!meta.littleEndian;
-    switch (meta.dataType){
-      case 1:  return dv.getUint8(off);
-      case 2:  return dv.getInt16(off, le);
-      case 3:  return dv.getInt32(off, le);
-      case 4:  return dv.getFloat32(off, le);
-      case 5:  return dv.getFloat64(off, le);
-      case 12: return dv.getUint16(off, le);
-      case 13: return dv.getUint32(off, le);
-      case 14: return Number(dv.getBigInt64(off, le));
-      case 15: return Number(dv.getBigUint64(off, le));
-      default: return NaN;
-    }
+  function formatAxisNumber(v){
+    const a = Math.abs(v);
+    if (!isFinite(v)) return '—';
+    if (a >= 1000) return fmtNoGroup(Math.round(v));
+    if (a >= 100) return v.toFixed(1);
+    if (a >= 10) return v.toFixed(2);
+    return v.toFixed(3);
   }
 
-  async function readSpectrumAt(ds, x, y){
-    const meta = ds.meta;
-    const bytes = meta.dataTypeInfo.bytes;
-    const B = meta.bands;
+  function drawSpectrumPlot(ds, xVals, yVals){
+    resizeSpecCanvas();
+    const c = els.specCanvas;
+    const ctx = specCtx;
+    const W = c.width, H = c.height;
+    const dpr = window.devicePixelRatio || 1;
 
-    // Fast path: BIP stores all bands contiguously for a pixel.
+    // Background
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#0a0d13';
+    ctx.fillRect(0,0,W,H);
+
+    const padL = Math.round(52 * dpr);
+    const padR = Math.round(12 * dpr);
+    const padT = Math.round(12 * dpr);
+    const padB = Math.round(30 * dpr);
+
+    const x0 = padL, y0 = padT;
+    const x1 = W - padR, y1 = H - padB;
+    const plotW = Math.max(1, x1 - x0);
+    const plotH = Math.max(1, y1 - y0);
+
+    // Ranges
+    let xmin = Infinity, xmax = -Infinity;
+    let ymin = Infinity, ymax = -Infinity;
+    for (let i=0; i<yVals.length; i++){
+      const xv = xVals ? xVals[i] : i;
+      const yv = yVals[i];
+      if (isFinite(xv)){ xmin = Math.min(xmin, xv); xmax = Math.max(xmax, xv); }
+      if (isFinite(yv)){ ymin = Math.min(ymin, yv); ymax = Math.max(ymax, yv); }
+    }
+    if (!isFinite(xmin) || !isFinite(xmax) || xmin === xmax){
+      xmin = 0; xmax = Math.max(1, yVals.length-1);
+    }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymin === ymax){
+      ymin = (isFinite(ymin) ? ymin : 0);
+      ymax = ymin + 1;
+    }
+
+    // Expand y-range slightly for readability
+    const yPad = (ymax - ymin) * 0.06;
+    ymin -= yPad;
+    ymax += yPad;
+
+    const xToPx = (x) => x0 + (x - xmin) / (xmax - xmin) * plotW;
+    const yToPx = (y) => y1 - (y - ymin) / (ymax - ymin) * plotH;
+
+    // Grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    const gridN = 4;
+    for (let i=0; i<=gridN; i++){
+      const yy = y0 + (i/gridN) * plotH;
+      ctx.moveTo(x0, yy);
+      ctx.lineTo(x1, yy);
+    }
+    for (let i=0; i<=gridN; i++){
+      const xx = x0 + (i/gridN) * plotW;
+      ctx.moveTo(xx, y0);
+      ctx.lineTo(xx, y1);
+    }
+    ctx.stroke();
+
+    // Axes
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0, y1);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+
+    // Line (decimate for very large band counts)
+    const N = yVals.length;
+    const maxPts = 1400;
+    const step = Math.max(1, Math.ceil(N / maxPts));
+
+    ctx.strokeStyle = 'rgba(220,235,255,0.95)';
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath();
+    let started = false;
+    for (let i=0; i<N; i+=step){
+      const xv = xVals ? xVals[i] : i;
+      const yv = yVals[i];
+      if (!isFinite(xv) || !isFinite(yv)) continue;
+      const px = xToPx(xv);
+      const py = yToPx(yv);
+      if (!started){ ctx.moveTo(px, py); started = true; }
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // Labels (full range on X; avoid "A … B")
+    ctx.fillStyle = 'rgba(235,245,255,0.92)';
+    ctx.font = `${Math.round(11*dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+    ctx.textBaseline = 'middle';
+
+    // Y ticks (left)
+    ctx.textAlign = 'right';
+    for (let i=0; i<=4; i++){
+      const t = i/4;
+      const yv = ymin + (1-t)*(ymax-ymin);
+      const py = y0 + t*plotH;
+      ctx.fillText(formatAxisNumber(yv), x0 - 8*dpr, py);
+    }
+
+    // X ticks (bottom)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (let i=0; i<=4; i++){
+      const t = i/4;
+      const xv = xmin + t*(xmax-xmin);
+      const px = x0 + t*plotW;
+      ctx.fillText(formatAxisNumber(xv), px, y1 + 6*dpr);
+    }
+
+    // X axis unit label (small)
+    const unit = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : '';
+    const xLabel = xVals ? (unit ? unit : 'Wavelength') : 'Band index';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(200,210,220,0.75)';
+    ctx.fillText(xLabel, x1, y1 + 6*dpr);
+  }
+
+  async function readSpectrumAtPixel(ds, ix, iy){
+    const meta = ds.meta;
+    const B = meta.bands;
+    const bytes = meta.dataTypeInfo.bytes;
+
+    const out = new Float32Array(B);
+
     if (meta.interleave === 'bip'){
-      const offset = pixelOffset(meta, x, y, 0);
-      const u8 = await ds.ds.read(offset, B * bytes);
-      const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-      const out = new Float64Array(B);
-      for (let i=0; i<B; i++){
-        out[i] = dvGetScalar(meta, dv, i * bytes);
+      const off = pixelOffset(meta, ix, iy, 0);
+      const u8 = await ds.ds.read(off, B * bytes);
+      const seg = makeSegmentReader(meta, u8);
+      for (let b=0; b<B; b++){
+        out[b] = Number(segGet(meta, seg, b));
       }
       return out;
     }
 
-    // BIL / BSQ: values are not contiguous. Use chunk grouping to reduce reads.
-    const out = new Float64Array(B);
-    out.fill(NaN);
-
-    const cs = ds.ds.chunkSize || (1<<20);
-    const groups = new Map(); // chunkIndex -> [{b, off}]
-
-    for (let b=0; b<B; b++){
-      const off = pixelOffset(meta, x, y, b);
-      const ci = Math.floor(off / cs);
-      let arr = groups.get(ci);
-      if (!arr){ arr = []; groups.set(ci, arr); }
-      arr.push({b, off});
-    }
-
-    const keys = Array.from(groups.keys()).sort((a,b)=>a-b);
-    for (const ci of keys){
-      const chunk = await ds.ds._getChunk(ci);
-      const base = ci * cs;
-      const arr = groups.get(ci);
-      for (const it of arr){
-        const inChunk = it.off - base;
-        if (inChunk < 0 || inChunk + bytes > chunk.byteLength) continue;
-        const dv = new DataView(chunk.buffer, chunk.byteOffset + inChunk, bytes);
-        out[it.b] = dvGetScalar(meta, dv, 0);
-      }
-    }
+    // For BSQ/BIL, a pixel's bands are strided in the file. We read per-band with bounded parallelism.
+    await parallelFor(B, IO_CONCURRENCY, async (b) => {
+      const off = pixelOffset(meta, ix, iy, b);
+      const u8 = await ds.ds.read(off, bytes);
+      const seg = makeSegmentReader(meta, u8);
+      out[b] = Number(segGet(meta, seg, 0));
+    });
 
     return out;
   }
 
-  function drawSpecMessage(msg){
-    resizeSpecCanvas();
-    const w = els.specCanvas.width, h = els.specCanvas.height;
-    specCtx.setTransform(1,0,0,1,0,0);
-    specCtx.clearRect(0,0,w,h);
-    specCtx.fillStyle = 'rgba(255,255,255,.75)';
-    const dpr = window.devicePixelRatio || 1;
-    specCtx.font = `${12*dpr}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
-    specCtx.fillText(msg, 12*dpr, 20*dpr);
+  function wavelengthArrayOrNull(ds){
+    const wl = ds.meta.wavelengths;
+    if (!Array.isArray(wl) || wl.length !== ds.meta.bands) return null;
+    // Accept numeric or numeric-looking strings.
+    const out = new Array(wl.length);
+    for (let i=0; i<wl.length; i++){
+      const n = Number(wl[i]);
+      if (!isFinite(n)) return null;
+      out[i] = n;
+    }
+    return out;
   }
 
-  function plotSpectrum(ds, xsRaw, ys){
-    resizeSpecCanvas();
-    const W = els.specCanvas.width;
-    const H = els.specCanvas.height;
-    const dpr = window.devicePixelRatio || 1;
+  async function openSpectrumAt(ds, ix, iy){
+    if (!ds) return;
+    specState.dsId = ds.id;
+    specState.x = ix; specState.y = iy;
 
-    specCtx.setTransform(1,0,0,1,0,0);
-    specCtx.clearRect(0,0,W,H);
+    const mySeq = ++specSeq;
 
-    const B = ds.meta.bands;
+    showSpectrumPanel(true);
 
-    // Coerce x values to numbers; if not numeric, use indices.
-    const xs = new Float64Array(B);
-    let numeric = true;
-    for (let i=0; i<B; i++){
-      const n = Number(xsRaw[i]);
-      if (!isFinite(n)){ numeric = false; break; }
-      xs[i] = n;
-    }
-    if (!numeric){
-      for (let i=0; i<B; i++) xs[i] = i;
-    }
-
-    // Y range (ignore NaNs).
-    let yMin = Infinity, yMax = -Infinity;
-    for (let i=0; i<B; i++){
-      const v = ys[i];
-      if (!isFinite(v)) continue;
-      if (v < yMin) yMin = v;
-      if (v > yMax) yMax = v;
-    }
-    if (!isFinite(yMin) || !isFinite(yMax)){
-      drawSpecMessage('Spectrum: no finite values');
-      return;
-    }
-    if (yMax === yMin){
-      yMax = yMin + 1;
-      yMin = yMin - 1;
-    }
-
-    let xMin = Infinity, xMax = -Infinity;
-    for (let i=0; i<B; i++){
-      const v = xs[i];
-      if (!isFinite(v)) continue;
-      if (v < xMin) xMin = v;
-      if (v > xMax) xMax = v;
-    }
-    if (!isFinite(xMin) || !isFinite(xMax) || xMax === xMin){
-      xMin = 0; xMax = B-1;
-    }
-
-    const padL = 46*dpr, padR = 12*dpr, padT = 10*dpr, padB = 24*dpr;
-    const x0 = padL, x1 = W - padR;
-    const y0 = padT, y1 = H - padB;
-
-    // Axes
-    specCtx.strokeStyle = 'rgba(255,255,255,.22)';
-    specCtx.lineWidth = Math.max(1, 1*dpr);
-    specCtx.beginPath();
-    specCtx.moveTo(x0, y0);
-    specCtx.lineTo(x0, y1);
-    specCtx.lineTo(x1, y1);
-    specCtx.stroke();
-
-    const mapX = (x) => x0 + (x - xMin) / (xMax - xMin) * (x1 - x0);
-    const mapY = (y) => y1 - (y - yMin) / (yMax - yMin) * (y1 - y0);
-
-    // Line
-    specCtx.strokeStyle = 'rgba(210,228,255,.95)';
-    specCtx.lineWidth = Math.max(1, 1.25*dpr);
-    specCtx.beginPath();
-    for (let i=0; i<B; i++){
-      const x = mapX(xs[i]);
-      const y = mapY(ys[i]);
-      if (!isFinite(x) || !isFinite(y)) continue;
-      if (i === 0) specCtx.moveTo(x,y);
-      else specCtx.lineTo(x,y);
-    }
-    specCtx.stroke();
-
-    // Active band marker
-    const b = ds.activeBand ?? 0;
-    if (b >= 0 && b < B){
-      const xb = mapX(xs[b]);
-      specCtx.strokeStyle = 'rgba(255,214,102,.85)';
-      specCtx.lineWidth = Math.max(1, 1*dpr);
-      specCtx.beginPath();
-      specCtx.moveTo(xb, y0);
-      specCtx.lineTo(xb, y1);
-      specCtx.stroke();
-    }
-
-    // Labels
-    specCtx.fillStyle = 'rgba(255,255,255,.75)';
-    specCtx.font = `${11*dpr}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
-    specCtx.fillText(yMax.toPrecision(5), 6*dpr, (y0 + 12*dpr));
-    specCtx.fillText(yMin.toPrecision(5), 6*dpr, (y1));
-
-    const xLbl = numeric ? `${xMin.toPrecision(5)} … ${xMax.toPrecision(5)}` : `0 … ${B-1}`;
-    specCtx.fillText(xLbl, x0, H - 6*dpr);
-
-    const wlUnits = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : '';
-    const aVal = (b >= 0 && b < B && isFinite(ys[b])) ? ys[b].toPrecision(6) : '—';
-    els.specHint.textContent = `${B} bands • ${wlUnits || 'index'} • active: ${bandLabel(ds, b)} = ${aVal}`;
-  }
-
-  function onMainDblClick(ev){
-    const ds = getActive();
-    if (!ds || ds.activeBand == null) return;
-    if (state.selection.drawing) return;
-
-    const rect = els.main.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const sx = (ev.clientX - rect.left) * dpr;
-    const sy = (ev.clientY - rect.top) * dpr;
-
-    const img = screenToImage(sx, sy);
-    const ix = Math.floor(img.x);
-    const iy = Math.floor(img.y);
-
-    if (ix < 0 || iy < 0 || ix >= ds.meta.samples || iy >= ds.meta.lines) return;
-
-    state.spec.open = true;
-    state.spec.x = ix;
-    state.spec.y = iy;
-    const mySeq = ++state.spec.seq;
-
-    els.specPanel.style.display = 'flex';
-
-    // Header text (include µm if available)
     const sc = ds.meta.scale;
     if (sc && isFinite(sc.umPerPixelX) && isFinite(sc.umPerPixelY)){
       const xUm = ix * Number(sc.umPerPixelX);
       const yUm = iy * Number(sc.umPerPixelY);
-      els.specMeta.textContent = `${ds.name} • x:${fmt(ix)} y:${fmt(iy)}  (${fmtUm(xUm)} µm, ${fmtUm(yUm)} µm)`;
-      els.specMeta.title = `px x:${ix} y:${iy}`;
+      els.specSub.textContent = `${ds.name} • x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`;
     } else {
-      els.specMeta.textContent = `${ds.name} • x:${fmt(ix)} y:${fmt(iy)} (px)`;
-      els.specMeta.title = '';
+      els.specSub.textContent = `${ds.name} • px ${ix}, ${iy}`;
     }
 
-    drawSpecMessage('loading spectrum…');
+    els.specFoot.textContent = 'Loading spectrum…';
 
-    // Read + plot
-    readSpectrumAt(ds, ix, iy).then(ys => {
-      if (!state.spec.open || mySeq !== state.spec.seq) return;
-      const xs = ds.meta.wavelengths || Array.from({length: ds.meta.bands}, (_,i)=>i);
-      plotSpectrum(ds, xs, ys);
-    }).catch(err => {
-      console.error(err);
-      if (!state.spec.open || mySeq !== state.spec.seq) return;
-      drawSpecMessage('spectrum error');
-      els.specHint.textContent = (err && err.message) ? err.message : String(err);
-    });
+    // Wait a frame so layout is ready before sizing the canvas
+    await new Promise(r => requestAnimationFrame(r));
+    if (mySeq !== specSeq) return;
+
+    try{
+      const yVals = await readSpectrumAtPixel(ds, ix, iy);
+      if (mySeq !== specSeq) return;
+
+      const xVals = wavelengthArrayOrNull(ds);
+      drawSpectrumPlot(ds, xVals, yVals);
+      specState.xVals = xVals;
+      specState.yVals = yVals;
+
+      // Footer info
+      let ymin = Infinity, ymax = -Infinity;
+      for (let i=0;i<yVals.length;i++){
+        const v = yVals[i];
+        if (!isFinite(v)) continue;
+        ymin = Math.min(ymin, v);
+        ymax = Math.max(ymax, v);
+      }
+      if (!isFinite(ymin) || !isFinite(ymax)){ ymin = 0; ymax = 0; }
+      els.specFoot.textContent = `Bands: ${ds.meta.bands} • Value range: ${formatAxisNumber(ymin)} … ${formatAxisNumber(ymax)} • Double‑click another point to update.`;
+      updatePerf();
+    } catch (e){
+      console.error(e);
+      els.specFoot.textContent = 'Failed to read spectrum. See console.';
+    }
   }
 
-  // ========= Mouse interaction =========
+  function redrawSpectrum(){
+    if (!specState.open) return;
+    const ds = getActive();
+    if (!ds || ds.id !== specState.dsId) return;
+    if (!specState.yVals) return;
+    drawSpectrumPlot(ds, specState.xVals, specState.yVals);
+  }
+
+  function closeSpectrum(){
+    specSeq++;
+    specState.xVals = null;
+    specState.yVals = null;
+    showSpectrumPanel(false);
+  }
+
+// ========= Mouse interaction =========
 
   function updateSelectionRect(){
     const x0 = Math.min(state.selection.x0, state.selection.x1);
@@ -4190,7 +4325,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     if (scope === 'sel'){
       const r = state.selection.imgRect;
       if (r){
-        return clampRect(ds, {x0:r.x0, y0:r.y0, x1:(('x1' in r) ? r.x1 : (r.x0 + r.w)), y1:(('y1' in r) ? r.y1 : (r.y0 + r.h))});
+        const x0 = Number.isFinite(r.x0) ? r.x0 : 0;
+        const y0 = Number.isFinite(r.y0) ? r.y0 : 0;
+        const x1 = Number.isFinite(r.x1) ? r.x1 : (x0 + (Number.isFinite(r.w) ? r.w : 1));
+        const y1 = Number.isFinite(r.y1) ? r.y1 : (y0 + (Number.isFinite(r.h) ? r.h : 1));
+        return clampRect(ds, {x0, y0, x1, y1});
       }
       // No selection -> fall back to current view
       return clampRect(ds, viewRect(ds));
@@ -4421,6 +4560,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     return new Blob([ifdBuf, ...pixelParts], {type:'image/tiff'});
   }
 
+  
   async function exportRawStackTIFF(ds, rect){
     const w = rect.w, h = rect.h;
     const bpp = ds.meta.dataTypeInfo.bytes;
@@ -4433,11 +4573,19 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     }
 
     setStatus('export raw…','warn');
+
     const pages = [];
     for (let b=0; b<ds.meta.bands; b++){
       setStatus(`export raw… ${b+1}/${ds.meta.bands}`,'warn');
-      const res = await readBandWindow(ds.meta, ds.ds, {x0:rect.x0, y0:rect.y0, w, h, band:b, step:1});
-      pages.push(res.data);
+
+      let data;
+      if (ds.meta.interleave === 'bip'){
+        data = await readBandWindowBIP(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
+      } else {
+        data = await readBandWindow(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
+      }
+
+      pages.push(data);
     }
 
     const blob = encodeTIFF_MultiPage_GrayRaw(ds.meta, w, h, pages);
@@ -4540,6 +4688,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     if (idx === -1) return;
     const ds = state.datasets[idx];
 
+    if (specState.open && specState.dsId === id) closeSpectrum();
+
     // dispose caches
     try{ if (ds.pyramid) disposePyramid(ds.pyramid); }catch(_){}
     try{ ds.ds.close(); }catch(_){}
@@ -4549,6 +4699,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     if (state.activeId === id){
       state.activeId = state.datasets[0]?.id || null;
     }
+
+    recomputeCacheBudgets();
 
     rebuildDatasetList();
     rebuildBandTree();
@@ -4576,15 +4728,41 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     resizeCanvases();
     const ds = getActive();
     if (ds) fitToScreen();
+    if (specState.open) redrawSpectrum();
   });
 
   // pointer events on main container (works regardless of which canvas is visible)
+  // Double-click to open a spectrum (z-profile) panel at that pixel.
+  els.main.addEventListener('dblclick', (ev) => {
+    const ds = getActive();
+    if (!ds) return;
+
+    // Ignore double-clicks that originate from UI overlays.
+    if (els.specPanel && els.specPanel.contains(ev.target)) return;
+
+    const rect = els.main.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const sx = (ev.clientX - rect.left) * dpr;
+    const sy = (ev.clientY - rect.top) * dpr;
+    const img = screenToImage(sx, sy);
+    const ix = clamp(Math.floor(img.x), 0, ds.meta.samples-1);
+    const iy = clamp(Math.floor(img.y), 0, ds.meta.lines-1);
+    openSpectrumAt(ds, ix, iy);
+  });
+
+  if (els.specPanel){
+    els.specPanel.addEventListener('dblclick', (ev) => ev.stopPropagation());
+  }
+  if (els.btnSpecClose){
+    els.btnSpecClose.onclick = (ev) => { ev.stopPropagation(); closeSpectrum(); };
+  }
+
+
   els.main.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
   els.main.addEventListener('pointerleave', onPointerLeave);
   els.main.addEventListener('wheel', onWheel, {passive:false});
-  els.main.addEventListener('dblclick', onMainDblClick);
 
   els.thumb.addEventListener('click', onThumbClick);
 
@@ -4623,7 +4801,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   els.chkThumb.oninput = () => renderThumbnail();
   els.chkGrid.oninput = () => render();
-  els.chkScale.oninput = () => updateScaleBar();
+  els.chkScale.oninput = () => render();
 
   els.btnSelect.onclick = () => {
     const ds = getActive();
@@ -4641,8 +4819,6 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   els.btnExportPNG.onclick = () => openExportDialog('png');
   els.btnExportTIFF.onclick = () => openExportDialog('tiff');
-
-  els.btnSpecClose.onclick = () => { state.spec.open = false; els.specPanel.style.display = 'none'; };
 
   // Export dialog
   els.expModeRaw.oninput = () => updateExportDialogUI();
@@ -4667,11 +4843,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   els.bandSearch.oninput = () => rebuildBandTree();
   els.btnExpandAll.onclick = () => {
     for (const ds of state.datasets) ds.treeExpanded = true;
-    rebuildBandTree();
+    rebuildBandTree({preserveScroll:true});
   };
   els.btnCollapseAll.onclick = () => {
     for (const ds of state.datasets) ds.treeExpanded = false;
-    rebuildBandTree();
+    rebuildBandTree({preserveScroll:true});
   };
 
   els.btnReset.onclick = () => {
