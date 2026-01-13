@@ -249,19 +249,42 @@
       box-shadow:0 8px 18px var(--shadow);
     }
     #thumbWrap canvas{ width:100%; height:100%; position:static; }
-    #magnifierWrap{
-      position:absolute;
-      right:10px;
-      bottom:10px;
-      width:240px;
-      height:240px;
-      border-radius:12px;
-      overflow:hidden;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(0,0,0,.45);
-      box-shadow:0 8px 18px var(--shadow);
+
+    /* Simple progress bars (cache / read coverage) */
+    .bar-label{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      font-size:11px;
+      color:var(--muted);
+      font-family:var(--mono);
+      margin-top:8px;
     }
-    #magnifierWrap canvas{ width:100%; height:100%; position:static; }
+    .bar{
+      height:10px;
+      border:1px solid var(--border);
+      border-radius:999px;
+      background:rgba(255,255,255,0.03);
+      overflow:hidden;
+    }
+    .bar > .fill{
+      height:100%;
+      width:0%;
+      background:rgba(106,169,255,.95);
+    }
+
+    /* Modal export dialog */
+    dialog{
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:linear-gradient(180deg,var(--panel),var(--panel2));
+      color:var(--text);
+      padding:14px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.55);
+      width:min(560px, calc(100vw - 28px));
+    }
+    dialog::backdrop{ background:rgba(0,0,0,.55); }
 
     #selRect{
       position:absolute;
@@ -444,7 +467,6 @@
       }
       input[type="range"]{ width:120px; }
       #thumbWrap{ width:180px; height:130px; }
-      #magnifierWrap{ width:200px; height:200px; }
     }
   </style>
 </head>
@@ -472,10 +494,6 @@
       <label class="toggle" title="Show thumbnail / overview">
         <input type="checkbox" id="chkThumb" checked />
         <span class="tiny">Thumbnail</span>
-      </label>
-      <label class="toggle" title="Show magnifier window">
-        <input type="checkbox" id="chkMag" checked />
-        <span class="tiny">Magnifier</span>
       </label>
     </div>
 
@@ -525,6 +543,8 @@
         <div class="k">Interleave</div><div class="v" id="metaInterleave">—</div>
         <div class="k">Type</div><div class="v" id="metaType">—</div>
         <div class="k">Endian</div><div class="v" id="metaEndian">—</div>
+        <div class="k">Wavelength units</div><div class="v" id="metaWlUnits">—</div>
+        <div class="k">Scale</div><div class="v" id="metaScale">—</div>
       </div>
       <div class="hint" id="metaExtra">—</div>
 
@@ -536,6 +556,12 @@
         <div class="k">Chunk cache</div><div class="v" id="perfCache">0 MB</div>
         <div class="k">Pyramid</div><div class="v" id="perfPyramid">0 MB</div>
       </div>
+
+      <div class="bar-label"><span>Cache resident / cap</span><span id="perfBarCacheText">—</span></div>
+      <div class="bar" aria-label="Cache usage"><div class="fill" id="perfBarCacheFill"></div></div>
+
+      <div class="bar-label"><span>Bytes read / dataset</span><span id="perfBarReadText">—</span></div>
+      <div class="bar" aria-label="Read coverage"><div class="fill" id="perfBarReadFill"></div></div>
       <div class="hint">Browsers don’t expose true OS <i>mmap</i>, but this viewer avoids loading entire cubes by doing on‑demand, offset‑based reads with a small chunk cache (mmap‑like). A per‑band tile pyramid is built incrementally in the background and cleared on close/unload.</div>
     </div>
   </aside>
@@ -555,16 +581,11 @@
     <div id="thumbWrap">
       <canvas id="thumb"></canvas>
     </div>
-
-    <div id="magnifierWrap">
-      <canvas id="mag"></canvas>
-    </div>
   </main>
 
   <aside id="right">
     <div class="panel-header">
       <h2>Bands & display</h2>
-      <button class="btn ghost" id="btnAuto" title="Auto: set min/max from histogram percentiles, reset contrast/gamma/gain">Auto</button>
     </div>
     <div class="panel-body">
       <div class="hint">
@@ -643,7 +664,8 @@
       </div>
 
       <div class="row" style="margin-top:6px;">
-        <button class="btn" id="btnReset">Reset</button>
+        <button class="btn ghost" id="btnAuto" title="Auto contrast: set min/max from percentiles, reset contrast/gamma/gain">Auto</button>
+        <button class="btn" id="btnReset" title="Reset display controls for this band">Reset</button>
       </div>
 
       <div class="divider"></div>
@@ -653,6 +675,74 @@
     </div>
   </aside>
 </div>
+
+<!-- Export modal -->
+<dialog id="exportDlg">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+    <h3 id="expTitle" style="margin:0; font-size:16px;">Export</h3>
+    <span class="badge" id="expEstimate">Estimated output: —</span>
+  </div>
+  <div class="hint tiny" id="expInfo" style="margin-top:6px;">—</div>
+
+  <div class="divider"></div>
+
+  <div class="row" style="flex-wrap:wrap;">
+    <label class="toggle" title="Raw export writes original numeric samples (TIFF only)">
+      <input type="radio" id="expModeRaw" name="expMode" value="raw" checked />
+      <span>Raw data</span>
+    </label>
+    <label class="toggle" title="Rendered export saves what you see (tone-mapped)">
+      <input type="radio" id="expModeRendered" name="expMode" value="rendered" />
+      <span>Rendered view</span>
+    </label>
+    <span class="badge" id="expWarning" style="display:none; border-color:#7a2a2a; color:#ffcc66;">Large export</span>
+  </div>
+
+  <div id="expRawOptions" style="margin-top:10px;">
+    <div class="hint tiny">Exports a <b>stack</b> (all bands) as an uncompressed, multi-page TIFF. This preserves the original data type.</div>
+    <div style="height:8px"></div>
+    <label class="small">What to export</label>
+    <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
+      <label class="toggle">
+        <input type="radio" id="expRawScopeSel" name="expRawScope" value="sel" checked />
+        <span id="expLblRawSel">Selection stack (all bands)</span>
+      </label>
+      <label class="toggle">
+        <input type="radio" id="expRawScopeWhole" name="expRawScope" value="whole" />
+        <span>Whole dataset stack (all bands)</span>
+      </label>
+    </div>
+  </div>
+
+  <div id="expRenderedOptions" style="margin-top:10px; display:none;">
+    <div class="hint tiny">Exports the current band as an 8-bit grayscale image after applying your histogram range, contrast, gamma, and gain.</div>
+    <div style="height:8px"></div>
+    <label class="small">Region</label>
+    <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
+      <label class="toggle">
+        <input type="radio" id="expRenScopeSel" name="expRenScope" value="sel" checked />
+        <span id="expLblRenSel">Selection</span>
+      </label>
+      <label class="toggle">
+        <input type="radio" id="expRenScopeView" name="expRenScope" value="view" />
+        <span>Current view</span>
+      </label>
+      <label class="toggle">
+        <input type="radio" id="expRenScopeWhole" name="expRenScope" value="whole" />
+        <span>Whole dataset</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <div class="hint" id="expNote">—</div>
+
+  <div class="divider"></div>
+  <div class="row" style="justify-content:flex-end;">
+    <button class="btn" id="btnExpCancel" type="button">Cancel</button>
+    <button class="btn primary" id="btnExpGo" type="button">Export</button>
+  </div>
+</dialog>
 
 <script>
 (() => {
@@ -673,6 +763,23 @@
       return n.toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
     }
     return String(n);
+  }
+
+  // Like fmt(), but never uses locale grouping separators.
+  // Useful for wavelengths/band names where users expect the header's raw-looking numbers.
+  function fmtNoGroup(n){
+    if (typeof n === 'number' && isFinite(n)){
+      if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+      return n.toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
+    }
+    return String(n);
+  }
+
+  function fmtUm(v){
+    if (!isFinite(v)) return '—';
+    const abs = Math.abs(v);
+    const dec = abs < 10 ? 3 : abs < 100 ? 2 : abs < 1000 ? 1 : 0;
+    return Number(v).toFixed(dec).replace(/\.0+$/,'').replace(/(\.[0-9]*[1-9])0+$/,'$1');
   }
 
   function humanBytes(n){
@@ -719,7 +826,6 @@
 
     chkGrid: $('#chkGrid'),
     chkThumb: $('#chkThumb'),
-    chkMag: $('#chkMag'),
 
     btnSelect: $('#btnSelect'),
     btnExportPNG: $('#btnExportPNG'),
@@ -740,11 +846,17 @@
     metaInterleave: $('#metaInterleave'),
     metaType: $('#metaType'),
     metaEndian: $('#metaEndian'),
+    metaWlUnits: $('#metaWlUnits'),
+    metaScale: $('#metaScale'),
     metaExtra: $('#metaExtra'),
 
     perfBytes: $('#perfBytes'),
     perfCache: $('#perfCache'),
     perfPyramid: $('#perfPyramid'),
+    perfBarCacheText: $('#perfBarCacheText'),
+    perfBarCacheFill: $('#perfBarCacheFill'),
+    perfBarReadText: $('#perfBarReadText'),
+    perfBarReadFill: $('#perfBarReadFill'),
 
     // main
     main: $('#main'),
@@ -756,8 +868,6 @@
     hudVal: $('#hudVal'),
     thumbWrap: $('#thumbWrap'),
     thumb: $('#thumb'),
-    magWrap: $('#magnifierWrap'),
-    mag: $('#mag'),
 
     // right
     btnAuto: $('#btnAuto'),
@@ -782,10 +892,30 @@
     lblGamma: $('#lblGamma'),
     slGain: $('#slGain'),
     lblGain: $('#lblGain'),
+
+    // export dialog
+    exportDlg: $('#exportDlg'),
+    expTitle: $('#expTitle'),
+    expInfo: $('#expInfo'),
+    expModeRaw: $('#expModeRaw'),
+    expModeRendered: $('#expModeRendered'),
+    expRawOptions: $('#expRawOptions'),
+    expRenderedOptions: $('#expRenderedOptions'),
+    expLblRawSel: $('#expLblRawSel'),
+    expLblRenSel: $('#expLblRenSel'),
+    expRawScopeSel: $('#expRawScopeSel'),
+    expRawScopeWhole: $('#expRawScopeWhole'),
+    expRenScopeSel: $('#expRenScopeSel'),
+    expRenScopeView: $('#expRenScopeView'),
+    expRenScopeWhole: $('#expRenScopeWhole'),
+    expEstimate: $('#expEstimate'),
+    expWarning: $('#expWarning'),
+    expNote: $('#expNote'),
+    btnExpCancel: $('#btnExpCancel'),
+    btnExpGo: $('#btnExpGo'),
   };
 
   const thumbCtx = els.thumb.getContext('2d', {alpha:false});
-  const magCtx = els.mag.getContext('2d', {alpha:false});
   const overlayCtx = els.overlayCanvas.getContext('2d', {alpha:true});
   const cpuCtx = els.cpuCanvas.getContext('2d', {alpha:false});
 
@@ -969,6 +1099,76 @@
     [15, {name:'uint64', bytes:8, ctor: null,       dv:'getBigUint64'}],
   ]);
 
+  // ========= Optional spatial scale parsing (µm/pixel) =========
+
+  function unitToMicronsFactor(unitStr){
+    if (!unitStr) return null;
+    const u = String(unitStr).trim().toLowerCase();
+    if (!u) return null;
+    if (u === 'µm' || u === 'μm' || u === 'um' || u.includes('micron') || u.includes('micrometer')) return 1;
+    if (u === 'nm' || u.includes('nanometer')) return 1e-3;
+    if (u === 'mm' || u.includes('millimeter')) return 1e3;
+    if (u === 'cm' || u.includes('centimeter')) return 1e4;
+    if (u === 'm' || u.includes('meter') || u.includes('metre')) return 1e6;
+    return null;
+  }
+
+  function parseUmPerPixelFromMapInfo(mapInfo){
+    // ENVI's "map info" often looks like:
+    // {projection, ref_px_x, ref_px_y, x0, y0, x_pixel_size, y_pixel_size, ... , units=Meters}
+    if (!Array.isArray(mapInfo) || mapInfo.length < 7) return null;
+    const xPix = Number(mapInfo[5]);
+    const yPix = Number(mapInfo[6]);
+    if (!isFinite(xPix) || !isFinite(yPix) || xPix <= 0 || yPix <= 0) return null;
+    let units = null;
+    for (const it of mapInfo.slice(7)){
+      if (typeof it !== 'string') continue;
+      const m = it.match(/units\s*=\s*([^,}]+)/i);
+      if (m){ units = m[1].trim(); break; }
+      // Sometimes units are provided without "units="
+      if (!units && /(meter|metre|micron|micro|\bum\b|\bmm\b|\bcm\b|\bnm\b)/i.test(it)){
+        units = it.trim();
+      }
+    }
+    const f = unitToMicronsFactor(units);
+    if (!f) return null;
+    return { umPerPixelX: xPix * f, umPerPixelY: yPix * f, source: 'map info' };
+  }
+
+  function parseUmPerPixelFromCustomFields(raw){
+    // Common non-standard fields used in microscopy-ish ENVI exports.
+    const candidates = [
+      ['microns per pixel', 1],
+      ['microns_per_pixel', 1],
+      ['micrometers per pixel', 1],
+      ['um per pixel', 1],
+      ['um_per_pixel', 1],
+      ['pixel size', null],
+      ['pixel_size', null],
+      ['pixel size um', 1],
+      ['pixel_size_um', 1],
+    ];
+    for (const [k, fixedFactor] of candidates){
+      if (!(k in raw)) continue;
+      const v = raw[k];
+      if (Array.isArray(v) && v.length >= 2){
+        const x = Number(v[0]);
+        const y = Number(v[1]);
+        if (isFinite(x) && isFinite(y) && x > 0 && y > 0){
+          const f = fixedFactor ?? 1;
+          return { umPerPixelX: x * f, umPerPixelY: y * f, source: k };
+        }
+      } else {
+        const x = Number(v);
+        if (isFinite(x) && x > 0){
+          const f = fixedFactor ?? 1;
+          return { umPerPixelX: x * f, umPerPixelY: x * f, source: k };
+        }
+      }
+    }
+    return null;
+  }
+
   function normalizeMeta(raw){
     const get = (k, def=null) => (k in raw) ? raw[k] : def;
     const samples = Number(get('samples'));
@@ -988,6 +1188,20 @@
     let wavelengths = get('wavelength', null);
     if (!Array.isArray(wavelengths) || wavelengths.length !== bands){
       wavelengths = Array.from({length: bands}, (_,i)=>i);
+    } else {
+      // Coerce to numbers when possible.
+      wavelengths = wavelengths.map(w => {
+        const n = Number(w);
+        return Number.isFinite(n) ? n : w;
+      });
+    }
+
+    // Prefer explicit band names if present.
+    let bandNames = get('band names', get('band_names', null));
+    if (Array.isArray(bandNames) && bandNames.length === bands){
+      bandNames = bandNames.map(x => (typeof x === 'string') ? x : fmtNoGroup(Number(x)));
+    } else {
+      bandNames = null;
     }
 
     let defaultBands = get('default bands', null);
@@ -1005,6 +1219,8 @@
     const desc = get('description', '');
     const mapInfo = get('map info', null);
 
+    const scale = parseUmPerPixelFromMapInfo(mapInfo) || parseUmPerPixelFromCustomFields(raw);
+
     return {
       raw,
       samples, lines, bands,
@@ -1015,9 +1231,11 @@
       byteOrder,
       littleEndian,
       wavelengths,
+      bandNames,
       wlUnits,
       desc,
       mapInfo,
+      scale,
       defaultBands,
     };
   }
@@ -1713,6 +1931,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     datasets: [],
     activeId: null,
 
+    // Zoom slider maps 0..100 to 2^[zoomExpMin..zoomExpMax].
+    // zoomExpMin is adjusted per dataset so "fit" is always reachable.
+    zoomExpMin: -6,
+    zoomExpMax: 4,
+
     renderSeq: 0,
     lastRenderMs: 0,
     _rafPending: false,
@@ -1724,19 +1947,45 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     histDrag: {active:false, handle:null},
     histMode: 'whole', // 'whole' or 'view'
     histViewDebounce: null,
+
+    exportKind: null,
   };
 
   // ========= Zoom mapping =========
 
-  // slider 0..100 -> scale ~ 2^[-6..+4]
+  function computeFitScale(ds){
+    const rect = els.main.getBoundingClientRect();
+    return Math.min(rect.width / ds.meta.samples, rect.height / ds.meta.lines);
+  }
+
+  // Minimum zoom-out: once the full dataset fits, don't allow zooming out further.
+  function minScaleFor(ds){
+    const fit = computeFitScale(ds);
+    return Math.min(1, fit);
+  }
+
+  function updateZoomRange(ds){
+    if (!ds){
+      state.zoomExpMin = -6;
+      state.zoomExpMax = 4;
+      return;
+    }
+    const minScale = Math.max(1e-9, minScaleFor(ds));
+    const minExp = Math.log2(minScale);
+    // Extend slider range when fit scale is smaller than our default.
+    state.zoomExpMin = Math.min(-6, Math.floor(minExp) - 1);
+    state.zoomExpMax = 4;
+  }
+
+  // slider 0..100 -> scale ~ 2^[zoomExpMin..zoomExpMax]
   function sliderToScale(v){
     const t = clamp(v/100, 0, 1);
-    const exp = -6 + t*10;
+    const exp = state.zoomExpMin + t*(state.zoomExpMax - state.zoomExpMin);
     return Math.pow(2, exp);
   }
   function scaleToSlider(s){
     const exp = Math.log2(Math.max(1e-9, s));
-    const t = (exp + 6)/10;
+    const t = (exp - state.zoomExpMin) / Math.max(1e-9, (state.zoomExpMax - state.zoomExpMin));
     return clamp(Math.round(t*100), 0, 100);
   }
   function updateZoomLabel(){
@@ -1758,6 +2007,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     updateMetaUI();
     updatePerf();
     updateDisplayUI(true);
+    const ds = getActive();
+    updateZoomRange(ds);
     if (fit) fitToScreen();
     else render();
   }
@@ -1765,6 +2016,17 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   function guessDatasetName(hdrFile, dataFile){
     const n = hdrFile?.name || dataFile?.name || 'dataset';
     return n.replace(/\.hdr$/i,'').replace(/\.(img|dat|raw|bin|bip|bil|bsq)$/i,'');
+  }
+
+  function bandLabel(ds, b){
+    if (!ds || !ds.meta) return `Band ${b}`;
+    const names = ds.meta.bandNames;
+    if (Array.isArray(names) && names[b] != null && String(names[b]).trim()){
+      return String(names[b]).trim();
+    }
+    const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
+    if (wl != null && wl !== undefined) return fmtNoGroup(wl);
+    return `Band ${b}`;
   }
 
   // ========= File pairing =========
@@ -1955,6 +2217,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       els.metaInterleave.textContent = '—';
       els.metaType.textContent = '—';
       els.metaEndian.textContent = '—';
+      els.metaWlUnits.textContent = '—';
+      els.metaScale.textContent = '—';
       els.metaExtra.textContent = '—';
       return;
     }
@@ -1964,9 +2228,25 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     els.metaInterleave.textContent = ds.meta.interleave;
     els.metaType.textContent = `${ds.meta.dataType} (${ds.meta.dataTypeInfo.name})`;
     els.metaEndian.textContent = ds.meta.littleEndian ? 'little' : 'big';
+
+    els.metaWlUnits.textContent = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : '—';
+
+    const sc = ds.meta.scale;
+    if (sc && isFinite(sc.umPerPixelX) && isFinite(sc.umPerPixelY)){
+      const x = Number(sc.umPerPixelX);
+      const y = Number(sc.umPerPixelY);
+      const same = Math.abs(x - y) <= Math.max(1e-9, Math.abs(x) * 1e-6);
+      els.metaScale.textContent = same
+        ? `${fmtNoGroup(x)} µm/px`
+        : `${fmtNoGroup(x)} × ${fmtNoGroup(y)} µm/px`;
+      els.metaScale.title = `Parsed from ${sc.source || 'header'}`;
+    } else {
+      els.metaScale.textContent = '—';
+      els.metaScale.title = '';
+    }
+
     const desc = (ds.meta.desc && String(ds.meta.desc).trim()) ? String(ds.meta.desc).trim() : '';
-    const wl = ds.meta.wlUnits ? `Wavelength units: ${ds.meta.wlUnits}` : '';
-    els.metaExtra.textContent = [desc, wl].filter(Boolean).join(' • ') || '—';
+    els.metaExtra.textContent = desc || '—';
   }
 
   function updatePerf(){
@@ -1975,11 +2255,33 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       els.perfBytes.textContent = '0';
       els.perfCache.textContent = '0 MB';
       els.perfPyramid.textContent = '0 MB';
+      els.perfBarCacheText.textContent = '—';
+      els.perfBarReadText.textContent = '—';
+      els.perfBarCacheFill.style.width = '0%';
+      els.perfBarReadFill.style.width = '0%';
       return;
     }
-    els.perfBytes.textContent = humanBytes(ds.ds.bytesRead || 0);
-    els.perfCache.textContent = humanBytes(ds.ds.cacheBytes ? ds.ds.cacheBytes() : 0);
-    els.perfPyramid.textContent = humanBytes(ds.pyramid ? ds.pyramid.totalBytes : 0);
+    const bytesRead = ds.ds.bytesRead || 0;
+    const chunkUsed = ds.ds.cacheBytes ? ds.ds.cacheBytes() : 0;
+    const pyramidUsed = ds.pyramid ? ds.pyramid.totalBytes : 0;
+
+    els.perfBytes.textContent = humanBytes(bytesRead);
+    els.perfCache.textContent = humanBytes(chunkUsed);
+    els.perfPyramid.textContent = humanBytes(pyramidUsed);
+
+    const chunkCap = (ds.ds && ds.ds.chunkSize && ds.ds.maxChunks) ? (ds.ds.chunkSize * ds.ds.maxChunks) : 0;
+    const pyramidCap = (ds.pyramid && ds.pyramid.limitBytes) ? ds.pyramid.limitBytes : 0;
+    const cap = Math.max(1, chunkCap + pyramidCap);
+    const used = chunkUsed + pyramidUsed;
+    const frac = clamp(used / cap, 0, 1);
+    els.perfBarCacheFill.style.width = (frac*100).toFixed(1) + '%';
+    els.perfBarCacheText.textContent = `${humanBytes(used)} / ${humanBytes(cap)}`;
+
+    const expected = (ds.meta.headerOffset||0) + (ds.meta.samples * ds.meta.lines * ds.meta.bands * ds.meta.dataTypeInfo.bytes);
+    const full = Math.max(1, expected || 0, ds.ds.size || 0);
+    const fracRead = clamp(bytesRead / full, 0, 1);
+    els.perfBarReadFill.style.width = (fracRead*100).toFixed(1) + '%';
+    els.perfBarReadText.textContent = `${humanBytes(bytesRead)} / ${humanBytes(full)}`;
   }
 
   function rebuildBandTree(){
@@ -2032,11 +2334,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
         bandsWrap.className = 'tree-bands';
 
         for (let b=0; b<ds.meta.bands; b++){
-          const wl = ds.meta.wavelengths[b];
-          const label = `#${b}  wl:${fmt(wl)}`;
+          const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
+          const label = bandLabel(ds, b);
 
           if (q){
-            const hay = (label + ' ' + ds.name).toLowerCase();
+            const hay = (`${ds.name} ${b} ${label} ${wl!=null ? fmtNoGroup(wl) : ''}`).toLowerCase();
             if (!hay.includes(q)) continue;
           }
 
@@ -2050,6 +2352,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
           const lab = document.createElement('div');
           lab.className = 'label';
           lab.textContent = label;
+          lab.title = `Band ${b}`;
           row.appendChild(lab);
 
           const btn = document.createElement('button');
@@ -2115,8 +2418,10 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     }
     const b = ds.activeBand;
     els.dispDataset.textContent = ds.name;
-    els.dispBand.textContent = String(b);
-    els.dispWl.textContent = fmt(ds.meta.wavelengths[b]) + (ds.meta.wlUnits ? ` ${ds.meta.wlUnits}` : '');
+    els.dispBand.textContent = bandLabel(ds, b);
+    els.dispBand.title = `Band index ${b}`;
+    const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
+    els.dispWl.textContent = (wl!=null ? fmtNoGroup(wl) : '—') + (ds.meta.wlUnits ? ` ${ds.meta.wlUnits}` : '');
 
     const s = getBandSettings(ds, b);
     els.slContrast.value = String(s.contrast ?? 1);
@@ -2602,6 +2907,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   function clampView(){
     const ds = getActive();
     if (!ds) return;
+    // Clamp zoom: don't allow zooming out beyond "fit".
+    const minS = minScaleFor(ds);
+    ds.view.minScale = minS;
+    ds.view.scale = clamp(ds.view.scale, minS, 128);
+
     const dpr = window.devicePixelRatio || 1;
     const eff = ds.view.scale * dpr;
     const viewW = els.cpuCanvas.width / eff;
@@ -2617,9 +2927,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     const rect = els.main.getBoundingClientRect();
     // scale is in CSS pixels per image pixel
     const s = Math.min(rect.width / ds.meta.samples, rect.height / ds.meta.lines);
+    updateZoomRange(ds);
     ds.view.scale = s;
     ds.view.x = 0;
     ds.view.y = 0;
+    clampView();
     els.zoom.value = String(scaleToSlider(ds.view.scale));
     updateZoomLabel();
     render();
@@ -2962,7 +3274,6 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
       updatePerf();
       renderThumbnail();
-      renderMagnifier();
       updateHud();
 
       // view histogram mode: debounce recompute to avoid heavy updates during pan
@@ -3134,48 +3445,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     render();
   }
 
-  async function renderMagnifier(){
-    const ds = getActive();
-    els.magWrap.style.display = els.chkMag.checked ? 'block' : 'none';
-    if (!els.chkMag.checked || !ds || !state.mouse.in) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const mw = Math.floor(240 * dpr);
-    const mh = Math.floor(240 * dpr);
-    if (els.mag.width !== mw || els.mag.height !== mh){
-      els.mag.width = mw; els.mag.height = mh;
-    }
-    const magZoom = 4;
-    const outW = Math.floor(mw / magZoom);
-    const outH = Math.floor(mh / magZoom);
-
-    const imgPt = screenToImage(state.mouse.x * dpr, state.mouse.y * dpr);
-    const x0 = imgPt.x - outW/2;
-    const y0 = imgPt.y - outH/2;
-
-    try{
-      const img = await renderWindowToImageData(ds, ds.activeBand, x0, y0, outW, outH, 1);
-      const off = document.createElement('canvas');
-      off.width = outW; off.height = outH;
-      off.getContext('2d', {alpha:false}).putImageData(img,0,0);
-
-      magCtx.save();
-      magCtx.imageSmoothingEnabled = false;
-      magCtx.setTransform(1,0,0,1,0,0);
-      magCtx.clearRect(0,0,mw,mh);
-      magCtx.drawImage(off, 0,0,outW,outH, 0,0,mw,mh);
-
-      magCtx.strokeStyle = 'rgba(255,255,255,.7)';
-      magCtx.lineWidth = 1*dpr;
-      magCtx.beginPath();
-      magCtx.moveTo(mw/2, 0); magCtx.lineTo(mw/2, mh);
-      magCtx.moveTo(0, mh/2); magCtx.lineTo(mw, mh/2);
-      magCtx.stroke();
-      magCtx.restore();
-    } catch(e){
-      // ignore
-    }
-  }
+  // Magnifier removed (keeps first-load lighter).
 
   // ========= HUD probe =========
 
@@ -3197,6 +3467,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     const ds = getActive();
     if (!ds){
       els.hudPos.textContent = 'x: —  y: —';
+      els.hudPos.title = '';
       els.hudVal.textContent = 'value: —';
       return;
     }
@@ -3204,7 +3475,17 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     const img = screenToImage(state.mouse.x * dpr, state.mouse.y * dpr);
     const ix = Math.floor(img.x);
     const iy = Math.floor(img.y);
-    els.hudPos.textContent = `x: ${ix}  y: ${iy}`;
+
+    const sc = ds.meta.scale;
+    if (sc && isFinite(sc.umPerPixelX) && isFinite(sc.umPerPixelY)){
+      const xUm = ix * Number(sc.umPerPixelX);
+      const yUm = iy * Number(sc.umPerPixelY);
+      els.hudPos.textContent = `x: ${fmtUm(xUm)} µm  y: ${fmtUm(yUm)} µm`;
+      els.hudPos.title = `px x:${ix}  y:${iy}`;
+    } else {
+      els.hudPos.textContent = `x: ${ix}  y: ${iy}`;
+      els.hudPos.title = '';
+    }
 
     const band = ds.activeBand;
     if (band == null){
@@ -3218,7 +3499,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
         if (v === null || v === undefined || !isFinite(v)) {
           els.hudVal.textContent = `value: —`;
         } else {
-          els.hudVal.textContent = `band ${band}: ${v.toFixed(4)}`;
+          const bName = bandLabel(ds, band);
+          els.hudVal.textContent = `${bName}: ${v.toFixed(4)}`;
         }
       }).catch(()=>{});
     }, 40);
@@ -3315,7 +3597,6 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     }
 
     updateHud();
-    if (els.chkMag.checked) renderMagnifier();
   }
 
   function onPointerUp(){
@@ -3337,14 +3618,15 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     if (!ds) return;
 
     const before = screenToImage(sx, sy);
-    ds.view.scale = clamp(ds.view.scale * factor, 1e-6, 128);
+    const minS = minScaleFor(ds);
+    ds.view.scale = clamp(ds.view.scale * factor, minS, 128);
     const after = screenToImage(sx, sy);
 
     ds.view.x += (before.x - after.x);
     ds.view.y += (before.y - after.y);
 
-    els.zoom.value = String(scaleToSlider(ds.view.scale));
     clampView();
+    els.zoom.value = String(scaleToSlider(ds.view.scale));
     updateZoomLabel();
     render();
   }
@@ -3364,63 +3646,300 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   // ========= Export =========
 
-  async function exportRegion(kind){
-    const ds = getActive();
-    if (!ds || ds.activeBand == null) return;
+  function sanitizeFilePart(s){
+    return String(s || '')
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, '_')
+      .slice(0, 80);
+  }
 
-    const band = ds.activeBand;
+  function viewRect(ds){
+    const dpr = window.devicePixelRatio || 1;
+    const eff = ds.view.scale * dpr;
+    const viewW = els.cpuCanvas.width / eff;
+    const viewH = els.cpuCanvas.height / eff;
+    return {
+      x0: Math.floor(ds.view.x),
+      y0: Math.floor(ds.view.y),
+      x1: Math.ceil(ds.view.x + viewW),
+      y1: Math.ceil(ds.view.y + viewH),
+    };
+  }
 
-    let rect = state.selection.imgRect;
-    if (!rect){
-      // default: export current view at native sampling for that zoom (step=1)
-      const dpr = window.devicePixelRatio || 1;
-      const eff = ds.view.scale * dpr;
-      const viewW = els.cpuCanvas.width / eff;
-      const viewH = els.cpuCanvas.height / eff;
-      rect = {
-        x0: Math.floor(ds.view.x),
-        y0: Math.floor(ds.view.y),
-        x1: Math.ceil(ds.view.x + viewW),
-        y1: Math.ceil(ds.view.y + viewH),
-      };
-    }
+  function wholeRect(ds){
+    return {x0:0, y0:0, x1:ds.meta.samples, y1:ds.meta.lines};
+  }
 
+  function clampRect(ds, rect){
     const x0 = clamp(rect.x0, 0, ds.meta.samples);
     const y0 = clamp(rect.y0, 0, ds.meta.lines);
     const x1 = clamp(rect.x1, 0, ds.meta.samples);
     const y1 = clamp(rect.y1, 0, ds.meta.lines);
-
     const w = Math.max(1, x1 - x0);
     const h = Math.max(1, y1 - y0);
+    return {x0, y0, x1, y1, w, h};
+  }
 
-    // For safety, cap export to something reasonable.
+  function resolveExportRect(ds, scope){
+    // scope: 'sel' | 'view' | 'whole'
+    if (scope === 'whole') return clampRect(ds, wholeRect(ds));
+    if (scope === 'sel'){
+      const r = state.selection.imgRect;
+      if (r){
+        return clampRect(ds, {x0:r.x0, y0:r.y0, x1:r.x0 + r.w, y1:r.y0 + r.h});
+      }
+      // No selection -> fall back to current view
+      return clampRect(ds, viewRect(ds));
+    }
+    return clampRect(ds, viewRect(ds));
+  }
+
+  function openExportDialog(kind){
+    const ds = getActive();
+    if (!ds || ds.activeBand == null){
+      alert('Please select a dataset and band first.');
+      return;
+    }
+    state.exportKind = kind;
+
+    const hasSel = !!state.selection.imgRect;
+    els.expTitle.textContent = `Export ${kind.toUpperCase()}`;
+
+    const b = ds.activeBand;
+    els.expInfo.textContent = `${ds.name} • ${bandLabel(ds, b)} (band ${b})`;
+
+    // Raw is TIFF-only.
+    if (kind === 'png'){
+      els.expModeRaw.disabled = true;
+      els.expModeRendered.checked = true;
+    } else {
+      els.expModeRaw.disabled = false;
+      els.expModeRaw.checked = true;
+    }
+
+    els.expLblRawSel.textContent = hasSel ? 'Selection stack (all bands)' : 'Current view stack (all bands)';
+    els.expLblRenSel.textContent = hasSel ? 'Selection' : 'Selection (none)';
+    els.expRenScopeSel.disabled = !hasSel;
+    if (hasSel) els.expRenScopeSel.checked = true;
+    else els.expRenScopeView.checked = true;
+
+    updateExportDialogUI();
+    try { els.exportDlg.showModal(); }
+    catch { els.exportDlg.open = true; }
+  }
+
+  function updateExportDialogUI(){
+    const kind = state.exportKind;
+    // Force rendered mode for PNG.
+    if (kind === 'png' && els.expModeRaw.checked){
+      els.expModeRendered.checked = true;
+    }
+    const mode = (els.expModeRaw.checked && kind === 'tiff') ? 'raw' : 'rendered';
+    els.expRawOptions.style.display = (mode === 'raw') ? 'block' : 'none';
+    els.expRenderedOptions.style.display = (mode === 'rendered') ? 'block' : 'none';
+    updateExportEstimate();
+  }
+
+  function updateExportEstimate(){
+    const ds = getActive();
+    if (!ds){
+      els.expEstimate.textContent = 'Estimated output: —';
+      els.expNote.textContent = '—';
+      els.expWarning.style.display = 'none';
+      return;
+    }
+
+    const kind = state.exportKind;
+    const mode = (els.expModeRaw.checked && kind === 'tiff') ? 'raw' : 'rendered';
+
+    let rect;
+    let estBytes = 0;
+
+    if (mode === 'raw'){
+      const scope = els.expRawScopeWhole.checked ? 'whole' : 'sel';
+      rect = resolveExportRect(ds, scope);
+      const bpp = ds.meta.dataTypeInfo.bytes;
+      estBytes = rect.w * rect.h * ds.meta.bands * bpp;
+      els.expNote.innerHTML = `Raw stack (all bands): <b>${rect.w}×${rect.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), uncompressed TIFF.`;
+    } else {
+      const scope = els.expRenScopeWhole.checked ? 'whole' : (els.expRenScopeSel.checked ? 'sel' : 'view');
+      rect = resolveExportRect(ds, scope);
+      estBytes = rect.w * rect.h * 4;
+      els.expNote.innerHTML = `Rendered view: <b>${rect.w}×${rect.h}</b> pixels from the current band.`;
+      if (kind === 'png'){
+        els.expNote.innerHTML += ` <span class="badge">PNG is rendered only</span> (use TIFF for raw).`;
+      }
+    }
+
+    els.expEstimate.textContent = `Estimated output: ${humanBytes(estBytes)}`;
+    const warn = estBytes > (512 * 1024 * 1024) || (rect && rect.w * rect.h > 20_000_000);
+    els.expWarning.style.display = warn ? 'inline-flex' : 'none';
+  }
+
+  async function runExportFromDialog(){
+    const ds = getActive();
+    if (!ds || ds.activeBand == null) return;
+    const kind = state.exportKind;
+
+    // Close UI first to keep the app responsive.
+    try { els.exportDlg.close(); } catch {}
+
+    const rawMode = (els.expModeRaw.checked && kind === 'tiff');
+    if (rawMode){
+      const scope = els.expRawScopeWhole.checked ? 'whole' : 'sel';
+      const rect = resolveExportRect(ds, scope);
+      await exportRawStackTIFF(ds, rect);
+      return;
+    }
+
+    const scope = els.expRenScopeWhole.checked ? 'whole' : (els.expRenScopeSel.checked ? 'sel' : 'view');
+    const rect = resolveExportRect(ds, scope);
+    await exportRendered(ds, kind, rect);
+  }
+
+  async function exportRendered(ds, kind, rect){
+    const band = ds.activeBand;
+    if (band == null) return;
+    const w = rect.w, h = rect.h;
+
     const maxPix = 20_000_000; // 20 MP
     if (w*h > maxPix){
-      alert(`Selection too large (${fmt(w*h)} pixels). Please select a smaller region.`);
+      alert(`Export too large (${fmt(w*h)} pixels). Please select a smaller region.`);
       return;
     }
 
     setStatus('export…','warn');
+    const img = await renderWindowToImageData(ds, band, rect.x0, rect.y0, w, h, 1);
 
-    const img = await renderWindowToImageData(ds, band, x0, y0, w, h, 1);
+    const base = `${ds.name}_${sanitizeFilePart(bandLabel(ds, band))}_${rect.x0}_${rect.y0}_${w}x${h}`;
 
     if (kind === 'png'){
       const c = document.createElement('canvas');
       c.width = w; c.height = h;
       c.getContext('2d', {alpha:false}).putImageData(img,0,0);
       const blob = await new Promise(res => c.toBlob(res, 'image/png'));
-      downloadBlob(blob, `${ds.name}_band${band}_${x0}_${y0}_${w}x${h}.png`);
+      downloadBlob(blob, `${base}.png`);
       setStatus('ready','ok');
       return;
     }
 
     if (kind === 'tiff'){
-      // Minimal uncompressed baseline TIFF, 8-bit RGBA.
       const blob = encodeTIFF_RGBA8(img);
-      downloadBlob(blob, `${ds.name}_band${band}_${x0}_${y0}_${w}x${h}.tiff`);
+      downloadBlob(blob, `${base}.tiff`);
       setStatus('ready','ok');
       return;
     }
+  }
+
+  function tiffSampleFormatForEnviType(enviType){
+    if (enviType === 4 || enviType === 5) return 3; // float
+    if (enviType === 2 || enviType === 3 || enviType === 14) return 2; // signed
+    return 1; // unsigned
+  }
+
+  function littleEndianBytes(view, bytesPerSample){
+    const u8 = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    if (HOST_LITTLE_ENDIAN || bytesPerSample === 1) return u8;
+    // Swap bytes per sample.
+    const out = new Uint8Array(u8.length);
+    for (let i=0; i<u8.length; i+=bytesPerSample){
+      for (let j=0; j<bytesPerSample; j++){
+        out[i+j] = u8[i + (bytesPerSample-1-j)];
+      }
+    }
+    return out;
+  }
+
+  function encodeTIFF_MultiPage_GrayRaw(meta, w, h, pages){
+    // Uncompressed, little-endian TIFF with 1 sample per pixel.
+    const bytesPerSample = meta.dataTypeInfo.bytes;
+    const bits = bytesPerSample * 8;
+    const sampleFormat = tiffSampleFormatForEnviType(meta.dataType);
+
+    const N = pages.length;
+    const numEntries = 11;
+    const ifdSize = 2 + numEntries*12 + 4;
+    const headerSize = 8;
+    const ifdArea = N * ifdSize;
+    const firstPixelOffset = headerSize + ifdArea;
+
+    const ifdBuf = new ArrayBuffer(firstPixelOffset);
+    const dv = new DataView(ifdBuf);
+
+    // Header: "II" 42, first IFD at offset 8.
+    dv.setUint8(0, 0x49);
+    dv.setUint8(1, 0x49);
+    dv.setUint16(2, 42, true);
+    dv.setUint32(4, 8, true);
+
+    let pixelCursor = firstPixelOffset;
+    const pixelParts = [];
+
+    const writeEntry = (dv, o, tag, type, count, value) => {
+      dv.setUint16(o, tag, true); o += 2;
+      dv.setUint16(o, type, true); o += 2;
+      dv.setUint32(o, count, true); o += 4;
+      if (type === 3 && count === 1){
+        dv.setUint16(o, value, true);
+        dv.setUint16(o+2, 0, true);
+      } else {
+        dv.setUint32(o, value, true);
+      }
+      return o + 4;
+    };
+
+    for (let i=0; i<N; i++){
+      const page = pages[i];
+      const bytes = page.byteLength;
+      const ifdOff = 8 + i*ifdSize;
+      dv.setUint16(ifdOff, numEntries, true);
+      let o = ifdOff + 2;
+
+      o = writeEntry(dv, o, 256, 4, 1, w);           // ImageWidth
+      o = writeEntry(dv, o, 257, 4, 1, h);           // ImageLength
+      o = writeEntry(dv, o, 258, 3, 1, bits);        // BitsPerSample
+      o = writeEntry(dv, o, 259, 3, 1, 1);           // Compression = none
+      o = writeEntry(dv, o, 262, 3, 1, 1);           // Photometric = BlackIsZero
+      o = writeEntry(dv, o, 273, 4, 1, pixelCursor); // StripOffsets
+      o = writeEntry(dv, o, 277, 3, 1, 1);           // SamplesPerPixel
+      o = writeEntry(dv, o, 278, 4, 1, h);           // RowsPerStrip
+      o = writeEntry(dv, o, 279, 4, 1, bytes);       // StripByteCounts
+      o = writeEntry(dv, o, 284, 3, 1, 1);           // PlanarConfiguration
+      o = writeEntry(dv, o, 339, 3, 1, sampleFormat);// SampleFormat
+
+      // Next IFD offset
+      dv.setUint32(ifdOff + 2 + numEntries*12, (i < N-1) ? (8 + (i+1)*ifdSize) : 0, true);
+
+      pixelParts.push(littleEndianBytes(page, bytesPerSample));
+      pixelCursor += bytes;
+    }
+
+    return new Blob([ifdBuf, ...pixelParts], {type:'image/tiff'});
+  }
+
+  async function exportRawStackTIFF(ds, rect){
+    const w = rect.w, h = rect.h;
+    const bpp = ds.meta.dataTypeInfo.bytes;
+    const totalBytes = w * h * ds.meta.bands * bpp;
+
+    // Soft warning — raw stacks get huge fast.
+    if (totalBytes > (1024 * 1024 * 1024)){
+      const ok = confirm(`This raw stack is about ${humanBytes(totalBytes)} and may crash the browser. Continue?`);
+      if (!ok) return;
+    }
+
+    setStatus('export raw…','warn');
+    const pages = [];
+    for (let b=0; b<ds.meta.bands; b++){
+      setStatus(`export raw… ${b+1}/${ds.meta.bands}`,'warn');
+      const res = await readBandWindow(ds.meta, ds.ds, {x0:rect.x0, y0:rect.y0, w, h, band:b, step:1});
+      pages.push(res.data);
+    }
+
+    const blob = encodeTIFF_MultiPage_GrayRaw(ds.meta, w, h, pages);
+    const base = `${ds.name}_${rect.x0}_${rect.y0}_${w}x${h}_rawstack`;
+    downloadBlob(blob, `${base}.tiff`);
+    setStatus('ready','ok');
   }
 
   function encodeTIFF_RGBA8(imageData){
@@ -3569,8 +4088,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     const ds = getActive();
     if (!ds) return;
     ds.view.scale = 1;
-    els.zoom.value = String(scaleToSlider(ds.view.scale));
     clampView();
+    els.zoom.value = String(scaleToSlider(ds.view.scale));
     updateZoomLabel();
     render();
   };
@@ -3585,16 +4104,19 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     const centerY = els.cpuCanvas.height/2;
     const before = screenToImage(centerX, centerY);
     ds.view.scale = s;
+    // Clamp zoom (fit is min).
+    const minS = minScaleFor(ds);
+    ds.view.scale = clamp(ds.view.scale, minS, 128);
     const after = screenToImage(centerX, centerY);
     ds.view.x += (before.x - after.x);
     ds.view.y += (before.y - after.y);
     clampView();
+    els.zoom.value = String(scaleToSlider(ds.view.scale));
     updateZoomLabel();
     render();
   };
 
   els.chkThumb.oninput = () => renderThumbnail();
-  els.chkMag.oninput = () => renderMagnifier();
   els.chkGrid.oninput = () => render();
 
   els.btnSelect.onclick = () => {
@@ -3611,8 +4133,28 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     }
   };
 
-  els.btnExportPNG.onclick = () => exportRegion('png');
-  els.btnExportTIFF.onclick = () => exportRegion('tiff');
+  els.btnExportPNG.onclick = () => openExportDialog('png');
+  els.btnExportTIFF.onclick = () => openExportDialog('tiff');
+
+  // Export dialog
+  els.expModeRaw.oninput = () => updateExportDialogUI();
+  els.expModeRendered.oninput = () => updateExportDialogUI();
+  els.expRawScopeSel.oninput = () => updateExportEstimate();
+  els.expRawScopeWhole.oninput = () => updateExportEstimate();
+  els.expRenScopeSel.oninput = () => updateExportEstimate();
+  els.expRenScopeView.oninput = () => updateExportEstimate();
+  els.expRenScopeWhole.oninput = () => updateExportEstimate();
+
+  els.btnExpCancel.onclick = () => {
+    try { els.exportDlg.close(); } catch { els.exportDlg.open = false; }
+  };
+  els.btnExpGo.onclick = () => {
+    runExportFromDialog().catch(err => {
+      console.error(err);
+      alert('Export failed. See console for details.');
+      setStatus('ready','ok');
+    });
+  };
 
   els.bandSearch.oninput = () => rebuildBandTree();
   els.btnExpandAll.onclick = () => {
