@@ -206,7 +206,7 @@
       overflow:hidden;
       min-height:0;
     }
-    #main canvas{
+    #gpuCanvas, #cpuCanvas, #overlayCanvas{
       position:absolute;
       inset:0;
       width:100%;
@@ -510,6 +510,7 @@
     .spec-canvas{
       width:100%;
       height:190px;
+      position:static;
       border-radius:10px;
       background:#0a0d13;
       border:1px solid rgba(255,255,255,0.08);
