@@ -1399,7 +1399,23 @@ function unitToMicronsFactor(unitStr){
     const headerOffset = Number(get('header offset', 0)) || 0;
     const dataType = Number(get('data type'));
     if (!DATA_TYPES.has(dataType)) throw new Error('Unsupported ENVI data type: ' + dataType);
-    const interleave = String(get('interleave','bsq')).trim().toLowerCase();
+    // ENVI headers typically store interleave as a string: bsq, bil, or bip.
+    // However, some writers leak ENVI/IDL enum values (0,1,2) or GDAL-style tokens (band/line/pixel).
+    const interleaveRaw = get('interleave','bsq');
+    let interleave = String(interleaveRaw).trim().toLowerCase();
+    // Numeric aliases (commonly seen in some generated headers / scripts):
+    if (interleave === '0') interleave = 'bsq';
+    else if (interleave === '1') interleave = 'bil';
+    else if (interleave === '2') interleave = 'bip';
+    // Text aliases:
+    if (interleave === 'band') interleave = 'bsq';
+    else if (interleave === 'line') interleave = 'bil';
+    else if (interleave === 'pixel') interleave = 'bip';
+    // Long-form:
+    if (interleave.includes('band') && interleave.includes('sequential')) interleave = 'bsq';
+    else if (interleave.includes('interleaved') && interleave.includes('line')) interleave = 'bil';
+    else if (interleave.includes('interleaved') && interleave.includes('pixel')) interleave = 'bip';
+
     if (!['bsq','bil','bip'].includes(interleave)) throw new Error('Unsupported interleave: ' + interleave);
     const byteOrder = Number(get('byte order', 0)) || 0;
     const littleEndian = (byteOrder === 0);
