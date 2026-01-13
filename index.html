@@ -492,6 +492,11 @@
       gap:10px;
       margin-bottom:8px;
     }
+    .spec-head-right{
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
     .spec-title{
       font-size:13px;
       font-weight:700;
@@ -613,6 +618,13 @@
 
       <div class="bar-label"><span>Bytes read / dataset</span><span id="perfBarReadText">—</span></div>
       <div class="bar" aria-label="Read coverage"><div class="fill" id="perfBarReadFill"></div></div>
+
+      <div style="height:10px"></div>
+      <label class="toggle tiny" title="Toggle sequential vs parallel reads. Parallel usually helps SSDs; sequential can be smoother on some systems.">
+        <input type="checkbox" id="chkIOParallel" checked />
+        <span>Parallel I/O</span>
+      </label>
+
       <div class="hint">Browsers don’t expose true OS <i>mmap</i>, but this viewer avoids loading entire cubes by doing on‑demand, offset‑based reads with a small chunk cache (mmap‑like). A per‑band tile pyramid is built incrementally in the background and cleared on close/unload.</div>
     </div>
   </aside>
@@ -640,7 +652,10 @@
           <div class="spec-title" id="specTitle">Spectrum</div>
           <div class="spec-sub" id="specSub">—</div>
         </div>
-        <button class="btn ghost tiny" id="btnSpecClose" title="Close spectrum">✕</button>
+        <div class="spec-head-right">
+          <button class="btn tiny" id="btnSpecCSV" title="Export spectrum as CSV">CSV</button>
+          <button class="btn ghost tiny" id="btnSpecClose" title="Close spectrum">✕</button>
+        </div>
       </div>
       <canvas id="specCanvas" class="spec-canvas"></canvas>
       <div class="spec-foot tiny" id="specFoot">Double‑click another point to update.</div>
@@ -882,7 +897,9 @@
 
   // A small, bounded amount of parallelism helps on SSDs (and reduces latency for scattered reads),
   // but too much can overwhelm the browser. We keep it conservative.
-  const IO_CONCURRENCY = clamp(Math.floor(((navigator && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) / 2) + 1, 2, 8);
+  const IO_CONCURRENCY_MAX = clamp(Math.floor(((navigator && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) / 2) + 1, 2, 8);
+  let IO_CONCURRENCY = IO_CONCURRENCY_MAX; // can be toggled to 1 (sequential)
+
 
   async function parallelFor(count, limit, fn){
     const n = Math.min(Math.max(1, limit|0), count|0);
@@ -900,7 +917,24 @@
     await Promise.all(workers);
   }
 
-  // ========= Elements =========
+  
+  // ========= ENVI data types =========
+  // ENVI "data type" codes map to on-disk sample formats.
+  // We keep the original on-disk precision (no quantization).
+  const DATA_TYPES = new Map([
+    [1,  {name:'uint8',   bytes:1, ctor: Uint8Array,   dv:'getUint8'}],
+    [2,  {name:'int16',   bytes:2, ctor: Int16Array,   dv:'getInt16'}],
+    [3,  {name:'int32',   bytes:4, ctor: Int32Array,   dv:'getInt32'}],
+    [4,  {name:'float32', bytes:4, ctor: Float32Array, dv:'getFloat32'}],
+    [5,  {name:'float64', bytes:8, ctor: Float64Array, dv:'getFloat64'}],
+    [12, {name:'uint16',  bytes:2, ctor: Uint16Array,  dv:'getUint16'}],
+    [13, {name:'uint32',  bytes:4, ctor: Uint32Array,  dv:'getUint32'}],
+    // 64-bit integer types are decoded via DataView to Numbers (JS has no native int64 math without BigInt).
+    [14, {name:'int64',   bytes:8, ctor: null,         dv:'getBigInt64'}],
+    [15, {name:'uint64',  bytes:8, ctor: null,         dv:'getBigUint64'}],
+  ]);
+
+// ========= Elements =========
 
   const els = {
     btnFit: $('#btnFit'),
@@ -944,6 +978,7 @@
     perfBarCacheFill: $('#perfBarCacheFill'),
     perfBarReadText: $('#perfBarReadText'),
     perfBarReadFill: $('#perfBarReadFill'),
+    chkIOParallel: $('#chkIOParallel'),
 
     // main
     main: $('#main'),
@@ -963,6 +998,7 @@
     specSub: $('#specSub'),
     specFoot: $('#specFoot'),
     btnSpecClose: $('#btnSpecClose'),
+    btnSpecCSV: $('#btnSpecCSV'),
 
     // right
     btnAuto: $('#btnAuto'),
@@ -1110,7 +1146,7 @@
       this.maxBytes = Math.max(this.chunkSize, Math.floor(maxBytes || 0));
 
       const hc = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4;
-      this.concurrency = clamp((opts && opts.concurrency) ? opts.concurrency : (Math.floor(hc/2) + 1), 2, 8);
+      this.concurrency = clamp((opts && opts.concurrency) ? opts.concurrency : (Math.floor(hc/2) + 1), 1, 8);
 
       this.cache = new Map();     // key -> {u8}
       this.totalBytes = 0;
@@ -1127,6 +1163,12 @@
       if (!isFinite(b) || b <= 0) return;
       this.maxBytes = Math.max(this.chunkSize, Math.floor(b));
       this._evict();
+    }
+
+    setConcurrency(n){
+      const v = Number(n);
+      if (!isFinite(v) || v <= 0) return;
+      this.concurrency = clamp(Math.floor(v), 1, 8);
     }
 
     cacheBytes(){ return this.totalBytes; }
@@ -2107,6 +2149,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   const state = {
     datasets: [],
     activeId: null,
+    ioParallel: true,
 
     // Zoom slider maps 0..100 to 2^[zoomExpMin..zoomExpMax].
     // zoomExpMin is adjusted per dataset so "fit" is always reachable.
@@ -2128,7 +2171,30 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     exportKind: null,
   };
 
-  // ========= Cache budgeting =========
+  
+  // ========= I/O mode =========
+
+  function setIOParallel(enabled){
+    const on = !!enabled;
+    state.ioParallel = on;
+    IO_CONCURRENCY = on ? IO_CONCURRENCY_MAX : 1;
+
+    // Update existing data sources + pyramid workers.
+    for (const ds of state.datasets){
+      try{
+        if (ds && ds.ds){
+          if (typeof ds.ds.setConcurrency === 'function') ds.ds.setConcurrency(IO_CONCURRENCY);
+          else if (typeof ds.ds.concurrency === 'number') ds.ds.concurrency = clamp(IO_CONCURRENCY, 1, 8);
+        }
+        if (ds && ds.pyramid){
+          ds.pyramid.maxInflight = clamp(Math.floor(IO_CONCURRENCY/2) + 1, 1, 4);
+        }
+      }catch(_){}
+    }
+    updatePerf();
+  }
+
+// ========= Cache budgeting =========
 
   // We size in-memory caches from the browser's best-effort memory hints.
   // Target: ~40% of the available JS heap budget (or device RAM hint), shared across open datasets.
@@ -2372,7 +2438,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
     setStatus('opening data…','warn');
     const base = new BlobDataSource(dataFile);
-    const cached = new ChunkCacheDataSource(base, 1<<20, 128 * 1024 * 1024);
+    const cached = new ChunkCacheDataSource(base, 1<<20, 128 * 1024 * 1024, {concurrency: IO_CONCURRENCY});
 
     const initialBand = (meta.defaultBands && meta.defaultBands.length) ? meta.defaultBands[0] : 0;
 
@@ -4006,6 +4072,36 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     }
     ctx.stroke();
 
+    // Selected band marker (current band in the viewer)
+    const selBand = (ds && Number.isFinite(ds.activeBand)) ? ds.activeBand : null;
+    if (selBand != null && selBand >= 0 && selBand < yVals.length){
+      const xv = xVals ? xVals[selBand] : selBand;
+      const yv = yVals[selBand];
+      if (isFinite(xv)){
+        const px = xToPx(xv);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(106,169,255,0.55)';
+        ctx.lineWidth = 1 * dpr;
+        ctx.setLineDash([4*dpr, 4*dpr]);
+        ctx.beginPath();
+        ctx.moveTo(px, y0);
+        ctx.lineTo(px, y1);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (isFinite(yv)){
+          const py = yToPx(yv);
+          ctx.fillStyle = 'rgba(106,169,255,0.95)';
+          ctx.beginPath();
+          ctx.arc(px, py, 3*dpr, 0, Math.PI*2);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+          ctx.lineWidth = 1 * dpr;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
     // Labels (full range on X; avoid "A … B")
     ctx.fillStyle = 'rgba(235,245,255,0.92)';
     ctx.font = `${Math.round(11*dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
@@ -4144,6 +4240,50 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     specState.yVals = null;
     showSpectrumPanel(false);
   }
+
+  function exportSpectrumCSV(){
+    const ds = getActive();
+    if (!ds || !specState.open || ds.id !== specState.dsId || !specState.yVals){
+      alert('Spectrum not ready yet. Double‑click in the image to open it first.');
+      return;
+    }
+
+    const yVals = specState.yVals;
+    const xVals = specState.xVals;
+
+    const unit = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : '';
+    const xLabel = xVals ? (unit ? unit : 'wavelength') : 'band_index';
+
+    const lines = [];
+    lines.push(`# dataset: ${ds.name}`);
+    lines.push(`# pixel: ${specState.x},${specState.y}`);
+    if (ds.meta.scale && isFinite(ds.meta.scale.umPerPixelX) && isFinite(ds.meta.scale.umPerPixelY)){
+      const xUm = specState.x * Number(ds.meta.scale.umPerPixelX);
+      const yUm = specState.y * Number(ds.meta.scale.umPerPixelY);
+      lines.push(`# physical_um: ${fmtUm(xUm)},${fmtUm(yUm)}`);
+    }
+    lines.push(`# bands: ${ds.meta.bands}`);
+    if (ds.activeBand != null) lines.push(`# active_band: ${ds.activeBand}`);
+
+    const cols = ['band_index','band_name'];
+    if (xVals) cols.push(xLabel);
+    cols.push('value');
+    lines.push(cols.join(','));
+
+    const names = Array.isArray(ds.meta.bandNames) ? ds.meta.bandNames : null;
+    for (let b=0; b<yVals.length; b++){
+      const name = (names && names[b] != null) ? String(names[b]).trim().replace(/\s+/g,' ') : '';
+      const row = [String(b), '"' + name.replace(/"/g,'""') + '"'];
+      if (xVals) row.push(String(xVals[b]));
+      row.push(String(yVals[b]));
+      lines.push(row.join(','));
+    }
+
+    const csv = lines.join('\n') + '\n';
+    const base = `${ds.name}_spectrum_${specState.x}_${specState.y}`;
+    downloadBlob(new Blob([csv], {type:'text/csv'}), `${sanitizeFilePart(base)}.csv`);
+  }
+
 
 // ========= Mouse interaction =========
 
@@ -4756,6 +4896,9 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   if (els.btnSpecClose){
     els.btnSpecClose.onclick = (ev) => { ev.stopPropagation(); closeSpectrum(); };
   }
+  if (els.btnSpecCSV){
+    els.btnSpecCSV.onclick = (ev) => { ev.stopPropagation(); exportSpectrumCSV(); };
+  }
 
 
   els.main.addEventListener('pointerdown', onPointerDown);
@@ -4802,6 +4945,10 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   els.chkThumb.oninput = () => renderThumbnail();
   els.chkGrid.oninput = () => render();
   els.chkScale.oninput = () => render();
+
+  if (els.chkIOParallel){
+    els.chkIOParallel.oninput = () => setIOParallel(els.chkIOParallel.checked);
+  }
 
   els.btnSelect.onclick = () => {
     const ds = getActive();
@@ -5005,6 +5152,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     updateMetaUI();
     updatePerf();
     updateZoomLabel();
+
+    if (els.chkIOParallel){
+      els.chkIOParallel.checked = state.ioParallel;
+      setIOParallel(state.ioParallel);
+    }
 
     if (gpu.supported){
       els.gpuBadge.textContent = 'WebGPU: available';
