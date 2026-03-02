@@ -1,3 +1,15 @@
+import { createExportService } from "../export/export-service.js";
+import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/envi-loader.js";
+import {
+  makeSegmentReader as makeSegmentReaderCore,
+  pixelOffset as pixelOffsetCore,
+  readBandWindow as readBandWindowCore,
+  readBandWindowBIP as readBandWindowBIPCore,
+  segGet as segGetCore,
+  toFloat32 as toFloat32Core
+} from "../core/raster-io.js";
+import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
+
 (() => {
   'use strict';
 
@@ -91,24 +103,7 @@
     await Promise.all(workers);
   }
 
-  
-  // ========= ENVI data types =========
-  // ENVI "data type" codes map to on-disk sample formats.
-  // We keep the original on-disk precision (no quantization).
-  const DATA_TYPES = new Map([
-    [1,  {name:'uint8',   bytes:1, ctor: Uint8Array,   dv:'getUint8'}],
-    [2,  {name:'int16',   bytes:2, ctor: Int16Array,   dv:'getInt16'}],
-    [3,  {name:'int32',   bytes:4, ctor: Int32Array,   dv:'getInt32'}],
-    [4,  {name:'float32', bytes:4, ctor: Float32Array, dv:'getFloat32'}],
-    [5,  {name:'float64', bytes:8, ctor: Float64Array, dv:'getFloat64'}],
-    [12, {name:'uint16',  bytes:2, ctor: Uint16Array,  dv:'getUint16'}],
-    [13, {name:'uint32',  bytes:4, ctor: Uint32Array,  dv:'getUint32'}],
-    // 64-bit integer types are decoded via DataView to Numbers (JS has no native int64 math without BigInt).
-    [14, {name:'int64',   bytes:8, ctor: null,         dv:'getBigInt64'}],
-    [15, {name:'uint64',  bytes:8, ctor: null,         dv:'getBigUint64'}],
-  ]);
-
-// ========= Elements =========
+  // ========= Elements =========
 
   const els = {
     btnFit: $('#btnFit'),
@@ -225,567 +220,18 @@
   const cpuCtx = els.cpuCanvas.getContext('2d', {alpha:false});
   const specCtx = els.specCanvas.getContext('2d', {alpha:false});
 
-  // ========= Status =========
-
   function setStatus(text, cls){
     els.statusBadge.textContent = text || '';
     els.statusBadge.classList.remove('warn','ok','err');
     if (cls) els.statusBadge.classList.add(cls);
   }
 
-  // ========= ENVI header parsing =========
-
-  function parseEnviValue(raw){
-    const v = raw.trim();
-    if (!v) return '';
-    if (v.startsWith('{') && v.endsWith('}')){
-      const inner = v.slice(1,-1).trim();
-      const parts = inner.split(',').map(s => s.trim()).filter(Boolean);
-      return parts.map(p => {
-        const q = p.replace(/^"(.*)"$/,'$1');
-        const n = Number(q);
-        return Number.isFinite(n) ? n : q;
-      });
-    }
-    const unq = v.replace(/^"(.*)"$/,'$1');
-    const n = Number(unq);
-    return Number.isFinite(n) ? n : unq;
-  }
-
-  function parseEnviHeader(text){
-    const lines = text.replace(/\r/g,'').split('\n');
-    let i = 0;
-    if ((lines[0]||'').trim().toUpperCase() === 'ENVI') i = 1;
-
-    const meta = {};
-    let pendingKey = null;
-    let pendingVal = '';
-
-    const pushPending = () => {
-      if (!pendingKey) return;
-      meta[pendingKey] = parseEnviValue(pendingVal);
-      pendingKey = null;
-      pendingVal = '';
-    };
-
-    for (; i < lines.length; i++){
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      if (pendingKey){
-        pendingVal += ' ' + line;
-        if (line.includes('}')) pushPending();
-        continue;
-      }
-
-      const eq = line.indexOf('=');
-      if (eq === -1) continue;
-      const key = line.slice(0,eq).trim().toLowerCase();
-      let val = line.slice(eq+1).trim();
-
-      if (val.startsWith('{') && !val.includes('}')){
-        pendingKey = key;
-        pendingVal = val;
-        continue;
-      }
-      meta[key] = parseEnviValue(val);
-    }
-    pushPending();
-    return meta;
-  }
-
-  // ========= Data source with chunk cache (mmap-like) =========
-
-  class BlobDataSource {
-    constructor(file){
-      this.file = file;
-      this.size = file.size;
-      this.bytesRead = 0;
-    }
-    async read(offset, length){
-      const end = Math.min(this.size, offset + length);
-      const slice = this.file.slice(offset, end);
-      const ab = await slice.arrayBuffer();
-      const u8 = new Uint8Array(ab);
-      this.bytesRead += u8.byteLength;
-      return u8;
-    }
-    async close(){ /* no-op */ }
-  }
-
-  class ChunkCacheDataSource {
-    constructor(inner, chunkSizeBytes = 1<<20, maxBytes = 64 * (1<<20), opts = {}){
-      this.inner = inner;
-      this.chunkSize = chunkSizeBytes;
-      this.maxBytes = Math.max(this.chunkSize, Math.floor(maxBytes || 0));
-
-      const hc = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4;
-      this.concurrency = clamp((opts && opts.concurrency) ? opts.concurrency : (Math.floor(hc/2) + 1), 1, 8);
-
-      this.cache = new Map();     // key -> {u8}
-      this.totalBytes = 0;
-
-      // Dedupe concurrent reads for the same chunk.
-      this.inflight = new Map();  // key -> Promise<Uint8Array>
-    }
-
-    get bytesRead(){ return this.inner.bytesRead || 0; }
-    get size(){ return this.inner.size || 0; }
-
-    setMaxBytes(bytes){
-      const b = Number(bytes);
-      if (!isFinite(b) || b <= 0) return;
-      this.maxBytes = Math.max(this.chunkSize, Math.floor(b));
-      this._evict();
-    }
-
-    setConcurrency(n){
-      const v = Number(n);
-      if (!isFinite(v) || v <= 0) return;
-      this.concurrency = clamp(Math.floor(v), 1, 8);
-    }
-
-    cacheBytes(){ return this.totalBytes; }
-
-    _touch(key){
-      const ent = this.cache.get(key);
-      if (!ent) return;
-      // Move to most-recent by reinserting.
-      this.cache.delete(key);
-      this.cache.set(key, ent);
-    }
-
-    _evict(){
-      // Evict oldest entries (Map order) until within budget.
-      while (this.totalBytes > this.maxBytes && this.cache.size){
-        const oldestKey = this.cache.keys().next().value;
-        const ent = this.cache.get(oldestKey);
-        this.cache.delete(oldestKey);
-        if (ent && ent.u8) this.totalBytes -= ent.u8.byteLength;
-      }
-    }
-
-    async _loadChunk(chunkIndex){
-      const offset = chunkIndex * this.chunkSize;
-      const len = Math.min(this.chunkSize, this.size - offset);
-      return await this.inner.read(offset, len);
-    }
-
-    _getChunk(chunkIndex){
-      const key = String(chunkIndex);
-
-      const got = this.cache.get(key);
-      if (got){
-        this._touch(key);
-        return Promise.resolve(got.u8);
-      }
-
-      const inflight = this.inflight.get(key);
-      if (inflight) return inflight;
-
-      const p = this._loadChunk(chunkIndex).then((u8) => {
-        this.inflight.delete(key);
-
-        // Might have been cached while inflight.
-        const again = this.cache.get(key);
-        if (again){
-          this._touch(key);
-          return again.u8;
-        }
-
-        this.cache.set(key, {u8});
-        this.totalBytes += u8.byteLength;
-        this._evict();
-        return u8;
-      }).catch((err) => {
-        this.inflight.delete(key);
-        throw err;
-      });
-
-      this.inflight.set(key, p);
-      return p;
-    }
-
-    async read(offset, length){
-      const end = offset + length;
-      const first = Math.floor(offset / this.chunkSize);
-      const last = Math.floor((end - 1) / this.chunkSize);
-
-      if (first === last){
-        const chunk = await this._getChunk(first);
-        const base = first * this.chunkSize;
-        const startIn = offset - base;
-        return chunk.subarray(startIn, startIn + length);
-      }
-
-      const out = new Uint8Array(length);
-
-      // Fetch chunks in parallel (bounded concurrency).
-      const idxs = [];
-      for (let ci = first; ci <= last; ci++) idxs.push(ci);
-
-      const chunks = new Array(idxs.length);
-      let next = 0;
-      const worker = async () => {
-        while (true){
-          const i = next++;
-          if (i >= idxs.length) break;
-          chunks[i] = await this._getChunk(idxs[i]);
-        }
-      };
-
-      const nWorkers = Math.min(this.concurrency, idxs.length);
-      const workers = [];
-      for (let i=0; i<nWorkers; i++) workers.push(worker());
-      await Promise.all(workers);
-
-      let outPos = 0;
-      for (let i=0; i<idxs.length; i++){
-        const ci = idxs[i];
-        const chunk = chunks[i];
-        const base = ci * this.chunkSize;
-        const start = Math.max(offset, base);
-        const stop = Math.min(end, base + chunk.byteLength);
-        const sIn = start - base;
-        const n = stop - start;
-        out.set(chunk.subarray(sIn, sIn + n), outPos);
-        outPos += n;
-      }
-      return out;
-    }
-
-    async close(){
-      try{
-        this.cache.clear();
-        this.inflight.clear();
-        this.totalBytes = 0;
-      }catch(_){}
-      if (this.inner && this.inner.close) await this.inner.close();
-    }
-  }
-
-function unitToMicronsFactor(unitStr){
-    if (!unitStr) return null;
-    const u = String(unitStr).trim().toLowerCase();
-    if (!u) return null;
-    // Important: test specific units first to avoid matching "meter" in "micrometer".
-    if (u === 'µm' || u === 'μm' || u === 'um' || u.includes('micron') || u.includes('micrometer') || u.includes('micrometre')) return 1;
-    if (u === 'nm' || u.includes('nanometer') || u.includes('nanometre')) return 1e-3;
-    if (u === 'mm' || u.includes('millimeter') || u.includes('millimetre')) return 1e3;
-    if (u === 'cm' || u.includes('centimeter') || u.includes('centimetre')) return 1e4;
-    if (u === 'm' || u === 'meter' || u === 'metre' || u.includes(' meters') || u.includes(' metres')) return 1e6;
-    return null;
-  }
-
-  function parseUmPerPixelFromMapInfo(mapInfo){
-    // ENVI's "map info" often looks like:
-    // {projection, ref_px_x, ref_px_y, x0, y0, x_pixel_size, y_pixel_size, ... , units=Meters}
-    if (!Array.isArray(mapInfo) || mapInfo.length < 7) return null;
-    const xPix = Number(mapInfo[5]);
-    const yPix = Number(mapInfo[6]);
-    if (!isFinite(xPix) || !isFinite(yPix) || xPix <= 0 || yPix <= 0) return null;
-    let units = null;
-    for (const it of mapInfo.slice(7)){
-      if (typeof it !== 'string') continue;
-      const m = it.match(/units\s*=\s*([^,}]+)/i);
-      if (m){ units = m[1].trim(); break; }
-      // Sometimes units are provided without "units="
-      if (!units && /(meter|metre|micron|micro|\bum\b|\bmm\b|\bcm\b|\bnm\b)/i.test(it)){
-        units = it.trim();
-      }
-    }
-    const f = unitToMicronsFactor(units);
-    if (!f) return null;
-    return { umPerPixelX: xPix * f, umPerPixelY: yPix * f, source: 'map info' };
-  }
-
-  function parseUmPerPixelFromCustomFields(raw){
-    // Common non-standard fields used in microscopy-ish ENVI exports.
-    // NOTE: Ambiguous fields like "pixel size" are frequently stored in *meters* (SI).
-    // We only assume µm when the key explicitly indicates µm/um/microns.
-    const unitHints = [
-      raw['pixel size units'], raw['pixel_size_units'],
-      raw['pixel units'], raw['pixel_units'],
-      raw['units'], raw['unit']
-    ].map(x => (typeof x === 'string' ? x : '')).find(s => s && s.trim());
-    const hintedFactor = unitToMicronsFactor(unitHints);
-
-    const candidates = [
-      // Explicit microns/µm
-      ['microns per pixel', 1],
-      ['microns_per_pixel', 1],
-      ['micrometers per pixel', 1],
-      ['um per pixel', 1],
-      ['um_per_pixel', 1],
-      ['pixel size um', 1],
-      ['pixel_size_um', 1],
-
-      // Ambiguous (treat as meters unless units are provided elsewhere)
-      ['pixel size', 'm'],
-      ['pixel_size', 'm'],
-    ];
-
-    const parseXY = (v) => {
-      if (Array.isArray(v) && v.length >= 2){
-        const x = Number(v[0]);
-        const y = Number(v[1]);
-        if (isFinite(x) && isFinite(y) && x > 0 && y > 0) return {x,y};
-      } else {
-        const x = Number(v);
-        if (isFinite(x) && x > 0) return {x, y:x};
-      }
-      return null;
-    };
-
-    for (const [k, unitOrFactor] of candidates){
-      if (!(k in raw)) continue;
-      const parsed = parseXY(raw[k]);
-      if (!parsed) continue;
-
-      let f = 1;
-      if (typeof unitOrFactor === 'number'){
-        f = unitOrFactor;
-      } else if (typeof unitOrFactor === 'string'){
-        if (hintedFactor){
-          f = hintedFactor;
-        } else if (unitOrFactor === 'm'){
-          // Assume meters -> microns
-          f = 1e6;
-        } else {
-          f = unitToMicronsFactor(unitOrFactor) ?? 1;
-        }
-      }
-
-      return { umPerPixelX: parsed.x * f, umPerPixelY: parsed.y * f, source: k };
-    }
-
-    return null;
-  }
-
-  function normalizeMeta(raw){
-    const get = (k, def=null) => (k in raw) ? raw[k] : def;
-    const samples = Number(get('samples'));
-    const lines = Number(get('lines'));
-    const bands = Number(get('bands'));
-    if (!Number.isFinite(samples) || !Number.isFinite(lines) || !Number.isFinite(bands)){
-      throw new Error('Header missing samples/lines/bands');
-    }
-    const headerOffset = Number(get('header offset', 0)) || 0;
-    const dataType = Number(get('data type'));
-    if (!DATA_TYPES.has(dataType)) throw new Error('Unsupported ENVI data type: ' + dataType);
-    const interleave = normalizeInterleave(get('interleave','bsq'));
-    const byteOrder = Number(get('byte order', 0)) || 0;
-    const littleEndian = (byteOrder === 0);
-
-    let wavelengths = get('wavelength', null);
-    if (!Array.isArray(wavelengths) || wavelengths.length !== bands){
-      wavelengths = Array.from({length: bands}, (_,i)=>i);
-    } else {
-      // Coerce to numbers when possible.
-      wavelengths = wavelengths.map(w => {
-        const n = Number(w);
-        return Number.isFinite(n) ? n : w;
-      });
-    }
-
-    // Prefer explicit band names if present.
-    let bandNames = get('band names', get('band_names', null));
-    if (Array.isArray(bandNames) && bandNames.length === bands){
-      bandNames = bandNames.map(x => (typeof x === 'string') ? x : fmtNoGroup(Number(x)));
-    } else {
-      bandNames = null;
-    }
-
-    let defaultBands = get('default bands', null);
-    // ENVI uses 1-based indices; accept either
-    if (Array.isArray(defaultBands) && defaultBands.length >= 1){
-      defaultBands = defaultBands.map(x => {
-        const n = Number(x);
-        return Number.isFinite(n) ? (n > 0 ? n-1 : n) : 0;
-      }).map(i => clamp(i, 0, bands-1));
-    } else {
-      defaultBands = null;
-    }
-
-    const wlUnits = get('wavelength units', get('wavelength_units', ''));
-    const desc = get('description', '');
-    const mapInfo = get('map info', null);
-
-    const scale = parseUmPerPixelFromMapInfo(mapInfo) || parseUmPerPixelFromCustomFields(raw);
-
-    return {
-      raw,
-      samples, lines, bands,
-      headerOffset,
-      dataType,
-      dataTypeInfo: DATA_TYPES.get(dataType),
-      interleave,
-      byteOrder,
-      littleEndian,
-      wavelengths,
-      bandNames,
-      wlUnits,
-      desc,
-      mapInfo,
-      scale,
-      defaultBands,
-    };
-  }
-
-  function normalizeInterleave(rawInterleave){
-    const v = String(rawInterleave).trim().toLowerCase();
-    if (!v) return 'bsq';
-
-    // Non-standard numeric indices used by some ENVI writers.
-    if (v === '0') return 'bsq';
-    if (v === '1') return 'bil';
-    if (v === '2') return 'bip';
-
-    if (v === 'bsq') return 'bsq';
-    if (v === 'bil') return 'bil';
-    if (v === 'bip' || v === 'bsp') return 'bip';
-
-    throw new Error('Unsupported interleave: ' + v);
-  }
-
-  function pixelOffset(meta, x, y, b){
-    const bytes = meta.dataTypeInfo.bytes;
-    const S = meta.samples, L = meta.lines, B = meta.bands;
-    const base = meta.headerOffset;
-    if (meta.interleave === 'bsq'){
-      return base + (((b * L + y) * S + x) * bytes);
-    }
-    if (meta.interleave === 'bil'){
-      return base + ((((y * B + b) * S + x) * bytes));
-    }
-    // bip
-    return base + ((((y * S + x) * B + b) * bytes));
-  }
-
-  async function readBipRowAllBands(meta, ds, x0, y, spanPixels){
-    const bytes = meta.dataTypeInfo.bytes;
-    const S = meta.samples, B = meta.bands;
-
-    const startX = clamp(x0, 0, S-1);
-    const endX = clamp(x0 + spanPixels, 0, S);
-    const nPix = Math.max(0, endX - startX);
-    if (!nPix) return new Uint8Array(0);
-
-    const offset = pixelOffset(meta, startX, y, 0);
-    const len = nPix * B * bytes;
-    return await ds.read(offset, len);
-  }
-
-  function makeSegmentReader(meta, u8){
-    const info = meta.dataTypeInfo;
-    const bytes = info.bytes;
-    const little = meta.littleEndian;
-    if (info.ctor && little === HOST_LITTLE_ENDIAN && (u8.byteOffset % bytes === 0) && (u8.byteLength % bytes === 0)){
-      const arr = new info.ctor(u8.buffer, u8.byteOffset, u8.byteLength / bytes);
-      return { kind:'typed', bytes, arr };
-    }
-    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-    return { kind:'dv', bytes, dv };
-  }
-
-  function segGet(meta, seg, i){
-    const info = meta.dataTypeInfo;
-    if (seg.kind === 'typed') return seg.arr[i];
-    const o = i * seg.bytes;
-    const dv = seg.dv;
-    const little = meta.littleEndian;
-    switch (info.dv){
-      case 'getUint8': return dv.getUint8(o);
-      case 'getInt16': return dv.getInt16(o, little);
-      case 'getUint16': return dv.getUint16(o, little);
-      case 'getInt32': return dv.getInt32(o, little);
-      case 'getUint32': return dv.getUint32(o, little);
-      case 'getFloat32': return dv.getFloat32(o, little);
-      case 'getFloat64': return dv.getFloat64(o, little);
-      case 'getBigInt64': return Number(dv.getBigInt64(o, little));
-      case 'getBigUint64': return Number(dv.getBigUint64(o, little));
-      default: return dv.getFloat32(o, little);
-    }
-  }
-
-  function allocBandArray(meta, n){
-    const info = meta.dataTypeInfo;
-    if (info && info.ctor) return new info.ctor(n);
-    // int64/uint64 are exposed as Numbers by segGet; store as Float64 to reduce precision loss.
-    return new Float64Array(n);
-  }
-
-  // Read one band for a sampled window: returns a TypedArray of length outW*outH
-  async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step){
-    const bytes = meta.dataTypeInfo.bytes;
-    const S = meta.samples, L = meta.lines;
-
-    const out = allocBandArray(meta, outW * outH);
-
-    if (meta.interleave === 'bip'){
-      throw new Error('readBandWindow not used for BIP');
-    }
-
-    x0 = clamp(Math.floor(x0), 0, S-1);
-    y0 = clamp(Math.floor(y0), 0, L-1);
-
-    const maxX = clamp(x0 + outW*step, 0, S);
-    const maxY = clamp(y0 + outH*step, 0, L);
-    const safeOutW = Math.floor((maxX - x0 + (step-1)) / step);
-    const safeOutH = Math.floor((maxY - y0 + (step-1)) / step);
-
-    const rowWorker = async (sy) => {
-      const y = y0 + sy*step;
-      const rowOffset = pixelOffset(meta, x0, y, band);
-      const spanPixels = safeOutW * step;
-      const rowBytes = spanPixels * bytes;
-      const u8 = await ds.read(rowOffset, rowBytes);
-      const seg = makeSegmentReader(meta, u8);
-      const baseOut = sy*outW;
-      for (let sx = 0; sx < safeOutW; sx++){
-        out[baseOut + sx] = segGet(meta, seg, sx*step);
-      }
-    };
-
-    await parallelFor(safeOutH, IO_CONCURRENCY, rowWorker);
-    return out;
-  }
-
-  async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step){
-    const S = meta.samples, L = meta.lines, B = meta.bands;
-    const out = allocBandArray(meta, outW * outH);
-
-    x0 = clamp(Math.floor(x0), 0, S-1);
-    y0 = clamp(Math.floor(y0), 0, L-1);
-
-    const maxX = clamp(x0 + outW*step, 0, S);
-    const maxY = clamp(y0 + outH*step, 0, L);
-    const safeOutW = Math.floor((maxX - x0 + (step-1)) / step);
-    const safeOutH = Math.floor((maxY - y0 + (step-1)) / step);
-    const spanPixels = safeOutW * step;
-
-    const rowWorker = async (sy) => {
-      const y = y0 + sy*step;
-      const u8 = await readBipRowAllBands(meta, ds, x0, y, spanPixels);
-      const seg = makeSegmentReader(meta, u8);
-      const baseOut = sy*outW;
-      for (let sx = 0; sx < safeOutW; sx++){
-        const rawPix = sx * step;
-        const idx = rawPix * B + band;
-        out[baseOut + sx] = segGet(meta, seg, idx);
-      }
-    };
-
-    await parallelFor(safeOutH, IO_CONCURRENCY, rowWorker);
-    return out;
-  }
-
-  function toFloat32(arr){
-    if (arr instanceof Float32Array) return arr;
-    const out = new Float32Array(arr.length);
-    for (let i=0; i<arr.length; i++) out[i] = Number(arr[i]);
-    return out;
-  }
+  function pixelOffset(meta, x, y, b){ return pixelOffsetCore(meta, x, y, b); }
+  function makeSegmentReader(meta, u8){ return makeSegmentReaderCore(meta, u8); }
+  function segGet(meta, seg, i){ return segGetCore(meta, seg, i); }
+  async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY); }
+  async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step){ return readBandWindowBIPCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY); }
+  function toFloat32(arr){ return toFloat32Core(arr); }
 
   // ========= Pyramid cache (per-band tiles) =========
 
@@ -1515,123 +961,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     return `Band ${b}`;
   }
 
-  // ========= File pairing =========
-
-  // Common ENVI binary extensions seen in practice (not exhaustive).
-  // Many tools also allow "no extension" (same basename as .hdr).
-  const COMMON_ENVI_DATA_EXTS = [
-    '.dat', '', '.img', '.raw', '.bin', '.bip', '.bil', '.bsq'
-  ];
-
-  function fileExtLower(name){
-    const m = /\.[^.]+$/.exec(name);
-    return m ? m[0].toLowerCase() : '';
-  }
-
-  function stripHdrExt(name){
-    return name.replace(/\.hdr$/i,'');
-  }
-
-  function buildFileNameMap(files){
-    const map = new Map();
-    for (const f of files){
-      map.set(f.name.toLowerCase(), f);
-    }
-    return map;
-  }
-
-  function findMatchingDataFileForHdr(hdrFile, fileMap){
-    const stem = stripHdrExt(hdrFile.name);
-    const stemLower = stem.toLowerCase();
-
-    const candidates = [];
-
-    // 1) Some writers produce "foo.img.hdr" + data "foo.img"
-         candidates.push(stemLower);
-
-    // 2) Typical case: "foo.hdr" + data "foo.dat"/"foo.img"/etc.
-    for (const ext of COMMON_ENVI_DATA_EXTS){
-      if (!ext) continue;
-      if (stemLower.endsWith(ext)) continue;
-      candidates.push(stemLower + ext);
-    }
-
-    // Prefer explicit known extensions
-    for (const nameLower of candidates){
-      const f = fileMap.get(nameLower);
-      if (f && f !== hdrFile) return f;
-    }
-
-    // Fallback: any other file sharing the same basename (choose the largest)
-    const baseKey = stemLower;
-    let best = null;
-    for (const [k,f] of fileMap.entries()){
-      if (f === hdrFile) continue;
-      if (k === baseKey) { best = f; break; }
-      if (k.startsWith(baseKey + '.')){
-        if (!best || (f.size > best.size)) best = f;
-      }
-    }
-    return best;
-  }
-
-  async function addDatasetsFromFileList(files){
-    const list = Array.from(files || []);
-    if (!list.length) return;
-
-    const fileMap = buildFileNameMap(list);
-    const hdrs = list.filter(f => fileExtLower(f.name) === '.hdr');
-
-    if (hdrs.length === 0){
-      alert('No .hdr file found. Please select/drop the ENVI header (.hdr) and its matching binary file.');
-      return;
-    }
-
-    const tasks = [];
-    const missing = [];
-
-    for (const hdr of hdrs){
-      const data = findMatchingDataFileForHdr(hdr, fileMap);
-      if (!data){
-        missing.push(hdr.name);
-        continue;
-      }
-      tasks.push({hdr, data});
-    }
-
-    if (tasks.length === 0){
-      alert('No complete ENVI pairs found.\n\nMissing data file for:\n' + missing.join('\n'));
-      return;
-    }
-
-    tasks.sort((a,b) => a.hdr.name.localeCompare(b.hdr.name));
-
-    for (const t of tasks){
-      try{
-        await addDatasetFromFiles(t.hdr, t.data);
-      } catch (e){
-        console.error(e);
-        alert(`Failed to add ${t.hdr.name}: ${(e && e.message) ? e.message : String(e)}`);
-      }
-    }
-
-    if (missing.length){
-      alert('Some headers had no matching data file in your selection:\n\n' + missing.join('\n'));
-    }
-  }
-
-  async function addDatasetFromFiles(hdrFile, dataFile){
-    setStatus('reading header…','warn');
-    const text = await hdrFile.text();
-    const raw = parseEnviHeader(text);
-    const meta = normalizeMeta(raw);
-
-    setStatus('opening data…','warn');
-    const base = new BlobDataSource(dataFile);
-    const cached = new ChunkCacheDataSource(base, 1<<20, 128 * 1024 * 1024, {concurrency: IO_CONCURRENCY});
-
+  function makeDatasetFromLoadedFiles({hdrFile, dataFile, meta, base, cached}){
     const initialBand = (meta.defaultBands && meta.defaultBands.length) ? meta.defaultBands[0] : 0;
-
     const ds = {
       id: 'ds' + (nextDatasetId++),
       name: guessDatasetName(hdrFile, dataFile),
@@ -1640,25 +971,73 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       baseDs: base,
       view: {x:0,y:0,scale:1},
       activeBand: clamp(initialBand, 0, meta.bands-1),
-      bandSettings: new Map(),    // band -> {min,max,gamma,gain,contrast}
-      bandStatsWhole: new Map(),  // band -> stats object
-      bandStatsView: null,        // stats for current view (recomputed)
+      bandSettings: new Map(),
+      bandStatsWhole: new Map(),
+      bandStatsView: null,
       thumb: {ready:false, _t:0, scale:1, x0:0, y0:0, w:0, h:0},
       treeExpanded: true,
       pyramid: null,
-      lastRaster: null,           // {band,w,h,dataF32, x0,y0, step, source, level}
+      lastRaster: null,
     };
-
-    // Default per-band settings
     ds.bandSettings.set(ds.activeBand, {min:null, max:null, gamma:1, gain:1, contrast:1});
+    return ds;
+  }
 
+  function attachDataset(ds){
     state.datasets.unshift(ds);
     recomputeCacheBudgets();
     setActiveDataset(ds.id, {fit:true});
-
-    // Kick off histogram for initial band (whole image sample)
     buildBandStatsWhole(ds, ds.activeBand).catch(()=>{});
-    setStatus('ready','ok');
+  }
+
+  async function addDatasetsFromFileList(files){
+    const list = Array.from(files || []);
+    if (!list.length) return;
+
+    let result;
+    try{
+      result = await addDatasetsFromFileListMod(list, {
+        setStatus,
+        ioConcurrency: IO_CONCURRENCY,
+        chunkSize: 1<<20,
+        cacheBytes: 128 * 1024 * 1024,
+        createDataset: makeDatasetFromLoadedFiles,
+      });
+    } catch (e){
+      console.error(e);
+      alert((e && e.message) ? e.message : String(e));
+      setStatus('error','err');
+      return;
+    }
+
+    const {datasets, missing, headersFound} = result;
+    if (!headersFound){
+      alert('No .hdr file found. Please select/drop the ENVI header (.hdr) and its matching binary file.');
+      return;
+    }
+    if (!datasets.length){
+      alert('No complete ENVI pairs found.\n\nMissing data file for:\n' + missing.join('\n'));
+      return;
+    }
+
+    for (const ds of datasets){
+      attachDataset(ds);
+    }
+
+    if (missing.length){
+      alert('Some headers had no matching data file in your selection:\n\n' + missing.join('\n'));
+    }
+  }
+
+  async function addDatasetFromFiles(hdrFile, dataFile){
+    const ds = await addDatasetFromFilesMod(hdrFile, dataFile, {
+      setStatus,
+      ioConcurrency: IO_CONCURRENCY,
+      chunkSize: 1<<20,
+      cacheBytes: 128 * 1024 * 1024,
+      createDataset: makeDatasetFromLoadedFiles,
+    });
+    attachDataset(ds);
   }
 
   // ========= UI rebuild =========
@@ -3082,15 +2461,10 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   let probeSeq = 0;
   async function probeValue(ds, ix, iy, band){
-    const m = ds.meta;
-    if (ix < 0 || iy < 0 || ix >= m.samples || iy >= m.lines) return null;
     const mySeq = ++probeSeq;
-    const bytes = m.dataTypeInfo.bytes;
-    const offset = pixelOffset(m, ix, iy, band);
-    const u8 = await ds.ds.read(offset, bytes);
+    const v = await probeValueAtBand(ds, ix, iy, band);
     if (mySeq !== probeSeq) return null;
-    const seg = makeSegmentReader(m, u8);
-    return Number(segGet(m, seg, 0));
+    return v;
   }
 
   let _hudTimer = null;
@@ -3326,44 +2700,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   }
 
   async function readSpectrumAtPixel(ds, ix, iy){
-    const meta = ds.meta;
-    const B = meta.bands;
-    const bytes = meta.dataTypeInfo.bytes;
-
-    const out = new Float32Array(B);
-
-    if (meta.interleave === 'bip'){
-      const off = pixelOffset(meta, ix, iy, 0);
-      const u8 = await ds.ds.read(off, B * bytes);
-      const seg = makeSegmentReader(meta, u8);
-      for (let b=0; b<B; b++){
-        out[b] = Number(segGet(meta, seg, b));
-      }
-      return out;
-    }
-
-    // For BSQ/BIL, a pixel's bands are strided in the file. We read per-band with bounded parallelism.
-    await parallelFor(B, IO_CONCURRENCY, async (b) => {
-      const off = pixelOffset(meta, ix, iy, b);
-      const u8 = await ds.ds.read(off, bytes);
-      const seg = makeSegmentReader(meta, u8);
-      out[b] = Number(segGet(meta, seg, 0));
-    });
-
-    return out;
+    return readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY);
   }
 
   function wavelengthArrayOrNull(ds){
-    const wl = ds.meta.wavelengths;
-    if (!Array.isArray(wl) || wl.length !== ds.meta.bands) return null;
-    // Accept numeric or numeric-looking strings.
-    const out = new Array(wl.length);
-    for (let i=0; i<wl.length; i++){
-      const n = Number(wl[i]);
-      if (!isFinite(n)) return null;
-      out[i] = n;
-    }
-    return out;
+    return wavelengthArrayOrNullCore(ds);
   }
 
   async function openSpectrumAt(ds, ix, iy){
@@ -3615,57 +2956,28 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   // ========= Export =========
 
-  function sanitizeFilePart(s){
-    return String(s || '')
-      .replace(/[\\/:*?"<>|]+/g, '_')
-      .replace(/\s+/g, '_')
-      .slice(0, 80);
-  }
+  const exportService = createExportService({
+    state,
+    els,
+    getActive,
+    setStatus,
+    humanBytes,
+    fmt,
+    clamp,
+    bandLabel,
+    renderWindowToImageData,
+    readBandWindow,
+    readBandWindowBIP,
+    downloadBlob,
+    alertFn: (msg) => alert(msg),
+    confirmFn: (msg) => confirm(msg),
+  });
 
-  function viewRect(ds){
-    const dpr = window.devicePixelRatio || 1;
-    const eff = ds.view.scale * dpr;
-    const viewW = els.cpuCanvas.width / eff;
-    const viewH = els.cpuCanvas.height / eff;
-    return {
-      x0: Math.floor(ds.view.x),
-      y0: Math.floor(ds.view.y),
-      x1: Math.ceil(ds.view.x + viewW),
-      y1: Math.ceil(ds.view.y + viewH),
-    };
-  }
-
-  function wholeRect(ds){
-    return {x0:0, y0:0, x1:ds.meta.samples, y1:ds.meta.lines};
-  }
-
-  function clampRect(ds, rect){
-    const x0 = clamp(rect.x0, 0, ds.meta.samples);
-    const y0 = clamp(rect.y0, 0, ds.meta.lines);
-    const x1 = clamp(rect.x1, 0, ds.meta.samples);
-    const y1 = clamp(rect.y1, 0, ds.meta.lines);
-    const w = Math.max(1, x1 - x0);
-    const h = Math.max(1, y1 - y0);
-    return {x0, y0, x1, y1, w, h};
-  }
-
-  function resolveExportRect(ds, scope){
-    // scope: 'sel' | 'view' | 'whole'
-    if (scope === 'whole') return clampRect(ds, wholeRect(ds));
-    if (scope === 'sel'){
-      const r = state.selection.imgRect;
-      if (r){
-        const x0 = Number.isFinite(r.x0) ? r.x0 : 0;
-        const y0 = Number.isFinite(r.y0) ? r.y0 : 0;
-        const x1 = Number.isFinite(r.x1) ? r.x1 : (x0 + (Number.isFinite(r.w) ? r.w : 1));
-        const y1 = Number.isFinite(r.y1) ? r.y1 : (y0 + (Number.isFinite(r.h) ? r.h : 1));
-        return clampRect(ds, {x0, y0, x1, y1});
-      }
-      // No selection -> fall back to current view
-      return clampRect(ds, viewRect(ds));
-    }
-    return clampRect(ds, viewRect(ds));
-  }
+  function sanitizeFilePart(s){ return exportService.sanitizeFilePart(s); }
+  function viewRect(ds){ return exportService.viewRect(ds); }
+  function wholeRect(ds){ return exportService.wholeRect(ds); }
+  function clampRect(ds, rect){ return exportService.clampRect(ds, rect); }
+  function resolveExportRect(ds, scope){ return exportService.resolveExportRect(ds, scope); }
 
   function openExportDialog(kind){
     const ds = getActive();
@@ -3749,267 +3061,9 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     els.expWarning.style.display = warn ? 'inline-flex' : 'none';
   }
 
-  async function runExportFromDialog(){
-    const ds = getActive();
-    if (!ds || ds.activeBand == null) return;
-    const kind = state.exportKind;
-
-    // Close UI first to keep the app responsive.
-    try { els.exportDlg.close(); } catch {}
-
-    const rawMode = (els.expModeRaw.checked && kind === 'tiff');
-    if (rawMode){
-      const scope = els.expRawScopeWhole.checked ? 'whole' : 'sel';
-      const rect = resolveExportRect(ds, scope);
-      await exportRawStackTIFF(ds, rect);
-      return;
-    }
-
-    const scope = els.expRenScopeWhole.checked ? 'whole' : (els.expRenScopeSel.checked ? 'sel' : 'view');
-    const rect = resolveExportRect(ds, scope);
-    await exportRendered(ds, kind, rect);
-  }
-
-  async function exportRendered(ds, kind, rect){
-    const band = ds.activeBand;
-    if (band == null) return;
-    const w = rect.w, h = rect.h;
-
-    const maxPix = 20_000_000; // 20 MP
-    if (w*h > maxPix){
-      alert(`Export too large (${fmt(w*h)} pixels). Please select a smaller region.`);
-      return;
-    }
-
-    setStatus('export…','warn');
-    const img = await renderWindowToImageData(ds, band, rect.x0, rect.y0, w, h, 1);
-
-    const base = `${ds.name}_${sanitizeFilePart(bandLabel(ds, band))}_${rect.x0}_${rect.y0}_${w}x${h}`;
-
-    if (kind === 'png'){
-      const c = document.createElement('canvas');
-      c.width = w; c.height = h;
-      c.getContext('2d', {alpha:false}).putImageData(img,0,0);
-      const blob = await new Promise(res => c.toBlob(res, 'image/png'));
-      downloadBlob(blob, `${base}.png`);
-      setStatus('ready','ok');
-      return;
-    }
-
-    if (kind === 'tiff'){
-      const blob = encodeTIFF_RGBA8(img);
-      downloadBlob(blob, `${base}.tiff`);
-      setStatus('ready','ok');
-      return;
-    }
-  }
-
-  function tiffSampleFormatForEnviType(enviType){
-    if (enviType === 4 || enviType === 5) return 3; // float
-    if (enviType === 2 || enviType === 3 || enviType === 14) return 2; // signed
-    return 1; // unsigned
-  }
-
-  function littleEndianBytes(view, bytesPerSample){
-    const u8 = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-    if (HOST_LITTLE_ENDIAN || bytesPerSample === 1) return u8;
-    // Swap bytes per sample.
-    const out = new Uint8Array(u8.length);
-    for (let i=0; i<u8.length; i+=bytesPerSample){
-      for (let j=0; j<bytesPerSample; j++){
-        out[i+j] = u8[i + (bytesPerSample-1-j)];
-      }
-    }
-    return out;
-  }
-
-  function encodeTIFF_MultiPage_GrayRaw(meta, w, h, pages){
-    // Uncompressed, little-endian TIFF with 1 sample per pixel.
-    const bytesPerSample = meta.dataTypeInfo.bytes;
-    const bits = bytesPerSample * 8;
-    const sampleFormat = tiffSampleFormatForEnviType(meta.dataType);
-
-    const N = pages.length;
-    const numEntries = 11;
-    const ifdSize = 2 + numEntries*12 + 4;
-    const headerSize = 8;
-    const ifdArea = N * ifdSize;
-    const firstPixelOffset = headerSize + ifdArea;
-
-    const ifdBuf = new ArrayBuffer(firstPixelOffset);
-    const dv = new DataView(ifdBuf);
-
-    // Header: "II" 42, first IFD at offset 8.
-    dv.setUint8(0, 0x49);
-    dv.setUint8(1, 0x49);
-    dv.setUint16(2, 42, true);
-    dv.setUint32(4, 8, true);
-
-    let pixelCursor = firstPixelOffset;
-    const pixelParts = [];
-
-    const writeEntry = (dv, o, tag, type, count, value) => {
-      dv.setUint16(o, tag, true); o += 2;
-      dv.setUint16(o, type, true); o += 2;
-      dv.setUint32(o, count, true); o += 4;
-      if (type === 3 && count === 1){
-        dv.setUint16(o, value, true);
-        dv.setUint16(o+2, 0, true);
-      } else {
-        dv.setUint32(o, value, true);
-      }
-      return o + 4;
-    };
-
-    for (let i=0; i<N; i++){
-      const page = pages[i];
-      const bytes = page.byteLength;
-      const ifdOff = 8 + i*ifdSize;
-      dv.setUint16(ifdOff, numEntries, true);
-      let o = ifdOff + 2;
-
-      o = writeEntry(dv, o, 256, 4, 1, w);           // ImageWidth
-      o = writeEntry(dv, o, 257, 4, 1, h);           // ImageLength
-      o = writeEntry(dv, o, 258, 3, 1, bits);        // BitsPerSample
-      o = writeEntry(dv, o, 259, 3, 1, 1);           // Compression = none
-      o = writeEntry(dv, o, 262, 3, 1, 1);           // Photometric = BlackIsZero
-      o = writeEntry(dv, o, 273, 4, 1, pixelCursor); // StripOffsets
-      o = writeEntry(dv, o, 277, 3, 1, 1);           // SamplesPerPixel
-      o = writeEntry(dv, o, 278, 4, 1, h);           // RowsPerStrip
-      o = writeEntry(dv, o, 279, 4, 1, bytes);       // StripByteCounts
-      o = writeEntry(dv, o, 284, 3, 1, 1);           // PlanarConfiguration
-      o = writeEntry(dv, o, 339, 3, 1, sampleFormat);// SampleFormat
-
-      // Next IFD offset
-      dv.setUint32(ifdOff + 2 + numEntries*12, (i < N-1) ? (8 + (i+1)*ifdSize) : 0, true);
-
-      pixelParts.push(littleEndianBytes(page, bytesPerSample));
-      pixelCursor += bytes;
-    }
-
-    return new Blob([ifdBuf, ...pixelParts], {type:'image/tiff'});
-  }
-
-  
-  async function exportRawStackTIFF(ds, rect){
-    const w = rect.w, h = rect.h;
-    const bpp = ds.meta.dataTypeInfo.bytes;
-    const totalBytes = w * h * ds.meta.bands * bpp;
-
-    // Soft warning — raw stacks get huge fast.
-    if (totalBytes > (1024 * 1024 * 1024)){
-      const ok = confirm(`This raw stack is about ${humanBytes(totalBytes)} and may crash the browser. Continue?`);
-      if (!ok) return;
-    }
-
-    setStatus('export raw…','warn');
-
-    const pages = [];
-    for (let b=0; b<ds.meta.bands; b++){
-      setStatus(`export raw… ${b+1}/${ds.meta.bands}`,'warn');
-
-      let data;
-      if (ds.meta.interleave === 'bip'){
-        data = await readBandWindowBIP(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
-      } else {
-        data = await readBandWindow(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
-      }
-
-      pages.push(data);
-    }
-
-    const blob = encodeTIFF_MultiPage_GrayRaw(ds.meta, w, h, pages);
-    const base = `${ds.name}_${rect.x0}_${rect.y0}_${w}x${h}_rawstack`;
-    downloadBlob(blob, `${base}.tiff`);
-    setStatus('ready','ok');
-  }
-
-  function encodeTIFF_RGBA8(imageData){
-    const w = imageData.width, h = imageData.height;
-    const pixels = imageData.data; // RGBA8
-
-    // TIFF header (little endian): II 42 offsetToIFD
-    const ifdOffset = 8;
-    const entries = [
-      [256, 4, 1, w],      // ImageWidth LONG
-      [257, 4, 1, h],      // ImageLength LONG
-      [258, 3, 4, null],   // BitsPerSample SHORT[4] -> offset
-      [259, 3, 1, 1],      // Compression SHORT = 1
-      [262, 3, 1, 2],      // PhotometricInterpretation SHORT = 2 (RGB)
-      [273, 4, 1, null],   // StripOffsets LONG -> offset
-      [277, 3, 1, 4],      // SamplesPerPixel SHORT = 4
-      [278, 4, 1, h],      // RowsPerStrip LONG
-      [279, 4, 1, null],   // StripByteCounts LONG
-      [282, 5, 1, null],   // XResolution RATIONAL -> offset
-      [283, 5, 1, null],   // YResolution RATIONAL -> offset
-      [296, 3, 1, 2],      // ResolutionUnit SHORT = 2 (inch)
-    ];
-
-    const numEntries = entries.length;
-    const ifdSize = 2 + numEntries*12 + 4;
-
-    const bitsPerSample = new Uint16Array([8,8,8,8]);
-    const xRes = new Uint32Array([72,1]); // 72/1
-    const yRes = new Uint32Array([72,1]);
-
-    const extraSize = bitsPerSample.byteLength + xRes.byteLength + yRes.byteLength;
-    const pixelOffset = ifdOffset + ifdSize + extraSize;
-    const pixelBytes = pixels.byteLength;
-
-    // Fill in offsets
-    let cursor = ifdOffset + ifdSize;
-    const bitsOffset = cursor; cursor += bitsPerSample.byteLength;
-    const xResOffset = cursor; cursor += xRes.byteLength;
-    const yResOffset = cursor; cursor += yRes.byteLength;
-
-    for (const e of entries){
-      if (e[0] === 258) e[3] = bitsOffset;
-      if (e[0] === 273) e[3] = pixelOffset;
-      if (e[0] === 279) e[3] = pixelBytes;
-      if (e[0] === 282) e[3] = xResOffset;
-      if (e[0] === 283) e[3] = yResOffset;
-    }
-
-    const total = pixelOffset + pixelBytes;
-    const buf = new ArrayBuffer(total);
-    const dv = new DataView(buf);
-    let o = 0;
-
-    // Header
-    dv.setUint8(o++, 0x49); // I
-    dv.setUint8(o++, 0x49); // I
-    dv.setUint16(o, 42, true); o += 2;
-    dv.setUint32(o, ifdOffset, true); o += 4;
-
-    // IFD
-    o = ifdOffset;
-    dv.setUint16(o, numEntries, true); o += 2;
-
-    for (const [tag, type, count, value] of entries){
-      dv.setUint16(o, tag, true); o += 2;
-      dv.setUint16(o, type, true); o += 2;
-      dv.setUint32(o, count, true); o += 4;
-
-      if (type === 3 && count === 1){
-        dv.setUint16(o, value, true);
-        dv.setUint16(o+2, 0, true);
-      } else {
-        dv.setUint32(o, value, true);
-      }
-      o += 4;
-    }
-    dv.setUint32(o, 0, true); // next IFD = 0
-
-    // Extra data blocks
-    new Uint8Array(buf, bitsOffset, bitsPerSample.byteLength).set(new Uint8Array(bitsPerSample.buffer));
-    new Uint8Array(buf, xResOffset, xRes.byteLength).set(new Uint8Array(xRes.buffer));
-    new Uint8Array(buf, yResOffset, yRes.byteLength).set(new Uint8Array(yRes.buffer));
-
-    // Pixels
-    new Uint8Array(buf, pixelOffset, pixelBytes).set(pixels);
-
-    return new Blob([buf], {type:'image/tiff'});
-  }
+  async function runExportFromDialog(){ await exportService.runExportFromDialog(); }
+  async function exportRendered(ds, kind, rect){ await exportService.exportRendered(ds, kind, rect); }
+  async function exportRawStackTIFF(ds, rect){ await exportService.exportRawStackTIFF(ds, rect); }
 
   // ========= Close dataset =========
 
@@ -4301,10 +3355,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   // File picking
   // Click-to-open: the drop area is also the file picker trigger (no separate button).
   els.dropzone.addEventListener('click', (ev) => {
-    // Only trigger when clicking the dropzone itself (avoid surprises if inner elements become interactive).
     const t = ev.target;
-    if (t && t.closest && t.closest('button,a,input,select,textarea,label')) return;
-    els.filePicker.click();
+    if (t && t.closest && t.closest('a,button')) return;
+    try{
+      els.filePicker.click();
+    }catch(_){}
   });
   els.dropzone.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' || ev.key === ' '){

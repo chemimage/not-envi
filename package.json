@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "geotiff": "^2.1.3"
+  },
   "scripts": {
     "dev": "vite",
     "build:bundle": "vite build",

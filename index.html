@@ -59,11 +59,7 @@
     <div class="panel-body">
       <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Open ENVI dataset files">
         <div class="hint">
-          <b>Drag & drop</b> ENVI pairs: <b>.hdr</b> + matching data file (common extensions: <b>.dat</b>, <b>.img</b>, <b>.raw</b>, <b>.bin</b>, <b>.bip</b>, <b>.bil</b>, <b>.bsq</b>, or no extension).
-          <br><br>
-          <b>Or click here</b> to choose files. Browsers require an explicit user selection, so please select the <b>.hdr</b> and its matching data file(s) in the same dialog.
-          <br><br>
-          Nothing is uploaded — files are read locally in your browser.
+          <b>Drag & drop</b> ENVI file pairs, or <b>click here</b> to choose files.
         </div>
         <input type="file" id="filePicker" multiple style="display:none" />
       </div>
@@ -108,8 +104,6 @@
         <input type="checkbox" id="chkIOParallel" checked />
         <span>Parallel I/O</span>
       </label>
-
-      <div class="hint">Browsers don’t expose true OS <i>mmap</i>, but this viewer avoids loading entire cubes by doing on‑demand, offset‑based reads with a small chunk cache (mmap‑like). A per‑band tile pyramid is built incrementally in the background and cleared on close/unload.</div>
     </div>
   </aside>
 

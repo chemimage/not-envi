@@ -15,3 +15,11 @@ test("app boots and core controls are present", async ({ page }) => {
   await expect(page.locator("#bandTree")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("clicking dropzone opens file picker dialog", async ({ page }) => {
+  await page.goto("/");
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.locator("#dropzone").click();
+  const chooser = await chooserPromise;
+  expect(chooser.isMultiple()).toBe(true);
+});

@@ -1,6 +1,1 @@
-export async function addDatasetsFromFileList(ctx, files) {
-  if (typeof ctx.addDatasetsFromFileList === "function") {
-    return ctx.addDatasetsFromFileList(files);
-  }
-  return null;
-}
+export { addDatasetFromFiles, addDatasetsFromFileList } from "./envi-loader.js";
