@@ -13,6 +13,7 @@ export function wireApp(deps) {
     onPointerDown,
     onPointerMove,
     onPointerUp,
+    onPointerCancel,
     onPointerLeave,
     onWheel,
     onThumbClick,
@@ -105,6 +106,7 @@ export function wireApp(deps) {
       onPointerDown,
       onPointerMove,
       onPointerUp,
+      onPointerCancel,
       onWheel
     }
   });
