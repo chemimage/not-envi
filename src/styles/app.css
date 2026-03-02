@@ -35,7 +35,7 @@
 
   header {
     grid-area: top;
-    @apply flex items-center gap-2 rounded-xl border border-gray-700 bg-gray-900 px-2.5 py-2.5 shadow-2xl shadow-black/30;
+    @apply flex items-center gap-2 rounded-sm border border-gray-700 bg-gray-900 px-2.5 py-2.5 shadow-2xl shadow-black/30;
   }
 
   header .group {
@@ -55,7 +55,7 @@
   }
 
   .btn {
-    @apply cursor-pointer rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-sm text-gray-100 transition-colors hover:border-gray-500 active:translate-y-px;
+    @apply cursor-pointer rounded-sm border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-sm text-gray-100 transition-colors hover:border-gray-500 active:translate-y-px;
   }
 
   .btn.primary {
@@ -71,7 +71,7 @@
   }
 
   aside {
-    @apply flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
+    @apply flex min-h-0 flex-col overflow-hidden rounded-sm border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
   }
 
   #left {
@@ -120,7 +120,7 @@
   }
 
   .dropzone {
-    @apply cursor-pointer rounded-xl border border-dashed border-gray-600 bg-gray-800/60 p-3;
+    @apply cursor-pointer rounded-sm border border-dashed border-gray-600 bg-gray-800/60 p-3;
   }
 
   .dropzone:focus {
@@ -149,7 +149,7 @@
 
   input[type="number"],
   select {
-    @apply rounded-lg border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-xs text-gray-100;
+    @apply rounded-sm border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-xs text-gray-100;
   }
 
   input[type="number"] {
@@ -168,6 +168,48 @@
     @apply inline-flex cursor-pointer select-none items-center gap-2;
   }
 
+  .switch {
+    @apply text-gray-300;
+  }
+
+  .switch input[type="checkbox"] {
+    appearance: none;
+    width: 34px;
+    height: 20px;
+    border-radius: 9999px;
+    border: 1px solid rgb(75 85 99);
+    background: rgb(31 41 55);
+    position: relative;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+
+  .switch input[type="checkbox"]::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    background: rgb(209 213 219);
+    transition: transform 120ms ease;
+  }
+
+  .switch input[type="checkbox"]:checked {
+    background: rgb(156 163 175);
+    border-color: rgb(209 213 219);
+  }
+
+  .switch input[type="checkbox"]:checked::after {
+    transform: translateX(14px);
+    background: rgb(255 255 255);
+  }
+
+  .switch input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgb(107 114 128 / 0.5);
+  }
+
   .warn {
     @apply text-amber-300;
   }
@@ -182,7 +224,7 @@
 
   #main {
     grid-area: main;
-    @apply relative min-h-0 overflow-hidden rounded-xl border border-gray-700 bg-gray-950 shadow-2xl shadow-black/30;
+    @apply relative min-h-0 overflow-hidden rounded-sm border border-gray-700 bg-gray-950 shadow-2xl shadow-black/30;
   }
 
   #gpuCanvas,
@@ -209,11 +251,11 @@
   }
 
   .hud {
-    @apply rounded-lg border border-white/15 bg-gray-950/70 px-2 py-1 font-mono text-xs text-white;
+    @apply rounded-sm border border-white/15 bg-gray-950/70 px-2 py-1 font-mono text-xs text-white;
   }
 
   #thumbWrap {
-    @apply absolute right-2.5 top-2.5 h-40 w-56 overflow-hidden rounded-xl border border-white/15 bg-gray-950/70 shadow-xl shadow-black/40;
+    @apply absolute right-2.5 top-2.5 h-40 w-56 overflow-hidden rounded-sm border border-white/15 bg-gray-950/70 shadow-xl shadow-black/40;
   }
 
   #thumbWrap canvas {
@@ -221,7 +263,11 @@
   }
 
   .bar-label {
-    @apply mt-2 flex items-center justify-between gap-2.5 font-mono text-xs text-gray-400;
+    @apply mb-1 mt-2 flex items-center justify-between gap-2.5 font-mono text-xs text-gray-400;
+  }
+
+  #perfBarCacheText {
+    @apply text-gray-200;
   }
 
   .bar {
@@ -229,11 +275,30 @@
   }
 
   .bar > .fill {
-    @apply h-full w-0 bg-gray-300;
+    @apply h-full w-0;
+    background-image: linear-gradient(90deg, rgb(229 231 235), rgb(156 163 175));
+    transition: width 140ms ease;
+  }
+
+  .perf-grid {
+    @apply mb-1 grid items-center gap-x-2.5 gap-y-1.5 text-sm;
+    grid-template-columns: 96px 1fr auto;
+  }
+
+  .perf-grid .k {
+    @apply text-xs text-gray-400;
+  }
+
+  .perf-grid .v {
+    @apply overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-gray-200;
+  }
+
+  .perf-io {
+    @apply row-span-2 flex items-center justify-end pl-2;
   }
 
   dialog {
-    @apply w-[min(560px,calc(100vw-28px))] rounded-xl border border-gray-700 bg-gray-900 p-3.5 text-gray-100 shadow-2xl shadow-black/50;
+    @apply w-[min(560px,calc(100vw-28px))] rounded-sm border border-gray-700 bg-gray-900 p-3.5 text-gray-100 shadow-2xl shadow-black/50;
   }
 
   dialog::backdrop {
@@ -241,7 +306,7 @@
   }
 
   #selRect {
-    @apply pointer-events-none absolute hidden rounded-lg border-2 border-dashed border-gray-300 bg-gray-500/20;
+    @apply pointer-events-none absolute hidden rounded-sm border-2 border-dashed border-gray-300 bg-gray-500/20;
   }
 
   .ds-list {
@@ -249,7 +314,7 @@
   }
 
   .ds-item {
-    @apply flex cursor-pointer items-start justify-between gap-2 rounded-xl border border-gray-700 bg-gray-800/70 px-2.5 py-2;
+    @apply flex cursor-pointer items-start justify-between gap-2 rounded-sm border border-gray-700 bg-gray-800/70 px-2.5 py-2;
   }
 
   .ds-item:hover {
@@ -269,15 +334,15 @@
   }
 
   .ds-item .actions {
-    @apply flex gap-1.5;
+    @apply flex items-center self-center gap-1.5;
   }
 
   .ds-item .actions .btn {
-    @apply rounded-lg px-2 py-1 text-xs;
+    @apply rounded-sm px-2 py-1 text-xs;
   }
 
   .search {
-    @apply w-full rounded-xl border border-gray-700 bg-gray-950 px-2.5 py-2 font-mono text-xs text-gray-100;
+    @apply w-full rounded-sm border border-gray-700 bg-gray-950 px-2.5 py-2 font-mono text-xs text-gray-100;
   }
 
   .tree {
@@ -285,7 +350,7 @@
   }
 
   .tree-ds {
-    @apply overflow-hidden rounded-xl border border-gray-700 bg-gray-800/70;
+    @apply overflow-hidden rounded-sm border border-gray-700 bg-gray-800/70;
   }
 
   .tree-head {
@@ -301,7 +366,7 @@
   }
 
   .caret {
-    @apply inline-flex h-6 w-6 items-center justify-center rounded-lg border border-gray-700 bg-transparent p-0 text-gray-100;
+    @apply inline-flex h-6 w-6 items-center justify-center rounded-sm border border-gray-700 bg-transparent p-0 text-gray-100;
   }
 
   .tree-name {
@@ -313,7 +378,7 @@
   }
 
   .tree-head .btn {
-    @apply rounded-lg px-2 py-1 text-xs;
+    @apply rounded-sm px-2 py-1 text-xs;
   }
 
   .tree-bands {
@@ -341,11 +406,11 @@
   }
 
   .band-row .btn {
-    @apply rounded-lg px-2 py-1 text-xs;
+    @apply rounded-sm px-2 py-1 text-xs;
   }
 
   #hist {
-    @apply block h-[170px] w-full touch-none rounded-xl border border-gray-700 bg-gray-950;
+    @apply block h-[170px] w-full touch-none rounded-sm border border-gray-700 bg-gray-950;
     cursor: crosshair;
   }
 
@@ -358,7 +423,7 @@
   }
 
   .spec-panel {
-    @apply absolute bottom-3 left-3 z-10 w-[380px] select-none rounded-xl border border-white/10 bg-gray-900 p-2.5 shadow-2xl shadow-black/50;
+    @apply absolute bottom-3 left-3 z-10 w-[380px] select-none rounded-sm border border-white/10 bg-gray-900 p-2.5 shadow-2xl shadow-black/50;
     pointer-events: auto;
   }
 
@@ -367,7 +432,7 @@
   }
 
   .spec-head-right {
-    @apply flex items-center gap-1.5;
+    @apply flex items-center self-center gap-1.5;
   }
 
   .spec-title {
@@ -379,7 +444,7 @@
   }
 
   .spec-canvas {
-    @apply block h-[190px] w-full rounded-lg border border-white/10 bg-gray-950;
+    @apply block h-[190px] w-full rounded-sm border border-white/10 bg-gray-950;
     position: static;
   }
 
@@ -389,6 +454,25 @@
 
   .btn.tiny {
     @apply px-2 py-1 text-xs;
+  }
+
+  .icon-btn {
+    @apply inline-flex h-8 w-8 items-center justify-center p-0 leading-none;
+  }
+
+  .icon-btn svg,
+  .icon-btn .lucide {
+    display: block;
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.5;
+  }
+
+  .tree-head .icon-btn,
+  .ds-item .actions .icon-btn,
+  .spec-head-right .icon-btn {
+    @apply h-8 w-8 shrink-0 p-0;
+    margin: 0;
   }
 
   @media (max-width: 1200px) {
@@ -439,3 +523,4 @@
   background: rgb(229 231 235);
   border: 1px solid rgb(75 85 99);
 }
+

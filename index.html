@@ -86,19 +86,21 @@
       <div class="divider"></div>
 
       <h3 style="margin:0 0 8px 0; font-size:14px;">Performance (active)</h3>
-      <div class="kv">
-        <div class="k">Chunk cache</div><div class="v" id="perfCache">0 MB</div>
-        <div class="k">Pyramid</div><div class="v" id="perfPyramid">0 MB</div>
+      <div class="perf-grid">
+        <div class="k">Chunk cache</div>
+        <div class="v" id="perfCache">0 MB</div>
+        <div class="perf-io" rowspan="2">
+          <label class="toggle tiny switch" title="Toggle sequential vs parallel reads. Parallel usually helps SSDs; sequential can be smoother on some systems.">
+            <input type="checkbox" id="chkIOParallel" checked />
+            <span>Parallel I/O</span>
+          </label>
+        </div>
+        <div class="k">Pyramid</div>
+        <div class="v" id="perfPyramid">0 MB</div>
       </div>
 
-      <div class="bar-label"><span>Cache resident / cap</span><span id="perfBarCacheText">—</span></div>
+      <div class="bar-label"><span>Cache capacity</span><span id="perfBarCacheText">—</span></div>
       <div class="bar" aria-label="Cache usage"><div class="fill" id="perfBarCacheFill"></div></div>
-
-      <div style="height:10px"></div>
-      <label class="toggle tiny" title="Toggle sequential vs parallel reads. Parallel usually helps SSDs; sequential can be smoother on some systems.">
-        <input type="checkbox" id="chkIOParallel" checked />
-        <span>Parallel I/O</span>
-      </label>
     </div>
   </aside>
 
@@ -127,7 +129,9 @@
         </div>
         <div class="spec-head-right">
           <button class="btn tiny" id="btnSpecCSV" title="Export spectrum as CSV">CSV</button>
-          <button class="btn ghost tiny" id="btnSpecClose" title="Close spectrum">✕</button>
+          <button class="btn ghost tiny icon-btn" id="btnSpecClose" title="Close spectrum" aria-label="Close spectrum">
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
         </div>
       </div>
       <canvas id="specCanvas" class="spec-canvas"></canvas>

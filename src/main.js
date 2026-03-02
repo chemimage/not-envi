@@ -7,6 +7,7 @@ import { createRenderer } from "./render/render-main.js";
 import { createSpectrumController } from "./render/spectrum.js";
 import { createThumbnailController } from "./render/thumbnail.js";
 import { bindCoreEvents } from "./ui/events.js";
+import { createIcons, X } from "lucide";
 import "./app/runtime.js";
 
 // Bootstraps modular seams for progressive migration while preserving current behavior.
@@ -21,3 +22,5 @@ void createSpectrumController;
 void createExportService;
 void addDatasetsFromFileList;
 void bindCoreEvents;
+
+createIcons({ icons: { X } });

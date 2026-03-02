@@ -1,3 +1,5 @@
+import { createIcons, X } from "lucide";
+
 export function createUIPanels(deps) {
   const {
     state,
@@ -131,9 +133,10 @@ export function createUIPanels(deps) {
       meta.textContent = `${ds.meta.bands} bands`;
 
       const btnClose = document.createElement("button");
-      btnClose.className = "btn danger";
-      btnClose.textContent = "Close";
+      btnClose.className = "btn danger icon-btn";
       btnClose.title = "Close dataset";
+      btnClose.ariaLabel = "Close dataset";
+      btnClose.innerHTML = '<i data-lucide="x" aria-hidden="true"></i>';
       btnClose.onclick = (ev) => {
         ev.stopPropagation();
         closeDataset(ds.id);
@@ -187,6 +190,7 @@ export function createUIPanels(deps) {
       els.bandTree.appendChild(node);
     }
 
+    createIcons({ icons: { X }, attrs: { "aria-hidden": "true" } });
     if (preserveScroll) els.bandTree.scrollTop = prevScroll;
   }
 
@@ -313,8 +317,10 @@ export function createUIPanels(deps) {
       const actions = document.createElement("div");
       actions.className = "actions";
       const btnClose = document.createElement("button");
-      btnClose.className = "btn danger";
-      btnClose.textContent = "Close";
+      btnClose.className = "btn danger icon-btn";
+      btnClose.title = "Close dataset";
+      btnClose.ariaLabel = "Close dataset";
+      btnClose.innerHTML = '<i data-lucide="x" aria-hidden="true"></i>';
       btnClose.onclick = (ev) => {
         ev.stopPropagation();
         closeDataset(ds.id);
@@ -325,6 +331,7 @@ export function createUIPanels(deps) {
       div.appendChild(actions);
       els.datasetList.appendChild(div);
     }
+    createIcons({ icons: { X }, attrs: { "aria-hidden": "true" } });
   }
 
   function updateMetaUI() {
