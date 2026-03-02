@@ -18,7 +18,7 @@ html = html.replace(/<script\s+[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/g, (
   const rel = src.replace(/^\//, "");
   if (rel.startsWith("http://") || rel.startsWith("https://")) return _m;
   const js = fileText(rel);
-  return `<script>${js}</script>`;
+  return `<script type="module">${js}</script>`;
 });
 
 const assetsDir = path.join(distDir, "assets");
