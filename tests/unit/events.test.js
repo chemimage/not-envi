@@ -66,4 +66,51 @@ describe("interaction controller", () => {
     expect(render).toHaveBeenCalledTimes(1);
     expect(updateZoomLabel).toHaveBeenCalledTimes(1);
   });
+
+  test("touch handlers prevent browser defaults and clear touch pointers on up", () => {
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout").mockImplementation(() => 1);
+    const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 1000 } };
+    const state = {
+      selection: { enabled: false, drawing: false, imgRect: null },
+      mouse: {}
+    };
+    const els = {
+      selRect: { style: { display: "none" } },
+      main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      zoom: { value: "0" }
+    };
+
+    const controller = createInteractionController({
+      els,
+      state,
+      getActive: () => ds,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      setStatus: () => {},
+      updateHud: () => {},
+      screenToImage: (sx, sy) => ({ x: sx, y: sy }),
+      clampView: () => {},
+      render: () => {},
+      minScaleFor: () => 1,
+      scaleToSlider: (s) => s,
+      updateZoomLabel: () => {}
+    });
+
+    const down1 = { pointerType: "touch", pointerId: 1, clientX: 10, clientY: 10, preventDefault: vi.fn() };
+    controller.onPointerDown(down1);
+    expect(down1.preventDefault).toHaveBeenCalledTimes(1);
+
+    const move1 = { pointerType: "touch", pointerId: 1, clientX: 11, clientY: 12, preventDefault: vi.fn() };
+    controller.onPointerMove(move1);
+    expect(move1.preventDefault).toHaveBeenCalledTimes(1);
+
+    const up1 = { pointerType: "touch", pointerId: 1, preventDefault: vi.fn() };
+    controller.onPointerUp(up1);
+    expect(up1.preventDefault).toHaveBeenCalledTimes(1);
+
+    const down2 = { pointerType: "touch", pointerId: 2, clientX: 20, clientY: 20, preventDefault: vi.fn() };
+    controller.onPointerDown(down2);
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(2);
+
+    setTimeoutSpy.mockRestore();
+  });
 });
