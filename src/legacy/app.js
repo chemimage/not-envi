@@ -1,4 +1,4 @@
-import { createExportService } from "../export/export-service.js";
+import { createExportDialogController, createExportService } from "../export/export-controller.js";
 import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/envi-loader.js";
 import {
   makeSegmentReader as makeSegmentReaderCore,
@@ -27,6 +27,7 @@ import {
 import { createPyramidController } from "../render/pyramid-cache.js";
 import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
 import { clamp, fmt, fmtNoGroup, fmtUm, humanBytes } from "../core/utils.js";
+import { bindCoreEvents, createInteractionController } from "../ui/events.js";
 
 (() => {
   'use strict';
@@ -2300,142 +2301,28 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
 // ========= Mouse interaction =========
 
-  function updateSelectionRect(){
-    const x0 = Math.min(state.selection.x0, state.selection.x1);
-    const y0 = Math.min(state.selection.y0, state.selection.y1);
-    const x1 = Math.max(state.selection.x0, state.selection.x1);
-    const y1 = Math.max(state.selection.y0, state.selection.y1);
+  const interactions = createInteractionController({
+    els,
+    state,
+    getActive,
+    clamp,
+    setStatus,
+    updateHud,
+    screenToImage,
+    clampView,
+    render,
+    minScaleFor,
+    scaleToSlider,
+    updateZoomLabel,
+  });
 
-    els.selRect.style.display = 'block';
-    els.selRect.style.left = x0 + 'px';
-    els.selRect.style.top = y0 + 'px';
-    els.selRect.style.width = Math.max(1, x1-x0) + 'px';
-    els.selRect.style.height = Math.max(1, y1-y0) + 'px';
-  }
-
-  function clearSelection(){
-    state.selection.drawing = false;
-    state.selection.imgRect = null;
-    els.selRect.style.display = 'none';
-  }
-
-  function finalizeSelection(){
-    const ds = getActive();
-    if (!ds) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const x0 = Math.min(state.selection.x0, state.selection.x1) * dpr;
-    const y0 = Math.min(state.selection.y0, state.selection.y1) * dpr;
-    const x1 = Math.max(state.selection.x0, state.selection.x1) * dpr;
-    const y1 = Math.max(state.selection.y0, state.selection.y1) * dpr;
-
-    const a = screenToImage(x0, y0);
-    const b = screenToImage(x1, y1);
-
-    const ix0 = Math.floor(Math.min(a.x, b.x));
-    const iy0 = Math.floor(Math.min(a.y, b.y));
-    const ix1 = Math.ceil(Math.max(a.x, b.x));
-    const iy1 = Math.ceil(Math.max(a.y, b.y));
-
-    state.selection.imgRect = {
-      x0: clamp(ix0, 0, ds.meta.samples),
-      y0: clamp(iy0, 0, ds.meta.lines),
-      x1: clamp(ix1, 0, ds.meta.samples),
-      y1: clamp(iy1, 0, ds.meta.lines),
-    };
-  }
-
-  function onPointerDown(ev){
-    const ds = getActive();
-    if (!ds) return;
-    const rect = els.main.getBoundingClientRect();
-    state.mouse.dragging = true;
-    state.mouse.lastX = ev.clientX - rect.left;
-    state.mouse.lastY = ev.clientY - rect.top;
-
-    if (state.selection.enabled){
-      state.selection.drawing = true;
-      state.selection.x0 = state.mouse.lastX;
-      state.selection.y0 = state.mouse.lastY;
-      state.selection.x1 = state.mouse.lastX;
-      state.selection.y1 = state.mouse.lastY;
-      updateSelectionRect();
-    }
-  }
-
-  function onPointerMove(ev){
-    const ds = getActive();
-    const rect = els.main.getBoundingClientRect();
-    state.mouse.in = true;
-    state.mouse.x = ev.clientX - rect.left;
-    state.mouse.y = ev.clientY - rect.top;
-
-    if (ds && state.mouse.dragging && !state.selection.drawing){
-      const dx = state.mouse.x - state.mouse.lastX;
-      const dy = state.mouse.y - state.mouse.lastY;
-      state.mouse.lastX = state.mouse.x;
-      state.mouse.lastY = state.mouse.y;
-
-      ds.view.x -= dx / ds.view.scale;
-      ds.view.y -= dy / ds.view.scale;
-      clampView();
-      render();
-    }
-
-    if (state.selection.drawing){
-      state.selection.x1 = state.mouse.x;
-      state.selection.y1 = state.mouse.y;
-      updateSelectionRect();
-    }
-
-    updateHud();
-  }
-
-  function onPointerUp(){
-    state.mouse.dragging = false;
-    if (state.selection.drawing){
-      state.selection.drawing = false;
-      finalizeSelection();
-      setStatus('ready','ok');
-    }
-  }
-
-  function onPointerLeave(){
-    state.mouse.in = false;
-    state.mouse.dragging = false;
-  }
-
-  function zoomAt(factor, sx, sy){
-    const ds = getActive();
-    if (!ds) return;
-
-    const before = screenToImage(sx, sy);
-    const minS = minScaleFor(ds);
-    ds.view.scale = clamp(ds.view.scale * factor, minS, 128);
-    const after = screenToImage(sx, sy);
-
-    ds.view.x += (before.x - after.x);
-    ds.view.y += (before.y - after.y);
-
-    clampView();
-    els.zoom.value = String(scaleToSlider(ds.view.scale));
-    updateZoomLabel();
-    render();
-  }
-
-  function onWheel(ev){
-    const ds = getActive();
-    if (!ds) return;
-    ev.preventDefault();
-    const rect = els.main.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const sx = (ev.clientX - rect.left) * dpr;
-    const sy = (ev.clientY - rect.top) * dpr;
-
-    const factor = ev.deltaY < 0 ? 1.25 : 0.8;
-    zoomAt(factor, sx, sy);
-  }
-
+  function clearSelection(){ interactions.clearSelection(); }
+  function onPointerDown(ev){ interactions.onPointerDown(ev); }
+  function onPointerMove(ev){ interactions.onPointerMove(ev); }
+  function onPointerUp(){ interactions.onPointerUp(); }
+  function onPointerLeave(){ interactions.onPointerLeave(); }
+  function zoomAt(factor, sx, sy){ interactions.zoomAt(factor, sx, sy); }
+  function onWheel(ev){ interactions.onWheel(ev); }
   // ========= Export =========
 
   const exportService = createExportService({
@@ -2454,6 +2341,15 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     alertFn: (msg) => alert(msg),
     confirmFn: (msg) => confirm(msg),
   });
+  const exportDialog = createExportDialogController({
+    state,
+    els,
+    getActive,
+    bandLabel,
+    humanBytes,
+    resolveExportRect: (ds, scope) => exportService.resolveExportRect(ds, scope),
+    alertFn: (msg) => alert(msg),
+  });
 
   function sanitizeFilePart(s){ return exportService.sanitizeFilePart(s); }
   function viewRect(ds){ return exportService.viewRect(ds); }
@@ -2461,87 +2357,9 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   function clampRect(ds, rect){ return exportService.clampRect(ds, rect); }
   function resolveExportRect(ds, scope){ return exportService.resolveExportRect(ds, scope); }
 
-  function openExportDialog(kind){
-    const ds = getActive();
-    if (!ds || ds.activeBand == null){
-      alert('Please select a dataset and band first.');
-      return;
-    }
-    state.exportKind = kind;
-
-    const hasSel = !!state.selection.imgRect;
-    els.expTitle.textContent = `Export ${kind.toUpperCase()}`;
-
-    const b = ds.activeBand;
-    els.expInfo.textContent = `${ds.name} • ${bandLabel(ds, b)} (band ${b})`;
-
-    // Raw is TIFF-only.
-    if (kind === 'png'){
-      els.expModeRaw.disabled = true;
-      els.expModeRendered.checked = true;
-    } else {
-      els.expModeRaw.disabled = false;
-      els.expModeRaw.checked = true;
-    }
-
-    els.expLblRawSel.textContent = hasSel ? 'Selection stack (all bands)' : 'Current view stack (all bands)';
-    els.expLblRenSel.textContent = hasSel ? 'Selection' : 'Selection (none)';
-    els.expRenScopeSel.disabled = !hasSel;
-    if (hasSel) els.expRenScopeSel.checked = true;
-    else els.expRenScopeView.checked = true;
-
-    updateExportDialogUI();
-    try { els.exportDlg.showModal(); }
-    catch { els.exportDlg.open = true; }
-  }
-
-  function updateExportDialogUI(){
-    const kind = state.exportKind;
-    // Force rendered mode for PNG.
-    if (kind === 'png' && els.expModeRaw.checked){
-      els.expModeRendered.checked = true;
-    }
-    const mode = (els.expModeRaw.checked && kind === 'tiff') ? 'raw' : 'rendered';
-    els.expRawOptions.style.display = (mode === 'raw') ? 'block' : 'none';
-    els.expRenderedOptions.style.display = (mode === 'rendered') ? 'block' : 'none';
-    updateExportEstimate();
-  }
-
-  function updateExportEstimate(){
-    const ds = getActive();
-    if (!ds){
-      els.expEstimate.textContent = 'Estimated output: —';
-      els.expNote.textContent = '—';
-      els.expWarning.style.display = 'none';
-      return;
-    }
-
-    const kind = state.exportKind;
-    const mode = (els.expModeRaw.checked && kind === 'tiff') ? 'raw' : 'rendered';
-
-    let rect;
-    let estBytes = 0;
-
-    if (mode === 'raw'){
-      const scope = els.expRawScopeWhole.checked ? 'whole' : 'sel';
-      rect = resolveExportRect(ds, scope);
-      const bpp = ds.meta.dataTypeInfo.bytes;
-      estBytes = rect.w * rect.h * ds.meta.bands * bpp;
-      els.expNote.innerHTML = `Raw stack (all bands): <b>${rect.w}×${rect.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), uncompressed TIFF.`;
-    } else {
-      const scope = els.expRenScopeWhole.checked ? 'whole' : (els.expRenScopeSel.checked ? 'sel' : 'view');
-      rect = resolveExportRect(ds, scope);
-      estBytes = rect.w * rect.h * 4;
-      els.expNote.innerHTML = `Rendered view: <b>${rect.w}×${rect.h}</b> pixels from the current band.`;
-      if (kind === 'png'){
-        els.expNote.innerHTML += ` <span class="badge">PNG is rendered only</span> (use TIFF for raw).`;
-      }
-    }
-
-    els.expEstimate.textContent = `Estimated output: ${humanBytes(estBytes)}`;
-    const warn = estBytes > (512 * 1024 * 1024) || (rect && rect.w * rect.h > 20_000_000);
-    els.expWarning.style.display = warn ? 'inline-flex' : 'none';
-  }
+  function openExportDialog(kind){ exportDialog.openExportDialog(kind); }
+  function updateExportDialogUI(){ exportDialog.updateExportDialogUI(); }
+  function updateExportEstimate(){ exportDialog.updateExportEstimate(); }
 
   async function runExportFromDialog(){ await exportService.runExportFromDialog(); }
   async function exportRendered(ds, kind, rect){ await exportService.exportRendered(ds, kind, rect); }
@@ -2627,11 +2445,16 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   }
 
 
-  els.main.addEventListener('pointerdown', onPointerDown);
-  window.addEventListener('pointermove', onPointerMove);
-  window.addEventListener('pointerup', onPointerUp);
+  bindCoreEvents({
+    els,
+    handlers: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onWheel,
+    }
+  });
   els.main.addEventListener('pointerleave', onPointerLeave);
-  els.main.addEventListener('wheel', onWheel, {passive:false});
 
   els.thumb.addEventListener('click', onThumbClick);
 
@@ -2893,4 +2716,5 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   })();
 
 })();
+
 

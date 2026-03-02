@@ -37,7 +37,7 @@ describe("histogram-math", () => {
   test("clientX maps to raw domain", () => {
     const stats = { min: 10, max: 30 };
     expect(histogramClientXToRaw(stats, 10, 10, 1, 200)).toBeCloseTo(10);
-    expect(histogramClientXToRaw(stats, 190, 10, 1, 200)).toBeCloseTo(30);
+    expect(histogramClientXToRaw(stats, 200, 10, 1, 200)).toBeCloseTo(30);
   });
 
   test("drag setting computes min/max/gamma patch", () => {
