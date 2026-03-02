@@ -1,0 +1,24 @@
+{
+  "name": "not-envi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:bundle": "vite build",
+    "build:inline": "node scripts/inline-dist.mjs",
+    "build:assert": "node scripts/assert-single-file.mjs",
+    "build": "npm run build:bundle && npm run build:inline && npm run build:assert",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test": "npm run test:unit && npm run test:e2e",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "eslint": "^9.35.0",
+    "jsdom": "^26.1.0",
+    "vite": "^6.4.1",
+    "vitest": "^2.1.8"
+  }
+}
