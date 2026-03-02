@@ -509,7 +509,7 @@
   }
 
   .spec-foot {
-    @apply mt-1.5 text-xs text-gray-400;
+    @apply hidden;
   }
 
   .btn.tiny {

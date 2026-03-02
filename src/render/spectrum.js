@@ -52,7 +52,7 @@ export function createSpectrumController(deps) {
     const dpr = window.devicePixelRatio || 1;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#0a0d13";
+    ctx.fillStyle = "rgb(3, 7, 18)";
     ctx.fillRect(0, 0, W, H);
 
     const padL = Math.round(52 * dpr);
@@ -194,15 +194,15 @@ export function createSpectrumController(deps) {
     const mySeq = ++specSeq;
 
     showSpectrumPanel(true);
+    els.specTitle.textContent = ds.name;
     const sc = ds.meta.scale;
     if (sc && Number.isFinite(sc.umPerPixelX) && Number.isFinite(sc.umPerPixelY)) {
       const xUm = ix * Number(sc.umPerPixelX);
       const yUm = iy * Number(sc.umPerPixelY);
-      els.specSub.textContent = `${ds.name} • x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`;
+      els.specSub.textContent = `x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`;
     } else {
-      els.specSub.textContent = `${ds.name} • px ${ix}, ${iy}`;
+      els.specSub.textContent = `px ${ix}, ${iy}`;
     }
-    els.specFoot.textContent = "Loading spectrum…";
 
     await new Promise((r) => requestAnimationFrame(r));
     if (mySeq !== specSeq) return;
@@ -214,21 +214,10 @@ export function createSpectrumController(deps) {
       drawSpectrumPlot(ds, xVals, yVals);
       specState.xVals = xVals;
       specState.yVals = yVals;
-
-      let ymin = Number.POSITIVE_INFINITY;
-      let ymax = Number.NEGATIVE_INFINITY;
-      for (let i = 0; i < yVals.length; i++) {
-        const v = yVals[i];
-        if (!Number.isFinite(v)) continue;
-        ymin = Math.min(ymin, v);
-        ymax = Math.max(ymax, v);
-      }
-      if (!Number.isFinite(ymin) || !Number.isFinite(ymax)) { ymin = 0; ymax = 0; }
-      els.specFoot.textContent = `Bands: ${ds.meta.bands} • Value range: ${formatAxisNumber(ymin)} … ${formatAxisNumber(ymax)} • Double‑click another point to update.`;
       updatePerf();
     } catch (e) {
       console.error(e);
-      els.specFoot.textContent = "Failed to read spectrum. See console.";
+      els.specSub.textContent = "Failed to read spectrum.";
     }
   }
 
