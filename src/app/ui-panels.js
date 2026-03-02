@@ -140,20 +140,9 @@ export function createUIPanels(deps) {
       meta.className = "tree-meta";
       meta.textContent = `${ds.meta.bands} bands`;
 
-      const btnClose = document.createElement("button");
-      btnClose.className = "btn danger icon-btn";
-      btnClose.title = "Close dataset";
-      btnClose.ariaLabel = "Close dataset";
-      btnClose.innerHTML = '<i data-lucide="x" aria-hidden="true"></i>';
-      btnClose.onclick = (ev) => {
-        ev.stopPropagation();
-        closeDataset(ds.id);
-      };
-
       head.appendChild(caret);
       head.appendChild(name);
       head.appendChild(meta);
-      head.appendChild(btnClose);
       head.onclick = () => {
         if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
       };
@@ -185,16 +174,6 @@ export function createUIPanels(deps) {
           lab.textContent = label;
           lab.title = `Band ${b}`;
           row.appendChild(lab);
-
-          const btn = document.createElement("button");
-          btn.className = "btn";
-          btn.textContent = "View";
-          btn.onclick = (ev) => {
-            ev.stopPropagation();
-            if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
-            setActiveBand(ds, b);
-          };
-          row.appendChild(btn);
           bandsWrap.appendChild(row);
         }
         node.appendChild(bandsWrap);
@@ -213,7 +192,6 @@ export function createUIPanels(deps) {
       }
     }
 
-    createIcons({ icons: { X }, attrs: { "aria-hidden": "true" } });
     if (preserveScroll) els.bandTree.scrollTop = prevScroll;
   }
 

@@ -439,9 +439,6 @@
     @apply whitespace-nowrap font-mono text-xs text-gray-400;
   }
 
-  .tree-head .btn {
-    @apply rounded-sm px-2 py-1 text-xs;
-  }
 
   .tree-bands {
     @apply max-h-64 overflow-auto border-t border-gray-700;
@@ -467,9 +464,6 @@
     @apply min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-gray-100;
   }
 
-  .band-row .btn {
-    @apply rounded-sm px-2 py-1 text-xs;
-  }
 
   #hist {
     @apply block h-[170px] w-full touch-none rounded-sm border border-gray-700 bg-gray-950;
