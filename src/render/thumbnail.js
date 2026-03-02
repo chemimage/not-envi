@@ -4,7 +4,6 @@ export function createThumbnailController(deps) {
   const {
     els,
     thumbCtx,
-    now,
     toFloat32,
     tone01,
     resolveDisplayRange,
@@ -41,6 +40,36 @@ export function createThumbnailController(deps) {
     return { twCss, thCss };
   }
 
+  function createImageDataCompat(width, height) {
+    if (typeof ImageData !== "undefined") {
+      return new ImageData(width, height);
+    }
+    return { width, height, data: new Uint8ClampedArray(width * height * 4) };
+  }
+
+  function isJsdomRuntime() {
+    return typeof navigator !== "undefined" && /jsdom/i.test(String(navigator.userAgent || ""));
+  }
+
+  function calcThumbPixels() {
+    const { twCss, thCss } = syncThumbWrapSize();
+    const dpr = getDevicePixelRatio();
+    return {
+      tw: Math.max(1, Math.floor(twCss * dpr)),
+      th: Math.max(1, Math.floor(thCss * dpr)),
+      dpr
+    };
+  }
+
+  function ensureThumbCanvasSize(tw, th) {
+    if (els.thumb.width !== tw) els.thumb.width = tw;
+    if (els.thumb.height !== th) els.thumb.height = th;
+  }
+
+  function thumbBuildKey(ds, tw, th) {
+    return `${ds.id || "ds"}:${ds.activeBand}:${tw}x${th}`;
+  }
+
   async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step) {
     let raw;
     if (ds.meta.interleave === "bip") {
@@ -59,7 +88,7 @@ export function createThumbnailController(deps) {
       contrast: clamp(settings.contrast ?? 1, 0.1, 3.0)
     };
 
-    const img = new ImageData(outW, outH);
+    const img = createImageDataCompat(outW, outH);
     const dst = img.data;
     for (let i = 0, j = 0; i < f32.length; i++, j += 4) {
       const t = tone01(f32[i], params.minVal, params.maxVal, params.gamma, params.gain, params.contrast);
@@ -72,14 +101,13 @@ export function createThumbnailController(deps) {
     return img;
   }
 
-  async function buildThumbnail(ds) {
+  async function buildThumbnail(ds, buildKey, tw, th) {
     if (!ds) return;
-    const { twCss, thCss } = syncThumbWrapSize();
-    const dpr = getDevicePixelRatio();
-    const tw = Math.floor(twCss * dpr);
-    const th = Math.floor(thCss * dpr);
-    els.thumb.width = tw;
-    els.thumb.height = th;
+    if (isJsdomRuntime()) return;
+    ensureThumbCanvasSize(tw, th);
+    const seq = (ds.thumb.buildSeq || 0) + 1;
+    ds.thumb.buildSeq = seq;
+    ds.thumb.buildPendingKey = buildKey;
 
     const stepX = Math.ceil(ds.meta.samples / tw);
     const stepY = Math.ceil(ds.meta.lines / th);
@@ -90,6 +118,7 @@ export function createThumbnailController(deps) {
 
     try {
       const img = await renderWindowToImageData(ds, ds.activeBand, 0, 0, outW, outH, step);
+      if (ds.thumb.buildSeq !== seq) return;
       thumbCtx.save();
       thumbCtx.imageSmoothingEnabled = false;
       thumbCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -117,9 +146,11 @@ export function createThumbnailController(deps) {
       ds.thumb.y0 = dy;
       ds.thumb.w = dw;
       ds.thumb.h = dh;
-      ds.thumb._t = now();
+      ds.thumb.buildKey = buildKey;
+      ds.thumb.buildPendingKey = null;
     } catch (e) {
       console.warn("thumb error", e);
+      if (ds.thumb.buildSeq === seq) ds.thumb.buildPendingKey = null;
     }
   }
 
@@ -127,25 +158,26 @@ export function createThumbnailController(deps) {
     const ds = getActive();
     els.thumbWrap.style.display = "block";
     if (!ds) return;
-    syncThumbWrapSize();
+    const { tw, th, dpr } = calcThumbPixels();
+    ensureThumbCanvasSize(tw, th);
 
-    if (!ds.thumb.ready || (now() - (ds.thumb._t || 0)) > 1500) {
-      buildThumbnail(ds);
+    const key = thumbBuildKey(ds, tw, th);
+    const needsBuild = !ds.thumb.ready || ds.thumb.buildKey !== key;
+    if (needsBuild && ds.thumb.buildPendingKey !== key) {
+      void buildThumbnail(ds, key, tw, th);
+    }
+
+    if (!ds.thumb.base) {
       return;
     }
 
-    if (ds.thumb.base) {
-      const tw = els.thumb.width;
-      const th = els.thumb.height;
-      thumbCtx.save();
-      thumbCtx.imageSmoothingEnabled = false;
-      thumbCtx.setTransform(1, 0, 0, 1, 0, 0);
-      thumbCtx.clearRect(0, 0, tw, th);
-      thumbCtx.drawImage(ds.thumb.base, 0, 0, ds.thumb.baseW, ds.thumb.baseH, ds.thumb.x0, ds.thumb.y0, ds.thumb.w, ds.thumb.h);
-      thumbCtx.restore();
-    }
+    thumbCtx.save();
+    thumbCtx.imageSmoothingEnabled = false;
+    thumbCtx.setTransform(1, 0, 0, 1, 0, 0);
+    thumbCtx.clearRect(0, 0, tw, th);
+    thumbCtx.drawImage(ds.thumb.base, 0, 0, ds.thumb.baseW, ds.thumb.baseH, ds.thumb.x0, ds.thumb.y0, ds.thumb.w, ds.thumb.h);
+    thumbCtx.restore();
 
-    const dpr = getDevicePixelRatio();
     const eff = ds.view.scale * dpr;
     const viewW = els.cpuCanvas.width / eff;
     const viewH = els.cpuCanvas.height / eff;

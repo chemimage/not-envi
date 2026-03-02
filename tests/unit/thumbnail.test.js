@@ -14,19 +14,25 @@ function makeThumbCtx() {
 }
 
 describe("thumbnail controller", () => {
-  test("renderThumbnail hides panel when disabled", () => {
+  test("renderThumbnail keeps panel visible", () => {
     const render = vi.fn();
-    const ds = { thumb: { ready: false } };
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      meta: { samples: 100, lines: 50, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 1 },
+      thumb: { ready: false }
+    };
     const els = {
-      chkThumb: { checked: false },
       thumbWrap: { style: { display: "block" } },
+      main: { getBoundingClientRect: () => ({ width: 800, height: 400 }) },
       thumb: { width: 200, height: 120, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
       cpuCanvas: { width: 800, height: 600 }
     };
     const ctrl = createThumbnailController({
       els,
       thumbCtx: makeThumbCtx(),
-      now: () => 0,
       toFloat32: (x) => x,
       tone01: () => 0,
       resolveDisplayRange: () => ({ minVal: 0, maxVal: 1 }),
@@ -39,7 +45,7 @@ describe("thumbnail controller", () => {
     });
 
     ctrl.renderThumbnail();
-    expect(els.thumbWrap.style.display).toBe("none");
+    expect(els.thumbWrap.style.display).toBe("block");
     expect(render).not.toHaveBeenCalled();
   });
 
@@ -51,15 +57,14 @@ describe("thumbnail controller", () => {
       thumb: { ready: true, x0: 0, y0: 0, w: 200, h: 100 }
     };
     const els = {
-      chkThumb: { checked: true },
       thumbWrap: { style: { display: "none" } },
+      main: { getBoundingClientRect: () => ({ width: 800, height: 400 }) },
       thumb: { width: 200, height: 100, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
       cpuCanvas: { width: 100, height: 50 }
     };
     const ctrl = createThumbnailController({
       els,
       thumbCtx: makeThumbCtx(),
-      now: () => 0,
       toFloat32: (x) => x,
       tone01: () => 0,
       resolveDisplayRange: () => ({ minVal: 0, maxVal: 1 }),
