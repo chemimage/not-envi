@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ENVI Local Viewer (single band + histogram + WebGPU)</title>
+  <title>not ENVI</title>
   <link rel="stylesheet" href="/src/styles/app.css" />
 </head>
 <body>
@@ -35,8 +35,7 @@
 
     <div class="group">
       <button class="btn" id="btnSelect" title="Draw a rectangle to export a region">Select</button>
-      <button class="btn" id="btnExportPNG">Export PNG</button>
-      <button class="btn" id="btnExportTIFF">Export TIFF</button>
+      <button class="btn" id="btnExport">Export</button>
     </div>
 
     <div class="spacer"></div>
@@ -203,6 +202,19 @@
     <span class="badge" id="expEstimate">Estimated output: —</span>
   </div>
   <div class="hint tiny" id="expInfo" style="margin-top:6px;">—</div>
+
+  <div class="divider"></div>
+
+  <div class="row" style="flex-wrap:wrap;">
+    <label class="toggle" title="Choose export file format">
+      <input type="radio" id="expFormatPng" name="expFormat" value="png" />
+      <span>PNG</span>
+    </label>
+    <label class="toggle" title="Choose export file format">
+      <input type="radio" id="expFormatTiff" name="expFormat" value="tiff" checked />
+      <span>TIFF</span>
+    </label>
+  </div>
 
   <div class="divider"></div>
 

@@ -145,6 +145,7 @@ import { APP_CONFIG } from "./config.js";
   const cacheRuntime = createCacheRuntime({
     state,
     clamp,
+    appConfig: APP_CONFIG,
     updatePerf: () => updatePerf(),
     updatePyramidInflight: (ds) => pyramid.updateInflightForIO(ds),
     getIOConcurrencyMax: () => IO_CONCURRENCY_MAX,
@@ -469,7 +470,7 @@ import { APP_CONFIG } from "./config.js";
 
   function sanitizeFilePart(s){ return exportService.sanitizeFilePart(s); }
 
-  function openExportDialog(kind){ exportDialog.openExportDialog(kind); }
+  function openExportDialog(){ exportDialog.openExportDialog(); }
   function updateExportDialogUI(){ exportDialog.updateExportDialogUI(); }
   function updateExportEstimate(){ exportDialog.updateExportEstimate(); }
 

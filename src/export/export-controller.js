@@ -11,25 +11,29 @@ export function createExportDialogController(deps) {
     alertFn
   } = deps;
 
-  function openExportDialog(kind) {
+  function selectedKind() {
+    return deps.els.expFormatPng.checked ? "png" : "tiff";
+  }
+
+  function openExportDialog() {
     const ds = getActive();
     if (!ds || ds.activeBand == null) {
       alertFn("Please select a dataset and band first.");
       return;
     }
-    state.exportKind = kind;
+    if (!els.expFormatPng.checked && !els.expFormatTiff.checked) {
+      els.expFormatTiff.checked = true;
+    }
+    state.exportKind = selectedKind();
 
     const hasSel = !!state.selection.imgRect;
-    els.expTitle.textContent = `Export ${kind.toUpperCase()}`;
+    els.expTitle.textContent = "Export";
 
     const b = ds.activeBand;
     els.expInfo.textContent = `${ds.name} • ${bandLabel(ds, b)} (band ${b})`;
-
-    if (kind === "png") {
-      els.expModeRaw.disabled = true;
+    if (state.exportKind === "png") {
       els.expModeRendered.checked = true;
     } else {
-      els.expModeRaw.disabled = false;
       els.expModeRaw.checked = true;
     }
 
@@ -44,10 +48,12 @@ export function createExportDialogController(deps) {
   }
 
   function updateExportDialogUI() {
-    const kind = state.exportKind;
+    const kind = selectedKind();
+    state.exportKind = kind;
     if (kind === "png" && els.expModeRaw.checked) {
       els.expModeRendered.checked = true;
     }
+    els.expModeRaw.disabled = (kind === "png");
     const mode = (els.expModeRaw.checked && kind === "tiff") ? "raw" : "rendered";
     els.expRawOptions.style.display = (mode === "raw") ? "block" : "none";
     els.expRenderedOptions.style.display = (mode === "rendered") ? "block" : "none";
@@ -63,7 +69,8 @@ export function createExportDialogController(deps) {
       return;
     }
 
-    const kind = state.exportKind;
+    const kind = selectedKind();
+    state.exportKind = kind;
     const mode = (els.expModeRaw.checked && kind === "tiff") ? "raw" : "rendered";
 
     let rect;

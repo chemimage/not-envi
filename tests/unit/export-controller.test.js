@@ -5,6 +5,8 @@ function makeEls() {
   return {
     expTitle: { textContent: "" },
     expInfo: { textContent: "" },
+    expFormatPng: { checked: false },
+    expFormatTiff: { checked: true },
     expModeRaw: { disabled: false, checked: false },
     expModeRendered: { checked: false },
     expLblRawSel: { textContent: "" },
@@ -35,7 +37,7 @@ describe("export dialog controller", () => {
       resolveExportRect: () => ({ w: 1, h: 1 }),
       alertFn
     });
-    ctrl.openExportDialog("png");
+    ctrl.openExportDialog();
     expect(alertFn).toHaveBeenCalledTimes(1);
   });
 
@@ -57,7 +59,14 @@ describe("export dialog controller", () => {
       alertFn: () => {}
     });
 
-    ctrl.openExportDialog("png");
+    ctrl.openExportDialog();
+    expect(state.exportKind).toBe("tiff");
+    expect(els.expModeRaw.disabled).toBe(false);
+    expect(els.expEstimate.textContent).toContain("8000 B");
+
+    els.expFormatPng.checked = true;
+    els.expFormatTiff.checked = false;
+    ctrl.updateExportDialogUI();
     expect(state.exportKind).toBe("png");
     expect(els.expModeRaw.disabled).toBe(true);
     expect(els.expModeRendered.checked).toBe(true);

@@ -161,9 +161,10 @@ export function wireApp(deps) {
     }
   };
 
-  els.btnExportPNG.onclick = () => openExportDialog("png");
-  els.btnExportTIFF.onclick = () => openExportDialog("tiff");
+  els.btnExport.onclick = () => openExportDialog();
 
+  els.expFormatPng.oninput = () => updateExportDialogUI();
+  els.expFormatTiff.oninput = () => updateExportDialogUI();
   els.expModeRaw.oninput = () => updateExportDialogUI();
   els.expModeRendered.oninput = () => updateExportDialogUI();
   els.expRawScopeSel.oninput = () => updateExportEstimate();

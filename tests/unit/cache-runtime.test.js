@@ -51,4 +51,16 @@ describe("cache runtime", () => {
     expect(state.datasets[0].pyramidBudgetBytes).toBeGreaterThan(0);
     expect(state.datasets[0].pyramid.limitBytes).toBe(state.datasets[0].pyramidBudgetBytes);
   });
+
+  test("reads cache fraction from config", () => {
+    const cache = createCacheRuntime({
+      state: { datasets: [], ioParallel: true },
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      appConfig: { cache: { maxSystemMemoryFraction: 0.2 } },
+      updatePerf: () => {},
+      updatePyramidInflight: () => {},
+      getIOConcurrencyMax: () => 2
+    });
+    expect(cache.cacheBudget.fracOfAvailable).toBeCloseTo(0.2);
+  });
 });

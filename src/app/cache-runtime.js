@@ -2,13 +2,17 @@ export function createCacheRuntime(deps) {
   const {
     state,
     clamp,
+    appConfig,
     updatePerf,
     updatePyramidInflight,
     getIOConcurrencyMax
   } = deps;
 
+  const configuredFraction = Number(appConfig?.cache?.maxSystemMemoryFraction);
+  const cacheFraction = Number.isFinite(configuredFraction) ? clamp(configuredFraction, 0.05, 0.80) : 0.20;
+
   const cacheBudget = {
-    fracOfAvailable: 0.40,
+    fracOfAvailable: cacheFraction,
     minBytes: 256 * 1024 * 1024,
     maxBytes: 3 * 1024 * 1024 * 1024,
     fracChunk: 0.60,

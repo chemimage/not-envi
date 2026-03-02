@@ -116,7 +116,8 @@ export function createExportService(deps) {
   async function runExportFromDialog() {
     const ds = deps.getActive();
     if (!ds || ds.activeBand == null) return;
-    const kind = deps.state.exportKind;
+    const kind = deps.els.expFormatPng.checked ? "png" : "tiff";
+    deps.state.exportKind = kind;
 
     try {
       deps.els.exportDlg.close();
