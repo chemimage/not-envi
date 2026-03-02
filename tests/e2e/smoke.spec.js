@@ -11,7 +11,10 @@ test("app boots and core controls are present", async ({ page }) => {
   await expect(page.locator("#statusBadge")).toBeVisible();
   await expect(page.locator("#dropzone")).toBeVisible();
   await expect(page.locator("#btnFit")).toBeVisible();
-  await expect(page.locator("#zoom")).toBeVisible();
+  await expect(page.locator("#btnSelect")).toBeVisible();
+  await expect(page.locator("#btnExport")).toBeVisible();
+  await expect(page.locator("#chkGrid")).toBeVisible();
+  await expect(page.locator("#chkScale")).toBeVisible();
   await expect(page.locator("#bandTree")).toBeVisible();
   expect(errors).toEqual([]);
 });
