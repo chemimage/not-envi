@@ -41,10 +41,10 @@ export function createDatasetRuntime(deps) {
     return `Band ${b}`;
   }
 
-  function setActiveDataset(id, { fit = false } = {}) {
+  function setActiveDataset(id, { fit = false, preserveBandTreeScroll = false } = {}) {
     state.activeId = id;
     closeSpectrum();
-    onAfterDatasetUIUpdate();
+    onAfterDatasetUIUpdate({ preserveBandTreeScroll });
     const ds = getActive();
     updateZoomRange(ds);
     if (fit) fitToScreen();
@@ -69,7 +69,7 @@ export function createDatasetRuntime(deps) {
       pyramid: null,
       lastRaster: null
     };
-    ds.bandSettings.set(ds.activeBand, { min: null, max: null, gamma: 1, gain: 1, contrast: 1 });
+    ds.bandSettings.set(ds.activeBand, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 });
     return ds;
   }
 

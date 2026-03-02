@@ -141,12 +141,6 @@
       <h2>Bands & display</h2>
     </div>
     <div class="panel-body">
-      <div class="hint">
-        Select a band (one at a time). Adjust contrast using the histogram: drag the <b>left/right</b> handles for min/max, and the <b>middle</b> handle for gamma midpoint.
-      </div>
-
-      <div class="divider"></div>
-
       <div class="row">
         <input id="bandSearch" class="search grow" placeholder="Search: band index, wavelength, or text…" />
         <button class="btn" id="btnExpandAll" title="Expand all dataset nodes">Expand</button>
@@ -177,20 +171,6 @@
 
       <div style="height:8px"></div>
       <canvas id="hist"></canvas>
-      <div class="hint tiny" style="margin-top:6px;">
-        Handles: <span class="badge" id="lblRange">min —  max —  γ —</span>
-      </div>
-
-      <div class="divider"></div>
-
-      <h3 style="margin:0 0 8px 0; font-size:14px;">Display controls</h3>
-
-      <label class="small">Display range</label>
-      <div class="range-wrap" style="margin-top:6px;">
-        <input id="rangeMin" type="range" min="0" max="1" step="0.0005" value="0" />
-        <input id="rangeMax" type="range" min="0" max="1" step="0.0005" value="1" />
-      </div>
-
       <div class="row" style="margin-top:8px;">
         <label class="small">Min</label>
         <input type="number" id="numMin" step="any" />
@@ -198,32 +178,29 @@
         <input type="number" id="numMax" step="any" />
       </div>
 
-      <div class="row" style="margin-top:6px;">
+      <div class="divider"></div>
+
+      <div class="control-row" style="margin-top:6px;">
         <label class="small">Contrast</label>
         <input type="range" id="slContrast" min="0.1" max="3" value="1" step="0.01" />
-        <span class="badge" id="lblContrast">1.00</span>
+        <input type="number" id="numContrast" min="0.1" max="3" value="1" step="0.01" />
       </div>
 
-      <div class="row">
-        <label class="small">Gamma</label>
-        <input type="range" id="slGamma" min="0.10" max="5" value="1" step="0.01" />
-        <span class="badge" id="lblGamma">1.00</span>
+      <div class="control-row">
+        <label class="small">Brightness</label>
+        <input type="range" id="slBrightness" min="-1" max="1" value="0" step="0.01" />
+        <input type="number" id="numBrightness" min="-1" max="1" value="0" step="0.01" />
       </div>
 
-      <div class="row">
+      <div class="control-row">
         <label class="small">Gain</label>
         <input type="range" id="slGain" min="0" max="4" value="1" step="0.01" />
-        <span class="badge" id="lblGain">1.00</span>
+        <input type="number" id="numGain" min="0" max="4" value="1" step="0.01" />
       </div>
 
       <div class="row" style="margin-top:6px;">
-        <button class="btn ghost" id="btnAuto" title="Auto contrast: set min/max from percentiles, reset contrast/gamma/gain">Auto</button>
+        <button class="btn ghost" id="btnAuto" title="Auto contrast: set min/max from percentiles, reset contrast/brightness/gain">Auto</button>
         <button class="btn" id="btnReset" title="Reset display controls for this band">Reset</button>
-      </div>
-
-      <div class="divider"></div>
-      <div class="hint">
-        Rendering uses <b>WebGPU</b> if available (GPU tone‑mapping + scaling). If WebGPU isn’t supported, it falls back to 2D canvas.
       </div>
     </div>
   </aside>
@@ -268,7 +245,7 @@
   </div>
 
   <div id="expRenderedOptions" style="margin-top:10px; display:none;">
-    <div class="hint tiny">Exports the current band as an 8-bit grayscale image after applying your histogram range, contrast, gamma, and gain.</div>
+    <div class="hint tiny">Exports the current band as an 8-bit grayscale image after applying your histogram range, contrast, brightness, and gain.</div>
     <div style="height:8px"></div>
     <label class="small">Region</label>
     <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">

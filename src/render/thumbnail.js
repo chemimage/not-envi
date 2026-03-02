@@ -83,7 +83,7 @@ export function createThumbnailController(deps) {
     const params = {
       minVal: range.minVal,
       maxVal: range.maxVal,
-      gamma: clamp(settings.gamma ?? 1, 0.10, 5.0),
+      brightness: clamp(settings.brightness ?? 0, -1, 1),
       gain: clamp(settings.gain ?? 1, 0.0, 4.0),
       contrast: clamp(settings.contrast ?? 1, 0.1, 3.0)
     };
@@ -91,7 +91,7 @@ export function createThumbnailController(deps) {
     const img = createImageDataCompat(outW, outH);
     const dst = img.data;
     for (let i = 0, j = 0; i < f32.length; i++, j += 4) {
-      const t = tone01(f32[i], params.minVal, params.maxVal, params.gamma, params.gain, params.contrast);
+      const t = tone01(f32[i], params.minVal, params.maxVal, params.brightness, params.gain, params.contrast);
       const u = Math.round(t * 255);
       dst[j] = u;
       dst[j + 1] = u;

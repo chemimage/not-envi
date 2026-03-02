@@ -45,11 +45,11 @@ export function computeHistogram(arr, bins = 256) {
   return { bins: out, min, max, count, p1, p99 };
 }
 
-export function tone01(v, minVal, maxVal, gamma, gain, contrast) {
+export function tone01(v, minVal, maxVal, brightness, gain, contrast) {
   let x = (v - minVal) / (maxVal - minVal);
   x = clamp(x, 0, 1);
-  x = Math.pow(x, 1 / Math.max(1e-6, gamma));
   x = (x - 0.5) * contrast + 0.5;
+  x = x + brightness;
   x = x * gain;
   return clamp(x, 0, 1);
 }

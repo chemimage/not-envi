@@ -22,7 +22,7 @@ export function createUIPanels(deps) {
 
   function getBandSettings(ds, band) {
     if (!ds.bandSettings.has(band)) {
-      ds.bandSettings.set(band, { min: null, max: null, gamma: 1, gain: 1, contrast: 1 });
+      ds.bandSettings.set(band, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 });
     }
     return ds.bandSettings.get(band);
   }
@@ -67,12 +67,6 @@ export function createUIPanels(deps) {
     if (force || document.activeElement !== els.numMin) els.numMin.value = fmt(minVal);
     if (force || document.activeElement !== els.numMax) els.numMax.value = fmt(maxVal);
 
-    const tMin = (minVal - domMin) / (domMax - domMin);
-    const tMax = (maxVal - domMin) / (domMax - domMin);
-    if (force || document.activeElement !== els.rangeMin) els.rangeMin.value = String(clamp(tMin, 0, 1));
-    if (force || document.activeElement !== els.rangeMax) els.rangeMax.value = String(clamp(tMax, 0, 1));
-
-    els.lblRange.textContent = `min ${fmt(minVal)}  max ${fmt(maxVal)}  γ ${Number(s.gamma ?? 1).toFixed(2)}`;
   }
 
   function updateDisplayUI(force = false) {
@@ -81,7 +75,6 @@ export function createUIPanels(deps) {
       els.dispDataset.textContent = "—";
       els.dispBand.textContent = "—";
       els.dispWl.textContent = "—";
-      els.lblRange.textContent = "min —  max —  γ —";
       return;
     }
     const b = ds.activeBand;
@@ -93,11 +86,11 @@ export function createUIPanels(deps) {
 
     const s = getBandSettings(ds, b);
     els.slContrast.value = String(s.contrast ?? 1);
-    els.slGamma.value = String(s.gamma ?? 1);
+    els.slBrightness.value = String(s.brightness ?? 0);
     els.slGain.value = String(s.gain ?? 1);
-    els.lblContrast.textContent = Number(els.slContrast.value).toFixed(2);
-    els.lblGamma.textContent = Number(els.slGamma.value).toFixed(2);
-    els.lblGain.textContent = Number(els.slGain.value).toFixed(2);
+    els.numContrast.value = Number(els.slContrast.value).toFixed(2);
+    els.numBrightness.value = Number(els.slBrightness.value).toFixed(2);
+    els.numGain.value = Number(els.slGain.value).toFixed(2);
 
     syncRangeInputsFromSettings(ds, { force });
     drawHistogram(ds);
@@ -106,11 +99,24 @@ export function createUIPanels(deps) {
   function rebuildBandTree({ preserveScroll = false } = {}) {
     const q = (els.bandSearch.value || "").trim().toLowerCase();
     const prevScroll = preserveScroll ? els.bandTree.scrollTop : 0;
+    const bandScrollById = new Map();
+    if (preserveScroll) {
+      const existingNodes = els.bandTree.querySelectorAll(".tree-ds[data-dsid]");
+      for (const node of existingNodes) {
+        const id = node.getAttribute("data-dsid");
+        const bands = node.querySelector(".tree-bands");
+        if (id && bands) bandScrollById.set(id, bands.scrollTop || 0);
+      }
+    }
     els.bandTree.innerHTML = "";
 
     for (const ds of state.datasets) {
+      if (preserveScroll && bandScrollById.has(ds.id)) {
+        ds.treeScrollTop = bandScrollById.get(ds.id);
+      }
       const node = document.createElement("div");
       node.className = `tree-ds${ds.id === state.activeId ? " active" : ""}`;
+      node.dataset.dsid = ds.id;
 
       const head = document.createElement("div");
       head.className = "tree-head";
@@ -148,12 +154,17 @@ export function createUIPanels(deps) {
       head.appendChild(name);
       head.appendChild(meta);
       head.appendChild(btnClose);
-      head.onclick = () => setActiveDataset(ds.id);
+      head.onclick = () => {
+        if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
+      };
       node.appendChild(head);
 
       if (ds.treeExpanded) {
         const bandsWrap = document.createElement("div");
         bandsWrap.className = "tree-bands";
+        bandsWrap.addEventListener("scroll", () => {
+          ds.treeScrollTop = bandsWrap.scrollTop;
+        }, { passive: true });
         for (let b = 0; b < ds.meta.bands; b++) {
           const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
           const label = bandLabel(ds, b);
@@ -165,7 +176,7 @@ export function createUIPanels(deps) {
           const row = document.createElement("div");
           row.className = `band-row${(ds.id === state.activeId && b === ds.activeBand) ? " active" : ""}`;
           row.onclick = () => {
-            setActiveDataset(ds.id);
+            if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
             setActiveBand(ds, b);
           };
 
@@ -180,7 +191,7 @@ export function createUIPanels(deps) {
           btn.textContent = "View";
           btn.onclick = (ev) => {
             ev.stopPropagation();
-            setActiveDataset(ds.id);
+            if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
             setActiveBand(ds, b);
           };
           row.appendChild(btn);
@@ -190,6 +201,16 @@ export function createUIPanels(deps) {
       }
 
       els.bandTree.appendChild(node);
+      if (ds.treeExpanded) {
+        const bandsWrap = node.querySelector(".tree-bands");
+        if (bandsWrap) {
+          const target = Number(ds.treeScrollTop || 0);
+          bandsWrap.scrollTop = target;
+          requestAnimationFrame(() => {
+            bandsWrap.scrollTop = target;
+          });
+        }
+      }
     }
 
     createIcons({ icons: { X }, attrs: { "aria-hidden": "true" } });
@@ -205,34 +226,6 @@ export function createUIPanels(deps) {
     updateDisplayUI(true);
     render();
     if (!ds.bandStatsWhole.has(b)) onNeedWholeStats(ds, b);
-  }
-
-  function applyRangeFromInputs(ds) {
-    const b = ds.activeBand;
-    if (b == null) return;
-    const s = getBandSettings(ds, b);
-    const stats = resolveStats(ds);
-    if (!stats) return;
-
-    const domMin = stats.min;
-    const domMax = stats.max;
-    let tMin = Number(els.rangeMin.value);
-    let tMax = Number(els.rangeMax.value);
-    if (!Number.isFinite(tMin)) tMin = 0;
-    if (!Number.isFinite(tMax)) tMax = 1;
-    if (tMin > tMax) {
-      const tmp = tMin;
-      tMin = tMax;
-      tMax = tmp;
-    }
-
-    const minVal = domMin + tMin * (domMax - domMin);
-    const maxVal = domMin + tMax * (domMax - domMin);
-    s.min = minVal;
-    s.max = maxVal;
-    els.numMin.value = fmt(minVal);
-    els.numMax.value = fmt(maxVal);
-    syncRangeInputsFromSettings(ds);
   }
 
   function applyRangeFromNumbers(ds) {
@@ -259,10 +252,6 @@ export function createUIPanels(deps) {
     s.min = minVal;
     s.max = maxVal;
 
-    const tMin = (minVal - domMin) / (domMax - domMin);
-    const tMax = (maxVal - domMin) / (domMax - domMin);
-    els.rangeMin.value = String(clamp(tMin, 0, 1));
-    els.rangeMax.value = String(clamp(tMax, 0, 1));
     syncRangeInputsFromSettings(ds);
   }
 
@@ -272,7 +261,7 @@ export function createUIPanels(deps) {
     const s = getBandSettings(ds, b);
     s.min = null;
     s.max = null;
-    s.gamma = 1;
+    s.brightness = 0;
     s.gain = 1;
     s.contrast = 1;
     updateDisplayUI(true);
@@ -291,7 +280,7 @@ export function createUIPanels(deps) {
       s.min = null;
       s.max = null;
     }
-    s.gamma = 1;
+    s.brightness = 0;
     s.gain = 1;
     s.contrast = 1;
     updateDisplayUI(true);
@@ -473,7 +462,6 @@ export function createUIPanels(deps) {
     setActiveBand,
     updateDisplayUI,
     syncRangeInputsFromSettings,
-    applyRangeFromInputs,
     applyRangeFromNumbers,
     resetDisplay,
     autoDisplay

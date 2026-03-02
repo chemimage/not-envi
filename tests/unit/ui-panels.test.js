@@ -29,7 +29,7 @@ describe("ui-panels", () => {
     const ds = { bandSettings: new Map(), activeBand: 2 };
     const a = ui.getBandSettings(ds, 2);
     const b = ui.getBandSettings(ds, 2);
-    expect(a).toEqual({ min: null, max: null, gamma: 1, gain: 1, contrast: 1 });
+    expect(a).toEqual({ min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 });
     expect(a).toBe(b);
   });
 

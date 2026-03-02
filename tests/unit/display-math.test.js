@@ -26,11 +26,11 @@ describe("display-math", () => {
     expect(percentileFromHist(new Uint32Array([0, 0]), 10, 20, 0.5, 0)).toBe(10);
   });
 
-  test("tone01 clamps and applies gamma/gain/contrast", () => {
-    const t = tone01(0.5, 0, 1, 1, 1, 1);
+  test("tone01 clamps and applies brightness/gain/contrast", () => {
+    const t = tone01(0.5, 0, 1, 0, 1, 1);
     expect(t).toBeCloseTo(0.5);
-    expect(tone01(-10, 0, 1, 1, 1, 1)).toBe(0);
-    expect(tone01(10, 0, 1, 1, 1, 1)).toBe(1);
+    expect(tone01(-10, 0, 1, 0, 1, 1)).toBe(0);
+    expect(tone01(10, 0, 1, 0, 1, 1)).toBe(1);
   });
 
   test("typeDefaultRange maps known ENVI types", () => {

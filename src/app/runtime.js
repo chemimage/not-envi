@@ -215,7 +215,6 @@ import { createInteractionController } from "../ui/events.js";
   function setActiveBand(ds, band){ uiPanels.setActiveBand(ds, band); }
   function updateDisplayUI(force=false){ uiPanels.updateDisplayUI(force); }
   function syncRangeInputsFromSettings(ds, opts){ uiPanels.syncRangeInputsFromSettings(ds, opts); }
-  function applyRangeFromInputs(ds){ uiPanels.applyRangeFromInputs(ds); }
   function applyRangeFromNumbers(ds){ uiPanels.applyRangeFromNumbers(ds); }
   function resetDisplay(ds){ uiPanels.resetDisplay(ds); }
   function autoDisplay(ds){ uiPanels.autoDisplay(ds); }
@@ -231,9 +230,9 @@ import { createInteractionController } from "../ui/events.js";
     getIOConcurrency: () => IO_CONCURRENCY,
     recomputeCacheBudgets,
     closeSpectrum,
-    onAfterDatasetUIUpdate: () => {
+    onAfterDatasetUIUpdate: (opts = {}) => {
       rebuildDatasetList();
-      rebuildBandTree();
+      rebuildBandTree({ preserveScroll: !!opts.preserveBandTreeScroll });
       updateMetaUI();
       updatePerf();
       updateDisplayUI(true);
@@ -251,7 +250,7 @@ import { createInteractionController } from "../ui/events.js";
 
   function computeHistogram(arr, bins=256){ return computeHistogramCore(arr, bins); }
 
-  function tone01(v, minVal, maxVal, gamma, gain, contrast){ return tone01Core(v, minVal, maxVal, gamma, gain, contrast); }
+  function tone01(v, minVal, maxVal, brightness, gain, contrast){ return tone01Core(v, minVal, maxVal, brightness, gain, contrast); }
 
   const histogram = createHistogramController({
     state,
@@ -291,10 +290,10 @@ import { createInteractionController } from "../ui/events.js";
     const img = cpuCtx.createImageData(w, h);
     const dst = img.data;
     const minVal = params.minVal, maxVal = params.maxVal;
-    const gamma = params.gamma, gain = params.gain, contrast = params.contrast;
+    const brightness = params.brightness, gain = params.gain, contrast = params.contrast;
 
     for (let i=0, j=0; i<rasterF32.length; i++, j+=4){
-      const t = tone01(rasterF32[i], minVal, maxVal, gamma, gain, contrast);
+      const t = tone01(rasterF32[i], minVal, maxVal, brightness, gain, contrast);
       const u = Math.round(t * 255);
       dst[j] = u; dst[j+1] = u; dst[j+2] = u; dst[j+3] = 255;
     }
@@ -512,7 +511,6 @@ import { createInteractionController } from "../ui/events.js";
     autoDisplay,
     getBandSettings,
     drawHistogram,
-    applyRangeFromInputs,
     applyRangeFromNumbers,
     ensureViewHistogram,
     syncRangeInputsFromSettings,

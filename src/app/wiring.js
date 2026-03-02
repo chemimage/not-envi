@@ -36,7 +36,6 @@ export function wireApp(deps) {
     autoDisplay,
     getBandSettings,
     drawHistogram,
-    applyRangeFromInputs,
     applyRangeFromNumbers,
     ensureViewHistogram,
     syncRangeInputsFromSettings,
@@ -214,16 +213,16 @@ export function wireApp(deps) {
     if (!ds) return;
     const s = getBandSettings(ds, ds.activeBand);
     s.contrast = Number(els.slContrast.value);
-    els.lblContrast.textContent = Number(s.contrast).toFixed(2);
+    els.numContrast.value = Number(s.contrast).toFixed(2);
     drawHistogram(ds);
     render({ reuseRaster: true });
   };
-  els.slGamma.oninput = () => {
+  els.slBrightness.oninput = () => {
     const ds = getActive();
     if (!ds) return;
     const s = getBandSettings(ds, ds.activeBand);
-    s.gamma = Number(els.slGamma.value);
-    els.lblGamma.textContent = Number(s.gamma).toFixed(2);
+    s.brightness = Number(els.slBrightness.value);
+    els.numBrightness.value = Number(s.brightness).toFixed(2);
     drawHistogram(ds);
     render({ reuseRaster: true });
   };
@@ -232,25 +231,45 @@ export function wireApp(deps) {
     if (!ds) return;
     const s = getBandSettings(ds, ds.activeBand);
     s.gain = Number(els.slGain.value);
-    els.lblGain.textContent = Number(s.gain).toFixed(2);
+    els.numGain.value = Number(s.gain).toFixed(2);
     drawHistogram(ds);
     render({ reuseRaster: true });
   };
 
-  els.rangeMin.oninput = () => {
+  els.numContrast.onchange = () => {
     const ds = getActive();
     if (!ds) return;
-    applyRangeFromInputs(ds);
+    const s = getBandSettings(ds, ds.activeBand);
+    const v = clamp(Number(els.numContrast.value), 0.1, 3);
+    s.contrast = v;
+    els.slContrast.value = String(v);
+    els.numContrast.value = Number(v).toFixed(2);
     drawHistogram(ds);
     render({ reuseRaster: true });
   };
-  els.rangeMax.oninput = () => {
+  els.numBrightness.onchange = () => {
     const ds = getActive();
     if (!ds) return;
-    applyRangeFromInputs(ds);
+    const s = getBandSettings(ds, ds.activeBand);
+    const v = clamp(Number(els.numBrightness.value), -1, 1);
+    s.brightness = v;
+    els.slBrightness.value = String(v);
+    els.numBrightness.value = Number(v).toFixed(2);
     drawHistogram(ds);
     render({ reuseRaster: true });
   };
+  els.numGain.onchange = () => {
+    const ds = getActive();
+    if (!ds) return;
+    const s = getBandSettings(ds, ds.activeBand);
+    const v = clamp(Number(els.numGain.value), 0, 4);
+    s.gain = v;
+    els.slGain.value = String(v);
+    els.numGain.value = Number(v).toFixed(2);
+    drawHistogram(ds);
+    render({ reuseRaster: true });
+  };
+
   els.numMin.onchange = () => {
     const ds = getActive();
     if (!ds) return;

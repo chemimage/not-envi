@@ -143,6 +143,19 @@
     @apply min-w-[140px] flex-1;
   }
 
+  .control-row {
+    @apply grid items-center gap-2;
+    grid-template-columns: 78px 1fr 78px;
+  }
+
+  .control-row input[type="range"] {
+    @apply w-full;
+  }
+
+  .control-row input[type="number"] {
+    @apply w-full text-right;
+  }
+
   label.small {
     @apply text-xs text-gray-400;
   }

@@ -47,7 +47,7 @@ struct Params {
   _pad1: u32,
   minVal: f32,
   maxVal: f32,
-  gamma: f32,
+  brightness: f32,
   gain: f32,
   contrast: f32,
   _pad2: f32,
@@ -62,8 +62,8 @@ fn tone(v: f32) -> f32 {
   var t = (v - params.minVal) / denom;
   if (!(t == t)) { t = 0.0; }
   t = clamp(t, 0.0, 1.0);
-  t = pow(t, params.gamma);
   t = (t - 0.5) * params.contrast + 0.5;
+  t = t + params.brightness;
   t = t * params.gain;
   return clamp(t, 0.0, 1.0);
 }
@@ -194,7 +194,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     dv.setUint32(12, 0, true);
     dv.setFloat32(16, params.minVal, true);
     dv.setFloat32(20, params.maxVal, true);
-    dv.setFloat32(24, params.gamma, true);
+    dv.setFloat32(24, params.brightness, true);
     dv.setFloat32(28, params.gain, true);
     dv.setFloat32(32, params.contrast, true);
     gpu.device.queue.writeBuffer(gpu.uniformBuf, 0, gpu.uniformArr);

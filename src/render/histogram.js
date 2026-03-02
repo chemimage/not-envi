@@ -109,8 +109,8 @@ export function createHistogramController(deps) {
       ctx.fillRect(x, plotY0 + (plotH - barH), Math.max(1, plotW / bins.length), barH);
     }
 
-    const { domMin, domMax, minVal, maxVal, gamma, gain, contrast } = resolveHistogramDisplay(stats, s);
-    const { xMin, xMid, xMax } = histogramHandleXs(plot, domMin, domMax, minVal, maxVal, gamma);
+    const { domMin, domMax, minVal, maxVal, brightness, gain, contrast } = resolveHistogramDisplay(stats, s);
+    const { xMin, xMax } = histogramHandleXs(plot, domMin, domMax, minVal, maxVal);
     ctx.fillStyle = "rgba(106,169,255,0.08)";
     ctx.fillRect(Math.min(xMin, xMax), plotY0, Math.abs(xMax - xMin), plotH);
 
@@ -120,7 +120,7 @@ export function createHistogramController(deps) {
     for (let ix = 0; ix <= 256; ix++) {
       const t = ix / 256;
       const raw = domMin + t * (domMax - domMin);
-      const y01 = tone01(raw, minVal, maxVal, gamma, gain, contrast);
+      const y01 = tone01(raw, minVal, maxVal, brightness, gain, contrast);
       const x = plotX0 + t * plotW;
       const y = plotY0 + (1 - y01) * plotH;
       if (ix === 0) ctx.moveTo(x, y);
@@ -138,7 +138,7 @@ export function createHistogramController(deps) {
 
       const r = 6 * dpr;
       const y = plotY0 + plotH + 0.5 * r;
-      ctx.fillStyle = kind === "mid" ? "rgba(255,255,255,0.9)" : "rgba(106,169,255,0.95)";
+      ctx.fillStyle = "rgba(106,169,255,0.95)";
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
@@ -147,7 +147,6 @@ export function createHistogramController(deps) {
     }
 
     drawHandle(xMin, "min");
-    drawHandle(xMid, "mid");
     drawHandle(xMax, "max");
     ctx.strokeStyle = "rgba(255,255,255,0.12)";
     ctx.lineWidth = 1 * dpr;
@@ -166,9 +165,9 @@ export function createHistogramController(deps) {
 
     const plot = histogramPlotRect(canvas.width, canvas.height, dpr);
     const s = getBandSettings(ds, ds.activeBand);
-    const { domMin, domMax, minVal, maxVal, gamma } = resolveHistogramDisplay(stats, s);
-    const { xMin, xMid, xMax } = histogramHandleXs(plot, domMin, domMax, minVal, maxVal, gamma);
-    return pickHistogramHandle(plot, x, y, xMin, xMid, xMax, dpr);
+    const { domMin, domMax, minVal, maxVal } = resolveHistogramDisplay(stats, s);
+    const { xMin, xMax } = histogramHandleXs(plot, domMin, domMax, minVal, maxVal);
+    return pickHistogramHandle(plot, x, y, xMin, xMax, dpr);
   }
 
   function histXToRaw(ds, clientX) {
@@ -190,12 +189,6 @@ export function createHistogramController(deps) {
     const patch = applyHistogramDragSetting(stats, s, kind, raw);
     if (patch.min != null) s.min = patch.min;
     if (patch.max != null) s.max = patch.max;
-    if (patch.gamma != null) {
-      s.gamma = patch.gamma;
-      els.slGamma.value = String(s.gamma);
-      els.lblGamma.textContent = Number(s.gamma).toFixed(2);
-    }
-
     syncRangeInputsFromSettings(ds, { force: true });
     drawHistogram(ds);
     render({ reuseRaster: true });

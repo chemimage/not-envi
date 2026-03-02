@@ -32,9 +32,7 @@ describe("histogram controller", () => {
           height: 40,
           getBoundingClientRect: () => ({ width: 100, height: 40 }),
           getContext: () => fakeCtx
-        },
-        slGamma: { value: "1" },
-        lblGamma: { textContent: "" }
+        }
       },
       setStatus: () => {},
       readBandWindow: async () => new Float32Array(0),
@@ -42,7 +40,7 @@ describe("histogram controller", () => {
       toFloat32: (x) => x,
       computeHistogram,
       tone01: () => 0,
-      getBandSettings: () => ({ gamma: 1, gain: 1, contrast: 1 }),
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
       resolveStats: (ds) => ds.bandStatsView,
       syncRangeInputsFromSettings: sync,
       render: () => {},

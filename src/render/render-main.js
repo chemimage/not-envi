@@ -124,7 +124,7 @@ export function createRenderer(deps) {
     const params = {
       minVal: range.minVal,
       maxVal: range.maxVal,
-      gamma: clamp(settings.gamma ?? 1, 0.10, 5.0),
+      brightness: clamp(settings.brightness ?? 0, -1, 1),
       gain: clamp(settings.gain ?? 1, 0.0, 4.0),
       contrast: clamp(settings.contrast ?? 1, 0.1, 3.0)
     };
