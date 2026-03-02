@@ -1,4 +1,5 @@
 import { createExportDialogController, createExportService } from "../export/export-controller.js";
+import { createUIPanels } from "./ui-panels.js";
 import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/envi-loader.js";
 import {
   makeSegmentReader as makeSegmentReaderCore,
@@ -761,408 +762,36 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   // ========= UI rebuild =========
 
-  function rebuildDatasetList(){
-    els.datasetCount.textContent = String(state.datasets.length);
-    els.datasetList.innerHTML = '';
-    for (const ds of state.datasets){
-      const div = document.createElement('div');
-      div.className = 'ds-item' + (ds.id === state.activeId ? ' active' : '');
-      div.onclick = () => setActiveDataset(ds.id);
-
-      const left = document.createElement('div');
-      const title = document.createElement('div');
-      title.className = 'title';
-      title.textContent = ds.name;
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = `${ds.meta.samples}×${ds.meta.lines}  bands:${ds.meta.bands}  ${ds.meta.interleave}`;
-      left.appendChild(title);
-      left.appendChild(meta);
-
-      const actions = document.createElement('div');
-      actions.className = 'actions';
-      const btnClose = document.createElement('button');
-      btnClose.className = 'btn danger';
-      btnClose.textContent = 'Close';
-      btnClose.onclick = (ev) => { ev.stopPropagation(); closeDataset(ds.id); };
-      actions.appendChild(btnClose);
-
-      div.appendChild(left);
-      div.appendChild(actions);
-      els.datasetList.appendChild(div);
-    }
-  }
-
-  function updateMetaUI(){
-    const ds = getActive();
-    if (!ds){
-      els.metaSamples.textContent = '—';
-      els.metaLines.textContent = '—';
-      els.metaBands.textContent = '—';
-      els.metaInterleave.textContent = '—';
-      els.metaType.textContent = '—';
-      els.metaEndian.textContent = '—';
-      els.metaWlUnits.textContent = '—';
-      els.metaScale.textContent = '—';
-      els.metaExtra.textContent = '—';
-      return;
-    }
-    els.metaSamples.textContent = fmt(ds.meta.samples);
-    els.metaLines.textContent = fmt(ds.meta.lines);
-    els.metaBands.textContent = fmt(ds.meta.bands);
-    els.metaInterleave.textContent = ds.meta.interleave;
-    els.metaType.textContent = `${ds.meta.dataType} (${ds.meta.dataTypeInfo.name})`;
-    els.metaEndian.textContent = ds.meta.littleEndian ? 'little' : 'big';
-
-    els.metaWlUnits.textContent = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : '—';
-
-    const sc = ds.meta.scale;
-    if (sc && isFinite(sc.umPerPixelX) && isFinite(sc.umPerPixelY)){
-      const x = Number(sc.umPerPixelX);
-      const y = Number(sc.umPerPixelY);
-      const same = Math.abs(x - y) <= Math.max(1e-9, Math.abs(x) * 1e-6);
-      els.metaScale.textContent = same
-        ? `${fmtNoGroup(x)} µm/px`
-        : `${fmtNoGroup(x)} × ${fmtNoGroup(y)} µm/px`;
-      els.metaScale.title = `Parsed from ${sc.source || 'header'}`;
-    } else {
-      els.metaScale.textContent = '—';
-      els.metaScale.title = '';
-    }
-
-    const desc = (ds.meta.desc && String(ds.meta.desc).trim()) ? String(ds.meta.desc).trim() : '';
-    els.metaExtra.textContent = desc || '—';
-  }
-
-  function updatePerf(){
-    const ds = getActive();
-    if (!ds){
-      els.perfBytes.textContent = '0';
-      els.perfCache.textContent = '0 MB';
-      els.perfPyramid.textContent = '0 MB';
-      els.perfBarCacheText.textContent = '—';
-      els.perfBarReadText.textContent = '—';
-      els.perfBarCacheFill.style.width = '0%';
-      els.perfBarReadFill.style.width = '0%';
-      return;
-    }
-    const bytesRead = ds.ds.bytesRead || 0;
-    const chunkUsed = ds.ds.cacheBytes ? ds.ds.cacheBytes() : 0;
-    const pyramidUsed = ds.pyramid ? ds.pyramid.totalBytes : 0;
-
-    els.perfBytes.textContent = humanBytes(bytesRead);
-    els.perfCache.textContent = humanBytes(chunkUsed);
-    els.perfPyramid.textContent = humanBytes(pyramidUsed);
-
-    const chunkCap = (ds.ds && ds.ds.maxBytes) ? ds.ds.maxBytes : 0;
-    const pyramidCap = (ds.pyramid && ds.pyramid.limitBytes) ? ds.pyramid.limitBytes : 0;
-    const cap = Math.max(1, chunkCap + pyramidCap);
-    const used = chunkUsed + pyramidUsed;
-    const frac = clamp(used / cap, 0, 1);
-    els.perfBarCacheFill.style.width = (frac*100).toFixed(1) + '%';
-    els.perfBarCacheText.textContent = `${humanBytes(used)} / ${humanBytes(cap)}`;
-
-    const expected = (ds.meta.headerOffset||0) + (ds.meta.samples * ds.meta.lines * ds.meta.bands * ds.meta.dataTypeInfo.bytes);
-    const full = Math.max(1, expected || 0, ds.ds.size || 0);
-    const fracRead = clamp(bytesRead / full, 0, 1);
-    els.perfBarReadFill.style.width = (fracRead*100).toFixed(1) + '%';
-    els.perfBarReadText.textContent = `${humanBytes(bytesRead)} / ${humanBytes(full)}`;
-  }
-
-  function rebuildBandTree({preserveScroll=false} = {}){
-    const q = (els.bandSearch.value || '').trim().toLowerCase();
-    const prevScroll = preserveScroll ? els.bandTree.scrollTop : 0;
-    els.bandTree.innerHTML = '';
-
-    for (const ds of state.datasets){
-      const node = document.createElement('div');
-      node.className = 'tree-ds' + (ds.id === state.activeId ? ' active' : '');
-
-      const head = document.createElement('div');
-      head.className = 'tree-head';
-
-      const caret = document.createElement('button');
-      caret.className = 'caret';
-      caret.textContent = ds.treeExpanded ? '▾' : '▸';
-      caret.title = ds.treeExpanded ? 'Collapse' : 'Expand';
-      caret.onclick = (ev) => {
-        ev.stopPropagation();
-        ds.treeExpanded = !ds.treeExpanded;
-        rebuildBandTree({preserveScroll:true});
-      };
-
-      const name = document.createElement('div');
-      name.className = 'tree-name';
-      name.textContent = ds.name;
-      name.title = ds.name;
-
-      const meta = document.createElement('div');
-      meta.className = 'tree-meta';
-      meta.textContent = `${ds.meta.bands} bands`;
-
-      const btnClose = document.createElement('button');
-      btnClose.className = 'btn danger';
-      btnClose.textContent = 'Close';
-      btnClose.title = 'Close dataset';
-      btnClose.onclick = (ev) => { ev.stopPropagation(); closeDataset(ds.id); };
-
-      head.appendChild(caret);
-      head.appendChild(name);
-      head.appendChild(meta);
-      head.appendChild(btnClose);
-
-      head.onclick = () => setActiveDataset(ds.id);
-
-      node.appendChild(head);
-
-      if (ds.treeExpanded){
-        const bandsWrap = document.createElement('div');
-        bandsWrap.className = 'tree-bands';
-
-        for (let b=0; b<ds.meta.bands; b++){
-          const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
-          const label = bandLabel(ds, b);
-
-          if (q){
-            const hay = (`${ds.name} ${b} ${label} ${wl!=null ? fmtNoGroup(wl) : ''}`).toLowerCase();
-            if (!hay.includes(q)) continue;
-          }
-
-          const row = document.createElement('div');
-          row.className = 'band-row' + ((ds.id === state.activeId && b === ds.activeBand) ? ' active' : '');
-          row.onclick = () => {
-            setActiveDataset(ds.id);
-            setActiveBand(ds, b);
-          };
-
-          const lab = document.createElement('div');
-          lab.className = 'label';
-          lab.textContent = label;
-          lab.title = `Band ${b}`;
-          row.appendChild(lab);
-
-          const btn = document.createElement('button');
-          btn.className = 'btn';
-          btn.textContent = 'View';
-          btn.onclick = (ev) => {
-            ev.stopPropagation();
-            setActiveDataset(ds.id);
-            setActiveBand(ds, b);
-          };
-          row.appendChild(btn);
-
-          bandsWrap.appendChild(row);
-        }
-
-        node.appendChild(bandsWrap);
-      }
-
-      els.bandTree.appendChild(node);
-    }
-
-    if (preserveScroll) els.bandTree.scrollTop = prevScroll;
-  }
-
-  // ========= Display settings =========
-
-  function getBandSettings(ds, band){
-    if (!ds.bandSettings.has(band)){
-      ds.bandSettings.set(band, {min:null, max:null, gamma:1, gain:1, contrast:1});
-    }
-    return ds.bandSettings.get(band);
-  }
-
-  function resolveStats(ds){
-    const band = ds.activeBand;
-    if (band == null) return null;
-    if (state.histMode === 'view'){
-      return ds.bandStatsView;
-    }
-    return ds.bandStatsWhole.get(band) || null;
-  }
-
-  function setActiveBand(ds, band){
-    if (!ds) return;
-    band = clamp(band|0, 0, ds.meta.bands-1);
-    ds.activeBand = band;
-    getBandSettings(ds, band); // ensure exists
-    rebuildBandTree({preserveScroll:true});
-    updateDisplayUI(true);
-    render();
-    // compute stats in background if missing (whole image)
-    if (!ds.bandStatsWhole.has(band)){
-      buildBandStatsWhole(ds, band).catch(()=>{});
-    }
-  }
-
-  function updateDisplayUI(force=false){
-    const ds = getActive();
-    if (!ds || ds.activeBand == null){
-      els.dispDataset.textContent = '—';
-      els.dispBand.textContent = '—';
-      els.dispWl.textContent = '—';
-      els.lblRange.textContent = 'min —  max —  γ —';
-      return;
-    }
-    const b = ds.activeBand;
-    els.dispDataset.textContent = ds.name;
-    els.dispBand.textContent = bandLabel(ds, b);
-    els.dispBand.title = `Band index ${b}`;
-    const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
-    els.dispWl.textContent = (wl!=null ? fmtNoGroup(wl) : '—') + (ds.meta.wlUnits ? ` ${ds.meta.wlUnits}` : '');
-
-    const s = getBandSettings(ds, b);
-    els.slContrast.value = String(s.contrast ?? 1);
-    els.slGamma.value = String(s.gamma ?? 1);
-    els.slGain.value = String(s.gain ?? 1);
-    els.lblContrast.textContent = Number(els.slContrast.value).toFixed(2);
-    els.lblGamma.textContent = Number(els.slGamma.value).toFixed(2);
-    els.lblGain.textContent = Number(els.slGain.value).toFixed(2);
-
-    // Range UI depends on stats domain; may be missing initially.
-    syncRangeInputsFromSettings(ds, {force});
-    drawHistogram(ds);
-  }
-
-  function syncRangeInputsFromSettings(ds, {force=false} = {}){
-    const b = ds.activeBand;
-    if (b == null) return;
-    const s = getBandSettings(ds, b);
-    const stats = resolveStats(ds);
-
-    let domMin, domMax;
-    if (stats){
-      domMin = stats.min;
-      domMax = stats.max;
-    } else if (ds.lastRaster && ds.lastRaster.band === b){
-      const est = quickStatsFromArray(ds.lastRaster.dataF32);
-      domMin = est.min;
-      domMax = est.max;
-    } else {
-      domMin = 0;
-      domMax = 1;
-    }
-
-    if (!isFinite(domMin) || !isFinite(domMax) || domMax === domMin){
-      domMin = 0; domMax = 1;
-    }
-
-    const curMin = (s.min != null && isFinite(s.min)) ? s.min : (stats ? stats.p1 : domMin);
-    const curMax = (s.max != null && isFinite(s.max)) ? s.max : (stats ? stats.p99 : domMax);
-
-    const minVal = clamp(curMin, domMin, domMax);
-    const maxVal = clamp(curMax, domMin, domMax);
-
-    // numbers
-    if (force || document.activeElement !== els.numMin) els.numMin.value = fmt(minVal);
-    if (force || document.activeElement !== els.numMax) els.numMax.value = fmt(maxVal);
-
-    // ranges normalized 0..1
-    const tMin = (minVal - domMin) / (domMax - domMin);
-    const tMax = (maxVal - domMin) / (domMax - domMin);
-
-    if (force || document.activeElement !== els.rangeMin) els.rangeMin.value = String(clamp(tMin,0,1));
-    if (force || document.activeElement !== els.rangeMax) els.rangeMax.value = String(clamp(tMax,0,1));
-
-    // update range badge
-    els.lblRange.textContent = `min ${fmt(minVal)}  max ${fmt(maxVal)}  γ ${Number(s.gamma ?? 1).toFixed(2)}`;
-  }
-
-  function applyRangeFromInputs(ds){
-    const b = ds.activeBand;
-    if (b == null) return;
-    const s = getBandSettings(ds, b);
-    const stats = resolveStats(ds);
-    if (!stats) return;
-
-    const domMin = stats.min;
-    const domMax = stats.max;
-
-    // from range sliders
-    let tMin = Number(els.rangeMin.value);
-    let tMax = Number(els.rangeMax.value);
-    if (!isFinite(tMin)) tMin = 0;
-    if (!isFinite(tMax)) tMax = 1;
-    if (tMin > tMax){ const tmp = tMin; tMin = tMax; tMax = tmp; }
-
-    const minVal = domMin + tMin * (domMax - domMin);
-    const maxVal = domMin + tMax * (domMax - domMin);
-
-    s.min = minVal;
-    s.max = maxVal;
-
-    // sync number fields
-    els.numMin.value = fmt(minVal);
-    els.numMax.value = fmt(maxVal);
-    syncRangeInputsFromSettings(ds);
-  }
-
-  function applyRangeFromNumbers(ds){
-    const b = ds.activeBand;
-    if (b == null) return;
-    const s = getBandSettings(ds, b);
-    const stats = resolveStats(ds);
-    if (!stats) return;
-
-    const domMin = stats.min;
-    const domMax = stats.max;
-
-    let minVal = Number(els.numMin.value);
-    let maxVal = Number(els.numMax.value);
-
-    if (!isFinite(minVal)) minVal = s.min ?? stats.p1;
-    if (!isFinite(maxVal)) maxVal = s.max ?? stats.p99;
-    if (minVal > maxVal){ const tmp = minVal; minVal = maxVal; maxVal = tmp; }
-
-    minVal = clamp(minVal, domMin, domMax);
-    maxVal = clamp(maxVal, domMin, domMax);
-
-    s.min = minVal;
-    s.max = maxVal;
-
-    // sync sliders
-    const tMin = (minVal - domMin)/(domMax-domMin);
-    const tMax = (maxVal - domMin)/(domMax-domMin);
-    els.rangeMin.value = String(clamp(tMin,0,1));
-    els.rangeMax.value = String(clamp(tMax,0,1));
-    syncRangeInputsFromSettings(ds);
-  }
-
-  function resetDisplay(ds){
-    const b = ds.activeBand;
-    if (b == null) return;
-    const s = getBandSettings(ds, b);
-    s.min = null;
-    s.max = null;
-    s.gamma = 1;
-    s.gain = 1;
-    s.contrast = 1;
-    updateDisplayUI(true);
-    // re-render (reuse raster)
-    render({reuseRaster:true});
-  }
-
-  function autoDisplay(ds){
-    const b = ds.activeBand;
-    if (b == null) return;
-    const s = getBandSettings(ds, b);
-
-    const stats = (ds.bandStatsWhole.get(b) || ds.bandStatsView);
-    if (stats){
-      s.min = stats.p1;
-      s.max = stats.p99;
-    } else {
-      s.min = null;
-      s.max = null;
-    }
-    s.gamma = 1;
-    s.gain = 1;
-    s.contrast = 1;
-
-    updateDisplayUI(true);
-    render({reuseRaster:true});
-  }
-
+  const uiPanels = createUIPanels({
+    state,
+    els,
+    getActive,
+    clamp,
+    fmt,
+    fmtNoGroup,
+    humanBytes,
+    bandLabel,
+    setActiveDataset,
+    closeDataset,
+    drawHistogram,
+    render,
+    quickStatsFromArray,
+    onNeedWholeStats: (ds, band) => buildBandStatsWhole(ds, band).catch(() => {}),
+  });
+
+  function rebuildDatasetList(){ uiPanels.rebuildDatasetList(); }
+  function updateMetaUI(){ uiPanels.updateMetaUI(); }
+  function updatePerf(){ uiPanels.updatePerf(); }
+  function rebuildBandTree(opts){ uiPanels.rebuildBandTree(opts); }
+  function getBandSettings(ds, band){ return uiPanels.getBandSettings(ds, band); }
+  function resolveStats(ds){ return uiPanels.resolveStats(ds); }
+  function setActiveBand(ds, band){ uiPanels.setActiveBand(ds, band); }
+  function updateDisplayUI(force=false){ uiPanels.updateDisplayUI(force); }
+  function syncRangeInputsFromSettings(ds, opts){ uiPanels.syncRangeInputsFromSettings(ds, opts); }
+  function applyRangeFromInputs(ds){ uiPanels.applyRangeFromInputs(ds); }
+  function applyRangeFromNumbers(ds){ uiPanels.applyRangeFromNumbers(ds); }
+  function resetDisplay(ds){ uiPanels.resetDisplay(ds); }
+  function autoDisplay(ds){ uiPanels.autoDisplay(ds); }
   // ========= Histogram computation & drawing =========
 
   function quickStatsFromArray(arr){ return quickStatsFromArrayCore(arr); }
@@ -2124,6 +1753,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   })();
 
 })();
+
 
 
 
