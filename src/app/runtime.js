@@ -1,5 +1,6 @@
 import { createExportDialogController, createExportService } from "../export/export-controller.js";
 import { createUIPanels } from "./ui-panels.js";
+import { createViewControls } from "./view-controls.js";
 import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/envi-loader.js";
 import {
   makeSegmentReader as makeSegmentReaderCore,
@@ -599,46 +600,19 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   // ========= Zoom mapping =========
 
-  function computeFitScale(ds){
-    const rect = els.main.getBoundingClientRect();
-    return Math.min(rect.width / ds.meta.samples, rect.height / ds.meta.lines);
-  }
-
-  // Minimum zoom-out: once the full dataset fits, don't allow zooming out further.
-  function minScaleFor(ds){
-    const fit = computeFitScale(ds);
-    return Math.min(1, fit);
-  }
-
-  function updateZoomRange(ds){
-    if (!ds){
-      state.zoomExpMin = -6;
-      state.zoomExpMax = 4;
-      return;
-    }
-    const minScale = Math.max(1e-9, minScaleFor(ds));
-    const minExp = Math.log2(minScale);
-    // Extend slider range when fit scale is smaller than our default.
-    state.zoomExpMin = Math.min(-6, Math.floor(minExp) - 1);
-    state.zoomExpMax = 4;
-  }
-
-  // slider 0..100 -> scale ~ 2^[zoomExpMin..zoomExpMax]
-  function sliderToScale(v){
-    const t = clamp(v/100, 0, 1);
-    const exp = state.zoomExpMin + t*(state.zoomExpMax - state.zoomExpMin);
-    return Math.pow(2, exp);
-  }
-  function scaleToSlider(s){
-    const exp = Math.log2(Math.max(1e-9, s));
-    const t = (exp - state.zoomExpMin) / Math.max(1e-9, (state.zoomExpMax - state.zoomExpMin));
-    return clamp(Math.round(t*100), 0, 100);
-  }
-  function updateZoomLabel(){
-    const ds = getActive();
-    if (!ds){ els.zoomLabel.textContent = '—'; return; }
-    els.zoomLabel.textContent = (ds.view.scale * 100).toFixed(1) + '%';
-  }
+  const viewControls = createViewControls({
+    state,
+    els,
+    clamp,
+    getActive,
+    onRender: () => render(),
+  });
+  function computeFitScale(ds){ return viewControls.computeFitScale(ds); }
+  function minScaleFor(ds){ return viewControls.minScaleFor(ds); }
+  function updateZoomRange(ds){ viewControls.updateZoomRange(ds); }
+  function sliderToScale(v){ return viewControls.sliderToScale(v); }
+  function scaleToSlider(s){ return viewControls.scaleToSlider(s); }
+  function updateZoomLabel(){ viewControls.updateZoomLabel(); }
 
   // ========= Dataset helpers =========
 
@@ -830,45 +804,9 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     els.overlayCanvas.height = h;
   }
 
-  function clampView(){
-    const ds = getActive();
-    if (!ds) return;
-    // Clamp zoom: don't allow zooming out beyond "fit".
-    const minS = minScaleFor(ds);
-    ds.view.minScale = minS;
-    ds.view.scale = clamp(ds.view.scale, minS, 128);
-
-    const dpr = window.devicePixelRatio || 1;
-    const eff = ds.view.scale * dpr;
-    const viewW = els.cpuCanvas.width / eff;
-    const viewH = els.cpuCanvas.height / eff;
-
-    ds.view.x = clamp(ds.view.x, 0, Math.max(0, ds.meta.samples - viewW));
-    ds.view.y = clamp(ds.view.y, 0, Math.max(0, ds.meta.lines - viewH));
-  }
-
-  function fitToScreen(){
-    const ds = getActive();
-    if (!ds) return;
-    const rect = els.main.getBoundingClientRect();
-    // scale is in CSS pixels per image pixel
-    const s = Math.min(rect.width / ds.meta.samples, rect.height / ds.meta.lines);
-    updateZoomRange(ds);
-    ds.view.scale = s;
-    ds.view.x = 0;
-    ds.view.y = 0;
-    clampView();
-    els.zoom.value = String(scaleToSlider(ds.view.scale));
-    updateZoomLabel();
-    render();
-  }
-
-  function screenToImage(sx, sy){
-    const ds = getActive();
-    const dpr = window.devicePixelRatio || 1;
-    const eff = ds.view.scale * dpr;
-    return { x: ds.view.x + sx/eff, y: ds.view.y + sy/eff };
-  }
+  function clampView(){ viewControls.clampView(); }
+  function fitToScreen(){ viewControls.fitToScreen(); }
+  function screenToImage(sx, sy){ return viewControls.screenToImage(sx, sy); }
 
   function scheduleRender(){
     if (state._rafPending) return;

@@ -7,7 +7,7 @@ import { createRenderer } from "./render/render-main.js";
 import { createSpectrumController } from "./render/spectrum.js";
 import { createThumbnailController } from "./render/thumbnail.js";
 import { bindCoreEvents } from "./ui/events.js";
-import "./legacy/app.js";
+import "./app/runtime.js";
 
 // Bootstraps modular seams for progressive migration while preserving current behavior.
 const appState = createAppState();
