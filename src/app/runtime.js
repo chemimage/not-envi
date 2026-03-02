@@ -24,8 +24,11 @@ import {
   pickHistogramHandle,
   resolveHistogramDisplay
 } from "../render/histogram-math.js";
+import { createOverlayRenderer } from "../render/overlay.js";
 import { createPyramidController } from "../render/pyramid-cache.js";
+import { createSpectrumController } from "../render/spectrum.js";
 import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
+import { createThumbnailController } from "../render/thumbnail.js";
 import { clamp, fmt, fmtNoGroup, fmtUm, humanBytes } from "../core/utils.js";
 import { bindCoreEvents, createInteractionController } from "../ui/events.js";
 
@@ -1494,193 +1497,14 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     cpuCtx.restore();
   }
 
-  function roundRect(ctx, x, y, w, h, r){
-    const rr = Math.max(0, Math.min(r, Math.min(w,h)/2));
-    ctx.beginPath();
-    ctx.moveTo(x+rr, y);
-    ctx.arcTo(x+w, y, x+w, y+h, rr);
-    ctx.arcTo(x+w, y+h, x, y+h, rr);
-    ctx.arcTo(x, y+h, x, y, rr);
-    ctx.arcTo(x, y, x+w, y, rr);
-    ctx.closePath();
-  }
-
-  function formatDistanceUm(um){
-    const a = Math.abs(um);
-    if (a >= 1000){
-      const mm = um / 1000;
-      const s = (Math.abs(mm - Math.round(mm)) < 1e-9)
-        ? String(Math.round(mm))
-        : mm.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
-      return `${s} mm`;
-    }
-    if (a >= 1){
-      const s = (Math.abs(um - Math.round(um)) < 1e-9)
-        ? String(Math.round(um))
-        : um.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
-      return `${s} µm`;
-    }
-    const nm = um * 1000;
-    const s = (Math.abs(nm - Math.round(nm)) < 1e-9)
-      ? String(Math.round(nm))
-      : nm.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
-    return `${s} nm`;
-  }
-
-  function chooseNiceValue(ideal, toCssLen){
-    if (!isFinite(ideal) || ideal <= 0) return null;
-    const target = 140;   // CSS px target
-    const minOk = 60;
-    const maxOk = 240;
-
-    const exp = Math.floor(Math.log10(ideal));
-    const mults = [1,2,5];
-
-    let best = null;
-    let bestScore = Infinity;
-
-    for (let e = exp-2; e <= exp+2; e++){
-      const pow = Math.pow(10, e);
-      for (const m of mults){
-        const v = m * pow;
-        const len = toCssLen(v);
-        if (!isFinite(len) || len <= 0) continue;
-
-        const penalty = (len < minOk) ? 500 : ((len > maxOk) ? 500 : 0);
-        const score = Math.abs(len - target) + penalty;
-
-        if (score < bestScore){
-          bestScore = score;
-          best = v;
-        }
-      }
-    }
-    return best ?? ideal;
-  }
-
-  function drawScaleBar(ds){
-    if (!els.chkScale.checked) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const eff = ds.view.scale * dpr;
-    const canvasW = els.overlayCanvas.width;
-    const canvasH = els.overlayCanvas.height;
-
-    let barImgPx = 0;
-    let label = '';
-    const sc = ds.meta.scale;
-
-    if (sc && isFinite(sc.umPerPixelX) && sc.umPerPixelX > 0){
-      const umPerPx = Number(sc.umPerPixelX);
-      const idealUm = 140 * umPerPx / Math.max(1e-9, ds.view.scale);
-      const niceUm = chooseNiceValue(idealUm, (um) => (um / umPerPx) * ds.view.scale);
-      barImgPx = niceUm / umPerPx;
-      label = formatDistanceUm(niceUm);
-    } else {
-      const idealPx = 140 / Math.max(1e-9, ds.view.scale);
-      const nicePx = chooseNiceValue(idealPx, (px) => px * ds.view.scale);
-      barImgPx = Math.max(1, Math.round(nicePx));
-      label = `${fmtNoGroup(barImgPx)} px`;
-    }
-
-    const barDevPx = barImgPx * eff;
-
-    const pad = 12 * dpr;
-    const innerPad = 10 * dpr;
-    const barYGap = 10 * dpr;
-    const fontPx = 12 * dpr;
-
-    overlayCtx.save();
-    overlayCtx.setTransform(1,0,0,1,0,0);
-    overlayCtx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    overlayCtx.textAlign = 'right';
-    overlayCtx.textBaseline = 'top';
-
-    const textW = overlayCtx.measureText(label).width;
-    const boxW = Math.max(barDevPx, textW) + innerPad*2;
-    const boxH = (fontPx + barYGap + 8*dpr + innerPad*2);
-
-    const x1 = canvasW - pad;
-    const y1 = canvasH - pad;
-    const x0 = x1 - boxW;
-    const y0 = y1 - boxH;
-
-    overlayCtx.fillStyle = 'rgba(0,0,0,0.55)';
-    overlayCtx.strokeStyle = 'rgba(255,255,255,0.22)';
-    overlayCtx.lineWidth = 1 * dpr;
-    roundRect(overlayCtx, x0, y0, boxW, boxH, 8*dpr);
-    overlayCtx.fill();
-    overlayCtx.stroke();
-
-    overlayCtx.fillStyle = 'rgba(255,255,255,0.92)';
-    overlayCtx.fillText(label, x1 - innerPad, y0 + innerPad);
-
-    const barX1 = x1 - innerPad;
-    const barX0 = barX1 - barDevPx;
-    const barY  = y1 - innerPad - 2*dpr;
-
-    overlayCtx.strokeStyle = 'rgba(255,255,255,0.92)';
-    overlayCtx.lineWidth = 1 * dpr;
-    overlayCtx.beginPath();
-    overlayCtx.moveTo(barX0, barY);
-    overlayCtx.lineTo(barX1, barY);
-    overlayCtx.moveTo(barX0, barY - 6*dpr);
-    overlayCtx.lineTo(barX0, barY + 1*dpr);
-    overlayCtx.moveTo(barX1, barY - 6*dpr);
-    overlayCtx.lineTo(barX1, barY + 1*dpr);
-    overlayCtx.stroke();
-
-    overlayCtx.restore();
-  }
+  const overlayRenderer = createOverlayRenderer({
+    els,
+    overlayCtx,
+    getDevicePixelRatio: () => window.devicePixelRatio || 1,
+  });
 
   function drawOverlays(ds){
-    overlayCtx.save();
-    overlayCtx.setTransform(1,0,0,1,0,0);
-    overlayCtx.clearRect(0,0,els.overlayCanvas.width, els.overlayCanvas.height);
-
-    if (!ds){
-      overlayCtx.restore();
-      return;
-    }
-
-    if (els.chkGrid.checked){
-      const dpr = window.devicePixelRatio || 1;
-      const eff = ds.view.scale * dpr;
-      const canvasW = els.overlayCanvas.width;
-      const canvasH = els.overlayCanvas.height;
-      const viewW = canvasW / eff;
-      const viewH = canvasH / eff;
-
-      const targetPx = 100;
-      const imgSpacing = Math.max(1, targetPx / eff);
-      const pow = Math.pow(2, Math.round(Math.log2(imgSpacing)));
-      const step = pow;
-
-      const startX = Math.floor(ds.view.x / step) * step;
-      const endX = ds.view.x + viewW;
-      const startY = Math.floor(ds.view.y / step) * step;
-      const endY = ds.view.y + viewH;
-
-      overlayCtx.strokeStyle = 'rgba(255,255,255,0.12)';
-      overlayCtx.lineWidth = 1 * dpr;
-      overlayCtx.beginPath();
-
-      for (let x = startX; x <= endX; x += step){
-        const sx = (x - ds.view.x) * eff;
-        overlayCtx.moveTo(sx, 0);
-        overlayCtx.lineTo(sx, canvasH);
-      }
-      for (let y = startY; y <= endY; y += step){
-        const sy = (y - ds.view.y) * eff;
-        overlayCtx.moveTo(0, sy);
-        overlayCtx.lineTo(canvasW, sy);
-      }
-      overlayCtx.stroke();
-    }
-
-    drawScaleBar(ds);
-
-    overlayCtx.restore();
+    overlayRenderer.drawOverlays(ds);
   }
 
   async function render(opts = {}){
@@ -1788,156 +1612,32 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   // ========= Thumbnail / magnifier =========
 
+  const thumbnails = createThumbnailController({
+    els,
+    thumbCtx,
+    now,
+    toFloat32,
+    tone01,
+    resolveDisplayRange,
+    getBandSettings,
+    readBandWindow,
+    readBandWindowBIP,
+    getActive,
+    render,
+    getDevicePixelRatio: () => window.devicePixelRatio || 1,
+  });
+
   async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step){
-    let raw;
-    if (ds.meta.interleave === 'bip'){
-      raw = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step);
-    } else {
-      raw = await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step);
-    }
-    const f32 = toFloat32(raw);
-
-    const settings = getBandSettings(ds, band);
-    const range = resolveDisplayRange(ds, band, f32);
-    const params = {
-      minVal: range.minVal,
-      maxVal: range.maxVal,
-      gamma: clamp(settings.gamma ?? 1, 0.10, 5.0),
-      gain: clamp(settings.gain ?? 1, 0.0, 4.0),
-      contrast: clamp(settings.contrast ?? 1, 0.1, 3.0),
-    };
-
-    const img = new ImageData(outW, outH);
-    const dst = img.data;
-    for (let i=0, j=0; i<f32.length; i++, j+=4){
-      const t = tone01(f32[i], params.minVal, params.maxVal, params.gamma, params.gain, params.contrast);
-      const u = Math.round(t * 255);
-      dst[j]=u; dst[j+1]=u; dst[j+2]=u; dst[j+3]=255;
-    }
-    return img;
-  }
-
-  async function buildThumbnail(ds){
-    if (!ds) return;
-
-    const twCss = 220;
-    const thCss = 160;
-    const dpr = window.devicePixelRatio || 1;
-    const tw = Math.floor(twCss * dpr);
-    const th = Math.floor(thCss * dpr);
-    els.thumb.width = tw;
-    els.thumb.height = th;
-
-    const stepX = Math.ceil(ds.meta.samples / tw);
-    const stepY = Math.ceil(ds.meta.lines / th);
-    const step = Math.max(1, Math.max(stepX, stepY));
-
-    const outW = Math.min(tw, Math.ceil(ds.meta.samples / step));
-    const outH = Math.min(th, Math.ceil(ds.meta.lines / step));
-
-    try{
-      const img = await renderWindowToImageData(ds, ds.activeBand, 0,0,outW,outH,step);
-
-      thumbCtx.save();
-      thumbCtx.imageSmoothingEnabled = false;
-      thumbCtx.setTransform(1,0,0,1,0,0);
-      thumbCtx.clearRect(0,0,tw,th);
-
-      const scale = Math.min(tw/outW, th/outH);
-      const dw = outW*scale;
-      const dh = outH*scale;
-      const dx = (tw - dw)/2;
-      const dy = (th - dh)/2;
-
-      const off = document.createElement('canvas');
-      off.width = outW; off.height = outH;
-      off.getContext('2d', {alpha:false}).putImageData(img,0,0);
-      thumbCtx.drawImage(off, 0,0,outW,outH, dx,dy,dw,dh);
-      thumbCtx.restore();
-
-      ds.thumb.base = off;
-      ds.thumb.baseW = outW;
-      ds.thumb.baseH = outH;
-
-      ds.thumb.ready = true;
-      ds.thumb.scale = scale;
-      ds.thumb.x0 = dx;
-      ds.thumb.y0 = dy;
-      ds.thumb.w = dw;
-      ds.thumb.h = dh;
-      ds.thumb._t = now();
-    } catch(e){
-      console.warn('thumb error', e);
-    }
+    return thumbnails.renderWindowToImageData(ds, band, x0, y0, outW, outH, step);
   }
 
   function renderThumbnail(){
-    const ds = getActive();
-    els.thumbWrap.style.display = els.chkThumb.checked ? 'block' : 'none';
-    if (!els.chkThumb.checked || !ds) return;
-
-    if (!ds.thumb.ready || (now() - (ds.thumb._t||0)) > 1500){
-      buildThumbnail(ds);
-      return;
-    }
-
-    // redraw base thumbnail (avoid accumulating viewport rectangles)
-    if (ds.thumb.base){
-      const tw = els.thumb.width;
-      const th = els.thumb.height;
-      thumbCtx.save();
-      thumbCtx.imageSmoothingEnabled = false;
-      thumbCtx.setTransform(1,0,0,1,0,0);
-      thumbCtx.clearRect(0,0,tw,th);
-      thumbCtx.drawImage(ds.thumb.base, 0,0, ds.thumb.baseW, ds.thumb.baseH, ds.thumb.x0, ds.thumb.y0, ds.thumb.w, ds.thumb.h);
-      thumbCtx.restore();
-    }
-
-    // overlay viewport rectangle
-    const dpr = window.devicePixelRatio || 1;
-    const eff = ds.view.scale * dpr;
-    const viewW = els.cpuCanvas.width / eff;
-    const viewH = els.cpuCanvas.height / eff;
-
-    const vx0 = ds.view.x / ds.meta.samples;
-    const vy0 = ds.view.y / ds.meta.lines;
-    const vx1 = (ds.view.x + viewW) / ds.meta.samples;
-    const vy1 = (ds.view.y + viewH) / ds.meta.lines;
-
-    const rx = ds.thumb.x0 + vx0*ds.thumb.w;
-    const ry = ds.thumb.y0 + vy0*ds.thumb.h;
-    const rw = (vx1-vx0)*ds.thumb.w;
-    const rh = (vy1-vy0)*ds.thumb.h;
-
-    thumbCtx.save();
-    thumbCtx.setTransform(1,0,0,1,0,0);
-    thumbCtx.strokeStyle = 'rgba(106,169,255,.95)';
-    thumbCtx.lineWidth = 2*dpr;
-    thumbCtx.strokeRect(rx, ry, rw, rh);
-    thumbCtx.restore();
+    thumbnails.renderThumbnail();
   }
 
   function onThumbClick(ev){
-    const ds = getActive();
-    if (!ds || !ds.thumb.ready) return;
-    const rect = els.thumb.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const sx = (ev.clientX - rect.left) * dpr;
-    const sy = (ev.clientY - rect.top) * dpr;
-
-    const nx = (sx - ds.thumb.x0) / ds.thumb.w;
-    const ny = (sy - ds.thumb.y0) / ds.thumb.h;
-    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
-
-    const eff = ds.view.scale * dpr;
-    const viewW = els.cpuCanvas.width / eff;
-    const viewH = els.cpuCanvas.height / eff;
-
-    ds.view.x = clamp(nx*ds.meta.samples - viewW/2, 0, Math.max(0, ds.meta.samples - viewW));
-    ds.view.y = clamp(ny*ds.meta.lines - viewH/2, 0, Math.max(0, ds.meta.lines - viewH));
-    render();
+    thumbnails.onThumbClick(ev);
   }
-
   // Magnifier removed (keeps first-load lighter).
 
   // ========= HUD probe =========
@@ -1997,308 +1697,22 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   
   // ========= Spectrum (z-profile) panel =========
 
-  let specSeq = 0;
-  const specState = {open:false, dsId:null, x:0, y:0, xVals:null, yVals:null};
+  const spectrum = createSpectrumController({
+    els,
+    specCtx,
+    getActive,
+    bandLabel,
+    updatePerf,
+    sanitizeFilePart,
+    downloadBlob,
+    readSpectrumAtPixel: (ds, ix, iy) => readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY),
+    wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
+  });
 
-  function showSpectrumPanel(show){
-    if (!els.specPanel) return;
-    els.specPanel.style.display = show ? 'block' : 'none';
-    specState.open = !!show;
-  }
-
-  function resizeSpecCanvas(){
-    if (!els.specCanvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const r = els.specCanvas.getBoundingClientRect();
-    const w = Math.max(10, Math.floor(r.width * dpr));
-    const h = Math.max(10, Math.floor(r.height * dpr));
-    if (els.specCanvas.width !== w || els.specCanvas.height !== h){
-      els.specCanvas.width = w;
-      els.specCanvas.height = h;
-    }
-  }
-
-  function formatAxisNumber(v){
-    const a = Math.abs(v);
-    if (!isFinite(v)) return '—';
-    if (a >= 1000) return fmtNoGroup(Math.round(v));
-    if (a >= 100) return v.toFixed(1);
-    if (a >= 10) return v.toFixed(2);
-    return v.toFixed(3);
-  }
-
-  function drawSpectrumPlot(ds, xVals, yVals){
-    resizeSpecCanvas();
-    const c = els.specCanvas;
-    const ctx = specCtx;
-    const W = c.width, H = c.height;
-    const dpr = window.devicePixelRatio || 1;
-
-    // Background
-    ctx.clearRect(0,0,W,H);
-    ctx.fillStyle = '#0a0d13';
-    ctx.fillRect(0,0,W,H);
-
-    const padL = Math.round(52 * dpr);
-    const padR = Math.round(12 * dpr);
-    const padT = Math.round(12 * dpr);
-    const padB = Math.round(30 * dpr);
-
-    const x0 = padL, y0 = padT;
-    const x1 = W - padR, y1 = H - padB;
-    const plotW = Math.max(1, x1 - x0);
-    const plotH = Math.max(1, y1 - y0);
-
-    // Ranges
-    let xmin = Infinity, xmax = -Infinity;
-    let ymin = Infinity, ymax = -Infinity;
-    for (let i=0; i<yVals.length; i++){
-      const xv = xVals ? xVals[i] : i;
-      const yv = yVals[i];
-      if (isFinite(xv)){ xmin = Math.min(xmin, xv); xmax = Math.max(xmax, xv); }
-      if (isFinite(yv)){ ymin = Math.min(ymin, yv); ymax = Math.max(ymax, yv); }
-    }
-    if (!isFinite(xmin) || !isFinite(xmax) || xmin === xmax){
-      xmin = 0; xmax = Math.max(1, yVals.length-1);
-    }
-    if (!isFinite(ymin) || !isFinite(ymax) || ymin === ymax){
-      ymin = (isFinite(ymin) ? ymin : 0);
-      ymax = ymin + 1;
-    }
-
-    // Expand y-range slightly for readability
-    const yPad = (ymax - ymin) * 0.06;
-    ymin -= yPad;
-    ymax += yPad;
-
-    const xToPx = (x) => x0 + (x - xmin) / (xmax - xmin) * plotW;
-    const yToPx = (y) => y1 - (y - ymin) / (ymax - ymin) * plotH;
-
-    // Grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1 * dpr;
-    ctx.beginPath();
-    const gridN = 4;
-    for (let i=0; i<=gridN; i++){
-      const yy = y0 + (i/gridN) * plotH;
-      ctx.moveTo(x0, yy);
-      ctx.lineTo(x1, yy);
-    }
-    for (let i=0; i<=gridN; i++){
-      const xx = x0 + (i/gridN) * plotW;
-      ctx.moveTo(xx, y0);
-      ctx.lineTo(xx, y1);
-    }
-    ctx.stroke();
-
-    // Axes
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x0, y1);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
-
-    // Line (decimate for very large band counts)
-    const N = yVals.length;
-    const maxPts = 1400;
-    const step = Math.max(1, Math.ceil(N / maxPts));
-
-    ctx.strokeStyle = 'rgba(220,235,255,0.95)';
-    ctx.lineWidth = 1.5 * dpr;
-    ctx.beginPath();
-    let started = false;
-    for (let i=0; i<N; i+=step){
-      const xv = xVals ? xVals[i] : i;
-      const yv = yVals[i];
-      if (!isFinite(xv) || !isFinite(yv)) continue;
-      const px = xToPx(xv);
-      const py = yToPx(yv);
-      if (!started){ ctx.moveTo(px, py); started = true; }
-      else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-
-    // Selected band marker (current band in the viewer)
-    const selBand = (ds && Number.isFinite(ds.activeBand)) ? ds.activeBand : null;
-    if (selBand != null && selBand >= 0 && selBand < yVals.length){
-      const xv = xVals ? xVals[selBand] : selBand;
-      const yv = yVals[selBand];
-      if (isFinite(xv)){
-        const px = xToPx(xv);
-        ctx.save();
-        ctx.strokeStyle = 'rgba(106,169,255,0.55)';
-        ctx.lineWidth = 1 * dpr;
-        ctx.setLineDash([4*dpr, 4*dpr]);
-        ctx.beginPath();
-        ctx.moveTo(px, y0);
-        ctx.lineTo(px, y1);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        if (isFinite(yv)){
-          const py = yToPx(yv);
-          ctx.fillStyle = 'rgba(106,169,255,0.95)';
-          ctx.beginPath();
-          ctx.arc(px, py, 3*dpr, 0, Math.PI*2);
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-          ctx.lineWidth = 1 * dpr;
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-    }
-
-    // Labels (full range on X; avoid "A … B")
-    ctx.fillStyle = 'rgba(235,245,255,0.92)';
-    ctx.font = `${Math.round(11*dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-    ctx.textBaseline = 'middle';
-
-    // Y ticks (left)
-    ctx.textAlign = 'right';
-    for (let i=0; i<=4; i++){
-      const t = i/4;
-      const yv = ymin + (1-t)*(ymax-ymin);
-      const py = y0 + t*plotH;
-      ctx.fillText(formatAxisNumber(yv), x0 - 8*dpr, py);
-    }
-
-    // X ticks (bottom)
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    for (let i=0; i<=4; i++){
-      const t = i/4;
-      const xv = xmin + t*(xmax-xmin);
-      const px = x0 + t*plotW;
-      ctx.fillText(formatAxisNumber(xv), px, y1 + 6*dpr);
-    }
-
-    // X axis unit label (small)
-    const unit = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : '';
-    const xLabel = xVals ? (unit ? unit : 'Wavelength') : 'Band index';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = 'rgba(200,210,220,0.75)';
-    ctx.fillText(xLabel, x1, y1 + 6*dpr);
-  }
-
-  async function readSpectrumAtPixel(ds, ix, iy){
-    return readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY);
-  }
-
-  function wavelengthArrayOrNull(ds){
-    return wavelengthArrayOrNullCore(ds);
-  }
-
-  async function openSpectrumAt(ds, ix, iy){
-    if (!ds) return;
-    specState.dsId = ds.id;
-    specState.x = ix; specState.y = iy;
-
-    const mySeq = ++specSeq;
-
-    showSpectrumPanel(true);
-
-    const sc = ds.meta.scale;
-    if (sc && isFinite(sc.umPerPixelX) && isFinite(sc.umPerPixelY)){
-      const xUm = ix * Number(sc.umPerPixelX);
-      const yUm = iy * Number(sc.umPerPixelY);
-      els.specSub.textContent = `${ds.name} • x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`;
-    } else {
-      els.specSub.textContent = `${ds.name} • px ${ix}, ${iy}`;
-    }
-
-    els.specFoot.textContent = 'Loading spectrum…';
-
-    // Wait a frame so layout is ready before sizing the canvas
-    await new Promise(r => requestAnimationFrame(r));
-    if (mySeq !== specSeq) return;
-
-    try{
-      const yVals = await readSpectrumAtPixel(ds, ix, iy);
-      if (mySeq !== specSeq) return;
-
-      const xVals = wavelengthArrayOrNull(ds);
-      drawSpectrumPlot(ds, xVals, yVals);
-      specState.xVals = xVals;
-      specState.yVals = yVals;
-
-      // Footer info
-      let ymin = Infinity, ymax = -Infinity;
-      for (let i=0;i<yVals.length;i++){
-        const v = yVals[i];
-        if (!isFinite(v)) continue;
-        ymin = Math.min(ymin, v);
-        ymax = Math.max(ymax, v);
-      }
-      if (!isFinite(ymin) || !isFinite(ymax)){ ymin = 0; ymax = 0; }
-      els.specFoot.textContent = `Bands: ${ds.meta.bands} • Value range: ${formatAxisNumber(ymin)} … ${formatAxisNumber(ymax)} • Double‑click another point to update.`;
-      updatePerf();
-    } catch (e){
-      console.error(e);
-      els.specFoot.textContent = 'Failed to read spectrum. See console.';
-    }
-  }
-
-  function redrawSpectrum(){
-    if (!specState.open) return;
-    const ds = getActive();
-    if (!ds || ds.id !== specState.dsId) return;
-    if (!specState.yVals) return;
-    drawSpectrumPlot(ds, specState.xVals, specState.yVals);
-  }
-
-  function closeSpectrum(){
-    specSeq++;
-    specState.xVals = null;
-    specState.yVals = null;
-    showSpectrumPanel(false);
-  }
-
-  function exportSpectrumCSV(){
-    const ds = getActive();
-    if (!ds || !specState.open || ds.id !== specState.dsId || !specState.yVals){
-      alert('Spectrum not ready yet. Double‑click in the image to open it first.');
-      return;
-    }
-
-    const yVals = specState.yVals;
-    const xVals = specState.xVals;
-
-    const unit = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : '';
-    const xLabel = xVals ? (unit ? unit : 'wavelength') : 'band_index';
-
-    const lines = [];
-    lines.push(`# dataset: ${ds.name}`);
-    lines.push(`# pixel: ${specState.x},${specState.y}`);
-    if (ds.meta.scale && isFinite(ds.meta.scale.umPerPixelX) && isFinite(ds.meta.scale.umPerPixelY)){
-      const xUm = specState.x * Number(ds.meta.scale.umPerPixelX);
-      const yUm = specState.y * Number(ds.meta.scale.umPerPixelY);
-      lines.push(`# physical_um: ${fmtUm(xUm)},${fmtUm(yUm)}`);
-    }
-    lines.push(`# bands: ${ds.meta.bands}`);
-    if (ds.activeBand != null) lines.push(`# active_band: ${ds.activeBand}`);
-
-    const cols = ['band_index','band_name'];
-    if (xVals) cols.push(xLabel);
-    cols.push('value');
-    lines.push(cols.join(','));
-
-    const names = Array.isArray(ds.meta.bandNames) ? ds.meta.bandNames : null;
-    for (let b=0; b<yVals.length; b++){
-      const name = (names && names[b] != null) ? String(names[b]).trim().replace(/\s+/g,' ') : '';
-      const row = [String(b), '"' + name.replace(/"/g,'""') + '"'];
-      if (xVals) row.push(String(xVals[b]));
-      row.push(String(yVals[b]));
-      lines.push(row.join(','));
-    }
-
-    const csv = lines.join('\n') + '\n';
-    const base = `${ds.name}_spectrum_${specState.x}_${specState.y}`;
-    downloadBlob(new Blob([csv], {type:'text/csv'}), `${sanitizeFilePart(base)}.csv`);
-  }
-
-
+  async function openSpectrumAt(ds, ix, iy){ await spectrum.openSpectrumAt(ds, ix, iy); }
+  function redrawSpectrum(){ spectrum.redrawSpectrum(); }
+  function closeSpectrum(){ spectrum.closeSpectrum(); }
+  function exportSpectrumCSV(){ spectrum.exportSpectrumCSV(); }
 // ========= Mouse interaction =========
 
   const interactions = createInteractionController({
@@ -2352,18 +1766,12 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   });
 
   function sanitizeFilePart(s){ return exportService.sanitizeFilePart(s); }
-  function viewRect(ds){ return exportService.viewRect(ds); }
-  function wholeRect(ds){ return exportService.wholeRect(ds); }
-  function clampRect(ds, rect){ return exportService.clampRect(ds, rect); }
-  function resolveExportRect(ds, scope){ return exportService.resolveExportRect(ds, scope); }
 
   function openExportDialog(kind){ exportDialog.openExportDialog(kind); }
   function updateExportDialogUI(){ exportDialog.updateExportDialogUI(); }
   function updateExportEstimate(){ exportDialog.updateExportEstimate(); }
 
   async function runExportFromDialog(){ await exportService.runExportFromDialog(); }
-  async function exportRendered(ds, kind, rect){ await exportService.exportRendered(ds, kind, rect); }
-  async function exportRawStackTIFF(ds, rect){ await exportService.exportRawStackTIFF(ds, rect); }
 
   // ========= Close dataset =========
 
@@ -2372,7 +1780,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     if (idx === -1) return;
     const ds = state.datasets[idx];
 
-    if (specState.open && specState.dsId === id) closeSpectrum();
+    if (spectrum.isOpenForDatasetId(id)) closeSpectrum();
 
     // dispose caches
     try{ if (ds.pyramid) disposePyramid(ds.pyramid); }catch(_){}
@@ -2412,7 +1820,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     resizeCanvases();
     const ds = getActive();
     if (ds) fitToScreen();
-    if (specState.open) redrawSpectrum();
+    redrawSpectrum();
   });
 
   // pointer events on main container (works regardless of which canvas is visible)
@@ -2716,5 +2124,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   })();
 
 })();
+
+
+
 
 
