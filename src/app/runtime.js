@@ -1,4 +1,5 @@
 import { createExportDialogController, createExportService } from "../export/export-controller.js";
+import { createDatasetRuntime } from "./dataset-runtime.js";
 import { createUIPanels } from "./ui-panels.js";
 import { createViewControls } from "./view-controls.js";
 import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/envi-loader.js";
@@ -498,8 +499,6 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   // ========= App state =========
 
-  let nextDatasetId = 1;
-
   const state = {
     datasets: [],
     activeId: null,
@@ -616,117 +615,15 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   // ========= Dataset helpers =========
 
-  function getActive(){
-    return state.datasets.find(d => d.id === state.activeId) || null;
-  }
-
-  function setActiveDataset(id, {fit=false} = {}){
-    state.activeId = id;
-    closeSpectrum();
-    rebuildDatasetList();
-    rebuildBandTree();
-    updateMetaUI();
-    updatePerf();
-    updateDisplayUI(true);
-    const ds = getActive();
-    updateZoomRange(ds);
-    if (fit) fitToScreen();
-    else render();
-  }
-
-  function guessDatasetName(hdrFile, dataFile){
-    const n = hdrFile?.name || dataFile?.name || 'dataset';
-    return n.replace(/\.hdr$/i,'').replace(/\.(img|dat|raw|bin|bip|bil|bsq)$/i,'');
-  }
-
-  function bandLabel(ds, b){
-    if (!ds || !ds.meta) return `Band ${b}`;
-    const names = ds.meta.bandNames;
-    if (Array.isArray(names) && names[b] != null && String(names[b]).trim()){
-      return String(names[b]).trim();
-    }
-    const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
-    if (wl != null && wl !== undefined) return fmtNoGroup(wl);
-    return `Band ${b}`;
-  }
-
-  function makeDatasetFromLoadedFiles({hdrFile, dataFile, meta, base, cached}){
-    const initialBand = (meta.defaultBands && meta.defaultBands.length) ? meta.defaultBands[0] : 0;
-    const ds = {
-      id: 'ds' + (nextDatasetId++),
-      name: guessDatasetName(hdrFile, dataFile),
-      meta,
-      ds: cached,
-      baseDs: base,
-      view: {x:0,y:0,scale:1},
-      activeBand: clamp(initialBand, 0, meta.bands-1),
-      bandSettings: new Map(),
-      bandStatsWhole: new Map(),
-      bandStatsView: null,
-      thumb: {ready:false, _t:0, scale:1, x0:0, y0:0, w:0, h:0},
-      treeExpanded: true,
-      pyramid: null,
-      lastRaster: null,
-    };
-    ds.bandSettings.set(ds.activeBand, {min:null, max:null, gamma:1, gain:1, contrast:1});
-    return ds;
-  }
-
-  function attachDataset(ds){
-    state.datasets.unshift(ds);
-    recomputeCacheBudgets();
-    setActiveDataset(ds.id, {fit:true});
-    buildBandStatsWhole(ds, ds.activeBand).catch(()=>{});
-  }
-
-  async function addDatasetsFromFileList(files){
-    const list = Array.from(files || []);
-    if (!list.length) return;
-
-    let result;
-    try{
-      result = await addDatasetsFromFileListMod(list, {
-        setStatus,
-        ioConcurrency: IO_CONCURRENCY,
-        chunkSize: 1<<20,
-        cacheBytes: 128 * 1024 * 1024,
-        createDataset: makeDatasetFromLoadedFiles,
-      });
-    } catch (e){
-      console.error(e);
-      alert((e && e.message) ? e.message : String(e));
-      setStatus('error','err');
-      return;
-    }
-
-    const {datasets, missing, headersFound} = result;
-    if (!headersFound){
-      alert('No .hdr file found. Please select/drop the ENVI header (.hdr) and its matching binary file.');
-      return;
-    }
-    if (!datasets.length){
-      alert('No complete ENVI pairs found.\n\nMissing data file for:\n' + missing.join('\n'));
-      return;
-    }
-
-    for (const ds of datasets){
-      attachDataset(ds);
-    }
-
-    if (missing.length){
-      alert('Some headers had no matching data file in your selection:\n\n' + missing.join('\n'));
-    }
-  }
-
-  async function addDatasetFromFiles(hdrFile, dataFile){
-    const ds = await addDatasetFromFilesMod(hdrFile, dataFile, {
-      setStatus,
-      ioConcurrency: IO_CONCURRENCY,
-      chunkSize: 1<<20,
-      cacheBytes: 128 * 1024 * 1024,
-      createDataset: makeDatasetFromLoadedFiles,
-    });
-    attachDataset(ds);
+  let datasetRuntime = null;
+  function getActive(){ return datasetRuntime ? datasetRuntime.getActive() : null; }
+  function setActiveDataset(id, opts){ if (datasetRuntime) datasetRuntime.setActiveDataset(id, opts); }
+  function bandLabel(ds, b){ return datasetRuntime ? datasetRuntime.bandLabel(ds, b) : `Band ${b}`; }
+  async function addDatasetsFromFileList(files){ if (datasetRuntime) await datasetRuntime.addDatasetsFromFileList(files); }
+  async function addDatasetFromFiles(hdrFile, dataFile){ if (datasetRuntime) await datasetRuntime.addDatasetFromFiles(hdrFile, dataFile); }
+  function closeDataset(id){
+    if (spectrum && spectrum.isOpenForDatasetId(id)) closeSpectrum();
+    if (datasetRuntime) datasetRuntime.closeDataset(id);
   }
 
   // ========= UI rebuild =========
@@ -761,6 +658,32 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   function applyRangeFromNumbers(ds){ uiPanels.applyRangeFromNumbers(ds); }
   function resetDisplay(ds){ uiPanels.resetDisplay(ds); }
   function autoDisplay(ds){ uiPanels.autoDisplay(ds); }
+
+  datasetRuntime = createDatasetRuntime({
+    state,
+    clamp,
+    fmtNoGroup,
+    addDatasetsFromFileListMod,
+    addDatasetFromFilesMod,
+    setStatus,
+    alertFn: (msg) => alert(msg),
+    getIOConcurrency: () => IO_CONCURRENCY,
+    recomputeCacheBudgets,
+    closeSpectrum,
+    onAfterDatasetUIUpdate: () => {
+      rebuildDatasetList();
+      rebuildBandTree();
+      updateMetaUI();
+      updatePerf();
+      updateDisplayUI(true);
+    },
+    updateZoomRange,
+    fitToScreen,
+    render,
+    disposePyramid,
+    clearSelection,
+    onNeedWholeStats: (ds, band) => buildBandStatsWhole(ds, band).catch(() => {}),
+  });
   // ========= Histogram computation & drawing =========
 
   function quickStatsFromArray(arr){ return quickStatsFromArrayCore(arr); }
@@ -1115,36 +1038,6 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
   function updateExportEstimate(){ exportDialog.updateExportEstimate(); }
 
   async function runExportFromDialog(){ await exportService.runExportFromDialog(); }
-
-  // ========= Close dataset =========
-
-  function closeDataset(id){
-    const idx = state.datasets.findIndex(d => d.id === id);
-    if (idx === -1) return;
-    const ds = state.datasets[idx];
-
-    if (spectrum.isOpenForDatasetId(id)) closeSpectrum();
-
-    // dispose caches
-    try{ if (ds.pyramid) disposePyramid(ds.pyramid); }catch(_){}
-    try{ ds.ds.close(); }catch(_){}
-
-    state.datasets.splice(idx, 1);
-
-    if (state.activeId === id){
-      state.activeId = state.datasets[0]?.id || null;
-    }
-
-    recomputeCacheBudgets();
-
-    rebuildDatasetList();
-    rebuildBandTree();
-    updateMetaUI();
-    updatePerf();
-    updateDisplayUI(true);
-    clearSelection();
-    render();
-  }
 
   // ========= Wiring events =========
 
