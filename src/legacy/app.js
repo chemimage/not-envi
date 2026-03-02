@@ -8,6 +8,14 @@ import {
   segGet as segGetCore,
   toFloat32 as toFloat32Core
 } from "../core/raster-io.js";
+import {
+  computeHistogram as computeHistogramCore,
+  percentileFromHist as percentileFromHistCore,
+  quickStatsFromArray as quickStatsFromArrayCore,
+  resolveDisplayRange as resolveDisplayRangeCore,
+  tone01 as tone01Core,
+  typeDefaultRange as typeDefaultRangeCore
+} from "../render/display-math.js";
 import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
 
 (() => {
@@ -1446,53 +1454,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
   // ========= Histogram computation & drawing =========
 
-  function quickStatsFromArray(arr){
-    let min = Infinity, max = -Infinity;
-    let count = 0;
-    for (let i=0;i<arr.length;i++){
-      const v = arr[i];
-      if (!isFinite(v)) continue;
-      if (v < min) min = v;
-      if (v > max) max = v;
-      count++;
-    }
-    if (!count){ min = 0; max = 1; }
-    return {min, max, count};
-  }
+  function quickStatsFromArray(arr){ return quickStatsFromArrayCore(arr); }
 
-  function computeHistogram(arr, bins=256){
-    const {min, max, count} = quickStatsFromArray(arr);
-    const out = new Uint32Array(bins);
-    if (!count || !isFinite(min) || !isFinite(max) || max === min){
-      return {bins: out, min, max, count, p1:min, p99:max};
-    }
-    const inv = (bins - 1) / (max - min);
-    for (let i=0;i<arr.length;i++){
-      const v = arr[i];
-      if (!isFinite(v)) continue;
-      const t = (v - min) * inv;
-      const bi = clamp(Math.floor(t), 0, bins-1);
-      out[bi]++;
-    }
-    // percentiles approx from histogram
-    const p1 = percentileFromHist(out, min, max, 0.01, count);
-    const p99 = percentileFromHist(out, min, max, 0.99, count);
-    return {bins: out, min, max, count, p1, p99};
-  }
+  function computeHistogram(arr, bins=256){ return computeHistogramCore(arr, bins); }
 
-  function percentileFromHist(bins, min, max, q, total){
-    if (!total) return min;
-    const target = q * total;
-    let cum = 0;
-    for (let i=0;i<bins.length;i++){
-      cum += bins[i];
-      if (cum >= target){
-        const t = i / (bins.length - 1);
-        return min + t*(max-min);
-      }
-    }
-    return max;
-  }
+  function percentileFromHist(bins, min, max, q, total){ return percentileFromHistCore(bins, min, max, q, total); }
 
   async function buildBandStatsWhole(ds, band){
     if (!ds || band == null) return;
@@ -1543,16 +1509,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     drawHistogram(ds);
   }
 
-  function tone01(v, minVal, maxVal, gamma, gain, contrast){
-    const denom = Math.max(1e-12, maxVal - minVal);
-    let t = (v - minVal) / denom;
-    if (!isFinite(t)) t = 0;
-    t = clamp(t, 0, 1);
-    t = Math.pow(t, gamma);
-    t = (t - 0.5) * contrast + 0.5;
-    t = t * gain;
-    return clamp(t, 0, 1);
-  }
+  function tone01(v, minVal, maxVal, gamma, gain, contrast){ return tone01Core(v, minVal, maxVal, gamma, gain, contrast); }
 
   function drawHistogram(ds){
     const canvas = els.hist;
@@ -1822,49 +1779,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     });
   }
 
-  function typeDefaultRange(meta){
-    const t = meta.dataType;
-    if (t === 1) return {min:0, max:255};
-    if (t === 12) return {min:0, max:65535};
-    if (t === 2) return {min:-32768, max:32767};
-    if (t === 3) return {min:-2147483648, max:2147483647};
-    if (t === 13) return {min:0, max:4294967295};
-    return {min:null, max:null};
-  }
-
-  function resolveDisplayRange(ds, band, fallbackArray){
-    const s = getBandSettings(ds, band);
-    let minVal = s.min;
-    let maxVal = s.max;
-
-    // prefer stats percentiles when user hasn't explicitly set
-    const stats = ds.bandStatsWhole.get(band) || ds.bandStatsView;
-    if ((minVal == null || maxVal == null) && stats){
-      if (minVal == null) minVal = stats.p1;
-      if (maxVal == null) maxVal = stats.p99;
-    }
-
-    // fallback: compute from last raster
-    if ((minVal == null || maxVal == null) && fallbackArray){
-      const h = computeHistogram(fallbackArray, 256);
-      if (minVal == null) minVal = h.p1;
-      if (maxVal == null) maxVal = h.p99;
-    }
-
-    // final fallback: type-based
-    if ((minVal == null || maxVal == null)){
-      const d = typeDefaultRange(ds.meta);
-      if (minVal == null) minVal = (d.min != null) ? d.min : 0;
-      if (maxVal == null) maxVal = (d.max != null) ? d.max : 1;
-    }
-
-    // avoid degenerate
-    if (!isFinite(minVal)) minVal = 0;
-    if (!isFinite(maxVal)) maxVal = minVal + 1;
-    if (maxVal === minVal) maxVal = minVal + 1e-6;
-
-    return {minVal, maxVal};
-  }
+  function typeDefaultRange(meta){ return typeDefaultRangeCore(meta); }
+  function resolveDisplayRange(ds, band, fallbackArray){ return resolveDisplayRangeCore(ds, band, fallbackArray, getBandSettings); }
 
   async function tryRasterFromPyramid(ds, band, eff){
     ensurePyramid(ds);
