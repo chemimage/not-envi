@@ -1,24 +1,21 @@
 import { createExportDialogController, createExportService } from "../export/export-controller.js";
 import { createDatasetRuntime } from "./dataset-runtime.js";
 import { createCacheRuntime } from "./cache-runtime.js";
+import { collectElements } from "./elements.js";
 import { createUIPanels } from "./ui-panels.js";
 import { createViewControls } from "./view-controls.js";
 import { wireApp } from "./wiring.js";
 import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/envi-loader.js";
 import {
-  makeSegmentReader as makeSegmentReaderCore,
-  pixelOffset as pixelOffsetCore,
   readBandWindow as readBandWindowCore,
   readBandWindowBIP as readBandWindowBIPCore,
-  segGet as segGetCore,
   toFloat32 as toFloat32Core
 } from "../core/raster-io.js";
 import {
   computeHistogram as computeHistogramCore,
   quickStatsFromArray as quickStatsFromArrayCore,
   resolveDisplayRange as resolveDisplayRangeCore,
-  tone01 as tone01Core,
-  typeDefaultRange as typeDefaultRangeCore
+  tone01 as tone01Core
 } from "../render/display-math.js";
 import {
   createHistogramController
@@ -27,6 +24,7 @@ import { createGpuRuntime } from "../render/gpu-runtime.js";
 import { createHudController } from "../render/hud.js";
 import { createOverlayRenderer } from "../render/overlay.js";
 import { createPyramidController } from "../render/pyramid-cache.js";
+import { createRenderer } from "../render/render-main.js";
 import { createSpectrumController } from "../render/spectrum.js";
 import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
 import { createThumbnailController } from "../render/thumbnail.js";
@@ -38,7 +36,6 @@ import { createInteractionController } from "../ui/events.js";
 
   // ========= Utilities =========
 
-  const $ = (sel) => document.querySelector(sel);
   const now = () => performance.now();
 
   function downloadBlob(blob, filename){
@@ -67,115 +64,7 @@ import { createInteractionController } from "../ui/events.js";
   let IO_CONCURRENCY = IO_CONCURRENCY_MAX; // can be toggled to 1 (sequential)
   // ========= Elements =========
 
-  const els = {
-    btnFit: $('#btnFit'),
-    btn100: $('#btn100'),
-    btnZoomIn: $('#btnZoomIn'),
-    btnZoomOut: $('#btnZoomOut'),
-    zoom: $('#zoom'),
-    zoomLabel: $('#zoomLabel'),
-
-    chkGrid: $('#chkGrid'),
-    chkThumb: $('#chkThumb'),
-    chkScale: $('#chkScale'),
-
-    btnSelect: $('#btnSelect'),
-    btnExportPNG: $('#btnExportPNG'),
-    btnExportTIFF: $('#btnExportTIFF'),
-
-    gpuBadge: $('#gpuBadge'),
-    statusBadge: $('#statusBadge'),
-
-    // left
-    filePicker: $('#filePicker'),
-    dropzone: $('#dropzone'),
-    datasetCount: $('#datasetCount'),
-    datasetList: $('#datasetList'),
-
-    metaSamples: $('#metaSamples'),
-    metaLines: $('#metaLines'),
-    metaBands: $('#metaBands'),
-    metaInterleave: $('#metaInterleave'),
-    metaType: $('#metaType'),
-    metaEndian: $('#metaEndian'),
-    metaWlUnits: $('#metaWlUnits'),
-    metaScale: $('#metaScale'),
-    metaExtra: $('#metaExtra'),
-
-    perfBytes: $('#perfBytes'),
-    perfCache: $('#perfCache'),
-    perfPyramid: $('#perfPyramid'),
-    perfBarCacheText: $('#perfBarCacheText'),
-    perfBarCacheFill: $('#perfBarCacheFill'),
-    perfBarReadText: $('#perfBarReadText'),
-    perfBarReadFill: $('#perfBarReadFill'),
-    chkIOParallel: $('#chkIOParallel'),
-
-    // main
-    main: $('#main'),
-    gpuCanvas: $('#gpuCanvas'),
-    cpuCanvas: $('#cpuCanvas'),
-    overlayCanvas: $('#overlayCanvas'),
-    selRect: $('#selRect'),
-    hudPos: $('#hudPos'),
-    hudVal: $('#hudVal'),
-    thumbWrap: $('#thumbWrap'),
-    thumb: $('#thumb'),
-
-    // spectrum
-    specPanel: $('#specPanel'),
-    specCanvas: $('#specCanvas'),
-    specTitle: $('#specTitle'),
-    specSub: $('#specSub'),
-    specFoot: $('#specFoot'),
-    btnSpecClose: $('#btnSpecClose'),
-    btnSpecCSV: $('#btnSpecCSV'),
-
-    // right
-    btnAuto: $('#btnAuto'),
-    btnReset: $('#btnReset'),
-    bandSearch: $('#bandSearch'),
-    btnExpandAll: $('#btnExpandAll'),
-    btnCollapseAll: $('#btnCollapseAll'),
-    bandTree: $('#bandTree'),
-    dispDataset: $('#dispDataset'),
-    dispBand: $('#dispBand'),
-    dispWl: $('#dispWl'),
-    chkHistView: $('#chkHistView'),
-    hist: $('#hist'),
-    lblRange: $('#lblRange'),
-    rangeMin: $('#rangeMin'),
-    rangeMax: $('#rangeMax'),
-    numMin: $('#numMin'),
-    numMax: $('#numMax'),
-    slContrast: $('#slContrast'),
-    lblContrast: $('#lblContrast'),
-    slGamma: $('#slGamma'),
-    lblGamma: $('#lblGamma'),
-    slGain: $('#slGain'),
-    lblGain: $('#lblGain'),
-
-    // export dialog
-    exportDlg: $('#exportDlg'),
-    expTitle: $('#expTitle'),
-    expInfo: $('#expInfo'),
-    expModeRaw: $('#expModeRaw'),
-    expModeRendered: $('#expModeRendered'),
-    expRawOptions: $('#expRawOptions'),
-    expRenderedOptions: $('#expRenderedOptions'),
-    expLblRawSel: $('#expLblRawSel'),
-    expLblRenSel: $('#expLblRenSel'),
-    expRawScopeSel: $('#expRawScopeSel'),
-    expRawScopeWhole: $('#expRawScopeWhole'),
-    expRenScopeSel: $('#expRenScopeSel'),
-    expRenScopeView: $('#expRenScopeView'),
-    expRenScopeWhole: $('#expRenScopeWhole'),
-    expEstimate: $('#expEstimate'),
-    expWarning: $('#expWarning'),
-    expNote: $('#expNote'),
-    btnExpCancel: $('#btnExpCancel'),
-    btnExpGo: $('#btnExpGo'),
-  };
+  const els = collectElements();
 
   const thumbCtx = els.thumb.getContext('2d', {alpha:false});
   const overlayCtx = els.overlayCanvas.getContext('2d', {alpha:true});
@@ -188,9 +77,6 @@ import { createInteractionController } from "../ui/events.js";
     if (cls) els.statusBadge.classList.add(cls);
   }
 
-  function pixelOffset(meta, x, y, b){ return pixelOffsetCore(meta, x, y, b); }
-  function makeSegmentReader(meta, u8){ return makeSegmentReaderCore(meta, u8); }
-  function segGet(meta, seg, i){ return segGetCore(meta, seg, i); }
   async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY); }
   async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step){ return readBandWindowBIPCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY); }
   function toFloat32(arr){ return toFloat32Core(arr); }
@@ -389,67 +275,15 @@ import { createInteractionController } from "../ui/events.js";
   function applyHistogramDrag(ds, kind, clientX){ histogram.applyHistogramDrag(ds, kind, clientX); }
   // ========= Rendering (direct read or pyramid) =========
 
-  function resizeCanvases(){
-    const dpr = window.devicePixelRatio || 1;
-    const rect = els.main.getBoundingClientRect();
-    const w = Math.max(1, Math.floor(rect.width * dpr));
-    const h = Math.max(1, Math.floor(rect.height * dpr));
-
-    // GPU canvas sized in gpuConfigureCanvas (it will call configure)
-    els.cpuCanvas.width = w;
-    els.cpuCanvas.height = h;
-    els.overlayCanvas.width = w;
-    els.overlayCanvas.height = h;
-  }
-
   function clampView(){ viewControls.clampView(); }
   function fitToScreen(){ viewControls.fitToScreen(); }
   function screenToImage(sx, sy){ return viewControls.screenToImage(sx, sy); }
 
-  function scheduleRender(){
-    if (state._rafPending) return;
-    state._rafPending = true;
-    requestAnimationFrame(() => {
-      state._rafPending = false;
-      render();
-    });
-  }
-
-  function typeDefaultRange(meta){ return typeDefaultRangeCore(meta); }
   function resolveDisplayRange(ds, band, fallbackArray){ return resolveDisplayRangeCore(ds, band, fallbackArray, getBandSettings); }
 
   async function tryRasterFromPyramid(ds, band, eff){
     ds.__pyrPreferImmediate = !!state.mouse.dragging;
     return pyramid.tryRasterFromPyramid(ds, band, eff);
-  }
-
-  async function readRasterDirect(ds, band, eff){
-    const canvasW = els.cpuCanvas.width;
-    const canvasH = els.cpuCanvas.height;
-
-    let rasterW, rasterH, step;
-
-    if (eff >= 1){
-      rasterW = Math.ceil(canvasW / eff);
-      rasterH = Math.ceil(canvasH / eff);
-      step = 1;
-    } else {
-      step = Math.ceil(1 / eff);
-      rasterW = canvasW;
-      rasterH = canvasH;
-    }
-
-    const x0 = ds.view.x;
-    const y0 = ds.view.y;
-
-    let raw;
-    if (ds.meta.interleave === 'bip'){
-      raw = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, rasterW, rasterH, step);
-    } else {
-      raw = await readBandWindow(ds.meta, ds.ds, band, x0, y0, rasterW, rasterH, step);
-    }
-
-    return { band, dataF32: toFloat32(raw), w: rasterW, h: rasterH, source:'direct', level:0, step, x0, y0 };
   }
 
   function cpuRenderGray(rasterF32, w, h, params){
@@ -490,108 +324,35 @@ import { createInteractionController } from "../ui/events.js";
     overlayRenderer.drawOverlays(ds);
   }
 
-  async function render(opts = {}){
-    const ds = getActive();
-    if (!ds || ds.activeBand == null){
-      // clear canvases
-      resizeCanvases();
-      cpuCtx.setTransform(1,0,0,1,0,0);
-      cpuCtx.fillStyle = '#000';
-      cpuCtx.fillRect(0,0,els.cpuCanvas.width, els.cpuCanvas.height);
-      overlayCtx.setTransform(1,0,0,1,0,0);
-      overlayCtx.clearRect(0,0,els.overlayCanvas.width, els.overlayCanvas.height);
-      return;
-    }
+  let renderer = null;
+  function resizeCanvases(){ if (renderer) renderer.resizeCanvases(); }
+  function scheduleRender(){ if (renderer) renderer.scheduleRender(); }
+  async function render(opts = {}){ if (renderer) await renderer.render(opts); }
 
-    const seq = ++state.renderSeq;
-
-    resizeCanvases();
-    const dpr = window.devicePixelRatio || 1;
-    const eff = ds.view.scale * dpr;
-
-    // WebGPU init (best-effort). If it fails, we'll use CPU canvas.
-    let useGPU = false;
-    if (gpuSupported){
-      const ok = await initWebGPU();
-      if (ok) useGPU = true;
-    }
-
-    els.gpuBadge.textContent = gpuSupported ? (useGPU ? 'WebGPU: on' : 'WebGPU: off') : 'WebGPU: n/a';
-    els.gpuCanvas.style.display = useGPU ? 'block' : 'none';
-    els.cpuCanvas.style.display = useGPU ? 'none' : 'block';
-
-    // Clamp view to bounds
-    clampView();
-
-    const band = ds.activeBand;
-    const settings = getBandSettings(ds, band);
-
-    // If only display params changed, reuse last raster if it matches.
-    const reuse = !!opts.reuseRaster;
-    let raster = null;
-
-    if (reuse && ds.lastRaster && ds.lastRaster.band === band){
-      raster = ds.lastRaster;
-    } else {
-      // attempt pyramid render when zoomed out
-      if (eff < 1){
-        raster = await tryRasterFromPyramid(ds, band, eff);
-      }
-      if (!raster){
-        setStatus('reading…','warn');
-        raster = await readRasterDirect(ds, band, eff);
-      }
-      ds.lastRaster = raster;
-    }
-
-    if (seq !== state.renderSeq) return;
-
-    const range = resolveDisplayRange(ds, band, raster.dataF32);
-    const params = {
-      minVal: range.minVal,
-      maxVal: range.maxVal,
-      gamma: clamp(settings.gamma ?? 1, 0.10, 5.0),
-      gain: clamp(settings.gain ?? 1, 0.0, 4.0),
-      contrast: clamp(settings.contrast ?? 1, 0.1, 3.0),
-    };
-
-    // Sync UI with resolved values (without forcing user mid-edit)
-    syncRangeInputsFromSettings(ds);
-
-    try{
-      const t0 = now();
-      if (useGPU){
-        gpuRender(raster.dataF32, raster.w, raster.h, params);
-      } else {
-        cpuRenderGray(raster.dataF32, raster.w, raster.h, params);
-      }
-
-      state.lastRenderMs = now() - t0;
-      setStatus('ready','ok');
-
-      // overlays
-      drawOverlays(ds);
-
-      updatePerf();
-      renderThumbnail();
-      updateHud();
-
-      // view histogram mode: debounce recompute to avoid heavy updates during pan
-      if (state.histMode === 'view'){
-        if (state.histViewDebounce) clearTimeout(state.histViewDebounce);
-        state.histViewDebounce = setTimeout(() => {
-          const d = getActive();
-          if (!d || d.id !== ds.id) return;
-          ensureViewHistogram(d);
-        }, 180);
-      }
-
-    } catch (e){
-      console.error(e);
-      if (seq !== state.renderSeq) return;
-      setStatus('render error','err');
-    }
-  }
+  renderer = createRenderer({
+    state,
+    els,
+    now,
+    setStatus,
+    getActive,
+    getBandSettings,
+    resolveDisplayRange,
+    initWebGPU,
+    gpuSupported,
+    gpuRender,
+    cpuRenderGray,
+    tryRasterFromPyramid,
+    readBandWindow,
+    readBandWindowBIP,
+    toFloat32,
+    clampView,
+    syncRangeInputsFromSettings,
+    drawOverlays,
+    updatePerf,
+    renderThumbnail,
+    updateHud,
+    ensureViewHistogram,
+  });
 
   // ========= Thumbnail / magnifier =========
 
