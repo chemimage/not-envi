@@ -1,0 +1,105 @@
+export { createExportService } from "./export-service.js";
+
+export function createExportDialogController(deps) {
+  const {
+    state,
+    els,
+    getActive,
+    bandLabel,
+    humanBytes,
+    resolveExportRect,
+    alertFn
+  } = deps;
+
+  function selectedKind() {
+    return deps.els.expFormatPng.checked ? "png" : "tiff";
+  }
+
+  function openExportDialog() {
+    const ds = getActive();
+    if (!ds || ds.activeBand == null) {
+      alertFn("Please select a dataset and band first.");
+      return;
+    }
+    if (!els.expFormatPng.checked && !els.expFormatTiff.checked) {
+      els.expFormatTiff.checked = true;
+    }
+    state.exportKind = selectedKind();
+
+    const hasSel = !!state.selection.imgRect;
+    els.expTitle.textContent = "Export";
+
+    const b = ds.activeBand;
+    els.expInfo.textContent = `${ds.name} • ${bandLabel(ds, b)} (band ${b})`;
+    if (state.exportKind === "png") {
+      els.expModeRendered.checked = true;
+    } else {
+      els.expModeRaw.checked = true;
+    }
+
+    els.expLblRawSel.textContent = hasSel ? "Selection stack (all bands)" : "Current view stack (all bands)";
+    els.expLblRenSel.textContent = hasSel ? "Selection" : "Selection (none)";
+    els.expRenScopeSel.disabled = !hasSel;
+    if (hasSel) els.expRenScopeSel.checked = true;
+    else els.expRenScopeView.checked = true;
+
+    updateExportDialogUI();
+    try { els.exportDlg.showModal(); } catch { els.exportDlg.open = true; }
+  }
+
+  function updateExportDialogUI() {
+    const kind = selectedKind();
+    state.exportKind = kind;
+    if (kind === "png" && els.expModeRaw.checked) {
+      els.expModeRendered.checked = true;
+    }
+    els.expModeRaw.disabled = (kind === "png");
+    const mode = (els.expModeRaw.checked && kind === "tiff") ? "raw" : "rendered";
+    els.expRawOptions.style.display = (mode === "raw") ? "block" : "none";
+    els.expRenderedOptions.style.display = (mode === "rendered") ? "block" : "none";
+    updateExportEstimate();
+  }
+
+  function updateExportEstimate() {
+    const ds = getActive();
+    if (!ds) {
+      els.expEstimate.textContent = "Estimated output: —";
+      els.expNote.textContent = "—";
+      els.expWarning.style.display = "none";
+      return;
+    }
+
+    const kind = selectedKind();
+    state.exportKind = kind;
+    const mode = (els.expModeRaw.checked && kind === "tiff") ? "raw" : "rendered";
+
+    let rect;
+    let estBytes = 0;
+
+    if (mode === "raw") {
+      const scope = els.expRawScopeWhole.checked ? "whole" : "sel";
+      rect = resolveExportRect(ds, scope);
+      const bpp = ds.meta.dataTypeInfo.bytes;
+      estBytes = rect.w * rect.h * ds.meta.bands * bpp;
+      els.expNote.innerHTML = `Raw stack (all bands): <b>${rect.w}×${rect.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), uncompressed TIFF.`;
+    } else {
+      const scope = els.expRenScopeWhole.checked ? "whole" : (els.expRenScopeSel.checked ? "sel" : "view");
+      rect = resolveExportRect(ds, scope);
+      estBytes = rect.w * rect.h * 4;
+      els.expNote.innerHTML = `Rendered view: <b>${rect.w}×${rect.h}</b> pixels from the current band.`;
+      if (kind === "png") {
+        els.expNote.innerHTML += ` <span class="badge">PNG is rendered only</span> (use TIFF for raw).`;
+      }
+    }
+
+    els.expEstimate.textContent = `Estimated output: ${humanBytes(estBytes)}`;
+    const warn = estBytes > (512 * 1024 * 1024) || (rect && rect.w * rect.h > 20_000_000);
+    els.expWarning.style.display = warn ? "inline-flex" : "none";
+  }
+
+  return {
+    openExportDialog,
+    updateExportDialogUI,
+    updateExportEstimate
+  };
+}
