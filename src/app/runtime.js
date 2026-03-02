@@ -1,5 +1,6 @@
 import { createExportDialogController, createExportService } from "../export/export-controller.js";
 import { createDatasetRuntime } from "./dataset-runtime.js";
+import { createCacheRuntime } from "./cache-runtime.js";
 import { createUIPanels } from "./ui-panels.js";
 import { createViewControls } from "./view-controls.js";
 import { wireApp } from "./wiring.js";
@@ -254,76 +255,23 @@ import { createInteractionController } from "../ui/events.js";
   
   // ========= I/O mode =========
 
+  const cacheRuntime = createCacheRuntime({
+    state,
+    clamp,
+    updatePerf: () => updatePerf(),
+    updatePyramidInflight: (ds) => pyramid.updateInflightForIO(ds),
+    getIOConcurrencyMax: () => IO_CONCURRENCY_MAX,
+  });
+
   function setIOParallel(enabled){
-    const on = !!enabled;
-    state.ioParallel = on;
-    IO_CONCURRENCY = on ? IO_CONCURRENCY_MAX : 1;
-
-    // Update existing data sources + pyramid workers.
-    for (const ds of state.datasets){
-      try{
-        if (ds && ds.ds){
-          if (typeof ds.ds.setConcurrency === 'function') ds.ds.setConcurrency(IO_CONCURRENCY);
-          else if (typeof ds.ds.concurrency === 'number') ds.ds.concurrency = clamp(IO_CONCURRENCY, 1, 8);
-        }
-        if (ds && ds.pyramid) pyramid.updateInflightForIO(ds);
-      }catch(_){}
-    }
-    updatePerf();
+    IO_CONCURRENCY = cacheRuntime.setIOParallel(enabled);
   }
 
-// ========= Cache budgeting =========
-
-  // We size in-memory caches from the browser's best-effort memory hints.
-  // Target: ~40% of the available JS heap budget (or device RAM hint), shared across open datasets.
-  const CACHE_BUDGET = {
-    fracOfAvailable: 0.40,
-    minBytes: 256 * 1024 * 1024,
-    maxBytes: 3 * 1024 * 1024 * 1024,
-    fracChunk: 0.60,
-    fracPyramid: 0.40,
-    totalBytes: 0,
-  };
-
-  function estimateTotalCacheBudgetBytes(){
-    let heapLimit = 0;
-    try{
-      heapLimit = (performance && performance.memory && performance.memory.jsHeapSizeLimit) ? performance.memory.jsHeapSizeLimit : 0;
-    }catch(_){}
-    let devBytes = 0;
-    try{
-      devBytes = (navigator && navigator.deviceMemory) ? (navigator.deviceMemory * 1024 * 1024 * 1024) : 0;
-    }catch(_){}
-
-    let basis = heapLimit || devBytes || (1024 * 1024 * 1024);
-    if (heapLimit && devBytes) basis = Math.min(heapLimit, devBytes);
-
-    let budget = basis * CACHE_BUDGET.fracOfAvailable;
-    budget = clamp(budget, CACHE_BUDGET.minBytes, CACHE_BUDGET.maxBytes);
-    return budget;
-  }
+  // ========= Cache budgeting =========
 
   function recomputeCacheBudgets(){
-    if (!CACHE_BUDGET.totalBytes){
-      CACHE_BUDGET.totalBytes = estimateTotalCacheBudgetBytes();
-    }
-    const n = Math.max(1, state.datasets.length);
-    const per = CACHE_BUDGET.totalBytes / n;
-
-    for (const ds of state.datasets){
-      const chunkSize = (ds.ds && ds.ds.chunkSize) ? ds.ds.chunkSize : (1<<20);
-      const chunkBytes = Math.max(chunkSize * 8, Math.floor(per * CACHE_BUDGET.fracChunk));
-      const pyramidBytes = Math.max(64 * 1024 * 1024, Math.floor(per * CACHE_BUDGET.fracPyramid));
-
-      ds.chunkBudgetBytes = chunkBytes;
-      ds.pyramidBudgetBytes = pyramidBytes;
-
-      if (ds.ds && ds.ds.setMaxBytes) ds.ds.setMaxBytes(chunkBytes);
-      if (ds.pyramid) ds.pyramid.limitBytes = pyramidBytes;
-    }
-    updatePerf();
+    cacheRuntime.recomputeCacheBudgets();
   }
-
   // ========= Zoom mapping =========
 
   const viewControls = createViewControls({
@@ -819,6 +767,7 @@ import { createInteractionController } from "../ui/events.js";
     setGpuBadgeAvailable: () => { els.gpuBadge.textContent = gpuSupported ? "WebGPU: available" : "WebGPU: n/a"; }
   });
 })();
+
 
 
 
