@@ -27,10 +27,6 @@
         <input type="checkbox" id="chkGrid" />
         <span class="tiny">Grid</span>
       </label>
-      <label class="toggle" title="Show thumbnail / overview">
-        <input type="checkbox" id="chkThumb" checked />
-        <span class="tiny">Thumbnail</span>
-      </label>
       <label class="toggle" title="Show scalebar (lower right)">
         <input type="checkbox" id="chkScale" />
         <span class="tiny">Scalebar</span>
@@ -66,22 +62,23 @@
       <div class="divider"></div>
 
       <h3 style="margin:0 0 8px 0; font-size:14px;">Open datasets</h3>
-      <div id="datasetList" class="ds-list"></div>
-
-      <div class="divider"></div>
-
-      <h3 style="margin:0 0 8px 0; font-size:14px;">Active dataset</h3>
-      <div class="kv">
-        <div class="k">Samples</div><div class="v" id="metaSamples">—</div>
-        <div class="k">Lines</div><div class="v" id="metaLines">—</div>
-        <div class="k">Bands</div><div class="v" id="metaBands">—</div>
-        <div class="k">Interleave</div><div class="v" id="metaInterleave">—</div>
-        <div class="k">Type</div><div class="v" id="metaType">—</div>
-        <div class="k">Endian</div><div class="v" id="metaEndian">—</div>
-        <div class="k">Wavelength units</div><div class="v" id="metaWlUnits">—</div>
-        <div class="k">Scale</div><div class="v" id="metaScale">—</div>
+      <div class="datasets-wrap">
+        <div id="datasetList" class="ds-list"></div>
+        <div id="metaHoverPanel" class="meta-hover-panel" style="display:none;">
+          <div class="kv">
+            <div class="k">Samples</div><div class="v" id="metaSamples">—</div>
+            <div class="k">Lines</div><div class="v" id="metaLines">—</div>
+            <div class="k">Bands</div><div class="v" id="metaBands">—</div>
+            <div class="k">Interleave</div><div class="v" id="metaInterleave">—</div>
+            <div class="k">Type</div><div class="v" id="metaType">—</div>
+            <div class="k">Endian</div><div class="v" id="metaEndian">—</div>
+            <div class="k">Wavelength units</div><div class="v" id="metaWlUnits">—</div>
+            <div class="k">Scale</div><div class="v" id="metaScale">—</div>
+          </div>
+          <div class="kv" id="metaExpKv" style="display:none;"></div>
+          <div class="hint" id="metaExtra">—</div>
+        </div>
       </div>
-      <div class="hint" id="metaExtra">—</div>
 
       <div class="divider"></div>
 

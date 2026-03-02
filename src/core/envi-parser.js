@@ -103,7 +103,7 @@ export function normalizeMeta(raw) {
   }
 
   const wlUnits = get("wavelength units", get("wavelength_units", ""));
-  const desc = get("description", "");
+  const desc = normalizeDescription(get("description", ""));
   const mapInfo = get("map info", null);
   const scale = parseUmPerPixelFromMapInfo(mapInfo) || parseUmPerPixelFromCustomFields(raw);
 
@@ -125,6 +125,39 @@ export function normalizeMeta(raw) {
     mapInfo,
     scale
   };
+}
+
+function normalizeDescription(value) {
+  if (value == null) return "";
+
+  const toSettingLikeText = (text) => {
+    const t = String(text || "").trim();
+    if (!t) return "";
+    if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) return t;
+
+    // If it looks like key/value settings but missing outer braces, restore them.
+    const looksLikeKV = /(^|,\s*)["'\w.-]+\s*[:=]\s*.+/.test(t);
+    return looksLikeKV ? `{${t}}` : t;
+  };
+
+  if (Array.isArray(value)) {
+    const joined = value.map((x) => String(x).trim()).filter(Boolean).join(", ");
+    return toSettingLikeText(joined);
+  }
+
+  if (typeof value === "string") {
+    return toSettingLikeText(value);
+  }
+
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
 }
 
 function normalizeInterleave(rawInterleave) {

@@ -255,7 +255,7 @@
   }
 
   #thumbWrap {
-    @apply absolute right-2.5 top-2.5 h-40 w-56 overflow-hidden rounded-sm border border-white/15 bg-gray-950/70 shadow-xl shadow-black/40;
+    @apply absolute right-2.5 top-2.5 h-40 w-56 overflow-hidden rounded-sm border border-gray-600 bg-gray-950/70 shadow-xl shadow-black/40;
   }
 
   #thumbWrap canvas {
@@ -311,6 +311,15 @@
 
   .ds-list {
     @apply flex flex-col gap-2;
+  }
+
+  .datasets-wrap {
+    @apply relative;
+  }
+
+  .meta-hover-panel {
+    @apply fixed z-30 w-[340px] max-w-[min(48vw,420px)] border border-gray-600 bg-gray-900/80 p-2 backdrop-blur-sm;
+    pointer-events: none;
   }
 
   .ds-item {

@@ -1,5 +1,7 @@
 import { createIcons, X } from "lucide";
 
+import { formatExperimentSettingsInline, parseExperimentSettings } from "./experiment-meta.js";
+
 export function createUIPanels(deps) {
   const {
     state,
@@ -310,7 +312,8 @@ export function createUIPanels(deps) {
       title.textContent = ds.name;
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = `${ds.meta.samples}×${ds.meta.lines}  bands:${ds.meta.bands}  ${ds.meta.interleave}`;
+      const dsInfo = `${ds.meta.samples}×${ds.meta.lines}  bands:${ds.meta.bands}  ${ds.meta.interleave}`;
+      meta.textContent = dsInfo;
       left.appendChild(title);
       left.appendChild(meta);
 
@@ -329,13 +332,41 @@ export function createUIPanels(deps) {
 
       div.appendChild(left);
       div.appendChild(actions);
+      div.onmouseenter = () => {
+        showMetaHover(ds, div);
+      };
+      div.onmouseleave = () => {
+        hideMetaHover();
+      };
       els.datasetList.appendChild(div);
     }
     createIcons({ icons: { X }, attrs: { "aria-hidden": "true" } });
   }
 
-  function updateMetaUI() {
-    const ds = getActive();
+  function showMetaHover(ds, rowEl) {
+    if (!els.metaHoverPanel) return;
+    renderMetaForDataset(ds);
+    if (rowEl) {
+      const rowRect = rowEl.getBoundingClientRect();
+      const panelW = 340;
+      const gap = 8;
+      const rawLeft = rowRect.right + gap;
+      const rawTop = rowRect.top;
+      const left = Math.max(8, Math.min(rawLeft, window.innerWidth - panelW - 8));
+      const top = Math.max(8, Math.min(rawTop, window.innerHeight - 220));
+      els.metaHoverPanel.style.top = `${top}px`;
+      els.metaHoverPanel.style.left = `${left}px`;
+      els.metaHoverPanel.style.right = "auto";
+    }
+    els.metaHoverPanel.style.display = "block";
+  }
+
+  function hideMetaHover() {
+    if (!els.metaHoverPanel) return;
+    els.metaHoverPanel.style.display = "none";
+  }
+
+  function renderMetaForDataset(ds) {
     if (!ds) {
       els.metaSamples.textContent = "—";
       els.metaLines.textContent = "—";
@@ -345,6 +376,10 @@ export function createUIPanels(deps) {
       els.metaEndian.textContent = "—";
       els.metaWlUnits.textContent = "—";
       els.metaScale.textContent = "—";
+      if (els.metaExpKv) {
+        els.metaExpKv.innerHTML = "";
+        els.metaExpKv.style.display = "none";
+      }
       els.metaExtra.textContent = "—";
       return;
     }
@@ -367,8 +402,41 @@ export function createUIPanels(deps) {
       els.metaScale.textContent = "—";
       els.metaScale.title = "";
     }
+    const expEntries = parseExperimentSettings(ds.meta.desc);
+    if (els.metaExpKv) {
+      els.metaExpKv.innerHTML = "";
+      if (expEntries.length) {
+        const frag = document.createDocumentFragment();
+        for (const entry of expEntries) {
+          const k = document.createElement("div");
+          k.className = "k";
+          k.textContent = entry.label;
+          const v = document.createElement("div");
+          v.className = "v";
+          v.textContent = entry.value;
+          frag.appendChild(k);
+          frag.appendChild(v);
+        }
+        els.metaExpKv.appendChild(frag);
+        els.metaExpKv.style.display = "grid";
+      } else {
+        els.metaExpKv.style.display = "none";
+      }
+    }
+
+    const expText = formatExperimentSettingsInline(expEntries);
+    if (expText) {
+      els.metaExtra.textContent = "—";
+      return;
+    }
+
     const desc = (ds.meta.desc && String(ds.meta.desc).trim()) ? String(ds.meta.desc).trim() : "";
     els.metaExtra.textContent = desc || "—";
+  }
+
+  function updateMetaUI() {
+    const ds = getActive();
+    renderMetaForDataset(ds);
   }
 
   function updatePerf() {

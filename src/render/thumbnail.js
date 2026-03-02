@@ -16,6 +16,31 @@ export function createThumbnailController(deps) {
     getDevicePixelRatio
   } = deps;
 
+  function syncThumbWrapSize() {
+    const rect = els.main.getBoundingClientRect();
+    const viewW = Math.max(1, rect.width || 1);
+    const viewH = Math.max(1, rect.height || 1);
+    const aspect = viewW / viewH;
+
+    const maxW = 220;
+    const maxH = 220;
+    const minW = 120;
+    const minH = 80;
+
+    let twCss = maxW;
+    let thCss = twCss / aspect;
+    if (thCss > maxH) {
+      thCss = maxH;
+      twCss = thCss * aspect;
+    }
+
+    twCss = clamp(Math.round(twCss), minW, maxW);
+    thCss = clamp(Math.round(thCss), minH, maxH);
+    els.thumbWrap.style.width = `${twCss}px`;
+    els.thumbWrap.style.height = `${thCss}px`;
+    return { twCss, thCss };
+  }
+
   async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step) {
     let raw;
     if (ds.meta.interleave === "bip") {
@@ -49,8 +74,7 @@ export function createThumbnailController(deps) {
 
   async function buildThumbnail(ds) {
     if (!ds) return;
-    const twCss = 220;
-    const thCss = 160;
+    const { twCss, thCss } = syncThumbWrapSize();
     const dpr = getDevicePixelRatio();
     const tw = Math.floor(twCss * dpr);
     const th = Math.floor(thCss * dpr);
@@ -101,8 +125,9 @@ export function createThumbnailController(deps) {
 
   function renderThumbnail() {
     const ds = getActive();
-    els.thumbWrap.style.display = els.chkThumb.checked ? "block" : "none";
-    if (!els.chkThumb.checked || !ds) return;
+    els.thumbWrap.style.display = "block";
+    if (!ds) return;
+    syncThumbWrapSize();
 
     if (!ds.thumb.ready || (now() - (ds.thumb._t || 0)) > 1500) {
       buildThumbnail(ds);
@@ -133,12 +158,21 @@ export function createThumbnailController(deps) {
     const rw = (vx1 - vx0) * ds.thumb.w;
     const rh = (vy1 - vy0) * ds.thumb.h;
 
-    thumbCtx.save();
-    thumbCtx.setTransform(1, 0, 0, 1, 0, 0);
-    thumbCtx.strokeStyle = "rgba(106,169,255,.95)";
-    thumbCtx.lineWidth = 2 * dpr;
-    thumbCtx.strokeRect(rx, ry, rw, rh);
-    thumbCtx.restore();
+    const eps = 1.5 * dpr;
+    const fullView =
+      rx <= (ds.thumb.x0 + eps) &&
+      ry <= (ds.thumb.y0 + eps) &&
+      (rx + rw) >= (ds.thumb.x0 + ds.thumb.w - eps) &&
+      (ry + rh) >= (ds.thumb.y0 + ds.thumb.h - eps);
+
+    if (!fullView) {
+      thumbCtx.save();
+      thumbCtx.setTransform(1, 0, 0, 1, 0, 0);
+      thumbCtx.strokeStyle = "rgba(106,169,255,.95)";
+      thumbCtx.lineWidth = 2 * dpr;
+      thumbCtx.strokeRect(rx, ry, rw, rh);
+      thumbCtx.restore();
+    }
   }
 
   function onThumbClick(ev) {

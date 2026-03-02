@@ -145,7 +145,6 @@ export function wireApp(deps) {
     render();
   };
 
-  els.chkThumb.oninput = () => render();
   els.chkGrid.oninput = () => render();
   els.chkScale.oninput = () => render();
 

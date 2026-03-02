@@ -74,4 +74,16 @@ wavelength = {0.45,
       source: "header:pixel size"
     });
   });
+
+  test("normalizeMeta restores braces for settings-like description", () => {
+    const norm = normalizeMeta({
+      samples: 4,
+      lines: 4,
+      bands: 2,
+      interleave: "bsq",
+      "data type": 4,
+      description: ["\"laserPower\":45", "\"scan_mode\":\"fast\""]
+    });
+    expect(norm.desc).toBe("{\"laserPower\":45, \"scan_mode\":\"fast\"}");
+  });
 });
