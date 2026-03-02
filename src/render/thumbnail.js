@@ -200,7 +200,7 @@ export function createThumbnailController(deps) {
     if (!fullView) {
       thumbCtx.save();
       thumbCtx.setTransform(1, 0, 0, 1, 0, 0);
-      thumbCtx.strokeStyle = "rgba(106,169,255,.95)";
+      thumbCtx.strokeStyle = "rgba(209,213,219,0.95)";
       thumbCtx.lineWidth = 2 * dpr;
       thumbCtx.strokeRect(rx, ry, rw, rh);
       thumbCtx.restore();

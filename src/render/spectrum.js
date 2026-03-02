@@ -117,7 +117,7 @@ export function createSpectrumController(deps) {
 
     const N = yVals.length;
     const step = Math.max(1, Math.ceil(N / 1400));
-    ctx.strokeStyle = "rgba(220,235,255,0.95)";
+    ctx.strokeStyle = "rgba(229,231,235,0.95)";
     ctx.lineWidth = 1.5 * dpr;
     ctx.beginPath();
     let started = false;
@@ -138,7 +138,7 @@ export function createSpectrumController(deps) {
       if (Number.isFinite(xv)) {
         const px = xToPx(xv);
         ctx.save();
-        ctx.strokeStyle = "rgba(106,169,255,0.55)";
+        ctx.strokeStyle = "rgba(156,163,175,0.65)";
         ctx.lineWidth = 1 * dpr;
         ctx.setLineDash([4 * dpr, 4 * dpr]);
         ctx.beginPath();
@@ -148,7 +148,7 @@ export function createSpectrumController(deps) {
         ctx.setLineDash([]);
         if (Number.isFinite(yv)) {
           const py = yToPx(yv);
-          ctx.fillStyle = "rgba(106,169,255,0.95)";
+          ctx.fillStyle = "rgba(209,213,219,0.95)";
           ctx.beginPath();
           ctx.arc(px, py, 3 * dpr, 0, Math.PI * 2);
           ctx.fill();
@@ -160,7 +160,7 @@ export function createSpectrumController(deps) {
       }
     }
 
-    ctx.fillStyle = "rgba(235,245,255,0.92)";
+    ctx.fillStyle = "rgba(229,231,235,0.92)";
     ctx.font = `${Math.round(11 * dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     ctx.textBaseline = "middle";
     ctx.textAlign = "right";
@@ -182,7 +182,7 @@ export function createSpectrumController(deps) {
     const xLabel = xVals ? (unit || "Wavelength") : "Band index";
     ctx.textAlign = "right";
     ctx.textBaseline = "top";
-    ctx.fillStyle = "rgba(200,210,220,0.75)";
+    ctx.fillStyle = "rgba(156,163,175,0.8)";
     ctx.fillText(xLabel, x1, y1 + 6 * dpr);
   }
 
