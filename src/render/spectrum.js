@@ -31,6 +31,14 @@ export function createSpectrumController(deps) {
     specState.open = !!show;
   }
 
+  function setSpecTitle(text) {
+    if (els.specTitle) els.specTitle.textContent = text;
+  }
+
+  function setSpecSub(text) {
+    if (els.specSub) els.specSub.textContent = text;
+  }
+
   function resizeSpecCanvas() {
     if (!els.specCanvas) return;
     const dpr = window.devicePixelRatio || 1;
@@ -194,14 +202,14 @@ export function createSpectrumController(deps) {
     const mySeq = ++specSeq;
 
     showSpectrumPanel(true);
-    els.specTitle.textContent = ds.name;
+    setSpecTitle(ds.name);
     const sc = ds.meta.scale;
     if (sc && Number.isFinite(sc.umPerPixelX) && Number.isFinite(sc.umPerPixelY)) {
       const xUm = ix * Number(sc.umPerPixelX);
       const yUm = iy * Number(sc.umPerPixelY);
-      els.specSub.textContent = `x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`;
+      setSpecSub(`x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`);
     } else {
-      els.specSub.textContent = `px ${ix}, ${iy}`;
+      setSpecSub(`px ${ix}, ${iy}`);
     }
 
     await new Promise((r) => requestAnimationFrame(r));
@@ -217,7 +225,7 @@ export function createSpectrumController(deps) {
       updatePerf();
     } catch (e) {
       console.error(e);
-      els.specSub.textContent = "Failed to read spectrum.";
+      setSpecSub("Failed to read spectrum.");
     }
   }
 
