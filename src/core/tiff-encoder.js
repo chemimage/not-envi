@@ -142,9 +142,15 @@ export function encodeTIFF_RGBA8(imageData) {
   }
 
   dv.setUint32(ifdOffset + 2 + numEntries * 12, 0, true);
-  new Uint16Array(buf, bitsOffset, 4).set(bitsPerSample);
-  new Uint32Array(buf, xResOffset, 2).set(xRes);
-  new Uint32Array(buf, yResOffset, 2).set(yRes);
+  for (let i = 0; i < bitsPerSample.length; i += 1) {
+    dv.setUint16(bitsOffset + i * 2, bitsPerSample[i], true);
+  }
+  for (let i = 0; i < xRes.length; i += 1) {
+    dv.setUint32(xResOffset + i * 4, xRes[i], true);
+  }
+  for (let i = 0; i < yRes.length; i += 1) {
+    dv.setUint32(yResOffset + i * 4, yRes[i], true);
+  }
   new Uint8Array(buf, pixelOffset, pixels.byteLength).set(pixels);
 
   return new Blob([buf], { type: "image/tiff" });

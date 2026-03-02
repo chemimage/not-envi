@@ -12,7 +12,7 @@ export class BlobDataSource {
     const safeLength = Math.max(0, Number(length) || 0);
     const end = Math.min(this.size, safeOffset + safeLength);
     const slice = this.file.slice(safeOffset, end);
-    const ab = await slice.arrayBuffer();
+    const ab = await blobToArrayBuffer(slice);
     const u8 = new Uint8Array(ab);
     this.bytesRead += u8.byteLength;
     return u8;
@@ -164,4 +164,29 @@ export class ChunkCacheDataSource {
 
     return out;
   }
+}
+
+async function blobToArrayBuffer(blobLike) {
+  if (blobLike && typeof blobLike.arrayBuffer === "function") {
+    return blobLike.arrayBuffer();
+  }
+
+  // Browser/JSDOM fallback.
+  if (typeof FileReader !== "undefined") {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(fr.error || new Error("Failed reading blob"));
+      fr.onload = () => resolve(fr.result);
+      fr.readAsArrayBuffer(blobLike);
+    });
+  }
+
+  // Works in modern runtimes even when Blob doesn't expose arrayBuffer directly.
+  // Keep this after FileReader because some test runtimes stringify unknown blobs here.
+  if (typeof Response !== "undefined") {
+    const res = new Response(blobLike);
+    return res.arrayBuffer();
+  }
+
+  throw new Error("No blob reader available in this runtime.");
 }

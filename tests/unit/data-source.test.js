@@ -14,17 +14,23 @@ describe("data sources", () => {
   });
 
   test("ChunkCacheDataSource caches and evicts", async () => {
-    const base = new BlobDataSource(makeFile(Array.from({ length: 64 }, (_, i) => i)));
-    const ds = new ChunkCacheDataSource(base, { chunkSize: 8, maxBytes: 16, concurrency: 2 });
+    const data = new Uint8Array(3 * 64 * 1024);
+    for (let i = 0; i < data.length; i += 1) data[i] = i % 256;
+    const base = new BlobDataSource(makeFile(data));
+    const ds = new ChunkCacheDataSource(base, {
+      chunkSize: 64 * 1024,
+      maxBytes: 2 * 64 * 1024,
+      concurrency: 2
+    });
 
     const a = await ds.read(0, 8);
     expect(Array.from(a)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
 
-    const b = await ds.read(8, 8);
+    const b = await ds.read(64 * 1024 + 8, 8);
     expect(Array.from(b)).toEqual([8, 9, 10, 11, 12, 13, 14, 15]);
 
-    await ds.read(16, 8);
-    expect(ds.cacheBytes()).toBeLessThanOrEqual(16);
+    await ds.read(2 * 64 * 1024 + 8, 8);
+    expect(ds.cacheBytes()).toBeLessThanOrEqual(2 * 64 * 1024);
     expect(ds.bytesRead).toBeGreaterThan(0);
   });
 });

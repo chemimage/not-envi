@@ -1,11 +1,12 @@
 export function unitToMicronsFactor(unitStr) {
   const u = String(unitStr || "").trim().toLowerCase();
   if (!u) return null;
-  if (u.includes("micron") || u === "um" || u.includes("µm")) return 1;
-  if (u.includes("millimeter") || u === "mm") return 1000;
-  if (u.includes("centimeter") || u === "cm") return 10000;
-  if (u.includes("meter") || u === "m") return 1_000_000;
-  if (u.includes("nanometer") || u === "nm") return 0.001;
+  // Important: test the more specific names first to avoid matching "meter" in "micrometer".
+  if (u.includes("micrometer") || u.includes("micrometre") || u.includes("micron") || u === "um" || u.includes("µm")) return 1;
+  if (u.includes("nanometer") || u.includes("nanometre") || u === "nm") return 0.001;
+  if (u.includes("millimeter") || u.includes("millimetre") || u === "mm") return 1000;
+  if (u.includes("centimeter") || u.includes("centimetre") || u === "cm") return 10000;
+  if (u === "m" || u === "meter" || u === "metre" || u.includes(" meters") || u.includes(" metres")) return 1_000_000;
   return null;
 }
 

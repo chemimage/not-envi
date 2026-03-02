@@ -468,11 +468,12 @@ function unitToMicronsFactor(unitStr){
     if (!unitStr) return null;
     const u = String(unitStr).trim().toLowerCase();
     if (!u) return null;
-    if (u === 'µm' || u === 'μm' || u === 'um' || u.includes('micron') || u.includes('micrometer')) return 1;
-    if (u === 'nm' || u.includes('nanometer')) return 1e-3;
-    if (u === 'mm' || u.includes('millimeter')) return 1e3;
-    if (u === 'cm' || u.includes('centimeter')) return 1e4;
-    if (u === 'm' || u.includes('meter') || u.includes('metre')) return 1e6;
+    // Important: test specific units first to avoid matching "meter" in "micrometer".
+    if (u === 'µm' || u === 'μm' || u === 'um' || u.includes('micron') || u.includes('micrometer') || u.includes('micrometre')) return 1;
+    if (u === 'nm' || u.includes('nanometer') || u.includes('nanometre')) return 1e-3;
+    if (u === 'mm' || u.includes('millimeter') || u.includes('millimetre')) return 1e3;
+    if (u === 'cm' || u.includes('centimeter') || u.includes('centimetre')) return 1e4;
+    if (u === 'm' || u === 'meter' || u === 'metre' || u.includes(' meters') || u.includes(' metres')) return 1e6;
     return null;
   }
 

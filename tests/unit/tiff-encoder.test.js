@@ -1,6 +1,26 @@
 import { describe, expect, test } from "vitest";
 import { encodeTIFF_MultiPage_GrayRaw, encodeTIFF_RGBA8 } from "../../src/core/tiff-encoder.js";
 
+async function blobToU8(blob) {
+  if (blob && typeof blob.arrayBuffer === "function") {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  if (typeof FileReader !== "undefined") {
+    const ab = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(fr.error || new Error("Failed reading blob"));
+      fr.onload = () => resolve(fr.result);
+      fr.readAsArrayBuffer(blob);
+    });
+    return new Uint8Array(ab);
+  }
+  if (typeof Response !== "undefined") {
+    const res = new Response(blob);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+  throw new Error("No blob reader available in this runtime.");
+}
+
 describe("tiff encoder", () => {
   test("encodeTIFF_RGBA8 creates tiff header", async () => {
     const imageData = {
@@ -9,7 +29,7 @@ describe("tiff encoder", () => {
       data: Uint8ClampedArray.from([255, 0, 0, 255, 0, 255, 0, 255])
     };
     const blob = encodeTIFF_RGBA8(imageData);
-    const u8 = new Uint8Array(await blob.arrayBuffer());
+    const u8 = await blobToU8(blob);
     expect(u8[0]).toBe(0x49);
     expect(u8[1]).toBe(0x49);
     expect(u8[2]).toBe(42);
@@ -20,7 +40,7 @@ describe("tiff encoder", () => {
     const meta = { dataType: 4, dataTypeInfo: { bytes: 4 } };
     const pages = [new Float32Array([1, 2, 3, 4]), new Float32Array([5, 6, 7, 8])];
     const blob = encodeTIFF_MultiPage_GrayRaw(meta, 2, 2, pages);
-    const u8 = new Uint8Array(await blob.arrayBuffer());
+    const u8 = await blobToU8(blob);
     expect(u8[0]).toBe(0x49);
     expect(u8[1]).toBe(0x49);
     expect(u8.length).toBeGreaterThan(32);
