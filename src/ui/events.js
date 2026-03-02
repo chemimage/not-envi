@@ -91,6 +91,7 @@ export function createInteractionController(deps) {
   function onPointerDown(ev) {
     const ds = getActive();
     if (!ds) return;
+    if (ev.pointerType === "touch") ev.preventDefault();
     const rect = els.main.getBoundingClientRect();
     state.mouse.dragging = true;
     state.mouse.lastX = ev.clientX - rect.left;
@@ -149,6 +150,7 @@ export function createInteractionController(deps) {
     state.mouse.y = ev.clientY - rect.top;
 
     if (ev.pointerType === "touch" && touchPoints.has(ev.pointerId)) {
+      ev.preventDefault();
       touchPoints.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       if (touchGesture.longPressPointerId === ev.pointerId && touchGesture.longPressStart) {
         const dx = ev.clientX - touchGesture.longPressStart.x;
@@ -194,7 +196,12 @@ export function createInteractionController(deps) {
     updateHud();
   }
 
-  function onPointerUp() {
+  function onPointerUp(ev) {
+    if (ev && ev.pointerType === "touch") {
+      ev.preventDefault();
+      touchPoints.delete(ev.pointerId);
+      if (touchPoints.size < 2) touchGesture.pinch = null;
+    }
     state.mouse.dragging = false;
     clearLongPress();
     if (state.selection.drawing) {
@@ -206,6 +213,7 @@ export function createInteractionController(deps) {
 
   function onPointerCancel(ev) {
     if (ev && typeof ev.pointerId === "number") {
+      if (ev.pointerType === "touch") ev.preventDefault();
       touchPoints.delete(ev.pointerId);
       if (touchPoints.size < 2) touchGesture.pinch = null;
       if (touchGesture.longPressPointerId === ev.pointerId) clearLongPress();

@@ -437,7 +437,7 @@ import { APP_CONFIG } from "./config.js";
   function clearSelection(){ interactions.clearSelection(); }
   function onPointerDown(ev){ interactions.onPointerDown(ev); }
   function onPointerMove(ev){ interactions.onPointerMove(ev); }
-  function onPointerUp(){ interactions.onPointerUp(); }
+  function onPointerUp(ev){ interactions.onPointerUp(ev); }
   function onPointerCancel(ev){ interactions.onPointerCancel(ev); }
   function onPointerLeave(){ interactions.onPointerLeave(); }
   function zoomAt(factor, sx, sy){ interactions.zoomAt(factor, sx, sy); }
