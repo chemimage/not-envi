@@ -16,8 +16,17 @@ import {
   tone01 as tone01Core,
   typeDefaultRange as typeDefaultRangeCore
 } from "../render/display-math.js";
+import {
+  applyHistogramDragSetting,
+  histogramClientXToRaw,
+  histogramHandleXs,
+  histogramPlotRect,
+  pickHistogramHandle,
+  resolveHistogramDisplay
+} from "../render/histogram-math.js";
 import { createPyramidController } from "../render/pyramid-cache.js";
 import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
+import { clamp, fmt, fmtNoGroup, fmtUm, humanBytes } from "../core/utils.js";
 
 (() => {
   'use strict';
@@ -25,44 +34,7 @@ import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavel
   // ========= Utilities =========
 
   const $ = (sel) => document.querySelector(sel);
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const now = () => performance.now();
-
-  function fmt(n){
-    if (typeof n === 'number' && isFinite(n)){
-      // If it looks like an integer, keep it clean; else show a few decimals.
-      const abs = Math.abs(n);
-      if (abs >= 1000) return n.toLocaleString(undefined, {maximumFractionDigits: 3});
-      if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
-      return n.toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
-    }
-    return String(n);
-  }
-
-  // Like fmt(), but never uses locale grouping separators.
-  // Useful for wavelengths/band names where users expect the header's raw-looking numbers.
-  function fmtNoGroup(n){
-    if (typeof n === 'number' && isFinite(n)){
-      if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
-      return n.toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
-    }
-    return String(n);
-  }
-
-  function fmtUm(v){
-    if (!isFinite(v)) return '—';
-    const abs = Math.abs(v);
-    const dec = abs < 10 ? 3 : abs < 100 ? 2 : abs < 1000 ? 1 : 0;
-    return Number(v).toFixed(dec).replace(/\.0+$/,'').replace(/(\.[0-9]*[1-9])0+$/,'$1');
-  }
-
-  function humanBytes(n){
-    if (!isFinite(n) || n < 0) return '—';
-    const units = ['B','KB','MB','GB','TB'];
-    let u = 0;
-    while (n >= 1024 && u < units.length-1){ n/=1024; u++; }
-    return `${n.toFixed(u===0?0:1)} ${units[u]}`;
-  }
 
   function downloadBlob(blob, filename){
     const url = URL.createObjectURL(blob);
@@ -1278,11 +1250,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
     const bins = stats.bins;
     const maxBin = Math.max(1, ...bins);
-    const pad = 10 * dpr;
-    const plotX0 = pad;
-    const plotY0 = pad;
-    const plotW = w - 2*pad;
-    const plotH = h - 2*pad;
+    const plot = histogramPlotRect(w, h, dpr);
+    const { plotX0, plotY0, plotW, plotH } = plot;
 
     // bars
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
@@ -1294,17 +1263,10 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     }
 
     // compute active range
-    const domMin = stats.min;
-    const domMax = stats.max;
-    const minVal = (s.min != null && isFinite(s.min)) ? s.min : stats.p1;
-    const maxVal = (s.max != null && isFinite(s.max)) ? s.max : stats.p99;
-    const gamma = s.gamma ?? 1;
-    const gain = s.gain ?? 1;
-    const contrast = s.contrast ?? 1;
+    const { domMin, domMax, minVal, maxVal, gamma, gain, contrast } = resolveHistogramDisplay(stats, s);
 
     // range highlight
-    const xMin = plotX0 + ((minVal - domMin)/(domMax-domMin)) * plotW;
-    const xMax = plotX0 + ((maxVal - domMin)/(domMax-domMin)) * plotW;
+    const { xMin, xMid, xMax } = histogramHandleXs(plot, domMin, domMax, minVal, maxVal, gamma);
     ctx.fillStyle = 'rgba(106,169,255,0.08)';
     ctx.fillRect(Math.min(xMin,xMax), plotY0, Math.abs(xMax-xMin), plotH);
 
@@ -1341,10 +1303,6 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
       ctx.stroke();
     }
 
-    const midT = Math.pow(0.5, 1/Math.max(1e-6, gamma));
-    const midVal = minVal + midT * (maxVal - minVal);
-    const xMid = plotX0 + ((midVal - domMin)/(domMax-domMin)) * plotW;
-
     drawHandle(xMin, 'min');
     drawHandle(xMid, 'mid');
     drawHandle(xMax, 'max');
@@ -1367,37 +1325,12 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     const stats = resolveStats(ds);
     if (!stats) return null;
 
-    const pad = 10*dpr;
-    const plotX0 = pad;
-    const plotY0 = pad;
-    const plotW = canvas.width - 2*pad;
-    const plotH = canvas.height - 2*pad;
+    const plot = histogramPlotRect(canvas.width, canvas.height, dpr);
 
     const s = getBandSettings(ds, ds.activeBand);
-    const domMin = stats.min;
-    const domMax = stats.max;
-    const minVal = (s.min != null && isFinite(s.min)) ? s.min : stats.p1;
-    const maxVal = (s.max != null && isFinite(s.max)) ? s.max : stats.p99;
-    const gamma = s.gamma ?? 1;
-
-    const xMin = plotX0 + ((minVal - domMin)/(domMax-domMin)) * plotW;
-    const xMax = plotX0 + ((maxVal - domMin)/(domMax-domMin)) * plotW;
-    const midT = Math.pow(0.5, 1/Math.max(1e-6, gamma));
-    const midVal = minVal + midT*(maxVal-minVal);
-    const xMid = plotX0 + ((midVal - domMin)/(domMax-domMin)) * plotW;
-
-    const dist = (a,b) => Math.abs(a-b);
-    const tol = 10*dpr;
-
-    if (y < plotY0 || y > plotY0 + plotH + 16*dpr) return null;
-    const dMin = dist(x, xMin);
-    const dMid = dist(x, xMid);
-    const dMax = dist(x, xMax);
-    const best = Math.min(dMin,dMid,dMax);
-    if (best > tol) return null;
-    if (best === dMid) return 'mid';
-    if (best === dMin) return 'min';
-    return 'max';
+    const { domMin, domMax, minVal, maxVal, gamma } = resolveHistogramDisplay(stats, s);
+    const { xMin, xMid, xMax } = histogramHandleXs(plot, domMin, domMax, minVal, maxVal, gamma);
+    return pickHistogramHandle(plot, x, y, xMin, xMid, xMax, dpr);
   }
 
   function histXToRaw(ds, clientX){
@@ -1407,14 +1340,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     const canvas = els.hist;
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    const px = (clientX - rect.left) * dpr;
-
-    const pad = 10*dpr;
-    const plotX0 = pad;
-    const plotW = canvas.width - 2*pad;
-
-    const t = clamp((px - plotX0) / plotW, 0, 1);
-    return stats.min + t * (stats.max - stats.min);
+    return histogramClientXToRaw(stats, clientX, rect.left, dpr, canvas.width);
   }
 
   function applyHistogramDrag(ds, kind, clientX){
@@ -1424,23 +1350,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     if (raw == null) return;
 
     const s = getBandSettings(ds, ds.activeBand);
-    const minVal = (s.min != null && isFinite(s.min)) ? s.min : stats.p1;
-    const maxVal = (s.max != null && isFinite(s.max)) ? s.max : stats.p99;
-
-    if (kind === 'min'){
-      const newMin = clamp(raw, stats.min, maxVal);
-      s.min = newMin;
-    } else if (kind === 'max'){
-      const newMax = clamp(raw, minVal, stats.max);
-      s.max = newMax;
-    } else if (kind === 'mid'){
-      const lo = (s.min != null && isFinite(s.min)) ? s.min : stats.p1;
-      const hi = (s.max != null && isFinite(s.max)) ? s.max : stats.p99;
-      const mid = clamp(raw, lo, hi);
-      const t = clamp((mid - lo) / Math.max(1e-12, (hi - lo)), 0.001, 0.999);
-      // set gamma so that t^gamma = 0.5  -> gamma = log(0.5)/log(t)
-      const gamma = Math.log(0.5) / Math.log(t);
-      s.gamma = clamp(gamma, 0.10, 5.0);
+    const patch = applyHistogramDragSetting(stats, s, kind, raw);
+    if (patch.min != null) s.min = patch.min;
+    if (patch.max != null) s.max = patch.max;
+    if (patch.gamma != null){
+      s.gamma = patch.gamma;
       els.slGamma.value = String(s.gamma);
       els.lblGamma.textContent = Number(s.gamma).toFixed(2);
     }
