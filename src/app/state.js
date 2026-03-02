@@ -1,8 +1,10 @@
+import { APP_CONFIG } from "./config.js";
+
 export function createAppState() {
   return {
     datasets: [],
     activeId: null,
-    ioParallel: true,
+    ioParallel: APP_CONFIG.io.parallelEnabledByDefault,
     zoomExpMin: -6,
     zoomExpMax: 4,
     renderSeq: 0,

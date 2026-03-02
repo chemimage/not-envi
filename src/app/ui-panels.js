@@ -431,17 +431,12 @@ export function createUIPanels(deps) {
   function updatePerf() {
     const ds = getActive();
     if (!ds) {
-      els.perfCache.textContent = "0 MB";
-      els.perfPyramid.textContent = "0 MB";
       els.perfBarCacheText.textContent = "—";
       els.perfBarCacheFill.style.width = "0%";
       return;
     }
     const chunkUsed = ds.ds.cacheBytes ? ds.ds.cacheBytes() : 0;
     const pyramidUsed = ds.pyramid ? ds.pyramid.totalBytes : 0;
-
-    els.perfCache.textContent = humanBytes(chunkUsed);
-    els.perfPyramid.textContent = humanBytes(pyramidUsed);
 
     const chunkCap = (ds.ds && ds.ds.maxBytes) ? ds.ds.maxBytes : 0;
     const pyramidCap = (ds.pyramid && ds.pyramid.limitBytes) ? ds.pyramid.limitBytes : 0;

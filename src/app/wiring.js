@@ -147,10 +147,6 @@ export function wireApp(deps) {
   els.chkGrid.oninput = () => render();
   els.chkScale.oninput = () => render();
 
-  if (els.chkIOParallel) {
-    els.chkIOParallel.oninput = () => setIOParallel(els.chkIOParallel.checked);
-  }
-
   els.btnSelect.onclick = () => {
     const ds = getActive();
     if (!ds) return;
@@ -361,9 +357,6 @@ export function wireApp(deps) {
   updateMetaUI();
   updatePerf();
   updateZoomLabelBoot();
-  if (els.chkIOParallel) {
-    els.chkIOParallel.checked = state.ioParallel;
-    setIOParallel(state.ioParallel);
-  }
+  setIOParallel(state.ioParallel);
   setGpuBadgeAvailable();
 }

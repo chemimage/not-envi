@@ -177,6 +177,22 @@
     @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-700 bg-gray-800 px-2 py-1 font-mono text-xs text-gray-300;
   }
 
+  .badge-rect {
+    @apply rounded-sm px-2.5;
+  }
+
+  .perf-top {
+    @apply min-w-[220px] flex-col items-stretch gap-1;
+  }
+
+  .perf-top-head {
+    @apply flex items-center justify-between gap-2;
+  }
+
+  .perf-top-bar {
+    @apply h-2;
+  }
+
   .toggle {
     @apply inline-flex cursor-pointer select-none items-center gap-2;
   }
@@ -434,6 +450,10 @@
   #hist {
     @apply block h-[170px] w-full touch-none rounded-sm border border-gray-700 bg-gray-950;
     cursor: crosshair;
+  }
+
+  .hist-range-row {
+    @apply mt-2 gap-3 pr-2;
   }
 
   .range-wrap {

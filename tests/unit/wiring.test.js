@@ -24,7 +24,6 @@ describe("app wiring", () => {
       zoom: { oninput: null, value: "50" },
       chkGrid: { oninput: null },
       chkScale: { oninput: null },
-      chkIOParallel: { oninput: null, checked: false },
       btnSelect: makeButton(),
       btnExportPNG: makeButton(),
       btnExportTIFF: makeButton(),
@@ -65,6 +64,7 @@ describe("app wiring", () => {
     const updatePerf = vi.fn();
     const updateZoomLabelBoot = vi.fn();
 
+    const setIOParallel = vi.fn();
     wireApp({
       state,
       els,
@@ -88,7 +88,7 @@ describe("app wiring", () => {
       zoomAt: noop,
       sliderToScale: () => 1,
       minScaleFor: () => 1,
-      setIOParallel: noop,
+      setIOParallel,
       clearSelection: noop,
       setStatus,
       openExportDialog: noop,
@@ -119,6 +119,7 @@ describe("app wiring", () => {
     expect(updateMetaUI).toHaveBeenCalled();
     expect(updatePerf).toHaveBeenCalled();
     expect(updateZoomLabelBoot).toHaveBeenCalled();
+    expect(setIOParallel).toHaveBeenCalledWith(true);
     expect(els.gpuBadge.textContent).toBe("ok");
     windowAdd.mockRestore();
   });

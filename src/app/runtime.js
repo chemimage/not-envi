@@ -30,6 +30,7 @@ import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavel
 import { createThumbnailController } from "../render/thumbnail.js";
 import { clamp, fmt, fmtNoGroup, humanBytes } from "../core/utils.js";
 import { createInteractionController } from "../ui/events.js";
+import { APP_CONFIG } from "./config.js";
 
 (() => {
   'use strict';
@@ -61,7 +62,7 @@ import { createInteractionController } from "../ui/events.js";
   // A small, bounded amount of parallelism helps on SSDs (and reduces latency for scattered reads),
   // but too much can overwhelm the browser. We keep it conservative.
   const IO_CONCURRENCY_MAX = clamp(Math.floor(((navigator && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) / 2) + 1, 2, 8);
-  let IO_CONCURRENCY = IO_CONCURRENCY_MAX; // can be toggled to 1 (sequential)
+  let IO_CONCURRENCY = APP_CONFIG.io.parallelEnabledByDefault ? IO_CONCURRENCY_MAX : 1;
   // ========= Elements =========
 
   const els = collectElements();
@@ -116,7 +117,7 @@ import { createInteractionController } from "../ui/events.js";
   const state = {
     datasets: [],
     activeId: null,
-    ioParallel: true,
+    ioParallel: APP_CONFIG.io.parallelEnabledByDefault,
 
     // Zoom slider maps 0..100 to 2^[zoomExpMin..zoomExpMax].
     // zoomExpMin is adjusted per dataset so "fit" is always reachable.

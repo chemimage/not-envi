@@ -41,8 +41,16 @@
 
     <div class="spacer"></div>
 
+    <div class="group perf-top">
+      <div class="perf-top-head">
+        <span class="tiny">Cache capacity</span>
+        <span class="tiny" id="perfBarCacheText">—</span>
+      </div>
+      <div class="bar perf-top-bar" aria-label="Cache usage"><div class="fill" id="perfBarCacheFill"></div></div>
+    </div>
+
     <div class="group">
-      <span class="badge" id="statusBadge">idle</span>
+      <span class="badge badge-rect" id="statusBadge">idle</span>
     </div>
   </header>
 
@@ -80,24 +88,6 @@
         </div>
       </div>
 
-      <div class="divider"></div>
-
-      <h3 style="margin:0 0 8px 0; font-size:14px;">Performance (active)</h3>
-      <div class="perf-grid">
-        <div class="k">Chunk cache</div>
-        <div class="v" id="perfCache">0 MB</div>
-        <div class="perf-io" rowspan="2">
-          <label class="toggle tiny switch" title="Toggle sequential vs parallel reads. Parallel usually helps SSDs; sequential can be smoother on some systems.">
-            <input type="checkbox" id="chkIOParallel" checked />
-            <span>Parallel I/O</span>
-          </label>
-        </div>
-        <div class="k">Pyramid</div>
-        <div class="v" id="perfPyramid">0 MB</div>
-      </div>
-
-      <div class="bar-label"><span>Cache capacity</span><span id="perfBarCacheText">—</span></div>
-      <div class="bar" aria-label="Cache usage"><div class="fill" id="perfBarCacheFill"></div></div>
     </div>
   </aside>
 
@@ -171,7 +161,7 @@
 
       <div style="height:8px"></div>
       <canvas id="hist"></canvas>
-      <div class="row" style="margin-top:8px;">
+      <div class="row hist-range-row">
         <label class="small">Min</label>
         <input type="number" id="numMin" step="any" />
         <label class="small">Max</label>
