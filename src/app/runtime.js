@@ -426,6 +426,7 @@ import { APP_CONFIG } from "./config.js";
     setStatus,
     updateHud,
     screenToImage,
+    openSpectrumAt,
     clampView,
     render,
     minScaleFor,
@@ -437,6 +438,7 @@ import { APP_CONFIG } from "./config.js";
   function onPointerDown(ev){ interactions.onPointerDown(ev); }
   function onPointerMove(ev){ interactions.onPointerMove(ev); }
   function onPointerUp(){ interactions.onPointerUp(); }
+  function onPointerCancel(ev){ interactions.onPointerCancel(ev); }
   function onPointerLeave(){ interactions.onPointerLeave(); }
   function zoomAt(factor, sx, sy){ interactions.zoomAt(factor, sx, sy); }
   function onWheel(ev){ interactions.onWheel(ev); }
@@ -490,6 +492,7 @@ import { APP_CONFIG } from "./config.js";
     onPointerDown,
     onPointerMove,
     onPointerUp,
+    onPointerCancel,
     onPointerLeave,
     onWheel,
     onThumbClick,
