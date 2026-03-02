@@ -431,7 +431,7 @@ export function createUIPanels(deps) {
   function updatePerf() {
     const ds = getActive();
     if (!ds) {
-      els.perfBarCacheText.textContent = "—";
+      els.perfBarCacheText.textContent = "Cache: 0 B / 0 B";
       els.perfBarCacheFill.style.width = "0%";
       return;
     }
@@ -444,7 +444,7 @@ export function createUIPanels(deps) {
     const used = chunkUsed + pyramidUsed;
     const frac = clamp(used / cap, 0, 1);
     els.perfBarCacheFill.style.width = `${(frac * 100).toFixed(1)}%`;
-    els.perfBarCacheText.textContent = `${humanBytes(used)} / ${humanBytes(cap)}`;
+    els.perfBarCacheText.textContent = `Cache: ${humanBytes(used)} / ${humanBytes(cap)}`;
   }
 
   return {

@@ -182,15 +182,11 @@
   }
 
   .perf-top {
-    @apply min-w-[220px] flex-col items-stretch gap-1;
+    @apply w-[300px] min-w-[300px] items-center;
   }
 
-  .perf-top-head {
-    @apply flex items-center justify-between gap-2;
-  }
-
-  .perf-top-bar {
-    @apply h-2;
+  .bar.perf-top-bar {
+    @apply h-6 w-full;
   }
 
   .toggle {
@@ -300,13 +296,20 @@
   }
 
   .bar {
-    @apply h-2.5 overflow-hidden rounded-full border border-gray-700 bg-gray-800;
+    @apply relative h-2.5 overflow-hidden rounded-sm border border-gray-700 bg-gray-800;
   }
 
   .bar > .fill {
-    @apply h-full w-0;
-    background-image: linear-gradient(90deg, rgb(229 231 235), rgb(156 163 175));
+    @apply absolute left-0 top-0 h-full w-0;
+    background-image: linear-gradient(90deg, rgb(75 85 99), rgb(107 114 128));
     transition: width 140ms ease;
+    z-index: 1;
+  }
+
+  .bar > .bar-text {
+    @apply pointer-events-none absolute inset-0 flex items-center justify-center px-1 font-mono text-xs text-gray-200;
+    text-shadow: 0 1px 0 rgb(3 7 18 / 0.65);
+    z-index: 2;
   }
 
   .perf-grid {

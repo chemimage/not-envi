@@ -86,10 +86,10 @@ export function createHistogramController(deps) {
     const s = (ds && b != null) ? getBandSettings(ds, b) : null;
     const stats = (ds && b != null) ? resolveStats(ds) : null;
 
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillStyle = "rgba(17,24,39,0.92)";
     ctx.fillRect(0, 0, w, h);
     if (!ds || !s || !stats || !stats.bins) {
-      ctx.fillStyle = "rgba(255,255,255,0.75)";
+      ctx.fillStyle = "rgba(209,213,219,0.9)";
       ctx.font = `${12 * dpr}px ${getComputedStyle(document.body).fontFamily}`;
       ctx.fillText("Histogram not ready (select a band)", 10 * dpr, 20 * dpr);
       ctx.restore();
@@ -101,7 +101,7 @@ export function createHistogramController(deps) {
     const plot = histogramPlotRect(w, h, dpr);
     const { plotX0, plotY0, plotW, plotH } = plot;
 
-    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.fillStyle = "rgba(156,163,175,0.35)";
     for (let i = 0; i < bins.length; i++) {
       const t = i / (bins.length - 1);
       const x = plotX0 + t * plotW;
@@ -111,10 +111,10 @@ export function createHistogramController(deps) {
 
     const { domMin, domMax, minVal, maxVal, brightness, gain, contrast } = resolveHistogramDisplay(stats, s);
     const { xMin, xMax } = histogramHandleXs(plot, domMin, domMax, minVal, maxVal);
-    ctx.fillStyle = "rgba(106,169,255,0.08)";
+    ctx.fillStyle = "rgba(75,85,99,0.30)";
     ctx.fillRect(Math.min(xMin, xMax), plotY0, Math.abs(xMax - xMin), plotH);
 
-    ctx.strokeStyle = "rgba(106,169,255,0.95)";
+    ctx.strokeStyle = "rgba(229,231,235,0.95)";
     ctx.lineWidth = 2 * dpr;
     ctx.beginPath();
     for (let ix = 0; ix <= 256; ix++) {
@@ -129,7 +129,7 @@ export function createHistogramController(deps) {
     ctx.stroke();
 
     function drawHandle(x, kind) {
-      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.strokeStyle = "rgba(229,231,235,0.9)";
       ctx.lineWidth = 1 * dpr;
       ctx.beginPath();
       ctx.moveTo(x, plotY0);
@@ -138,17 +138,17 @@ export function createHistogramController(deps) {
 
       const r = 6 * dpr;
       const y = plotY0 + plotH + 0.5 * r;
-      ctx.fillStyle = "rgba(106,169,255,0.95)";
+      ctx.fillStyle = "rgba(156,163,175,0.95)";
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.strokeStyle = "rgba(31,41,55,0.95)";
       ctx.stroke();
     }
 
     drawHandle(xMin, "min");
     drawHandle(xMax, "max");
-    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.strokeStyle = "rgba(75,85,99,0.85)";
     ctx.lineWidth = 1 * dpr;
     ctx.strokeRect(plotX0, plotY0, plotW, plotH);
     ctx.restore();

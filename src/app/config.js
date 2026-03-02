@@ -3,6 +3,6 @@ export const APP_CONFIG = Object.freeze({
     parallelEnabledByDefault: true
   }),
   cache: Object.freeze({
-    maxSystemMemoryFraction: 0.20
+    maxSystemMemoryFraction: 0.50
   })
 });
