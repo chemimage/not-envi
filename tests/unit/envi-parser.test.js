@@ -42,6 +42,21 @@ wavelength = {0.45,
     expect(norm.littleEndian).toBe(true);
   });
 
+  test("normalizeMeta accepts numeric/alias interleave forms", () => {
+    const base = {
+      samples: 8,
+      lines: 8,
+      bands: 2,
+      "data type": 4,
+      "byte order": 0
+    };
+
+    expect(normalizeMeta({ ...base, interleave: 0 }).interleave).toBe("bsq");
+    expect(normalizeMeta({ ...base, interleave: 1 }).interleave).toBe("bil");
+    expect(normalizeMeta({ ...base, interleave: 2 }).interleave).toBe("bip");
+    expect(normalizeMeta({ ...base, interleave: "bsp" }).interleave).toBe("bip");
+  });
+
   test("normalizeMeta rejects invalid dimensions", () => {
     expect(() => normalizeMeta({ samples: 0, lines: 1, bands: 1, "data type": 4 })).toThrow();
   });

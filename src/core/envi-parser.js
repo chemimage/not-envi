@@ -74,10 +74,7 @@ export function normalizeMeta(raw) {
   const dataTypeInfo = DATA_TYPES.get(dataType);
   if (!dataTypeInfo) throw new Error(`Unsupported ENVI data type: ${dataType}`);
 
-  const interleave = String(get("interleave", "bsq")).trim().toLowerCase();
-  if (!["bsq", "bil", "bip"].includes(interleave)) {
-    throw new Error(`Unsupported interleave: ${interleave}`);
-  }
+  const interleave = normalizeInterleave(get("interleave", "bsq"));
 
   const byteOrder = Number(get("byte order", 0)) || 0;
   const littleEndian = byteOrder === 0;
@@ -128,4 +125,20 @@ export function normalizeMeta(raw) {
     mapInfo,
     scale
   };
+}
+
+function normalizeInterleave(rawInterleave) {
+  const v = String(rawInterleave).trim().toLowerCase();
+  if (!v) return "bsq";
+
+  // Non-standard numeric indices used by some exporters.
+  if (v === "0") return "bsq";
+  if (v === "1") return "bil";
+  if (v === "2") return "bip";
+
+  if (v === "bsq") return "bsq";
+  if (v === "bil") return "bil";
+  if (v === "bip" || v === "bsp") return "bip";
+
+  throw new Error(`Unsupported interleave: ${v}`);
 }

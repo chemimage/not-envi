@@ -572,8 +572,7 @@ function unitToMicronsFactor(unitStr){
     const headerOffset = Number(get('header offset', 0)) || 0;
     const dataType = Number(get('data type'));
     if (!DATA_TYPES.has(dataType)) throw new Error('Unsupported ENVI data type: ' + dataType);
-    const interleave = String(get('interleave','bsq')).trim().toLowerCase();
-    if (!['bsq','bil','bip'].includes(interleave)) throw new Error('Unsupported interleave: ' + interleave);
+    const interleave = normalizeInterleave(get('interleave','bsq'));
     const byteOrder = Number(get('byte order', 0)) || 0;
     const littleEndian = (byteOrder === 0);
 
@@ -630,6 +629,22 @@ function unitToMicronsFactor(unitStr){
       scale,
       defaultBands,
     };
+  }
+
+  function normalizeInterleave(rawInterleave){
+    const v = String(rawInterleave).trim().toLowerCase();
+    if (!v) return 'bsq';
+
+    // Non-standard numeric indices used by some ENVI writers.
+    if (v === '0') return 'bsq';
+    if (v === '1') return 'bil';
+    if (v === '2') return 'bip';
+
+    if (v === 'bsq') return 'bsq';
+    if (v === 'bil') return 'bil';
+    if (v === 'bip' || v === 'bsp') return 'bip';
+
+    throw new Error('Unsupported interleave: ' + v);
   }
 
   function pixelOffset(meta, x, y, b){
