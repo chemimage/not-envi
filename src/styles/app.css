@@ -35,7 +35,7 @@
 
   header {
     grid-area: top;
-    @apply flex items-center gap-2 rounded-sm border border-gray-700 bg-gray-900 px-2.5 py-2.5 shadow-2xl shadow-black/30;
+    @apply relative flex items-center justify-center gap-2 rounded-sm border border-gray-700 bg-gray-900 px-2.5 py-2.5 shadow-2xl shadow-black/30;
   }
 
   header .group {
@@ -44,6 +44,14 @@
 
   header .group:last-child {
     @apply border-r-0 pr-0;
+  }
+
+  .controls-center {
+    @apply border-r-0 pr-0;
+  }
+
+  .header-right {
+    @apply absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-2;
   }
 
   header .title {
@@ -280,12 +288,24 @@
     @apply rounded-sm border border-white/15 bg-gray-950/70 px-2 py-1 font-mono text-xs text-white;
   }
 
+  #thumbDock {
+    @apply absolute right-2.5 top-2.5 z-10 flex flex-col items-end gap-[5px];
+  }
+
   #thumbWrap {
-    @apply absolute right-2.5 top-2.5 h-40 w-56 overflow-hidden rounded-sm border border-gray-600 bg-gray-950/70 shadow-xl shadow-black/40;
+    @apply h-40 w-56 overflow-hidden rounded-sm border border-gray-600 bg-gray-950/70 shadow-xl shadow-black/40;
   }
 
   #thumbWrap canvas {
     @apply static h-full w-full;
+  }
+
+  #thumbControls {
+    @apply flex items-center gap-1;
+  }
+
+  #thumbControls .btn.tiny {
+    @apply rounded-sm border-gray-600 bg-gray-800/90 px-2 py-1 text-xs;
   }
 
   .bar-label {

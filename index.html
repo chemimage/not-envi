@@ -9,46 +9,41 @@
 <body>
 <div id="app">
   <header>
-    <div class="group">
+    <div class="group" style="display:none;">
       <div class="title">ENVI Local Viewer</div>
-      <button class="btn" id="btnFit">Fit</button>
-      <button class="btn" id="btn100">100%</button>
     </div>
 
-    <div class="group">
+    <div class="group" style="display:none;">
       <button class="btn" id="btnZoomOut">−</button>
       <input id="zoom" type="range" min="0" max="100" value="40" />
       <button class="btn" id="btnZoomIn">+</button>
       <span class="badge" id="zoomLabel">—</span>
     </div>
 
-    <div class="group">
-      <label class="toggle" title="Show grid overlay">
+    <div class="group controls-center">
+      <label class="toggle tiny switch" title="Show grid overlay">
         <input type="checkbox" id="chkGrid" />
-        <span class="tiny">Grid</span>
+        <span>Grid</span>
       </label>
-      <label class="toggle" title="Show scalebar (lower right)">
+      <label class="toggle tiny switch" title="Show scalebar (lower right)">
         <input type="checkbox" id="chkScale" />
-        <span class="tiny">Scalebar</span>
+        <span>Scalebar</span>
       </label>
-    </div>
-
-    <div class="group">
       <button class="btn" id="btnSelect" title="Draw a rectangle to export a region">Select</button>
       <button class="btn" id="btnExport">Export</button>
     </div>
 
-    <div class="spacer"></div>
-
-    <div class="group perf-top">
-      <div class="bar perf-top-bar" aria-label="Cache usage">
-        <div class="fill" id="perfBarCacheFill"></div>
-        <span class="bar-text" id="perfBarCacheText">Cache: 0 B / 0 B</span>
+    <div class="header-right">
+      <div class="group perf-top">
+        <div class="bar perf-top-bar" aria-label="Cache usage">
+          <div class="fill" id="perfBarCacheFill"></div>
+          <span class="bar-text" id="perfBarCacheText">Cache: 0 B / 0 B</span>
+        </div>
       </div>
-    </div>
 
-    <div class="group">
-      <span class="badge badge-rect" id="statusBadge">idle</span>
+      <div class="group">
+        <span class="badge badge-rect" id="statusBadge">idle</span>
+      </div>
     </div>
   </header>
 
@@ -101,8 +96,14 @@
       <div class="hud" id="hudVal">value: —</div>
     </div>
 
-    <div id="thumbWrap">
-      <canvas id="thumb"></canvas>
+    <div id="thumbDock">
+      <div id="thumbWrap">
+        <canvas id="thumb"></canvas>
+      </div>
+      <div id="thumbControls">
+        <button class="btn tiny" id="btnFit">Fit</button>
+        <button class="btn tiny" id="btn100">100%</button>
+      </div>
     </div>
 
     <!-- Spectrum (z-profile) panel: double-click in the view to open -->
