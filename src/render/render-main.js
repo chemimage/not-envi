@@ -99,7 +99,6 @@ export function createRenderer(deps) {
       if (ok) useGPU = true;
     }
 
-    els.gpuBadge.textContent = gpuSupported ? (useGPU ? "WebGPU: on" : "WebGPU: off") : "WebGPU: n/a";
     els.gpuCanvas.style.display = useGPU ? "block" : "none";
     els.cpuCanvas.style.display = useGPU ? "none" : "block";
 

@@ -367,20 +367,15 @@ export function createUIPanels(deps) {
   function updatePerf() {
     const ds = getActive();
     if (!ds) {
-      els.perfBytes.textContent = "0";
       els.perfCache.textContent = "0 MB";
       els.perfPyramid.textContent = "0 MB";
       els.perfBarCacheText.textContent = "—";
-      els.perfBarReadText.textContent = "—";
       els.perfBarCacheFill.style.width = "0%";
-      els.perfBarReadFill.style.width = "0%";
       return;
     }
-    const bytesRead = ds.ds.bytesRead || 0;
     const chunkUsed = ds.ds.cacheBytes ? ds.ds.cacheBytes() : 0;
     const pyramidUsed = ds.pyramid ? ds.pyramid.totalBytes : 0;
 
-    els.perfBytes.textContent = humanBytes(bytesRead);
     els.perfCache.textContent = humanBytes(chunkUsed);
     els.perfPyramid.textContent = humanBytes(pyramidUsed);
 
@@ -391,12 +386,6 @@ export function createUIPanels(deps) {
     const frac = clamp(used / cap, 0, 1);
     els.perfBarCacheFill.style.width = `${(frac * 100).toFixed(1)}%`;
     els.perfBarCacheText.textContent = `${humanBytes(used)} / ${humanBytes(cap)}`;
-
-    const expected = (ds.meta.headerOffset || 0) + (ds.meta.samples * ds.meta.lines * ds.meta.bands * ds.meta.dataTypeInfo.bytes);
-    const full = Math.max(1, expected || 0, ds.ds.size || 0);
-    const fracRead = clamp(bytesRead / full, 0, 1);
-    els.perfBarReadFill.style.width = `${(fracRead * 100).toFixed(1)}%`;
-    els.perfBarReadText.textContent = `${humanBytes(bytesRead)} / ${humanBytes(full)}`;
   }
 
   return {

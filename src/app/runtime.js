@@ -525,7 +525,7 @@ import { createInteractionController } from "../ui/events.js";
     updateMetaUI,
     updatePerf,
     updateZoomLabelBoot: updateZoomLabel,
-    setGpuBadgeAvailable: () => { els.gpuBadge.textContent = gpuSupported ? "WebGPU: available" : "WebGPU: n/a"; }
+    setGpuBadgeAvailable: () => {}
   });
 })();
 
