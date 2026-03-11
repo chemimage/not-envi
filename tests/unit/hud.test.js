@@ -36,6 +36,6 @@ describe("hud controller", () => {
     expect(els.hudPos.innerHTML).toContain("x</b>:");
     expect(els.hudPos.innerHTML).toContain("y</b>:");
     expect(els.hudPos.innerHTML).toContain("&nu;</b>:");
-    expect(els.hudPos.innerHTML).toContain("613.0 nm");
+    expect(els.hudPos.innerHTML).toContain("613.0 cm<sup>-1</sup>");
   });
 });

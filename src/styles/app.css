@@ -140,7 +140,7 @@
 
   #right[data-open="false"] #rightHeader h2 {
     position: absolute;
-    left: 50%;
+    left: calc(100% - (var(--flyout-visible-header) / 2));
     top: 50%;
     margin: 0;
     transform: translate(-50%, -50%) rotate(-90deg);
@@ -176,7 +176,7 @@
 
   #displayPanel[data-open="false"] .display-header h2 {
     position: absolute;
-    left: 50%;
+    left: calc(100% - (var(--display-visible-header) / 2));
     top: 50%;
     margin: 0;
     transform: translate(-50%, -50%) rotate(-90deg);
@@ -445,17 +445,22 @@
   }
 
   #datasetDock {
-    @apply absolute bottom-2.5 left-2.5 z-20 flex w-[min(430px,56vw)] flex-col overflow-hidden rounded-sm border border-gray-700 bg-gray-900/90 shadow-2xl shadow-black/35;
-    backdrop-filter: blur(4px);
-  }
-
-  #datasetDock .panel-header {
-    @apply border-b border-gray-700 px-3 py-2;
+    @apply absolute bottom-2.5 left-2.5 z-20 w-[min(430px,56vw)];
   }
 
   .dataset-viewport {
-    @apply overflow-y-auto px-2.5 pb-2.5 pt-2;
+    @apply overflow-y-hidden;
     height: 192px;
+  }
+
+  #datasetDock:hover .dataset-viewport {
+    overflow-y: auto;
+  }
+
+  @media (hover: none) {
+    .dataset-viewport {
+      overflow-y: auto;
+    }
   }
 
   .bar-label {

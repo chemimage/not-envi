@@ -13,8 +13,7 @@ export function createHudController(deps) {
     if (b == null) return "—";
     const wl = ds.meta.wavelengths ? Number(ds.meta.wavelengths[b]) : NaN;
     if (!Number.isFinite(wl)) return "—";
-    const units = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? ` ${String(ds.meta.wlUnits).trim()}` : "";
-    return `${wl.toFixed(1)}${units}`;
+    return `${wl.toFixed(1)} cm<sup>-1</sup>`;
   }
 
   function setHudText(xText, yText, nuText, title = "") {

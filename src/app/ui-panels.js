@@ -82,8 +82,7 @@ export function createUIPanels(deps) {
     const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
     const wlNum = Number(wl);
     const wlText = Number.isFinite(wlNum) ? wlNum.toFixed(1) : "—";
-    const wlUnits = Number.isFinite(wlNum) && ds.meta.wlUnits ? ` ${ds.meta.wlUnits}` : "";
-    els.dispWl.textContent = wlText + wlUnits;
+    els.dispWl.innerHTML = Number.isFinite(wlNum) ? `${wlText} cm<sup>-1</sup>` : "—";
 
     const s = getBandSettings(ds, b);
     els.slContrast.value = String(s.contrast ?? 1);
@@ -282,8 +281,8 @@ export function createUIPanels(deps) {
 
   function rebuildDatasetList() {
     setAppEmptyMode();
-    if (!els.datasetList || !els.datasetCount) return;
-    els.datasetCount.textContent = String(state.datasets.length);
+    if (!els.datasetList) return;
+    if (els.datasetCount) els.datasetCount.textContent = String(state.datasets.length);
     els.datasetList.innerHTML = "";
     for (const ds of state.datasets) {
       const div = document.createElement("div");
