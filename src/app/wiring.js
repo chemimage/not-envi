@@ -70,64 +70,87 @@ export function wireApp(deps) {
     redrawSpectrum();
   });
 
-  const isRightPanelOpen = () => els.right?.dataset.open !== "false";
-  const isRightPanelPinned = () => els.right?.dataset.pinned !== "false";
-  const setRightPanelOpen = (open) => {
-    if (!els.right) return;
-    const nextOpen = !!open;
-    els.right.dataset.open = nextOpen ? "true" : "false";
-    if (els.btnRightToggle) {
-      els.btnRightToggle.textContent = nextOpen ? "Hide" : "Show";
-      els.btnRightToggle.title = nextOpen ? "Retract panel" : "Expand panel";
-      els.btnRightToggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-    }
-  };
-  const setRightPanelPinned = (pinned, { forceOpen = true } = {}) => {
-    if (!els.right) return;
-    const nextPinned = !!pinned;
-    els.right.dataset.pinned = nextPinned ? "true" : "false";
-    if (els.btnRightPin) {
-      els.btnRightPin.textContent = nextPinned ? "Pinned" : "Pin";
-      els.btnRightPin.title = nextPinned ? "Unpin panel" : "Pin panel open";
-      els.btnRightPin.setAttribute("aria-pressed", nextPinned ? "true" : "false");
-    }
-    if (nextPinned && forceOpen) setRightPanelOpen(true);
-  };
+  function wireFlyoutPanel({
+    panel,
+    header,
+    btnToggle,
+    btnPin,
+    collapseTitle = "Retract panel",
+    expandTitle = "Expand panel"
+  }) {
+    if (!panel) return;
+    const isOpen = () => panel.dataset.open !== "false";
+    const isPinned = () => panel.dataset.pinned !== "false";
+    const setOpen = (open) => {
+      const nextOpen = !!open;
+      panel.dataset.open = nextOpen ? "true" : "false";
+      if (btnToggle) {
+        btnToggle.textContent = nextOpen ? "Hide" : "Show";
+        btnToggle.title = nextOpen ? collapseTitle : expandTitle;
+        btnToggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+      }
+    };
+    const setPinned = (pinned, { forceOpen = true } = {}) => {
+      const nextPinned = !!pinned;
+      panel.dataset.pinned = nextPinned ? "true" : "false";
+      if (btnPin) {
+        btnPin.textContent = nextPinned ? "Pinned" : "Pin";
+        btnPin.title = nextPinned ? "Unpin panel" : "Pin panel open";
+        btnPin.setAttribute("aria-pressed", nextPinned ? "true" : "false");
+      }
+      if (nextPinned && forceOpen) setOpen(true);
+    };
 
-  if (els.right) {
-    setRightPanelPinned(isRightPanelPinned(), { forceOpen: false });
-    setRightPanelOpen(isRightPanelOpen());
-    if (isRightPanelPinned() && !isRightPanelOpen()) setRightPanelOpen(true);
+    setPinned(isPinned(), { forceOpen: false });
+    setOpen(isOpen());
+    if (isPinned() && !isOpen()) setOpen(true);
 
-    if (els.btnRightToggle) {
-      els.btnRightToggle.onclick = (ev) => {
+    if (btnToggle) {
+      btnToggle.onclick = (ev) => {
         ev.stopPropagation();
-        const nextOpen = !isRightPanelOpen();
-        if (!nextOpen) setRightPanelPinned(false, { forceOpen: false });
-        setRightPanelOpen(nextOpen);
+        const nextOpen = !isOpen();
+        if (!nextOpen) setPinned(false, { forceOpen: false });
+        setOpen(nextOpen);
       };
     }
-    if (els.btnRightPin) {
-      els.btnRightPin.onclick = (ev) => {
+    if (btnPin) {
+      btnPin.onclick = (ev) => {
         ev.stopPropagation();
-        setRightPanelPinned(!isRightPanelPinned());
+        setPinned(!isPinned());
       };
     }
-    if (els.rightHeader) {
-      els.rightHeader.addEventListener("click", (ev) => {
-        if (!els.right || !ev.target) return;
+    if (header) {
+      header.addEventListener("click", (ev) => {
+        if (!ev.target) return;
         const target = ev.target;
         if (target.closest && target.closest("button")) return;
-        if (!isRightPanelOpen()) setRightPanelOpen(true);
+        if (!isOpen()) setOpen(true);
       });
     }
-    els.right.addEventListener("pointerenter", () => {
-      if (!isRightPanelPinned() && !isRightPanelOpen()) setRightPanelOpen(true);
+    panel.addEventListener("pointerenter", () => {
+      if (!isPinned() && !isOpen()) setOpen(true);
     });
-    els.right.addEventListener("pointerleave", () => {
-      if (!isRightPanelPinned()) setRightPanelOpen(false);
+    panel.addEventListener("pointerleave", () => {
+      if (!isPinned()) setOpen(false);
     });
   }
+
+  wireFlyoutPanel({
+    panel: els.right,
+    header: els.rightHeader,
+    btnToggle: els.btnRightToggle,
+    btnPin: els.btnRightPin,
+    collapseTitle: "Retract bands panel",
+    expandTitle: "Expand bands panel"
+  });
+  wireFlyoutPanel({
+    panel: els.displayPanel,
+    header: els.displayHeader,
+    btnToggle: els.btnDisplayToggle,
+    btnPin: els.btnDisplayPin,
+    collapseTitle: "Retract display panel",
+    expandTitle: "Expand display panel"
+  });
 
   els.main.addEventListener("dblclick", (ev) => {
     const ds = getActive();

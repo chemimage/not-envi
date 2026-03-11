@@ -26,7 +26,7 @@ import { createOverlayRenderer } from "../render/overlay.js";
 import { createPyramidController } from "../render/pyramid-cache.js";
 import { createRenderer } from "../render/render-main.js";
 import { createSpectrumController } from "../render/spectrum.js";
-import { probeValueAtBand, readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
+import { readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
 import { createThumbnailController } from "../render/thumbnail.js";
 import { clamp, fmt, fmtNoGroup, humanBytes } from "../core/utils.js";
 import { createInteractionController } from "../ui/events.js";
@@ -392,8 +392,6 @@ import { APP_CONFIG } from "./config.js";
     state,
     getActive,
     screenToImage,
-    bandLabel,
-    probeValueAtBand,
   });
 
   function updateHud(){ hud.updateHud(); }

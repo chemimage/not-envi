@@ -5,62 +5,44 @@ export function createHudController(deps) {
     els,
     state,
     getActive,
-    screenToImage,
-    bandLabel,
-    probeValueAtBand
+    screenToImage
   } = deps;
 
-  let probeSeq = 0;
-  let hudTimer = null;
+  function formatNu(ds) {
+    const b = ds.activeBand;
+    if (b == null) return "—";
+    const wl = ds.meta.wavelengths ? Number(ds.meta.wavelengths[b]) : NaN;
+    if (!Number.isFinite(wl)) return "—";
+    const units = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? ` ${String(ds.meta.wlUnits).trim()}` : "";
+    return `${wl.toFixed(1)}${units}`;
+  }
 
-  async function probeValue(ds, ix, iy, band) {
-    const mySeq = ++probeSeq;
-    const v = await probeValueAtBand(ds, ix, iy, band);
-    if (mySeq !== probeSeq) return null;
-    return v;
+  function setHudText(xText, yText, nuText, title = "") {
+    els.hudPos.innerHTML = `<b>x</b>: ${xText}  <b>y</b>: ${yText}  <b>&nu;</b>: ${nuText}`;
+    els.hudPos.title = title;
   }
 
   function updateHud() {
     const ds = getActive();
     if (!ds) {
-      els.hudPos.textContent = "x: —  y: —";
-      els.hudPos.title = "";
-      els.hudVal.textContent = "value: —";
+      setHudText("—", "—", "—");
       return;
     }
     const dpr = window.devicePixelRatio || 1;
     const img = screenToImage(state.mouse.x * dpr, state.mouse.y * dpr);
     const ix = Math.floor(img.x);
     const iy = Math.floor(img.y);
+    const nuText = formatNu(ds);
 
     const sc = ds.meta.scale;
     if (sc && Number.isFinite(sc.umPerPixelX) && Number.isFinite(sc.umPerPixelY)) {
       const xUm = ix * Number(sc.umPerPixelX);
       const yUm = iy * Number(sc.umPerPixelY);
-      els.hudPos.textContent = `x: ${fmtUm(xUm)} µm  y: ${fmtUm(yUm)} µm`;
-      els.hudPos.title = `px x:${ix}  y:${iy}`;
-    } else {
-      els.hudPos.textContent = `x: ${ix}  y: ${iy}`;
-      els.hudPos.title = "";
-    }
-
-    const band = ds.activeBand;
-    if (band == null) {
-      els.hudVal.textContent = "value: —";
+      setHudText(`${fmtUm(xUm)} µm`, `${fmtUm(yUm)} µm`, nuText, `px x:${ix}  y:${iy}`);
       return;
     }
 
-    if (hudTimer) clearTimeout(hudTimer);
-    hudTimer = setTimeout(() => {
-      probeValue(ds, ix, iy, band).then((v) => {
-        if (v === null || v === undefined || !Number.isFinite(v)) {
-          els.hudVal.textContent = "value: —";
-        } else {
-          const bName = bandLabel(ds, band);
-          els.hudVal.textContent = `${bName}: ${v.toFixed(4)}`;
-        }
-      }).catch(() => {});
-    }, 40);
+    setHudText(String(ix), String(iy), nuText);
   }
 
   return { updateHud };

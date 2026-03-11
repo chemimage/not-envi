@@ -1,48 +1,41 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import { createHudController } from "../../src/render/hud.js";
 
 describe("hud controller", () => {
   test("updateHud shows placeholders when no active dataset", () => {
     const els = {
-      hudPos: { textContent: "", title: "" },
-      hudVal: { textContent: "" }
+      hudPos: { textContent: "", innerHTML: "", title: "" }
     };
     const hud = createHudController({
       els,
       state: { mouse: { x: 0, y: 0 } },
       getActive: () => null,
-      screenToImage: () => ({ x: 0, y: 0 }),
-      bandLabel: () => "B0",
-      probeValueAtBand: async () => 0
+      screenToImage: () => ({ x: 0, y: 0 })
     });
     hud.updateHud();
-    expect(els.hudPos.textContent).toContain("—");
-    expect(els.hudVal.textContent).toContain("—");
+    expect(els.hudPos.innerHTML).toContain("—");
+    expect(els.hudPos.innerHTML).toContain("&nu;");
   });
 
-  test("updateHud schedules and formats probe value", async () => {
-    vi.useFakeTimers();
+  test("updateHud formats x y and nu with one decimal", () => {
     const els = {
-      hudPos: { textContent: "", title: "" },
-      hudVal: { textContent: "" }
+      hudPos: { textContent: "", innerHTML: "", title: "" }
     };
     const ds = {
       activeBand: 2,
-      meta: { scale: null }
+      meta: { scale: null, wavelengths: [500, 501.234, 612.987], wlUnits: "nm" }
     };
     const hud = createHudController({
       els,
       state: { mouse: { x: 1, y: 2 } },
       getActive: () => ds,
-      screenToImage: () => ({ x: 10, y: 20 }),
-      bandLabel: (_ds, b) => `B${b}`,
-      probeValueAtBand: async () => 12.3456
+      screenToImage: () => ({ x: 10, y: 20 })
     });
 
     hud.updateHud();
-    await vi.advanceTimersByTimeAsync(50);
-    expect(els.hudPos.textContent).toContain("x:");
-    expect(els.hudVal.textContent).toContain("B2:");
-    vi.useRealTimers();
+    expect(els.hudPos.innerHTML).toContain("x</b>:");
+    expect(els.hudPos.innerHTML).toContain("y</b>:");
+    expect(els.hudPos.innerHTML).toContain("&nu;</b>:");
+    expect(els.hudPos.innerHTML).toContain("613.0 nm");
   });
 });

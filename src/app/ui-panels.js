@@ -80,7 +80,10 @@ export function createUIPanels(deps) {
     els.dispBand.textContent = bandLabel(ds, b);
     els.dispBand.title = `Band index ${b}`;
     const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
-    els.dispWl.textContent = (wl != null ? fmtNoGroup(wl) : "—") + (ds.meta.wlUnits ? ` ${ds.meta.wlUnits}` : "");
+    const wlNum = Number(wl);
+    const wlText = Number.isFinite(wlNum) ? wlNum.toFixed(1) : "—";
+    const wlUnits = Number.isFinite(wlNum) && ds.meta.wlUnits ? ` ${ds.meta.wlUnits}` : "";
+    els.dispWl.textContent = wlText + wlUnits;
 
     const s = getBandSettings(ds, b);
     els.slContrast.value = String(s.contrast ?? 1);
