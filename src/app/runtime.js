@@ -229,22 +229,35 @@ import { APP_CONFIG } from "./config.js";
     state.draw.color = color;
   }
 
+  function isHistogramSelectionTool(item) {
+    return !!(item && (item.tool === "rect" || item.tool === "shape"));
+  }
+
+  function getHistogramSelectionItems(ds) {
+    if (!ds || !Array.isArray(ds.drawings)) return [];
+    return ds.drawings.filter((item) => isHistogramSelectionTool(item));
+  }
+
+  function histogramSelectionKeyFromItems(items) {
+    if (!Array.isArray(items) || !items.length) return "";
+    return items
+      .filter((item) => Number.isFinite(item.id))
+      .sort((a, b) => a.id - b.id)
+      .map((item) => String(item.id))
+      .join(",");
+  }
+
   function getDrawData(ds) {
     if (!ds) return null;
     const items = Array.isArray(ds.drawings) ? ds.drawings : [];
     const draft = (state.draw.draft && state.draw.draft.dsId === ds.id) ? state.draw.draft : null;
     const rulerHover = (state.draw.rulerHover && state.draw.rulerHover.dsId === ds.id) ? state.draw.rulerHover : null;
-    const selectionId = Number.isFinite(ds.histSelectionId) ? ds.histSelectionId : null;
-    const marqueeOffset = (selectionId == null) ? 0 : ((performance.now() / 110) % 14);
-    return { items, draft, rulerHover, selectionId, marqueeOffset };
-  }
-
-  function findHistogramSelectionItem(ds) {
-    if (!ds || !Array.isArray(ds.drawings)) return null;
-    if (!Number.isFinite(ds.histSelectionId)) return null;
-    const item = ds.drawings.find((it) => it && it.id === ds.histSelectionId) || null;
-    if (!item || (item.tool !== "rect" && item.tool !== "shape")) return null;
-    return item;
+    const selectionItems = getHistogramSelectionItems(ds);
+    const selectionIds = selectionItems
+      .map((item) => item.id)
+      .filter((id) => Number.isFinite(id));
+    const marqueeOffset = selectionIds.length ? ((performance.now() / 110) % 14) : 0;
+    return { items, draft, rulerHover, selectionIds, marqueeOffset };
   }
 
   function pointerToImagePoint(ev, ds) {
@@ -408,12 +421,10 @@ import { APP_CONFIG } from "./config.js";
     }
     if (bestIdx < 0) return false;
     const [removed] = ds.drawings.splice(bestIdx, 1);
-    if (removed && Number.isFinite(ds.histSelectionId) && removed.id === ds.histSelectionId) {
-      ds.histSelectionId = null;
-      clearSelectionHistogram(ds);
-    }
+    const selectionChanged = !!(removed && isHistogramSelectionTool(removed));
+    if (selectionChanged) updateSelectionHistogramForDataset(ds);
     ensureMarqueeTicker();
-    if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
+    if (!selectionChanged && state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
     render({ reuseRaster: true });
     return true;
   }
@@ -538,7 +549,6 @@ import { APP_CONFIG } from "./config.js";
       };
       ds.drawings.push(newItem);
       if (draft.tool === "rect" || draft.tool === "shape") {
-        ds.histSelectionId = newItem.id;
         updateSelectionHistogramForDataset(ds);
       }
     }
@@ -643,7 +653,7 @@ import { APP_CONFIG } from "./config.js";
 
   async function buildBandStatsWhole(ds, band){ await histogram.buildBandStatsWhole(ds, band); }
   function ensureViewHistogram(ds){ histogram.ensureViewHistogram(ds); }
-  async function updateSelectionHistogram(ds, selection){ await histogram.updateSelectionHistogram(ds, selection); }
+  async function updateSelectionHistogram(ds, selections){ await histogram.updateSelectionHistogram(ds, selections); }
   function clearSelectionHistogram(ds){ histogram.clearSelectionHistogram(ds); }
   function drawHistogram(ds){ histogram.drawHistogram(ds); }
   function histPickHandle(ds, px, py){ return histogram.histPickHandle(ds, px, py); }
@@ -656,13 +666,18 @@ import { APP_CONFIG } from "./config.js";
     els.btnToolHistogram.setAttribute("aria-busy", isBusy ? "true" : "false");
   }
 
+  function syncAnalysisHistogramButtonState() {
+    if (!els.btnToolHistogram) return;
+    els.btnToolHistogram.classList.toggle("active", !!state.analysisHist.open);
+    els.btnToolHistogram.setAttribute("aria-pressed", state.analysisHist.open ? "true" : "false");
+  }
+
   function updateAnalysisStatsPanel(stats) {
     if (!els.analysisStatN) return;
     if (!stats) {
       els.analysisStatN.textContent = "—";
       els.analysisStatRange.textContent = "—";
-      els.analysisStatMean.textContent = "—";
-      els.analysisStatStd.textContent = "—";
+      els.analysisStatMeanStd.textContent = "—";
       els.analysisStatMode.textContent = "—";
       els.analysisStatBins.textContent = "—";
       els.analysisStatBinWidth.textContent = "—";
@@ -672,8 +687,7 @@ import { APP_CONFIG } from "./config.js";
     const binWidth = Number.isFinite(stats.binWidth) ? stats.binWidth : ((stats.max - stats.min) / Math.max(1, bins));
     els.analysisStatN.textContent = fmtNoGroup(stats.count || 0);
     els.analysisStatRange.textContent = `${formatNumber(stats.min)} / ${formatNumber(stats.max)}`;
-    els.analysisStatMean.textContent = formatNumber(stats.mean);
-    els.analysisStatStd.textContent = formatNumber(stats.stdDev);
+    els.analysisStatMeanStd.textContent = `${formatNumber(stats.mean)} / ${formatNumber(stats.stdDev)}`;
     els.analysisStatMode.textContent = formatNumber(stats.mode);
     els.analysisStatBins.textContent = fmtNoGroup(bins);
     els.analysisStatBinWidth.textContent = formatNumber(binWidth);
@@ -739,6 +753,12 @@ import { APP_CONFIG } from "./config.js";
       const y = plot.plotY0 + (plot.plotH - bh);
       ctx.fillStyle = "rgba(250,204,21,0.85)";
       ctx.fillRect(x, y, Math.max(1, barW), bh);
+      ctx.strokeStyle = "rgba(250,204,21,0.95)";
+      ctx.lineWidth = 1.25 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(x + (0.5 * barW), plot.plotY0);
+      ctx.lineTo(x + (0.5 * barW), plot.plotY0 + plot.plotH);
+      ctx.stroke();
     }
 
     ctx.strokeStyle = "rgba(100,116,139,0.9)";
@@ -749,8 +769,16 @@ import { APP_CONFIG } from "./config.js";
 
   function resolveHistogramStatsForPanel(ds) {
     if (!ds || ds.activeBand == null) return null;
-    const resolved = resolveStats(ds);
-    if (resolved && resolved.bins && resolved.count > 0) return resolved;
+    const selections = getHistogramSelectionItems(ds);
+    if (selections.length) {
+      const selectionKey = histogramSelectionKeyFromItems(selections);
+      const selectionStats = ds.bandStatsSelection;
+      if (selectionStats && selectionStats.band === ds.activeBand && selectionStats.selectionKey === selectionKey && selectionStats.stats?.bins) {
+        return selectionStats.stats;
+      }
+    }
+    const wholeStats = ds.bandStatsWhole.get(ds.activeBand) || null;
+    if (wholeStats && wholeStats.bins && wholeStats.count > 0) return wholeStats;
     if (ds.lastRaster && ds.lastRaster.band === ds.activeBand && ds.lastRaster.dataF32?.length) {
       return computeHistogram(ds.lastRaster.dataF32, 256);
     }
@@ -759,11 +787,12 @@ import { APP_CONFIG } from "./config.js";
 
   async function ensureHistogramStatsForPanel(ds) {
     if (!ds || ds.activeBand == null) return null;
-    const selection = findHistogramSelectionItem(ds);
-    if (selection) {
+    const selections = getHistogramSelectionItems(ds);
+    if (selections.length) {
+      const selectionKey = histogramSelectionKeyFromItems(selections);
       const selStats = ds.bandStatsSelection;
-      const ready = !!(selStats && selStats.band === ds.activeBand && selStats.selectionId === ds.histSelectionId && selStats.stats);
-      if (!ready) await updateSelectionHistogram(ds, selection);
+      const ready = !!(selStats && selStats.band === ds.activeBand && selStats.selectionKey === selectionKey && selStats.stats);
+      if (!ready) await updateSelectionHistogram(ds, selections);
     } else if (!ds.bandStatsWhole.has(ds.activeBand)) {
       await buildBandStatsWhole(ds, ds.activeBand);
     }
@@ -816,6 +845,7 @@ import { APP_CONFIG } from "./config.js";
   function openAnalysisHistogramPanel() {
     if (!els.analysisHistPanel) return;
     state.analysisHist.open = true;
+    syncAnalysisHistogramButtonState();
     els.analysisHistPanel.style.display = "block";
     els.analysisHistPanel.setAttribute("aria-hidden", "false");
     positionAnalysisHistogramPanel();
@@ -825,6 +855,7 @@ import { APP_CONFIG } from "./config.js";
   function closeAnalysisHistogramPanel() {
     state.analysisHist.open = false;
     state.analysisHist.hoverBin = -1;
+    syncAnalysisHistogramButtonState();
     if (els.analysisHistPanel) {
       els.analysisHistPanel.style.display = "none";
       els.analysisHistPanel.setAttribute("aria-hidden", "true");
@@ -873,15 +904,14 @@ import { APP_CONFIG } from "./config.js";
 
   function updateSelectionHistogramForDataset(ds) {
     if (!ds) return;
-    const selection = findHistogramSelectionItem(ds);
-    if (!selection) {
-      ds.histSelectionId = null;
+    const selections = getHistogramSelectionItems(ds);
+    if (!selections.length) {
       clearSelectionHistogram(ds);
       ensureMarqueeTicker();
       if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
       return;
     }
-    updateSelectionHistogram(ds, selection).then(() => {
+    updateSelectionHistogram(ds, selections).then(() => {
       if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
     }).catch(() => {});
     ensureMarqueeTicker();
@@ -941,11 +971,11 @@ import { APP_CONFIG } from "./config.js";
   let marqueeTimer = null;
   function ensureMarqueeTicker() {
     const active = getActive();
-    const shouldRun = !!findHistogramSelectionItem(active);
+    const shouldRun = getHistogramSelectionItems(active).length > 0;
     if (shouldRun && marqueeTimer == null) {
       marqueeTimer = window.setInterval(() => {
         const ds = getActive();
-        if (!findHistogramSelectionItem(ds)) {
+        if (getHistogramSelectionItems(ds).length === 0) {
           clearInterval(marqueeTimer);
           marqueeTimer = null;
           return;
@@ -1112,6 +1142,8 @@ import { APP_CONFIG } from "./config.js";
   async function runExportFromDialog(){ await exportService.runExportFromDialog(); }
 
   // ========= Wiring events =========
+
+  syncAnalysisHistogramButtonState();
 
   wireApp({
     state,

@@ -176,9 +176,9 @@ export function createOverlayRenderer(deps) {
     }
   }
 
-  function drawOneAnnotation(ds, item, eff, dpr, rulerHover, itemIndex, selectionId = null, marqueeOffset = 0) {
+  function drawOneAnnotation(ds, item, eff, dpr, rulerHover, itemIndex, selectionIds = null, marqueeOffset = 0) {
     if (!item || !item.tool) return;
-    const isSelection = (selectionId != null && item.id === selectionId);
+    const isSelection = !!(selectionIds && selectionIds.has(item.id));
     if (item.tool === "ruler" || item.tool === "line") drawLine(ds, item, eff, dpr, rulerHover, itemIndex);
     else if (item.tool === "rect") drawRect(ds, item, eff, dpr, isSelection, marqueeOffset);
     else if (item.tool === "shape") drawShape(ds, item, eff, dpr, isSelection, marqueeOffset);
@@ -192,10 +192,14 @@ export function createOverlayRenderer(deps) {
     const eff = ds.view.scale * dpr;
     const items = Array.isArray(drawData.items) ? drawData.items : [];
     const rulerHover = drawData.rulerHover || null;
-    const selectionId = Number.isFinite(drawData.selectionId) ? drawData.selectionId : null;
+    const selectionIds = new Set(
+      Array.isArray(drawData.selectionIds)
+        ? drawData.selectionIds.filter((id) => Number.isFinite(id))
+        : []
+    );
     const marqueeOffset = Number.isFinite(drawData.marqueeOffset) ? drawData.marqueeOffset : 0;
     for (let i = 0; i < items.length; i += 1) {
-      drawOneAnnotation(ds, items[i], eff, dpr, rulerHover, i, selectionId, marqueeOffset);
+      drawOneAnnotation(ds, items[i], eff, dpr, rulerHover, i, selectionIds, marqueeOffset);
     }
     if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, null, -1, null, 0);
   }

@@ -36,6 +36,19 @@ export function createHistogramController(deps) {
     return inside;
   }
 
+  function isHistogramSelection(item) {
+    return !!(item && (item.tool === "rect" || item.tool === "shape"));
+  }
+
+  function selectionKeyFromItems(items) {
+    if (!Array.isArray(items) || !items.length) return "";
+    return items
+      .filter((item) => isHistogramSelection(item) && Number.isFinite(item.id))
+      .sort((a, b) => a.id - b.id)
+      .map((item) => String(item.id))
+      .join(",");
+  }
+
   function resolveSelectionBounds(ds, selection) {
     if (!selection || !Array.isArray(selection.points) || selection.points.length < 2) return null;
     const maxX = Math.max(0, ds.meta.samples - 1);
@@ -76,44 +89,65 @@ export function createHistogramController(deps) {
     return null;
   }
 
-  function filterSelectionValues(selection, f32, outW, outH, x0, y0, step) {
-    if (selection.tool === "rect") return f32;
-    if (selection.tool !== "shape" || !Array.isArray(selection.points) || selection.points.length < 3) return null;
-    const values = [];
+  function appendSelectionValues(selection, f32, outW, outH, x0, y0, step, rowStride, seen, values) {
+    if (!selection || !f32 || !values) return;
+    const isShape = selection.tool === "shape" && Array.isArray(selection.points) && selection.points.length >= 3;
     for (let row = 0; row < outH; row += 1) {
-      const iy = y0 + row * step + 0.5 * step;
+      const iy = y0 + row * step;
       for (let col = 0; col < outW; col += 1) {
-        const ix = x0 + col * step + 0.5 * step;
-        if (!pointInPolygon(ix, iy, selection.points)) continue;
+        const ix = x0 + col * step;
+        if (isShape) {
+          const cx = ix + (0.5 * step);
+          const cy = iy + (0.5 * step);
+          if (!pointInPolygon(cx, cy, selection.points)) continue;
+        }
+        const key = iy * rowStride + ix;
+        if (seen.has(key)) continue;
+        seen.add(key);
         values.push(f32[row * outW + col]);
       }
     }
-    return values.length ? new Float32Array(values) : null;
   }
 
-  async function computeSelectionStats(ds, band, selection) {
-    if (!ds || band == null || !selection) return null;
-    const bounds = resolveSelectionBounds(ds, selection);
-    if (!bounds) return null;
-    const width = bounds.x1 - bounds.x0 + 1;
-    const height = bounds.y1 - bounds.y0 + 1;
-    if (width <= 0 || height <= 0) return null;
+  async function computeSelectionStats(ds, band, selections) {
+    if (!ds || band == null || !Array.isArray(selections) || !selections.length) return null;
+
+    const valid = [];
+    let totalArea = 0;
+    for (const selection of selections) {
+      if (!isHistogramSelection(selection)) continue;
+      const bounds = resolveSelectionBounds(ds, selection);
+      if (!bounds) continue;
+      const width = bounds.x1 - bounds.x0 + 1;
+      const height = bounds.y1 - bounds.y0 + 1;
+      if (width <= 0 || height <= 0) continue;
+      valid.push({ selection, bounds, width, height });
+      totalArea += width * height;
+    }
+    if (!valid.length) return null;
 
     const targetSamples = 700_000;
-    const step = Math.max(1, Math.ceil(Math.sqrt((width * height) / targetSamples)));
-    const outW = Math.max(1, Math.ceil(width / step));
-    const outH = Math.max(1, Math.ceil(height / step));
+    const step = Math.max(1, Math.ceil(Math.sqrt(totalArea / targetSamples)));
+    const seen = new Set();
+    const values = [];
 
-    let raw;
-    if (ds.meta.interleave === "bip") {
-      raw = await readBandWindowBIP(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, step);
-    } else {
-      raw = await readBandWindow(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, step);
+    for (const item of valid) {
+      const { selection, bounds, width, height } = item;
+      const outW = Math.max(1, Math.ceil(width / step));
+      const outH = Math.max(1, Math.ceil(height / step));
+
+      let raw;
+      if (ds.meta.interleave === "bip") {
+        raw = await readBandWindowBIP(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, step);
+      } else {
+        raw = await readBandWindow(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, step);
+      }
+      const f32 = toFloat32(raw);
+      appendSelectionValues(selection, f32, outW, outH, bounds.x0, bounds.y0, step, ds.meta.samples, seen, values);
     }
-    const f32 = toFloat32(raw);
-    const selected = filterSelectionValues(selection, f32, outW, outH, bounds.x0, bounds.y0, step);
-    if (!selected || !selected.length) return null;
-    return computeHistogram(selected, 256);
+
+    if (!values.length) return null;
+    return computeHistogram(new Float32Array(values), 256);
   }
 
   async function buildBandStatsWhole(ds, band) {
@@ -160,14 +194,15 @@ export function createHistogramController(deps) {
     drawHistogram(ds);
   }
 
-  async function updateSelectionHistogram(ds, selection) {
+  async function updateSelectionHistogram(ds, selections) {
     if (!ds) return;
     const band = ds.activeBand;
-    const selectionId = selection?.id ?? null;
+    const list = Array.isArray(selections) ? selections.filter((item) => isHistogramSelection(item)) : [];
+    const selectionKey = selectionKeyFromItems(list);
     const token = (ds.__selectionHistToken || 0) + 1;
     ds.__selectionHistToken = token;
 
-    if (!selection || band == null) {
+    if (!list.length || band == null) {
       ds.bandStatsSelection = null;
       if (ds.id === state.activeId) {
         syncRangeInputsFromSettings(ds, { force: true });
@@ -178,9 +213,9 @@ export function createHistogramController(deps) {
 
     try {
       setStatus("histogram…", "warn");
-      const stats = await computeSelectionStats(ds, band, selection);
+      const stats = await computeSelectionStats(ds, band, list);
       if (token !== ds.__selectionHistToken) return;
-      ds.bandStatsSelection = stats ? { band, selectionId, stats } : null;
+      ds.bandStatsSelection = stats ? { band, selectionKey, stats } : null;
       if (ds.id === state.activeId) {
         syncRangeInputsFromSettings(ds, { force: true });
         drawHistogram(ds);

@@ -33,7 +33,7 @@ describe("ui-panels", () => {
     expect(a).toBe(b);
   });
 
-  test("resolveStats switches between whole and view modes", () => {
+  test("resolveStats uses whole-image stats for display histogram", () => {
     const deps = makeDeps();
     const ui = createUIPanels(deps);
     const whole = { min: 1, max: 2 };
@@ -43,6 +43,6 @@ describe("ui-panels", () => {
     deps.state.histMode = "whole";
     expect(ui.resolveStats(ds)).toBe(whole);
     deps.state.histMode = "view";
-    expect(ui.resolveStats(ds)).toBe(view);
+    expect(ui.resolveStats(ds)).toBe(whole);
   });
 });

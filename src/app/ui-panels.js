@@ -29,11 +29,7 @@ export function createUIPanels(deps) {
   function resolveStats(ds) {
     const band = ds.activeBand;
     if (band == null) return null;
-    const selectionStats = ds.bandStatsSelection;
-    if (selectionStats && selectionStats.band === band && selectionStats.selectionId === ds.histSelectionId) {
-      return selectionStats.stats;
-    }
-    if (state.histMode === "view") return ds.bandStatsView;
+    // Display panel histogram is always whole-image for the active band.
     return ds.bandStatsWhole.get(band) || null;
   }
 

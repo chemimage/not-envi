@@ -65,7 +65,6 @@ export function createDatasetRuntime(deps) {
       bandStatsWhole: new Map(),
       bandStatsSelection: null,
       bandStatsView: null,
-      histSelectionId: null,
       drawings: [],
       thumb: { ready: false, _t: 0, scale: 1, x0: 0, y0: 0, w: 0, h: 0 },
       treeExpanded: true,
