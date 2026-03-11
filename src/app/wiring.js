@@ -70,6 +70,65 @@ export function wireApp(deps) {
     redrawSpectrum();
   });
 
+  const isRightPanelOpen = () => els.right?.dataset.open !== "false";
+  const isRightPanelPinned = () => els.right?.dataset.pinned !== "false";
+  const setRightPanelOpen = (open) => {
+    if (!els.right) return;
+    const nextOpen = !!open;
+    els.right.dataset.open = nextOpen ? "true" : "false";
+    if (els.btnRightToggle) {
+      els.btnRightToggle.textContent = nextOpen ? "Hide" : "Show";
+      els.btnRightToggle.title = nextOpen ? "Retract panel" : "Expand panel";
+      els.btnRightToggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+    }
+  };
+  const setRightPanelPinned = (pinned, { forceOpen = true } = {}) => {
+    if (!els.right) return;
+    const nextPinned = !!pinned;
+    els.right.dataset.pinned = nextPinned ? "true" : "false";
+    if (els.btnRightPin) {
+      els.btnRightPin.textContent = nextPinned ? "Pinned" : "Pin";
+      els.btnRightPin.title = nextPinned ? "Unpin panel" : "Pin panel open";
+      els.btnRightPin.setAttribute("aria-pressed", nextPinned ? "true" : "false");
+    }
+    if (nextPinned && forceOpen) setRightPanelOpen(true);
+  };
+
+  if (els.right) {
+    setRightPanelPinned(isRightPanelPinned(), { forceOpen: false });
+    setRightPanelOpen(isRightPanelOpen());
+    if (isRightPanelPinned() && !isRightPanelOpen()) setRightPanelOpen(true);
+
+    if (els.btnRightToggle) {
+      els.btnRightToggle.onclick = (ev) => {
+        ev.stopPropagation();
+        const nextOpen = !isRightPanelOpen();
+        if (!nextOpen) setRightPanelPinned(false, { forceOpen: false });
+        setRightPanelOpen(nextOpen);
+      };
+    }
+    if (els.btnRightPin) {
+      els.btnRightPin.onclick = (ev) => {
+        ev.stopPropagation();
+        setRightPanelPinned(!isRightPanelPinned());
+      };
+    }
+    if (els.rightHeader) {
+      els.rightHeader.addEventListener("click", (ev) => {
+        if (!els.right || !ev.target) return;
+        const target = ev.target;
+        if (target.closest && target.closest("button")) return;
+        if (!isRightPanelOpen()) setRightPanelOpen(true);
+      });
+    }
+    els.right.addEventListener("pointerenter", () => {
+      if (!isRightPanelPinned() && !isRightPanelOpen()) setRightPanelOpen(true);
+    });
+    els.right.addEventListener("pointerleave", () => {
+      if (!isRightPanelPinned()) setRightPanelOpen(false);
+    });
+  }
+
   els.main.addEventListener("dblclick", (ev) => {
     const ds = getActive();
     if (!ds) return;

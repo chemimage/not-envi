@@ -27,10 +27,10 @@
   #app {
     @apply grid h-full gap-2.5 p-2.5;
     grid-template-rows: 52px 1fr;
-    grid-template-columns: 310px 1fr 400px;
+    grid-template-columns: 310px 1fr;
     grid-template-areas:
-      "top top top"
-      "left main right";
+      "top top"
+      "left main";
   }
 
   header {
@@ -87,7 +87,49 @@
   }
 
   #right {
-    grid-area: right;
+    --flyout-visible-header: 150px;
+    @apply absolute right-2.5 z-20;
+    top: 206px;
+    bottom: 10px;
+    width: min(390px, calc(100% - 20px));
+    transform: translateX(0);
+    transition: transform 220ms ease, box-shadow 180ms ease, opacity 180ms ease;
+    min-height: 220px;
+    overflow: hidden;
+    opacity: 1;
+  }
+
+  #right[data-open="false"] {
+    transform: translateX(calc(100% - var(--flyout-visible-header)));
+  }
+
+  #right[data-open="false"] .panel-body {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #right[data-open="false"] #rightHeader {
+    @apply cursor-pointer;
+  }
+
+  #right .panel-body {
+    transition: opacity 140ms ease;
+  }
+
+  #right .panel-header {
+    @apply sticky top-0 z-10 bg-gray-900;
+  }
+
+  .panel-header-actions {
+    @apply flex items-center gap-1;
+  }
+
+  #right[data-pinned="false"] #btnRightPin {
+    @apply border-gray-500 text-gray-100;
+  }
+
+  #right[data-open="false"] #btnRightToggle {
+    @apply border-gray-500 text-gray-100;
   }
 
   .panel-header {
@@ -542,12 +584,11 @@
   @media (max-width: 1200px) {
     #app {
       grid-template-columns: 1fr;
-      grid-template-rows: 52px auto 1fr auto;
+      grid-template-rows: 52px auto 1fr;
       grid-template-areas:
         "top"
         "left"
-        "main"
-        "right";
+        "main";
     }
 
     input[type="range"] {
@@ -556,6 +597,13 @@
 
     #thumbWrap {
       @apply h-[130px] w-[180px];
+    }
+
+    #right {
+      --flyout-visible-header: 130px;
+      top: 178px;
+      bottom: 7px;
+      width: min(360px, calc(100% - 14px));
     }
   }
 }
