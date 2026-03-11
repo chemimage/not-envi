@@ -445,6 +445,10 @@
     @apply border-gray-200 bg-gray-100 text-gray-900;
   }
 
+  .draw-tool-btn.loading {
+    @apply cursor-wait opacity-70;
+  }
+
   .draw-color-wrap {
     @apply relative mt-0.5 inline-flex h-11 w-[46px] cursor-pointer items-center justify-center rounded-sm border border-gray-500 bg-gray-800;
     color: var(--draw-color-preview);
@@ -461,6 +465,40 @@
     padding: 0;
     background: transparent;
     cursor: pointer;
+  }
+
+  .analysis-hist-panel {
+    @apply fixed z-40 w-[min(380px,calc(100vw-16px))] overflow-hidden rounded-sm border border-gray-700 bg-gray-900 p-2.5 shadow-2xl shadow-black/50;
+    max-height: calc(100vh - 12px);
+  }
+
+  .analysis-hist-head {
+    @apply mb-1 flex items-center justify-between gap-2;
+  }
+
+  .analysis-hist-title {
+    @apply text-xs uppercase tracking-[0.12em] text-gray-300;
+  }
+
+  #analysisHistCanvas {
+    @apply block h-[170px] w-full rounded-sm border border-gray-700 bg-gray-950;
+  }
+
+  .analysis-hist-hover {
+    @apply mt-1 rounded-sm border border-gray-700 bg-gray-950 px-2 py-1 font-mono text-xs text-gray-300;
+  }
+
+  .analysis-hist-stats {
+    @apply mt-1 grid gap-x-2 gap-y-1 text-xs;
+    grid-template-columns: 96px 1fr;
+  }
+
+  .analysis-hist-stats .k {
+    @apply text-gray-400;
+  }
+
+  .analysis-hist-stats .v {
+    @apply font-mono text-gray-200;
   }
 
   #overlayHUD {
@@ -759,6 +797,7 @@
   #app[data-empty="true"] #overlayHUD,
   #app[data-empty="true"] #datasetDock,
   #app[data-empty="true"] #rightDock,
+  #app[data-empty="true"] #analysisHistPanel,
   #app[data-empty="true"] #specPanel {
     display: none;
   }

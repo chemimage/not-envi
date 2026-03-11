@@ -34,15 +34,32 @@ export function computeHistogram(arr, bins = 256) {
   const { min, max, count } = quickStatsFromArray(arr);
   const out = new Uint32Array(bins);
   const scale = (bins - 1) / (max - min);
+  let sum = 0;
+  let sumSq = 0;
   for (let i = 0; i < arr.length; i += 1) {
     const v = arr[i];
     if (!Number.isFinite(v)) continue;
     const k = clamp(Math.floor((v - min) * scale), 0, bins - 1);
     out[k] += 1;
+    sum += v;
+    sumSq += v * v;
+  }
+  let modeBin = 0;
+  let modeCount = -1;
+  for (let i = 0; i < out.length; i += 1) {
+    if (out[i] > modeCount) {
+      modeCount = out[i];
+      modeBin = i;
+    }
   }
   const p1 = percentileFromHist(out, min, max, 0.01, count);
   const p99 = percentileFromHist(out, min, max, 0.99, count);
-  return { bins: out, min, max, count, p1, p99 };
+  const mean = count ? (sum / count) : 0;
+  const variance = count ? Math.max(0, (sumSq / count) - (mean * mean)) : 0;
+  const stdDev = Math.sqrt(variance);
+  const binWidth = (max - min) / Math.max(1, bins);
+  const mode = min + ((modeBin + 0.5) / Math.max(1, bins)) * (max - min);
+  return { bins: out, min, max, count, p1, p99, mean, stdDev, mode, modeBin, binWidth };
 }
 
 export function tone01(v, minVal, maxVal, brightness, gain, contrast) {

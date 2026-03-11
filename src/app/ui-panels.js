@@ -15,7 +15,8 @@ export function createUIPanels(deps) {
     drawHistogram,
     render,
     quickStatsFromArray,
-    onNeedWholeStats
+    onNeedWholeStats,
+    onBandChanged
   } = deps;
 
   function getBandSettings(ds, band) {
@@ -28,6 +29,10 @@ export function createUIPanels(deps) {
   function resolveStats(ds) {
     const band = ds.activeBand;
     if (band == null) return null;
+    const selectionStats = ds.bandStatsSelection;
+    if (selectionStats && selectionStats.band === band && selectionStats.selectionId === ds.histSelectionId) {
+      return selectionStats.stats;
+    }
     if (state.histMode === "view") return ds.bandStatsView;
     return ds.bandStatsWhole.get(band) || null;
   }
@@ -192,6 +197,7 @@ export function createUIPanels(deps) {
     updateDisplayUI(true);
     render();
     if (!ds.bandStatsWhole.has(b)) onNeedWholeStats(ds, b);
+    if (onBandChanged) onBandChanged(ds, b);
   }
 
   function applyRangeFromNumbers(ds) {

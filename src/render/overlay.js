@@ -111,7 +111,23 @@ export function createOverlayRenderer(deps) {
     }
   }
 
-  function drawRect(ds, item, eff, dpr) {
+  function drawMarqueeStroke(pathBuilder, dpr, marqueeOffset = 0) {
+    const offset = Number.isFinite(marqueeOffset) ? marqueeOffset : 0;
+    overlayCtx.save();
+    overlayCtx.setLineDash([3 * dpr, 3 * dpr]);
+    overlayCtx.lineWidth = 2 * dpr;
+    overlayCtx.strokeStyle = "rgba(17,24,39,0.95)";
+    overlayCtx.lineDashOffset = -offset * dpr;
+    pathBuilder();
+    overlayCtx.stroke();
+    overlayCtx.strokeStyle = "rgba(244,244,245,0.95)";
+    overlayCtx.lineDashOffset = -(offset + 3) * dpr;
+    pathBuilder();
+    overlayCtx.stroke();
+    overlayCtx.restore();
+  }
+
+  function drawRect(ds, item, eff, dpr, isSelection = false, marqueeOffset = 0) {
     if (!item.points || item.points.length < 2) return;
     const a = toScreen(ds, item.points[0], eff);
     const b = toScreen(ds, item.points[item.points.length - 1], eff);
@@ -126,31 +142,46 @@ export function createOverlayRenderer(deps) {
     overlayCtx.beginPath();
     overlayCtx.rect(x, y, w, h);
     overlayCtx.fill();
-    overlayCtx.stroke();
+    if (isSelection) {
+      drawMarqueeStroke(() => {
+        overlayCtx.beginPath();
+        overlayCtx.rect(x, y, w, h);
+      }, dpr, marqueeOffset);
+    } else {
+      overlayCtx.stroke();
+    }
   }
 
-  function drawShape(ds, item, eff, dpr) {
+  function drawShape(ds, item, eff, dpr, isSelection = false, marqueeOffset = 0) {
     if (!item.points || item.points.length < 2) return;
     overlayCtx.fillStyle = colorWithAlpha(item.color, 0.28);
     overlayCtx.strokeStyle = colorWithAlpha(item.color, 0.95);
     overlayCtx.lineWidth = 2 * dpr;
-    overlayCtx.beginPath();
-    const p0 = toScreen(ds, item.points[0], eff);
-    overlayCtx.moveTo(p0.x, p0.y);
-    for (let i = 1; i < item.points.length; i += 1) {
-      const p = toScreen(ds, item.points[i], eff);
-      overlayCtx.lineTo(p.x, p.y);
-    }
-    overlayCtx.closePath();
+    const buildPath = () => {
+      overlayCtx.beginPath();
+      const p0 = toScreen(ds, item.points[0], eff);
+      overlayCtx.moveTo(p0.x, p0.y);
+      for (let i = 1; i < item.points.length; i += 1) {
+        const p = toScreen(ds, item.points[i], eff);
+        overlayCtx.lineTo(p.x, p.y);
+      }
+      overlayCtx.closePath();
+    };
+    buildPath();
     overlayCtx.fill();
-    overlayCtx.stroke();
+    if (isSelection) {
+      drawMarqueeStroke(buildPath, dpr, marqueeOffset);
+    } else {
+      overlayCtx.stroke();
+    }
   }
 
-  function drawOneAnnotation(ds, item, eff, dpr, rulerHover, itemIndex) {
+  function drawOneAnnotation(ds, item, eff, dpr, rulerHover, itemIndex, selectionId = null, marqueeOffset = 0) {
     if (!item || !item.tool) return;
+    const isSelection = (selectionId != null && item.id === selectionId);
     if (item.tool === "ruler" || item.tool === "line") drawLine(ds, item, eff, dpr, rulerHover, itemIndex);
-    else if (item.tool === "rect") drawRect(ds, item, eff, dpr);
-    else if (item.tool === "shape") drawShape(ds, item, eff, dpr);
+    else if (item.tool === "rect") drawRect(ds, item, eff, dpr, isSelection, marqueeOffset);
+    else if (item.tool === "shape") drawShape(ds, item, eff, dpr, isSelection, marqueeOffset);
   }
 
   function drawAnnotations(ds) {
@@ -161,8 +192,12 @@ export function createOverlayRenderer(deps) {
     const eff = ds.view.scale * dpr;
     const items = Array.isArray(drawData.items) ? drawData.items : [];
     const rulerHover = drawData.rulerHover || null;
-    for (let i = 0; i < items.length; i += 1) drawOneAnnotation(ds, items[i], eff, dpr, rulerHover, i);
-    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, null, -1);
+    const selectionId = Number.isFinite(drawData.selectionId) ? drawData.selectionId : null;
+    const marqueeOffset = Number.isFinite(drawData.marqueeOffset) ? drawData.marqueeOffset : 0;
+    for (let i = 0; i < items.length; i += 1) {
+      drawOneAnnotation(ds, items[i], eff, dpr, rulerHover, i, selectionId, marqueeOffset);
+    }
+    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, null, -1, null, 0);
   }
 
   function drawScaleBar(ds) {

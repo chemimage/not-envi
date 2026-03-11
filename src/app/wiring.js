@@ -38,7 +38,6 @@ export function wireApp(deps) {
     getBandSettings,
     drawHistogram,
     applyRangeFromNumbers,
-    ensureViewHistogram,
     histPickHandle,
     applyHistogramDrag,
     addDatasetsFromFileList,
@@ -59,6 +58,12 @@ export function wireApp(deps) {
     eraseDrawingAtPointer,
     updateRulerHoverAtPointer,
     clearRulerHover,
+    toggleAnalysisHistogramPanel,
+    closeAnalysisHistogramPanel,
+    refreshAnalysisHistogram,
+    positionAnalysisHistogramPanel,
+    onAnalysisHistogramPointerMove,
+    onAnalysisHistogramPointerLeave,
     updateZoomLabelBoot,
     setGpuBadgeAvailable
   } = deps;
@@ -79,6 +84,8 @@ export function wireApp(deps) {
     const ds = getActive();
     if (ds) fitToScreen();
     redrawSpectrum();
+    if (positionAnalysisHistogramPanel) positionAnalysisHistogramPanel();
+    if (refreshAnalysisHistogram) refreshAnalysisHistogram().catch(() => {});
   });
 
   function wireFlyoutPanel({
@@ -190,21 +197,19 @@ export function wireApp(deps) {
   }
   if (els.btnToolHistogram) {
     els.btnToolHistogram.onclick = () => {
-      if (els.displayPanel) {
-        if (els.displayPanel.dataset.pinned === "false" && els.btnDisplayPin) {
-          els.btnDisplayPin.click();
-        } else if (els.displayPanel.dataset.open === "false" && els.btnDisplayToggle) {
-          els.btnDisplayToggle.click();
-        }
-      }
-      const ds = getActive();
-      if (ds) ensureViewHistogram(ds);
-      if (els.hist && typeof els.hist.scrollIntoView === "function") {
-        try {
-          els.hist.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-        } catch (_err) {}
-      }
+      if (toggleAnalysisHistogramPanel) toggleAnalysisHistogramPanel();
     };
+  }
+  if (els.btnAnalysisHistClose) {
+    els.btnAnalysisHistClose.onclick = () => {
+      if (closeAnalysisHistogramPanel) closeAnalysisHistogramPanel();
+    };
+  }
+  if (els.analysisHistCanvas && onAnalysisHistogramPointerMove) {
+    els.analysisHistCanvas.addEventListener("pointermove", onAnalysisHistogramPointerMove);
+    if (onAnalysisHistogramPointerLeave) {
+      els.analysisHistCanvas.addEventListener("pointerleave", onAnalysisHistogramPointerLeave);
+    }
   }
   if (els.btnToolExport) {
     els.btnToolExport.onclick = () => openExportDialog();
@@ -497,11 +502,7 @@ export function wireApp(deps) {
     render({ reuseRaster: true });
   };
 
-  state.histMode = "view";
-  if (els.chkHistView) {
-    els.chkHistView.checked = true;
-    els.chkHistView.disabled = true;
-  }
+  state.histMode = "whole";
 
   els.hist.addEventListener("pointerdown", (ev) => {
     const ds = getActive();

@@ -28,6 +28,7 @@ import { createRenderer } from "../render/render-main.js";
 import { createSpectrumController } from "../render/spectrum.js";
 import { readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
 import { createThumbnailController } from "../render/thumbnail.js";
+import { histogramPlotRect } from "../render/histogram-math.js";
 import { clamp, fmt, fmtNoGroup, humanBytes } from "../core/utils.js";
 import { createInteractionController } from "../ui/events.js";
 import { APP_CONFIG } from "./config.js";
@@ -38,6 +39,13 @@ import { APP_CONFIG } from "./config.js";
   // ========= Utilities =========
 
   const now = () => performance.now();
+
+  function formatNumber(value, digits = 4) {
+    if (!Number.isFinite(value)) return "—";
+    const abs = Math.abs(value);
+    if (abs > 0 && (abs >= 1e5 || abs < 1e-3)) return value.toExponential(3);
+    return Number(value).toFixed(digits).replace(/0+$/, "").replace(/\.$/, "");
+  }
 
   function downloadBlob(blob, filename){
     const url = URL.createObjectURL(blob);
@@ -133,9 +141,10 @@ import { APP_CONFIG } from "./config.js";
     selection: {enabled:false, drawing:false, x0:0,y0:0,x1:0,y1:0, imgRect:null},
 
     histDrag: {active:false, handle:null},
-    histMode: 'view',
+    histMode: 'whole',
     histViewDebounce: null,
-    draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null },
+    analysisHist: { open: false, hoverBin: -1, stats: null },
+    draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null, nextItemId: 1 },
 
     exportKind: null,
   };
@@ -225,7 +234,17 @@ import { APP_CONFIG } from "./config.js";
     const items = Array.isArray(ds.drawings) ? ds.drawings : [];
     const draft = (state.draw.draft && state.draw.draft.dsId === ds.id) ? state.draw.draft : null;
     const rulerHover = (state.draw.rulerHover && state.draw.rulerHover.dsId === ds.id) ? state.draw.rulerHover : null;
-    return { items, draft, rulerHover };
+    const selectionId = Number.isFinite(ds.histSelectionId) ? ds.histSelectionId : null;
+    const marqueeOffset = (selectionId == null) ? 0 : ((performance.now() / 110) % 14);
+    return { items, draft, rulerHover, selectionId, marqueeOffset };
+  }
+
+  function findHistogramSelectionItem(ds) {
+    if (!ds || !Array.isArray(ds.drawings)) return null;
+    if (!Number.isFinite(ds.histSelectionId)) return null;
+    const item = ds.drawings.find((it) => it && it.id === ds.histSelectionId) || null;
+    if (!item || (item.tool !== "rect" && item.tool !== "shape")) return null;
+    return item;
   }
 
   function pointerToImagePoint(ev, ds) {
@@ -388,7 +407,13 @@ import { APP_CONFIG } from "./config.js";
       }
     }
     if (bestIdx < 0) return false;
-    ds.drawings.splice(bestIdx, 1);
+    const [removed] = ds.drawings.splice(bestIdx, 1);
+    if (removed && Number.isFinite(ds.histSelectionId) && removed.id === ds.histSelectionId) {
+      ds.histSelectionId = null;
+      clearSelectionHistogram(ds);
+    }
+    ensureMarqueeTicker();
+    if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
     render({ reuseRaster: true });
     return true;
   }
@@ -505,15 +530,22 @@ import { APP_CONFIG } from "./config.js";
           if (ds.drawings[i] && ds.drawings[i].tool === "ruler") ds.drawings.splice(i, 1);
         }
       }
-      ds.drawings.push({
+      const newItem = {
+        id: state.draw.nextItemId++,
         tool: draft.tool,
         color: draft.color,
         points: points.slice()
-      });
+      };
+      ds.drawings.push(newItem);
+      if (draft.tool === "rect" || draft.tool === "shape") {
+        ds.histSelectionId = newItem.id;
+        updateSelectionHistogramForDataset(ds);
+      }
     }
     state.draw.activePointerId = null;
     state.draw.draft = null;
     state.draw.rulerDrag = null;
+    ensureMarqueeTicker();
     render({ reuseRaster: true });
   }
 
@@ -541,6 +573,7 @@ import { APP_CONFIG } from "./config.js";
     render,
     quickStatsFromArray,
     onNeedWholeStats: (ds, band) => buildBandStatsWhole(ds, band).catch(() => {}),
+    onBandChanged: (ds) => updateSelectionHistogramForDataset(ds),
   });
 
   function rebuildDatasetList(){ uiPanels.rebuildDatasetList(); }
@@ -573,6 +606,10 @@ import { APP_CONFIG } from "./config.js";
       updateMetaUI();
       updatePerf();
       updateDisplayUI(true);
+      const ds = getActive();
+      if (ds) updateSelectionHistogramForDataset(ds);
+      else if (state.analysisHist.open) refreshAnalysisHistogram().catch(() => {});
+      ensureMarqueeTicker();
     },
     updateZoomRange,
     fitToScreen,
@@ -606,9 +643,249 @@ import { APP_CONFIG } from "./config.js";
 
   async function buildBandStatsWhole(ds, band){ await histogram.buildBandStatsWhole(ds, band); }
   function ensureViewHistogram(ds){ histogram.ensureViewHistogram(ds); }
+  async function updateSelectionHistogram(ds, selection){ await histogram.updateSelectionHistogram(ds, selection); }
+  function clearSelectionHistogram(ds){ histogram.clearSelectionHistogram(ds); }
   function drawHistogram(ds){ histogram.drawHistogram(ds); }
   function histPickHandle(ds, px, py){ return histogram.histPickHandle(ds, px, py); }
   function applyHistogramDrag(ds, kind, clientX){ histogram.applyHistogramDrag(ds, kind, clientX); }
+
+  function setAnalysisHistogramBusy(isBusy) {
+    if (!els.btnToolHistogram) return;
+    els.btnToolHistogram.classList.toggle("loading", !!isBusy);
+    els.btnToolHistogram.disabled = !!isBusy;
+    els.btnToolHistogram.setAttribute("aria-busy", isBusy ? "true" : "false");
+  }
+
+  function updateAnalysisStatsPanel(stats) {
+    if (!els.analysisStatN) return;
+    if (!stats) {
+      els.analysisStatN.textContent = "—";
+      els.analysisStatRange.textContent = "—";
+      els.analysisStatMean.textContent = "—";
+      els.analysisStatStd.textContent = "—";
+      els.analysisStatMode.textContent = "—";
+      els.analysisStatBins.textContent = "—";
+      els.analysisStatBinWidth.textContent = "—";
+      return;
+    }
+    const bins = stats.bins?.length || 0;
+    const binWidth = Number.isFinite(stats.binWidth) ? stats.binWidth : ((stats.max - stats.min) / Math.max(1, bins));
+    els.analysisStatN.textContent = fmtNoGroup(stats.count || 0);
+    els.analysisStatRange.textContent = `${formatNumber(stats.min)} / ${formatNumber(stats.max)}`;
+    els.analysisStatMean.textContent = formatNumber(stats.mean);
+    els.analysisStatStd.textContent = formatNumber(stats.stdDev);
+    els.analysisStatMode.textContent = formatNumber(stats.mode);
+    els.analysisStatBins.textContent = fmtNoGroup(bins);
+    els.analysisStatBinWidth.textContent = formatNumber(binWidth);
+  }
+
+  function updateAnalysisHoverText(stats, binIndex) {
+    if (!els.analysisHistHover) return;
+    if (!stats || !stats.bins || binIndex < 0 || binIndex >= stats.bins.length) {
+      els.analysisHistHover.textContent = "Hover a bin to inspect value/count.";
+      return;
+    }
+    const bins = stats.bins.length;
+    const bw = Number.isFinite(stats.binWidth) ? stats.binWidth : ((stats.max - stats.min) / Math.max(1, bins));
+    const lo = stats.min + binIndex * bw;
+    const hi = lo + bw;
+    const count = stats.bins[binIndex] || 0;
+    els.analysisHistHover.textContent = `Bin ${binIndex}: ${formatNumber(lo)} .. ${formatNumber(hi)}  |  Count ${fmtNoGroup(count)}`;
+  }
+
+  function drawAnalysisHistogramCanvas(stats) {
+    if (!els.analysisHistCanvas) return;
+    const canvas = els.analysisHistCanvas;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext("2d", { alpha: true });
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(17,24,39,0.96)";
+    ctx.fillRect(0, 0, w, h);
+
+    if (!stats || !stats.bins || !stats.bins.length) {
+      ctx.fillStyle = "rgba(209,213,219,0.9)";
+      ctx.font = `${12 * dpr}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+      ctx.fillText("Histogram not ready", 10 * dpr, 20 * dpr);
+      ctx.restore();
+      return;
+    }
+
+    const bins = stats.bins;
+    const maxBin = Math.max(1, ...bins);
+    const plot = histogramPlotRect(w, h, dpr);
+    const barW = plot.plotW / bins.length;
+    const hoverBin = state.analysisHist.hoverBin;
+
+    ctx.fillStyle = "rgba(148,163,184,0.45)";
+    for (let i = 0; i < bins.length; i += 1) {
+      const bh = (bins[i] / maxBin) * plot.plotH;
+      const x = plot.plotX0 + i * barW;
+      const y = plot.plotY0 + (plot.plotH - bh);
+      ctx.fillRect(x, y, Math.max(1, barW), bh);
+    }
+
+    if (hoverBin >= 0 && hoverBin < bins.length) {
+      const bh = (bins[hoverBin] / maxBin) * plot.plotH;
+      const x = plot.plotX0 + hoverBin * barW;
+      const y = plot.plotY0 + (plot.plotH - bh);
+      ctx.fillStyle = "rgba(250,204,21,0.85)";
+      ctx.fillRect(x, y, Math.max(1, barW), bh);
+    }
+
+    ctx.strokeStyle = "rgba(100,116,139,0.9)";
+    ctx.lineWidth = 1 * dpr;
+    ctx.strokeRect(plot.plotX0, plot.plotY0, plot.plotW, plot.plotH);
+    ctx.restore();
+  }
+
+  function resolveHistogramStatsForPanel(ds) {
+    if (!ds || ds.activeBand == null) return null;
+    const resolved = resolveStats(ds);
+    if (resolved && resolved.bins && resolved.count > 0) return resolved;
+    if (ds.lastRaster && ds.lastRaster.band === ds.activeBand && ds.lastRaster.dataF32?.length) {
+      return computeHistogram(ds.lastRaster.dataF32, 256);
+    }
+    return null;
+  }
+
+  async function ensureHistogramStatsForPanel(ds) {
+    if (!ds || ds.activeBand == null) return null;
+    const selection = findHistogramSelectionItem(ds);
+    if (selection) {
+      const selStats = ds.bandStatsSelection;
+      const ready = !!(selStats && selStats.band === ds.activeBand && selStats.selectionId === ds.histSelectionId && selStats.stats);
+      if (!ready) await updateSelectionHistogram(ds, selection);
+    } else if (!ds.bandStatsWhole.has(ds.activeBand)) {
+      await buildBandStatsWhole(ds, ds.activeBand);
+    }
+    return resolveHistogramStatsForPanel(ds);
+  }
+
+  function positionAnalysisHistogramPanel() {
+    if (!els.analysisHistPanel || !els.btnToolHistogram) return;
+    const trigger = els.btnToolHistogram.getBoundingClientRect();
+    const panelWidth = 380;
+    const left = clamp(trigger.right + 8, 8, Math.max(8, window.innerWidth - panelWidth - 8));
+    const top = clamp(trigger.top, 8, Math.max(8, window.innerHeight - 360));
+    els.analysisHistPanel.style.left = `${left}px`;
+    els.analysisHistPanel.style.top = `${top}px`;
+  }
+
+  async function refreshAnalysisHistogram() {
+    if (!state.analysisHist.open || !els.analysisHistPanel) return;
+    const ds = getActive();
+    state.analysisHist.hoverBin = -1;
+    if (!ds) {
+      state.analysisHist.stats = null;
+      updateAnalysisStatsPanel(null);
+      updateAnalysisHoverText(null, -1);
+      drawAnalysisHistogramCanvas(null);
+      return;
+    }
+
+    setAnalysisHistogramBusy(true);
+    setStatus("histogram…", "warn");
+    try {
+      const stats = await ensureHistogramStatsForPanel(ds);
+      state.analysisHist.stats = stats;
+      updateAnalysisStatsPanel(stats);
+      updateAnalysisHoverText(stats, -1);
+      drawAnalysisHistogramCanvas(stats);
+      setStatus("ready", "ok");
+    } catch (err) {
+      console.warn("Analysis histogram failed", err);
+      state.analysisHist.stats = null;
+      updateAnalysisStatsPanel(null);
+      updateAnalysisHoverText(null, -1);
+      drawAnalysisHistogramCanvas(null);
+      setStatus("ready", "ok");
+    } finally {
+      setAnalysisHistogramBusy(false);
+    }
+  }
+
+  function openAnalysisHistogramPanel() {
+    if (!els.analysisHistPanel) return;
+    state.analysisHist.open = true;
+    els.analysisHistPanel.style.display = "block";
+    els.analysisHistPanel.setAttribute("aria-hidden", "false");
+    positionAnalysisHistogramPanel();
+    refreshAnalysisHistogram().catch(() => {});
+  }
+
+  function closeAnalysisHistogramPanel() {
+    state.analysisHist.open = false;
+    state.analysisHist.hoverBin = -1;
+    if (els.analysisHistPanel) {
+      els.analysisHistPanel.style.display = "none";
+      els.analysisHistPanel.setAttribute("aria-hidden", "true");
+    }
+    setAnalysisHistogramBusy(false);
+  }
+
+  function toggleAnalysisHistogramPanel() {
+    if (state.analysisHist.open) closeAnalysisHistogramPanel();
+    else openAnalysisHistogramPanel();
+  }
+
+  function onAnalysisHistogramPointerMove(ev) {
+    const stats = state.analysisHist.stats;
+    const canvas = els.analysisHistCanvas;
+    if (!stats || !canvas || !stats.bins?.length) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const x = (ev.clientX - rect.left) * dpr;
+    const y = (ev.clientY - rect.top) * dpr;
+    const plot = histogramPlotRect(canvas.width, canvas.height, dpr);
+    if (x < plot.plotX0 || x > (plot.plotX0 + plot.plotW) || y < plot.plotY0 || y > (plot.plotY0 + plot.plotH)) {
+      if (state.analysisHist.hoverBin !== -1) {
+        state.analysisHist.hoverBin = -1;
+        updateAnalysisHoverText(stats, -1);
+        drawAnalysisHistogramCanvas(stats);
+      }
+      return;
+    }
+    const t = clamp((x - plot.plotX0) / Math.max(1, plot.plotW), 0, 0.999999);
+    const idx = clamp(Math.floor(t * stats.bins.length), 0, stats.bins.length - 1);
+    if (idx === state.analysisHist.hoverBin) return;
+    state.analysisHist.hoverBin = idx;
+    updateAnalysisHoverText(stats, idx);
+    drawAnalysisHistogramCanvas(stats);
+  }
+
+  function onAnalysisHistogramPointerLeave() {
+    const stats = state.analysisHist.stats;
+    if (!stats) return;
+    if (state.analysisHist.hoverBin === -1) return;
+    state.analysisHist.hoverBin = -1;
+    updateAnalysisHoverText(stats, -1);
+    drawAnalysisHistogramCanvas(stats);
+  }
+
+  function updateSelectionHistogramForDataset(ds) {
+    if (!ds) return;
+    const selection = findHistogramSelectionItem(ds);
+    if (!selection) {
+      ds.histSelectionId = null;
+      clearSelectionHistogram(ds);
+      ensureMarqueeTicker();
+      if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
+      return;
+    }
+    updateSelectionHistogram(ds, selection).then(() => {
+      if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
+    }).catch(() => {});
+    ensureMarqueeTicker();
+  }
   // ========= Rendering (direct read or pyramid) =========
 
   function clampView(){ viewControls.clampView(); }
@@ -659,6 +936,28 @@ import { APP_CONFIG } from "./config.js";
 
   function drawOverlays(ds){
     overlayRenderer.drawOverlays(ds);
+  }
+
+  let marqueeTimer = null;
+  function ensureMarqueeTicker() {
+    const active = getActive();
+    const shouldRun = !!findHistogramSelectionItem(active);
+    if (shouldRun && marqueeTimer == null) {
+      marqueeTimer = window.setInterval(() => {
+        const ds = getActive();
+        if (!findHistogramSelectionItem(ds)) {
+          clearInterval(marqueeTimer);
+          marqueeTimer = null;
+          return;
+        }
+        drawOverlays(ds);
+      }, 90);
+      return;
+    }
+    if (!shouldRun && marqueeTimer != null) {
+      clearInterval(marqueeTimer);
+      marqueeTimer = null;
+    }
   }
 
   let renderer = null;
@@ -851,7 +1150,6 @@ import { APP_CONFIG } from "./config.js";
     getBandSettings,
     drawHistogram,
     applyRangeFromNumbers,
-    ensureViewHistogram,
     histPickHandle,
     applyHistogramDrag,
     addDatasetsFromFileList,
@@ -872,6 +1170,12 @@ import { APP_CONFIG } from "./config.js";
     eraseDrawingAtPointer,
     updateRulerHoverAtPointer,
     clearRulerHover,
+    toggleAnalysisHistogramPanel,
+    closeAnalysisHistogramPanel,
+    refreshAnalysisHistogram,
+    positionAnalysisHistogramPanel,
+    onAnalysisHistogramPointerMove,
+    onAnalysisHistogramPointerLeave,
     updateZoomLabelBoot: updateZoomLabel,
     setGpuBadgeAvailable: () => {}
   });

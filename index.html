@@ -193,6 +193,24 @@
       </aside>
     </div>
 
+    <div id="analysisHistPanel" class="analysis-hist-panel" style="display:none;" aria-hidden="true">
+      <div class="analysis-hist-head">
+        <div class="analysis-hist-title">Histogram</div>
+        <button class="btn tiny ghost" id="btnAnalysisHistClose" type="button" aria-label="Close histogram">Hide</button>
+      </div>
+      <canvas id="analysisHistCanvas"></canvas>
+      <div class="analysis-hist-hover" id="analysisHistHover">Hover a bin to inspect value/count.</div>
+      <div class="analysis-hist-stats">
+        <div class="k">N</div><div class="v" id="analysisStatN">—</div>
+        <div class="k">Min/Max</div><div class="v" id="analysisStatRange">—</div>
+        <div class="k">Mean</div><div class="v" id="analysisStatMean">—</div>
+        <div class="k">StdDev</div><div class="v" id="analysisStatStd">—</div>
+        <div class="k">Mode</div><div class="v" id="analysisStatMode">—</div>
+        <div class="k">Bins</div><div class="v" id="analysisStatBins">—</div>
+        <div class="k">BinWidth</div><div class="v" id="analysisStatBinWidth">—</div>
+      </div>
+    </div>
+
     <!-- Spectrum (z-profile) panel: double-click in the view to open -->
     <div id="specPanel" class="spec-panel" style="display:none;">
       <div class="spec-head">
