@@ -133,7 +133,7 @@ import { APP_CONFIG } from "./config.js";
     selection: {enabled:false, drawing:false, x0:0,y0:0,x1:0,y1:0, imgRect:null},
 
     histDrag: {active:false, handle:null},
-    histMode: 'whole', // 'whole' or 'view'
+    histMode: 'view',
     histViewDebounce: null,
     draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null },
 
@@ -852,7 +852,6 @@ import { APP_CONFIG } from "./config.js";
     drawHistogram,
     applyRangeFromNumbers,
     ensureViewHistogram,
-    syncRangeInputsFromSettings,
     histPickHandle,
     applyHistogramDrag,
     addDatasetsFromFileList,

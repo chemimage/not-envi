@@ -69,6 +69,13 @@
         <i class="fa-solid fa-brush" aria-hidden="true"></i>
         <input id="drawColor" type="color" value="#22c55e" />
       </label>
+      <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
+      <button class="draw-tool-btn" id="btnToolHistogram" type="button" title="Histogram" aria-label="Histogram">
+        <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
+      </button>
+      <button class="draw-tool-btn" id="btnToolExport" type="button" title="Export" aria-label="Export">
+        <i class="fa-solid fa-download" aria-hidden="true"></i>
+      </button>
     </div>
 
     <div id="selRect"></div>
@@ -147,22 +154,7 @@
           </div>
         </div>
         <div class="display-body">
-          <h3 style="margin:0 0 8px 0; font-size:14px;">Active band</h3>
-          <div class="kv">
-            <div class="k">Dataset</div><div class="v" id="dispDataset">—</div>
-            <div class="k">Band</div><div class="v" id="dispBand">—</div>
-            <div class="k">ν</div><div class="v" id="dispWl">—</div>
-          </div>
-
-          <div class="divider"></div>
-
-          <div class="row" style="justify-content:space-between;">
-            <h3 style="margin:0; font-size:14px;">Histogram</h3>
-            <label class="toggle tiny" title="Histogram computed from current view instead of whole image sample">
-              <input type="checkbox" id="chkHistView" />
-              <span>Current view</span>
-            </label>
-          </div>
+          <h3 style="margin:0; font-size:14px;">Histogram</h3>
 
           <div style="height:8px"></div>
           <canvas id="hist"></canvas>

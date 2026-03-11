@@ -69,20 +69,8 @@ export function createUIPanels(deps) {
 
   function updateDisplayUI(force = false) {
     const ds = getActive();
-    if (!ds || ds.activeBand == null) {
-      els.dispDataset.textContent = "—";
-      els.dispBand.textContent = "—";
-      els.dispWl.textContent = "—";
-      return;
-    }
+    if (!ds || ds.activeBand == null) return;
     const b = ds.activeBand;
-    els.dispDataset.textContent = ds.name;
-    els.dispBand.textContent = bandLabel(ds, b);
-    els.dispBand.title = `Band index ${b}`;
-    const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
-    const wlNum = Number(wl);
-    const wlText = Number.isFinite(wlNum) ? wlNum.toFixed(1) : "—";
-    els.dispWl.innerHTML = Number.isFinite(wlNum) ? `${wlText} cm<sup>-1</sup>` : "—";
 
     const s = getBandSettings(ds, b);
     els.slContrast.value = String(s.contrast ?? 1);

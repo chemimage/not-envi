@@ -13,7 +13,7 @@ export function createAppState() {
     mouse: { in: false, x: 0, y: 0, dragging: false, lastX: 0, lastY: 0 },
     selection: { enabled: false, drawing: false, x0: 0, y0: 0, x1: 0, y1: 0, imgRect: null },
     histDrag: { active: false, handle: null },
-    histMode: "whole",
+    histMode: "view",
     histViewDebounce: null,
     exportKind: null
   };

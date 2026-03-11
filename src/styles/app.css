@@ -417,6 +417,13 @@
     backdrop-filter: blur(4px);
   }
 
+  .draw-tools-separator {
+    width: 84%;
+    height: 1px;
+    margin: 2px 0;
+    background: rgb(75 85 99 / 0.8);
+  }
+
   .draw-tool-btn {
     @apply inline-flex h-10 min-h-10 w-[46px] items-center justify-center rounded-sm border border-gray-600 bg-gray-800 text-xs font-semibold text-gray-200 transition-colors hover:border-gray-400;
     touch-action: manipulation;

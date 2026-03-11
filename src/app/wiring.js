@@ -39,7 +39,6 @@ export function wireApp(deps) {
     drawHistogram,
     applyRangeFromNumbers,
     ensureViewHistogram,
-    syncRangeInputsFromSettings,
     histPickHandle,
     applyHistogramDrag,
     addDatasetsFromFileList,
@@ -188,6 +187,27 @@ export function wireApp(deps) {
       syncDrawToolUI();
       render({ reuseRaster: true });
     };
+  }
+  if (els.btnToolHistogram) {
+    els.btnToolHistogram.onclick = () => {
+      if (els.displayPanel) {
+        if (els.displayPanel.dataset.pinned === "false" && els.btnDisplayPin) {
+          els.btnDisplayPin.click();
+        } else if (els.displayPanel.dataset.open === "false" && els.btnDisplayToggle) {
+          els.btnDisplayToggle.click();
+        }
+      }
+      const ds = getActive();
+      if (ds) ensureViewHistogram(ds);
+      if (els.hist && typeof els.hist.scrollIntoView === "function") {
+        try {
+          els.hist.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        } catch (_err) {}
+      }
+    };
+  }
+  if (els.btnToolExport) {
+    els.btnToolExport.onclick = () => openExportDialog();
   }
   syncDrawToolUI();
 
@@ -477,18 +497,11 @@ export function wireApp(deps) {
     render({ reuseRaster: true });
   };
 
-  els.chkHistView.oninput = () => {
-    const ds = getActive();
-    state.histMode = els.chkHistView.checked ? "view" : "whole";
-    if (!ds) return;
-    if (state.histMode === "view") {
-      ensureViewHistogram(ds);
-    } else {
-      ds.bandStatsView = null;
-      syncRangeInputsFromSettings(ds, { force: true });
-      drawHistogram(ds);
-    }
-  };
+  state.histMode = "view";
+  if (els.chkHistView) {
+    els.chkHistView.checked = true;
+    els.chkHistView.disabled = true;
+  }
 
   els.hist.addEventListener("pointerdown", (ev) => {
     const ds = getActive();
