@@ -86,7 +86,7 @@ export function createOverlayRenderer(deps) {
     };
   }
 
-  function drawLine(ds, item, eff, dpr) {
+  function drawLine(ds, item, eff, dpr, rulerHover = null, itemIndex = -1) {
     if (!item.points || item.points.length < 2) return;
     const a = toScreen(ds, item.points[0], eff);
     const b = toScreen(ds, item.points[item.points.length - 1], eff);
@@ -96,6 +96,19 @@ export function createOverlayRenderer(deps) {
     overlayCtx.moveTo(a.x, a.y);
     overlayCtx.lineTo(b.x, b.y);
     overlayCtx.stroke();
+
+    if (item.tool === "ruler" && rulerHover && rulerHover.drawingIndex === itemIndex) {
+      const r = 5 * dpr;
+      overlayCtx.fillStyle = colorWithAlpha(item.color, 0.95);
+      overlayCtx.strokeStyle = "rgba(17,24,39,0.95)";
+      overlayCtx.lineWidth = 1.5 * dpr;
+      const showFirst = rulerHover.pointIndex === 0;
+      const endpoint = showFirst ? a : b;
+      overlayCtx.beginPath();
+      overlayCtx.arc(endpoint.x, endpoint.y, r, 0, Math.PI * 2);
+      overlayCtx.fill();
+      overlayCtx.stroke();
+    }
   }
 
   function drawRect(ds, item, eff, dpr) {
@@ -133,9 +146,9 @@ export function createOverlayRenderer(deps) {
     overlayCtx.stroke();
   }
 
-  function drawOneAnnotation(ds, item, eff, dpr) {
+  function drawOneAnnotation(ds, item, eff, dpr, rulerHover, itemIndex) {
     if (!item || !item.tool) return;
-    if (item.tool === "ruler" || item.tool === "line") drawLine(ds, item, eff, dpr);
+    if (item.tool === "ruler" || item.tool === "line") drawLine(ds, item, eff, dpr, rulerHover, itemIndex);
     else if (item.tool === "rect") drawRect(ds, item, eff, dpr);
     else if (item.tool === "shape") drawShape(ds, item, eff, dpr);
   }
@@ -147,8 +160,9 @@ export function createOverlayRenderer(deps) {
     const dpr = getDevicePixelRatio();
     const eff = ds.view.scale * dpr;
     const items = Array.isArray(drawData.items) ? drawData.items : [];
-    for (const item of items) drawOneAnnotation(ds, item, eff, dpr);
-    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr);
+    const rulerHover = drawData.rulerHover || null;
+    for (let i = 0; i < items.length; i += 1) drawOneAnnotation(ds, items[i], eff, dpr, rulerHover, i);
+    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, null, -1);
   }
 
   function drawScaleBar(ds) {

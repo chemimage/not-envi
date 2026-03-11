@@ -135,7 +135,7 @@ import { APP_CONFIG } from "./config.js";
     histDrag: {active:false, handle:null},
     histMode: 'whole', // 'whole' or 'view'
     histViewDebounce: null,
-    draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null },
+    draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null },
 
     exportKind: null,
   };
@@ -200,12 +200,18 @@ import { APP_CONFIG } from "./config.js";
 
   function setDrawTool(tool) {
     const hadDraft = !!state.draw.draft;
+    const hadRulerDrag = !!state.draw.rulerDrag;
+    const hadRulerHover = !!state.draw.rulerHover;
+    const prevTool = state.draw.tool;
     const next = (tool === "ruler" || tool === "rect" || tool === "shape" || tool === "eraser") ? tool : "none";
-    state.draw.tool = (state.draw.tool === next) ? "none" : next;
-    if (state.draw.tool !== "ruler" && state.draw.tool !== "rect" && state.draw.tool !== "shape") {
+    state.draw.tool = (prevTool === next) ? "none" : next;
+    const isCreateTool = state.draw.tool === "ruler" || state.draw.tool === "rect" || state.draw.tool === "shape";
+    if (state.draw.tool !== prevTool || !isCreateTool) {
       state.draw.activePointerId = null;
       state.draw.draft = null;
-      if (hadDraft) render({ reuseRaster: true });
+      state.draw.rulerDrag = null;
+      state.draw.rulerHover = null;
+      if (hadDraft || hadRulerDrag || hadRulerHover) render({ reuseRaster: true });
     }
   }
 
@@ -218,7 +224,8 @@ import { APP_CONFIG } from "./config.js";
     if (!ds) return null;
     const items = Array.isArray(ds.drawings) ? ds.drawings : [];
     const draft = (state.draw.draft && state.draw.draft.dsId === ds.id) ? state.draw.draft : null;
-    return { items, draft };
+    const rulerHover = (state.draw.rulerHover && state.draw.rulerHover.dsId === ds.id) ? state.draw.rulerHover : null;
+    return { items, draft, rulerHover };
   }
 
   function pointerToImagePoint(ev, ds) {
@@ -308,6 +315,61 @@ import { APP_CONFIG } from "./config.js";
     return Number.POSITIVE_INFINITY;
   }
 
+  function findRulerEndpointHit(ds, point, pointerType) {
+    if (!ds || !Array.isArray(ds.drawings) || !ds.drawings.length) return null;
+    const pxTolerance = (pointerType === "touch") ? 28 : 16;
+    const imgTolerance = pxTolerance / Math.max(1e-6, ds.view.scale);
+    let best = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+
+    for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
+      const item = ds.drawings[i];
+      if (!item || (item.tool !== "ruler" && item.tool !== "line")) continue;
+      if (!Array.isArray(item.points) || item.points.length < 2) continue;
+      const lastIdx = item.points.length - 1;
+      const d0 = Math.hypot(point.x - item.points[0].x, point.y - item.points[0].y);
+      const d1 = Math.hypot(point.x - item.points[lastIdx].x, point.y - item.points[lastIdx].y);
+      const minDist = Math.min(d0, d1);
+      if (minDist > imgTolerance || minDist > bestDist) continue;
+      bestDist = minDist;
+      best = {
+        drawingIndex: i,
+        pointIndex: d0 <= d1 ? 0 : lastIdx
+      };
+    }
+    return best;
+  }
+
+  function sameRulerHandle(a, b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    return a.dsId === b.dsId && a.drawingIndex === b.drawingIndex && a.pointIndex === b.pointIndex;
+  }
+
+  function setRulerHover(nextHover) {
+    if (sameRulerHandle(state.draw.rulerHover, nextHover)) return false;
+    state.draw.rulerHover = nextHover;
+    render({ reuseRaster: true });
+    return true;
+  }
+
+  function clearRulerHover() {
+    return setRulerHover(null);
+  }
+
+  function updateRulerHoverAtPointer(ev) {
+    const ds = getActive();
+    if (!ds || state.draw.tool !== "ruler") return clearRulerHover();
+    const point = pointerToImagePoint(ev, ds);
+    const hit = findRulerEndpointHit(ds, point, ev.pointerType);
+    if (!hit) return clearRulerHover();
+    return setRulerHover({
+      dsId: ds.id,
+      drawingIndex: hit.drawingIndex,
+      pointIndex: hit.pointIndex
+    });
+  }
+
   function eraseDrawingAtPointer(ev) {
     const ds = getActive();
     if (!ds || !Array.isArray(ds.drawings) || !ds.drawings.length) return false;
@@ -339,6 +401,26 @@ import { APP_CONFIG } from "./config.js";
     const ds = getActive();
     if (!ds) return false;
     if (!Array.isArray(ds.drawings)) ds.drawings = [];
+    if (state.draw.tool === "ruler") {
+      const hit = findRulerEndpointHit(ds, pointerToImagePoint(ev, ds), ev.pointerType);
+      if (hit) {
+        state.draw.activePointerId = ev.pointerId;
+        state.draw.rulerDrag = {
+          dsId: ds.id,
+          drawingIndex: hit.drawingIndex,
+          pointIndex: hit.pointIndex
+        };
+        state.draw.rulerHover = {
+          dsId: ds.id,
+          drawingIndex: hit.drawingIndex,
+          pointIndex: hit.pointIndex
+        };
+        state.draw.draft = null;
+        render({ reuseRaster: true });
+        return true;
+      }
+      state.draw.rulerHover = null;
+    }
     const p = pointerToImagePoint(ev, ds);
     state.draw.activePointerId = ev.pointerId;
     state.draw.draft = {
@@ -353,6 +435,21 @@ import { APP_CONFIG } from "./config.js";
 
   function updateDrawingAtPointer(ev) {
     const ds = getActive();
+    const rulerDrag = state.draw.rulerDrag;
+    if (ds && rulerDrag && rulerDrag.dsId === ds.id) {
+      const item = ds.drawings[rulerDrag.drawingIndex];
+      if (item && Array.isArray(item.points) && item.points.length >= 2) {
+        const p = pointerToImagePoint(ev, ds);
+        const pointIndex = clamp(rulerDrag.pointIndex, 0, item.points.length - 1);
+        item.points[pointIndex] = p;
+        render({ reuseRaster: true });
+        return;
+      }
+      state.draw.rulerDrag = null;
+      state.draw.activePointerId = null;
+      return;
+    }
+
     const draft = state.draw.draft;
     if (!ds || !draft || draft.dsId !== ds.id) return;
     const p = pointerToImagePoint(ev, ds);
@@ -371,12 +468,22 @@ import { APP_CONFIG } from "./config.js";
 
   function finishDrawingAtPointer(ev) {
     const ds = getActive();
-    const draft = state.draw.draft;
-    if (!ds || !draft || draft.dsId !== ds.id) {
+    const rulerDrag = state.draw.rulerDrag;
+    if (!ds || !((state.draw.draft && state.draw.draft.dsId === ds.id) || (rulerDrag && rulerDrag.dsId === ds.id))) {
       state.draw.activePointerId = null;
       state.draw.draft = null;
+      state.draw.rulerDrag = null;
       return;
     }
+    if (rulerDrag && rulerDrag.dsId === ds.id) {
+      updateDrawingAtPointer(ev);
+      state.draw.activePointerId = null;
+      state.draw.rulerDrag = null;
+      render({ reuseRaster: true });
+      return;
+    }
+
+    const draft = state.draw.draft;
 
     updateDrawingAtPointer(ev);
     const points = draft.points || [];
@@ -406,12 +513,14 @@ import { APP_CONFIG } from "./config.js";
     }
     state.draw.activePointerId = null;
     state.draw.draft = null;
+    state.draw.rulerDrag = null;
     render({ reuseRaster: true });
   }
 
   function cancelDrawing() {
     state.draw.activePointerId = null;
     state.draw.draft = null;
+    state.draw.rulerDrag = null;
     render({ reuseRaster: true });
   }
 
@@ -762,6 +871,8 @@ import { APP_CONFIG } from "./config.js";
     finishDrawingAtPointer,
     cancelDrawing,
     eraseDrawingAtPointer,
+    updateRulerHoverAtPointer,
+    clearRulerHover,
     updateZoomLabelBoot: updateZoomLabel,
     setGpuBadgeAvailable: () => {}
   });

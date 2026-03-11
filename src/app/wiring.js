@@ -58,6 +58,8 @@ export function wireApp(deps) {
     finishDrawingAtPointer,
     cancelDrawing,
     eraseDrawingAtPointer,
+    updateRulerHoverAtPointer,
+    clearRulerHover,
     updateZoomLabelBoot,
     setGpuBadgeAvailable
   } = deps;
@@ -192,6 +194,7 @@ export function wireApp(deps) {
   const isDrawCreateEnabled = () => !!(getDrawTool && getActive() && (getDrawTool() === "ruler" || getDrawTool() === "rect" || getDrawTool() === "shape"));
   const isEraserEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "eraser");
   const isDrawingEnabled = () => isDrawCreateEnabled() || isEraserEnabled();
+  const isRulerEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "ruler");
   const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,header,dialog"));
 
   if (els.main && (beginDrawingAtPointer || eraseDrawingAtPointer)) {
@@ -229,6 +232,24 @@ export function wireApp(deps) {
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
+  }
+
+  if (els.main && updateRulerHoverAtPointer) {
+    els.main.addEventListener("pointermove", (ev) => {
+      if (!isRulerEnabled()) {
+        if (clearRulerHover) clearRulerHover();
+        return;
+      }
+      if (isDrawingPointer && isDrawingPointer(ev.pointerId)) return;
+      if (isUiTarget(ev.target)) {
+        if (clearRulerHover) clearRulerHover();
+        return;
+      }
+      updateRulerHoverAtPointer(ev);
+    });
+    els.main.addEventListener("pointerleave", () => {
+      if (clearRulerHover) clearRulerHover();
+    });
   }
 
   els.main.addEventListener("dblclick", (ev) => {
