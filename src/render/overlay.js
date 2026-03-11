@@ -62,7 +62,94 @@ function chooseNiceValue(ideal, toCssLen) {
 }
 
 export function createOverlayRenderer(deps) {
-  const { els, overlayCtx, getDevicePixelRatio } = deps;
+  const { els, overlayCtx, getDevicePixelRatio, getDrawData } = deps;
+
+  function colorWithAlpha(color, alpha) {
+    if (!color) return `rgba(34,197,94,${alpha})`;
+    const c = String(color).trim();
+    const m = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i.exec(c);
+    if (!m) return c;
+    let hex = m[1];
+    if (hex.length === 3) {
+      hex = `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
+    }
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function toScreen(ds, pt, eff) {
+    return {
+      x: (pt.x - ds.view.x) * eff,
+      y: (pt.y - ds.view.y) * eff
+    };
+  }
+
+  function drawLine(ds, item, eff, dpr) {
+    if (!item.points || item.points.length < 2) return;
+    const a = toScreen(ds, item.points[0], eff);
+    const b = toScreen(ds, item.points[item.points.length - 1], eff);
+    overlayCtx.strokeStyle = colorWithAlpha(item.color, 0.95);
+    overlayCtx.lineWidth = 2 * dpr;
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(a.x, a.y);
+    overlayCtx.lineTo(b.x, b.y);
+    overlayCtx.stroke();
+  }
+
+  function drawRect(ds, item, eff, dpr) {
+    if (!item.points || item.points.length < 2) return;
+    const a = toScreen(ds, item.points[0], eff);
+    const b = toScreen(ds, item.points[item.points.length - 1], eff);
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
+    const w = Math.abs(a.x - b.x);
+    const h = Math.abs(a.y - b.y);
+    if (w < 1 || h < 1) return;
+    overlayCtx.fillStyle = colorWithAlpha(item.color, 0.28);
+    overlayCtx.strokeStyle = colorWithAlpha(item.color, 0.95);
+    overlayCtx.lineWidth = 2 * dpr;
+    overlayCtx.beginPath();
+    overlayCtx.rect(x, y, w, h);
+    overlayCtx.fill();
+    overlayCtx.stroke();
+  }
+
+  function drawShape(ds, item, eff, dpr) {
+    if (!item.points || item.points.length < 2) return;
+    overlayCtx.fillStyle = colorWithAlpha(item.color, 0.28);
+    overlayCtx.strokeStyle = colorWithAlpha(item.color, 0.95);
+    overlayCtx.lineWidth = 2 * dpr;
+    overlayCtx.beginPath();
+    const p0 = toScreen(ds, item.points[0], eff);
+    overlayCtx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < item.points.length; i += 1) {
+      const p = toScreen(ds, item.points[i], eff);
+      overlayCtx.lineTo(p.x, p.y);
+    }
+    overlayCtx.closePath();
+    overlayCtx.fill();
+    overlayCtx.stroke();
+  }
+
+  function drawOneAnnotation(ds, item, eff, dpr) {
+    if (!item || !item.tool) return;
+    if (item.tool === "ruler" || item.tool === "line") drawLine(ds, item, eff, dpr);
+    else if (item.tool === "rect") drawRect(ds, item, eff, dpr);
+    else if (item.tool === "shape") drawShape(ds, item, eff, dpr);
+  }
+
+  function drawAnnotations(ds) {
+    if (!getDrawData) return;
+    const drawData = getDrawData(ds);
+    if (!drawData) return;
+    const dpr = getDevicePixelRatio();
+    const eff = ds.view.scale * dpr;
+    const items = Array.isArray(drawData.items) ? drawData.items : [];
+    for (const item of items) drawOneAnnotation(ds, item, eff, dpr);
+    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr);
+  }
 
   function drawScaleBar(ds) {
     if (!els.chkScale.checked) return;
@@ -179,6 +266,7 @@ export function createOverlayRenderer(deps) {
       overlayCtx.stroke();
     }
 
+    drawAnnotations(ds);
     drawScaleBar(ds);
     overlayCtx.restore();
   }

@@ -135,6 +135,7 @@ import { APP_CONFIG } from "./config.js";
     histDrag: {active:false, handle:null},
     histMode: 'whole', // 'whole' or 'view'
     histViewDebounce: null,
+    draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null },
 
     exportKind: null,
   };
@@ -187,6 +188,231 @@ import { APP_CONFIG } from "./config.js";
   function closeDataset(id){
     if (spectrum && spectrum.isOpenForDatasetId(id)) closeSpectrum();
     if (datasetRuntime) datasetRuntime.closeDataset(id);
+  }
+
+  function getDrawTool() {
+    return state.draw.tool;
+  }
+
+  function getDrawColor() {
+    return state.draw.color;
+  }
+
+  function setDrawTool(tool) {
+    const hadDraft = !!state.draw.draft;
+    const next = (tool === "ruler" || tool === "rect" || tool === "shape" || tool === "eraser") ? tool : "none";
+    state.draw.tool = (state.draw.tool === next) ? "none" : next;
+    if (state.draw.tool !== "ruler" && state.draw.tool !== "rect" && state.draw.tool !== "shape") {
+      state.draw.activePointerId = null;
+      state.draw.draft = null;
+      if (hadDraft) render({ reuseRaster: true });
+    }
+  }
+
+  function setDrawColor(color) {
+    if (!color || typeof color !== "string") return;
+    state.draw.color = color;
+  }
+
+  function getDrawData(ds) {
+    if (!ds) return null;
+    const items = Array.isArray(ds.drawings) ? ds.drawings : [];
+    const draft = (state.draw.draft && state.draw.draft.dsId === ds.id) ? state.draw.draft : null;
+    return { items, draft };
+  }
+
+  function pointerToImagePoint(ev, ds) {
+    const rect = els.main.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const sx = (ev.clientX - rect.left) * dpr;
+    const sy = (ev.clientY - rect.top) * dpr;
+    const img = screenToImage(sx, sy);
+    return {
+      x: clamp(img.x, 0, Math.max(0, ds.meta.samples - 1)),
+      y: clamp(img.y, 0, Math.max(0, ds.meta.lines - 1))
+    };
+  }
+
+  function sq(v) {
+    return v * v;
+  }
+
+  function pointDistanceToSegment(point, a, b) {
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const lenSq = sq(vx) + sq(vy);
+    if (lenSq <= 1e-12) return Math.hypot(point.x - a.x, point.y - a.y);
+    const t = clamp(((point.x - a.x) * vx + (point.y - a.y) * vy) / lenSq, 0, 1);
+    const px = a.x + vx * t;
+    const py = a.y + vy * t;
+    return Math.hypot(point.x - px, point.y - py);
+  }
+
+  function pointInPolygon(point, points) {
+    let inside = false;
+    const n = points.length;
+    for (let i = 0, j = n - 1; i < n; j = i, i += 1) {
+      const pi = points[i];
+      const pj = points[j];
+      const intersects = ((pi.y > point.y) !== (pj.y > point.y))
+        && (point.x < (((pj.x - pi.x) * (point.y - pi.y)) / Math.max(1e-12, (pj.y - pi.y)) + pi.x));
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
+  function distanceToLineDrawing(point, item) {
+    if (!item.points || item.points.length < 2) return Number.POSITIVE_INFINITY;
+    return pointDistanceToSegment(point, item.points[0], item.points[item.points.length - 1]);
+  }
+
+  function distanceToRectDrawing(point, item) {
+    if (!item.points || item.points.length < 2) return Number.POSITIVE_INFINITY;
+    const a = item.points[0];
+    const b = item.points[item.points.length - 1];
+    const x0 = Math.min(a.x, b.x);
+    const x1 = Math.max(a.x, b.x);
+    const y0 = Math.min(a.y, b.y);
+    const y1 = Math.max(a.y, b.y);
+    if (point.x >= x0 && point.x <= x1 && point.y >= y0 && point.y <= y1) return 0;
+    const p00 = { x: x0, y: y0 };
+    const p10 = { x: x1, y: y0 };
+    const p11 = { x: x1, y: y1 };
+    const p01 = { x: x0, y: y1 };
+    return Math.min(
+      pointDistanceToSegment(point, p00, p10),
+      pointDistanceToSegment(point, p10, p11),
+      pointDistanceToSegment(point, p11, p01),
+      pointDistanceToSegment(point, p01, p00),
+    );
+  }
+
+  function distanceToShapeDrawing(point, item) {
+    if (!item.points || item.points.length < 2) return Number.POSITIVE_INFINITY;
+    if (item.points.length >= 3 && pointInPolygon(point, item.points)) return 0;
+    let minDist = Number.POSITIVE_INFINITY;
+    for (let i = 1; i < item.points.length; i += 1) {
+      minDist = Math.min(minDist, pointDistanceToSegment(point, item.points[i - 1], item.points[i]));
+    }
+    if (item.points.length >= 3) {
+      minDist = Math.min(minDist, pointDistanceToSegment(point, item.points[item.points.length - 1], item.points[0]));
+    }
+    return minDist;
+  }
+
+  function distanceToDrawing(point, item) {
+    if (!item || !item.tool) return Number.POSITIVE_INFINITY;
+    if (item.tool === "ruler" || item.tool === "line") return distanceToLineDrawing(point, item);
+    if (item.tool === "rect") return distanceToRectDrawing(point, item);
+    if (item.tool === "shape") return distanceToShapeDrawing(point, item);
+    return Number.POSITIVE_INFINITY;
+  }
+
+  function eraseDrawingAtPointer(ev) {
+    const ds = getActive();
+    if (!ds || !Array.isArray(ds.drawings) || !ds.drawings.length) return false;
+    const point = pointerToImagePoint(ev, ds);
+    const pxTolerance = (ev.pointerType === "touch") ? 24 : 14;
+    const imgTolerance = pxTolerance / Math.max(1e-6, ds.view.scale);
+
+    let bestIdx = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
+      const dist = distanceToDrawing(point, ds.drawings[i]);
+      if (!Number.isFinite(dist)) continue;
+      if (dist <= imgTolerance && dist <= bestDist) {
+        bestIdx = i;
+        bestDist = dist;
+      }
+    }
+    if (bestIdx < 0) return false;
+    ds.drawings.splice(bestIdx, 1);
+    render({ reuseRaster: true });
+    return true;
+  }
+
+  function isDrawingPointer(pointerId) {
+    return Number.isFinite(pointerId) && state.draw.activePointerId === pointerId;
+  }
+
+  function beginDrawingAtPointer(ev) {
+    const ds = getActive();
+    if (!ds) return false;
+    if (!Array.isArray(ds.drawings)) ds.drawings = [];
+    const p = pointerToImagePoint(ev, ds);
+    state.draw.activePointerId = ev.pointerId;
+    state.draw.draft = {
+      dsId: ds.id,
+      tool: state.draw.tool,
+      color: state.draw.color,
+      points: [p]
+    };
+    render({ reuseRaster: true });
+    return true;
+  }
+
+  function updateDrawingAtPointer(ev) {
+    const ds = getActive();
+    const draft = state.draw.draft;
+    if (!ds || !draft || draft.dsId !== ds.id) return;
+    const p = pointerToImagePoint(ev, ds);
+    if (draft.tool === "ruler" || draft.tool === "rect") {
+      if (draft.points.length === 1) draft.points.push(p);
+      else draft.points[draft.points.length - 1] = p;
+    } else if (draft.tool === "shape") {
+      const last = draft.points[draft.points.length - 1];
+      const minStep = 0.7 / Math.max(1e-6, ds.view.scale);
+      const dx = p.x - last.x;
+      const dy = p.y - last.y;
+      if ((dx * dx + dy * dy) >= (minStep * minStep)) draft.points.push(p);
+    }
+    render({ reuseRaster: true });
+  }
+
+  function finishDrawingAtPointer(ev) {
+    const ds = getActive();
+    const draft = state.draw.draft;
+    if (!ds || !draft || draft.dsId !== ds.id) {
+      state.draw.activePointerId = null;
+      state.draw.draft = null;
+      return;
+    }
+
+    updateDrawingAtPointer(ev);
+    const points = draft.points || [];
+    let keep = false;
+    if (draft.tool === "ruler" || draft.tool === "rect") {
+      if (points.length >= 2) {
+        const a = points[0];
+        const b = points[points.length - 1];
+        const dx = Math.abs(b.x - a.x);
+        const dy = Math.abs(b.y - a.y);
+        keep = (dx + dy) > (1 / Math.max(1e-6, ds.view.scale));
+      }
+    } else if (draft.tool === "shape") {
+      keep = points.length >= 3;
+    }
+    if (keep) {
+      if (draft.tool === "ruler") {
+        for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
+          if (ds.drawings[i] && ds.drawings[i].tool === "ruler") ds.drawings.splice(i, 1);
+        }
+      }
+      ds.drawings.push({
+        tool: draft.tool,
+        color: draft.color,
+        points: points.slice()
+      });
+    }
+    state.draw.activePointerId = null;
+    state.draw.draft = null;
+    render({ reuseRaster: true });
+  }
+
+  function cancelDrawing() {
+    state.draw.activePointerId = null;
+    state.draw.draft = null;
+    render({ reuseRaster: true });
   }
 
   // ========= UI rebuild =========
@@ -319,6 +545,7 @@ import { APP_CONFIG } from "./config.js";
     els,
     overlayCtx,
     getDevicePixelRatio: () => window.devicePixelRatio || 1,
+    getDrawData,
   });
 
   function drawOverlays(ds){
@@ -525,6 +752,16 @@ import { APP_CONFIG } from "./config.js";
     disposePyramid,
     updateMetaUI,
     updatePerf,
+    getDrawTool,
+    getDrawColor,
+    setDrawTool,
+    setDrawColor,
+    isDrawingPointer,
+    beginDrawingAtPointer,
+    updateDrawingAtPointer,
+    finishDrawingAtPointer,
+    cancelDrawing,
+    eraseDrawingAtPointer,
     updateZoomLabelBoot: updateZoomLabel,
     setGpuBadgeAvailable: () => {}
   });

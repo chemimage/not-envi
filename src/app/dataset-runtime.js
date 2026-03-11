@@ -64,6 +64,7 @@ export function createDatasetRuntime(deps) {
       bandSettings: new Map(),
       bandStatsWhole: new Map(),
       bandStatsView: null,
+      drawings: [],
       thumb: { ready: false, _t: 0, scale: 1, x0: 0, y0: 0, w: 0, h: 0 },
       treeExpanded: true,
       displaySlot: 0,

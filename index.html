@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>not ENVI</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
   <link rel="stylesheet" href="/src/styles/app.css" />
 </head>
 <body>
@@ -51,6 +52,24 @@
     <canvas id="gpuCanvas"></canvas>
     <canvas id="cpuCanvas"></canvas>
     <canvas id="overlayCanvas"></canvas>
+    <div id="drawTools" aria-label="Drawing tools">
+      <button class="draw-tool-btn" id="toolRuler" type="button" title="Ruler" aria-label="Ruler">
+        <i class="fa-solid fa-ruler" aria-hidden="true"></i>
+      </button>
+      <button class="draw-tool-btn" id="toolRect" type="button" title="Rectangle" aria-label="Rectangle">
+        <i class="fa-regular fa-square" aria-hidden="true"></i>
+      </button>
+      <button class="draw-tool-btn" id="toolShape" type="button" title="Shape" aria-label="Shape">
+        <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>
+      </button>
+      <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing" aria-label="Eraser">
+        <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+      </button>
+      <label class="draw-color-wrap" title="Pick drawing color" aria-label="Color">
+        <i class="fa-solid fa-brush" aria-hidden="true"></i>
+        <input id="drawColor" type="color" value="#22c55e" />
+      </label>
+    </div>
 
     <div id="selRect"></div>
 

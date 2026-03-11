@@ -48,6 +48,16 @@ export function wireApp(deps) {
     disposePyramid,
     updateMetaUI,
     updatePerf,
+    getDrawTool,
+    getDrawColor,
+    setDrawTool,
+    setDrawColor,
+    isDrawingPointer,
+    beginDrawingAtPointer,
+    updateDrawingAtPointer,
+    finishDrawingAtPointer,
+    cancelDrawing,
+    eraseDrawingAtPointer,
     updateZoomLabelBoot,
     setGpuBadgeAvailable
   } = deps;
@@ -152,7 +162,77 @@ export function wireApp(deps) {
     expandTitle: "Expand display panel"
   });
 
+  function syncDrawToolUI() {
+    const active = getDrawTool ? getDrawTool() : "none";
+    if (els.toolRuler) els.toolRuler.classList.toggle("active", active === "ruler");
+    if (els.toolRect) els.toolRect.classList.toggle("active", active === "rect");
+    if (els.toolShape) els.toolShape.classList.toggle("active", active === "shape");
+    if (els.toolEraser) els.toolEraser.classList.toggle("active", active === "eraser");
+    if (els.drawColor && getDrawColor) {
+      const color = getDrawColor();
+      els.drawColor.value = color;
+      if (els.drawTools && els.drawTools.style) {
+        els.drawTools.style.setProperty("--draw-color-preview", color);
+      }
+    }
+  }
+  if (els.toolRuler && setDrawTool) els.toolRuler.onclick = () => { setDrawTool("ruler"); syncDrawToolUI(); };
+  if (els.toolRect && setDrawTool) els.toolRect.onclick = () => { setDrawTool("rect"); syncDrawToolUI(); };
+  if (els.toolShape && setDrawTool) els.toolShape.onclick = () => { setDrawTool("shape"); syncDrawToolUI(); };
+  if (els.toolEraser && setDrawTool) els.toolEraser.onclick = () => { setDrawTool("eraser"); syncDrawToolUI(); };
+  if (els.drawColor && setDrawColor) {
+    els.drawColor.oninput = () => {
+      setDrawColor(els.drawColor.value);
+      syncDrawToolUI();
+      render({ reuseRaster: true });
+    };
+  }
+  syncDrawToolUI();
+
+  const isDrawCreateEnabled = () => !!(getDrawTool && getActive() && (getDrawTool() === "ruler" || getDrawTool() === "rect" || getDrawTool() === "shape"));
+  const isEraserEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "eraser");
+  const isDrawingEnabled = () => isDrawCreateEnabled() || isEraserEnabled();
+  const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,header,dialog"));
+
+  if (els.main && (beginDrawingAtPointer || eraseDrawingAtPointer)) {
+    els.main.addEventListener("pointerdown", (ev) => {
+      if (!isDrawingEnabled()) return;
+      if (els.specPanel && els.specPanel.contains(ev.target)) return;
+      if (isUiTarget(ev.target)) return;
+      if (els.specPanel && els.specPanel.style.display !== "none" && !els.specPanel.contains(ev.target)) closeSpectrum();
+      if (isEraserEnabled()) {
+        if (eraseDrawingAtPointer) eraseDrawingAtPointer(ev);
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        return;
+      }
+      const started = beginDrawingAtPointer(ev);
+      if (!started) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+    window.addEventListener("pointermove", (ev) => {
+      if (!isDrawingPointer || !isDrawingPointer(ev.pointerId)) return;
+      updateDrawingAtPointer(ev);
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+    window.addEventListener("pointerup", (ev) => {
+      if (!isDrawingPointer || !isDrawingPointer(ev.pointerId)) return;
+      finishDrawingAtPointer(ev);
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+    window.addEventListener("pointercancel", (ev) => {
+      if (!isDrawingPointer || !isDrawingPointer(ev.pointerId)) return;
+      if (cancelDrawing) cancelDrawing();
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+  }
+
   els.main.addEventListener("dblclick", (ev) => {
+    if (isDrawingEnabled()) return;
     const ds = getActive();
     if (!ds) return;
     if (els.specPanel && els.specPanel.contains(ev.target)) return;
