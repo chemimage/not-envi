@@ -125,7 +125,13 @@ export function createInteractionController(deps) {
           const img = screenToImage(sx, sy);
           const ix = clamp(Math.floor(img.x), 0, active.meta.samples - 1);
           const iy = clamp(Math.floor(img.y), 0, active.meta.lines - 1);
-          if (openSpectrumAt) openSpectrumAt(active, ix, iy);
+          if (openSpectrumAt) {
+            openSpectrumAt(active, ix, iy, {
+              clientX: p.x,
+              clientY: p.y,
+              pointerType: "touch"
+            });
+          }
         }, LONG_PRESS_MS);
       } else {
         clearLongPress();

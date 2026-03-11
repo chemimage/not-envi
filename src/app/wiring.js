@@ -163,7 +163,17 @@ export function wireApp(deps) {
     const img = screenToImage(sx, sy);
     const ix = clamp(Math.floor(img.x), 0, ds.meta.samples - 1);
     const iy = clamp(Math.floor(img.y), 0, ds.meta.lines - 1);
-    openSpectrumAt(ds, ix, iy);
+    openSpectrumAt(ds, ix, iy, {
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      pointerType: ev.pointerType || "mouse"
+    });
+  });
+
+  els.main.addEventListener("pointerdown", (ev) => {
+    if (!els.specPanel || els.specPanel.style.display === "none") return;
+    if (els.specPanel.contains(ev.target)) return;
+    closeSpectrum();
   });
 
   if (els.specPanel) {

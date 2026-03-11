@@ -410,7 +410,7 @@ import { APP_CONFIG } from "./config.js";
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });
 
-  async function openSpectrumAt(ds, ix, iy){ await spectrum.openSpectrumAt(ds, ix, iy); }
+  async function openSpectrumAt(ds, ix, iy, opts){ await spectrum.openSpectrumAt(ds, ix, iy, opts); }
   function redrawSpectrum(){ spectrum.redrawSpectrum(); }
   function closeSpectrum(){ spectrum.closeSpectrum(); }
   function exportSpectrumCSV(){ spectrum.exportSpectrumCSV(); }

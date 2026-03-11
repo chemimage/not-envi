@@ -51,6 +51,32 @@ export function createSpectrumController(deps) {
     }
   }
 
+  function positionSpectrumPanel(anchor = null) {
+    if (!els.specPanel || !els.main || !anchor) return;
+    if (!Number.isFinite(anchor.clientX) || !Number.isFinite(anchor.clientY)) return;
+    const mainRect = els.main.getBoundingClientRect();
+    const panelRect = els.specPanel.getBoundingClientRect();
+    const panelW = Math.max(220, panelRect.width || 380);
+    const panelH = Math.max(120, panelRect.height || 230);
+    const gap = anchor.pointerType === "touch" ? 56 : 28;
+    const margin = 8;
+
+    const localX = anchor.clientX - mainRect.left;
+    const localY = anchor.clientY - mainRect.top;
+    let x = localX + gap;
+    let y = localY + gap;
+
+    if (x + panelW > mainRect.width - margin) x = localX - panelW - gap;
+    if (y + panelH > mainRect.height - margin) y = localY - panelH - gap;
+    x = Math.max(margin, Math.min(x, mainRect.width - panelW - margin));
+    y = Math.max(margin, Math.min(y, mainRect.height - panelH - margin));
+
+    els.specPanel.style.left = `${Math.round(x)}px`;
+    els.specPanel.style.top = `${Math.round(y)}px`;
+    els.specPanel.style.right = "auto";
+    els.specPanel.style.bottom = "auto";
+  }
+
   function drawSpectrumPlot(ds, xVals, yVals) {
     resizeSpecCanvas();
     const c = els.specCanvas;
@@ -194,7 +220,7 @@ export function createSpectrumController(deps) {
     ctx.fillText(xLabel, x1, y1 + 6 * dpr);
   }
 
-  async function openSpectrumAt(ds, ix, iy) {
+  async function openSpectrumAt(ds, ix, iy, opts = {}) {
     if (!ds) return;
     specState.dsId = ds.id;
     specState.x = ix;
@@ -214,6 +240,11 @@ export function createSpectrumController(deps) {
 
     await new Promise((r) => requestAnimationFrame(r));
     if (mySeq !== specSeq) return;
+    positionSpectrumPanel({
+      clientX: Number(opts.clientX),
+      clientY: Number(opts.clientY),
+      pointerType: opts.pointerType === "touch" ? "touch" : "mouse"
+    });
 
     try {
       const yVals = await readSpectrumAtPixel(ds, ix, iy);
