@@ -1,5 +1,3 @@
-import { createIcons, X } from "lucide";
-
 import { formatExperimentSettingsInline, parseExperimentSettings } from "./experiment-meta.js";
 
 export function createUIPanels(deps) {
@@ -265,7 +263,23 @@ export function createUIPanels(deps) {
     render({ reuseRaster: true });
   }
 
+  function setAppEmptyMode() {
+    if (!els.app) return;
+    els.app.dataset.empty = state.datasets.length ? "false" : "true";
+  }
+
+  function setDatasetDisplaySlot(target, slot) {
+    const wanted = (target.displaySlot === slot) ? 0 : slot;
+    for (const ds of state.datasets) {
+      if (ds !== target && ds.displaySlot === wanted) ds.displaySlot = 0;
+    }
+    target.displaySlot = wanted;
+    rebuildDatasetList();
+  }
+
   function rebuildDatasetList() {
+    setAppEmptyMode();
+    if (!els.datasetList || !els.datasetCount) return;
     els.datasetCount.textContent = String(state.datasets.length);
     els.datasetList.innerHTML = "";
     for (const ds of state.datasets) {
@@ -279,23 +293,46 @@ export function createUIPanels(deps) {
       title.textContent = ds.name;
       const meta = document.createElement("div");
       meta.className = "meta";
-      const dsInfo = `${ds.meta.samples}×${ds.meta.lines}  bands:${ds.meta.bands}  ${ds.meta.interleave}`;
+      const dsInfo = `${fmt(ds.meta.samples)}×${fmt(ds.meta.lines)}  bands:${fmt(ds.meta.bands)}`;
       meta.textContent = dsInfo;
       left.appendChild(title);
       left.appendChild(meta);
 
       const actions = document.createElement("div");
       actions.className = "actions";
-      const btnClose = document.createElement("button");
-      btnClose.className = "btn danger icon-btn";
-      btnClose.title = "Close dataset";
-      btnClose.ariaLabel = "Close dataset";
-      btnClose.innerHTML = '<i data-lucide="x" aria-hidden="true"></i>';
-      btnClose.onclick = (ev) => {
+      const slotA = document.createElement("button");
+      slotA.type = "button";
+      slotA.className = `slot-btn slot-a${ds.displaySlot === 1 ? " active" : ""}`;
+      slotA.title = "Display slot 1";
+      slotA.ariaLabel = "Display slot 1";
+      slotA.textContent = "1";
+      slotA.onclick = (ev) => {
+        ev.stopPropagation();
+        setDatasetDisplaySlot(ds, 1);
+      };
+      const slotB = document.createElement("button");
+      slotB.type = "button";
+      slotB.className = `slot-btn slot-b${ds.displaySlot === 2 ? " active" : ""}`;
+      slotB.title = "Display slot 2";
+      slotB.ariaLabel = "Display slot 2";
+      slotB.textContent = "2";
+      slotB.onclick = (ev) => {
+        ev.stopPropagation();
+        setDatasetDisplaySlot(ds, 2);
+      };
+      const slotClose = document.createElement("button");
+      slotClose.type = "button";
+      slotClose.className = "slot-btn slot-close";
+      slotClose.title = "Close dataset";
+      slotClose.ariaLabel = "Close dataset";
+      slotClose.textContent = "X";
+      slotClose.onclick = (ev) => {
         ev.stopPropagation();
         closeDataset(ds.id);
       };
-      actions.appendChild(btnClose);
+      actions.appendChild(slotA);
+      actions.appendChild(slotB);
+      actions.appendChild(slotClose);
 
       div.appendChild(left);
       div.appendChild(actions);
@@ -307,7 +344,16 @@ export function createUIPanels(deps) {
       };
       els.datasetList.appendChild(div);
     }
-    createIcons({ icons: { X }, attrs: { "aria-hidden": "true" } });
+    els.datasetList.classList.toggle("few", state.datasets.length <= 2);
+    if (els.datasetViewport) {
+      if (state.datasets.length > 2) {
+        requestAnimationFrame(() => {
+          els.datasetViewport.scrollTop = Math.max(0, els.datasetViewport.scrollHeight - els.datasetViewport.clientHeight);
+        });
+      } else {
+        els.datasetViewport.scrollTop = 0;
+      }
+    }
   }
 
   function showMetaHover(ds, rowEl) {

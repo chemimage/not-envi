@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/src/styles/app.css" />
 </head>
 <body>
-<div id="app">
+<div id="app" data-empty="true">
   <header>
     <div class="group" style="display:none;">
       <div class="title">ENVI Local Viewer</div>
@@ -47,43 +47,6 @@
     </div>
   </header>
 
-  <aside id="left">
-    <div class="panel-header">
-      <h2>Datasets</h2>
-      <span class="badge" id="datasetCount">0</span>
-    </div>
-    <div class="panel-body">
-      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Open ENVI dataset files">
-        <div class="hint">
-          <b>Drag & drop</b> ENVI file pairs, or <b>click here</b> to choose files.
-        </div>
-        <input type="file" id="filePicker" multiple style="display:none" />
-      </div>
-
-      <div class="divider"></div>
-
-      <h3 style="margin:0 0 8px 0; font-size:14px;">Open datasets</h3>
-      <div class="datasets-wrap">
-        <div id="datasetList" class="ds-list"></div>
-        <div id="metaHoverPanel" class="meta-hover-panel" style="display:none;">
-          <div class="kv">
-            <div class="k">Samples</div><div class="v" id="metaSamples">—</div>
-            <div class="k">Lines</div><div class="v" id="metaLines">—</div>
-            <div class="k">Bands</div><div class="v" id="metaBands">—</div>
-            <div class="k">Interleave</div><div class="v" id="metaInterleave">—</div>
-            <div class="k">Type</div><div class="v" id="metaType">—</div>
-            <div class="k">Endian</div><div class="v" id="metaEndian">—</div>
-            <div class="k">Wavelength units</div><div class="v" id="metaWlUnits">—</div>
-            <div class="k">Scale</div><div class="v" id="metaScale">—</div>
-          </div>
-          <div class="kv" id="metaExpKv" style="display:none;"></div>
-          <div class="hint" id="metaExtra">—</div>
-        </div>
-      </div>
-
-    </div>
-  </aside>
-
   <main id="main">
     <canvas id="gpuCanvas"></canvas>
     <canvas id="cpuCanvas"></canvas>
@@ -106,78 +69,118 @@
       </div>
     </div>
 
-    <aside id="right" data-open="true" data-pinned="true">
-      <div class="panel-header" id="rightHeader">
-        <h2>Bands & display</h2>
-        <div class="panel-header-actions">
-          <button class="btn tiny ghost" id="btnRightPin" type="button" aria-pressed="true" title="Pin panel open">Pin</button>
-          <button class="btn tiny ghost" id="btnRightToggle" type="button" aria-expanded="true" title="Retract panel">Hide</button>
+    <div id="emptyState">
+      <div id="dropzone" class="dropzone empty-dropzone" tabindex="0" role="button" aria-label="Open ENVI dataset files">
+        <div class="hint">
+          <b>Drag & drop</b> ENVI file pairs, or <b>click here</b> to choose files.
         </div>
+        <input type="file" id="filePicker" multiple style="display:none" />
       </div>
-      <div class="panel-body">
-        <div class="row">
-          <input id="bandSearch" class="search grow" placeholder="Search: band index, wavelength, or text…" />
-          <button class="btn" id="btnExpandAll" title="Expand all dataset nodes">Expand</button>
-          <button class="btn" id="btnCollapseAll" title="Collapse all dataset nodes">Collapse</button>
-        </div>
+    </div>
 
-        <div style="height:10px"></div>
-        <div id="bandTree" class="tree"></div>
-
-        <div class="divider"></div>
-
-        <h3 style="margin:0 0 8px 0; font-size:14px;">Active band</h3>
+    <div id="datasetDock">
+      <div class="panel-header">
+        <h2>Datasets</h2>
+        <span class="badge" id="datasetCount">0</span>
+      </div>
+      <div id="datasetViewport" class="dataset-viewport">
+        <div id="datasetList" class="ds-list"></div>
+      </div>
+      <div id="metaHoverPanel" class="meta-hover-panel" style="display:none;">
         <div class="kv">
-          <div class="k">Dataset</div><div class="v" id="dispDataset">—</div>
-          <div class="k">Band</div><div class="v" id="dispBand">—</div>
-          <div class="k">Wavelength</div><div class="v" id="dispWl">—</div>
+          <div class="k">Samples</div><div class="v" id="metaSamples">—</div>
+          <div class="k">Lines</div><div class="v" id="metaLines">—</div>
+          <div class="k">Bands</div><div class="v" id="metaBands">—</div>
+          <div class="k">Interleave</div><div class="v" id="metaInterleave">—</div>
+          <div class="k">Type</div><div class="v" id="metaType">—</div>
+          <div class="k">Endian</div><div class="v" id="metaEndian">—</div>
+          <div class="k">Wavelength units</div><div class="v" id="metaWlUnits">—</div>
+          <div class="k">Scale</div><div class="v" id="metaScale">—</div>
         </div>
-
-        <div class="divider"></div>
-
-        <div class="row" style="justify-content:space-between;">
-          <h3 style="margin:0; font-size:14px;">Histogram</h3>
-          <label class="toggle tiny" title="Histogram computed from current view instead of whole image sample">
-            <input type="checkbox" id="chkHistView" />
-            <span>Current view</span>
-          </label>
-        </div>
-
-        <div style="height:8px"></div>
-        <canvas id="hist"></canvas>
-        <div class="row hist-range-row">
-          <label class="small">Min</label>
-          <input type="number" id="numMin" step="any" />
-          <label class="small">Max</label>
-          <input type="number" id="numMax" step="any" />
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="control-row" style="margin-top:6px;">
-          <label class="small">Contrast</label>
-          <input type="range" id="slContrast" min="0.1" max="3" value="1" step="0.01" />
-          <input type="number" id="numContrast" min="0.1" max="3" value="1" step="0.01" />
-        </div>
-
-        <div class="control-row">
-          <label class="small">Brightness</label>
-          <input type="range" id="slBrightness" min="-1" max="1" value="0" step="0.01" />
-          <input type="number" id="numBrightness" min="-1" max="1" value="0" step="0.01" />
-        </div>
-
-        <div class="control-row">
-          <label class="small">Gain</label>
-          <input type="range" id="slGain" min="0" max="4" value="1" step="0.01" />
-          <input type="number" id="numGain" min="0" max="4" value="1" step="0.01" />
-        </div>
-
-        <div class="row" style="margin-top:6px;">
-          <button class="btn ghost" id="btnAuto" title="Auto contrast: set min/max from percentiles, reset contrast/brightness/gain">Auto</button>
-          <button class="btn" id="btnReset" title="Reset display controls for this band">Reset</button>
-        </div>
+        <div class="kv" id="metaExpKv" style="display:none;"></div>
+        <div class="hint" id="metaExtra">—</div>
       </div>
-    </aside>
+    </div>
+
+    <div id="rightDock">
+      <aside id="right" data-open="true" data-pinned="true">
+        <div class="panel-header" id="rightHeader">
+          <h2>Bands</h2>
+          <div class="panel-header-actions">
+            <button class="btn tiny ghost" id="btnRightPin" type="button" aria-pressed="true" title="Pin panel open">Pin</button>
+            <button class="btn tiny ghost" id="btnRightToggle" type="button" aria-expanded="true" title="Retract panel">Hide</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="row">
+            <input id="bandSearch" class="search grow" placeholder="Search: band index, wavelength, or text…" />
+            <button class="btn" id="btnExpandAll" title="Expand all dataset nodes">Expand</button>
+            <button class="btn" id="btnCollapseAll" title="Collapse all dataset nodes">Collapse</button>
+          </div>
+
+          <div style="height:10px"></div>
+          <div id="bandTree" class="tree"></div>
+        </div>
+      </aside>
+
+      <aside id="displayPanel">
+        <div class="display-tab">
+          <h2>Display</h2>
+        </div>
+        <div class="display-body">
+          <h3 style="margin:0 0 8px 0; font-size:14px;">Active band</h3>
+          <div class="kv">
+            <div class="k">Dataset</div><div class="v" id="dispDataset">—</div>
+            <div class="k">Band</div><div class="v" id="dispBand">—</div>
+            <div class="k">Wavelength</div><div class="v" id="dispWl">—</div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="row" style="justify-content:space-between;">
+            <h3 style="margin:0; font-size:14px;">Histogram</h3>
+            <label class="toggle tiny" title="Histogram computed from current view instead of whole image sample">
+              <input type="checkbox" id="chkHistView" />
+              <span>Current view</span>
+            </label>
+          </div>
+
+          <div style="height:8px"></div>
+          <canvas id="hist"></canvas>
+          <div class="row hist-range-row">
+            <label class="small">Min</label>
+            <input type="number" id="numMin" step="any" />
+            <label class="small">Max</label>
+            <input type="number" id="numMax" step="any" />
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="control-row" style="margin-top:6px;">
+            <label class="small">Contrast</label>
+            <input type="range" id="slContrast" min="0.1" max="3" value="1" step="0.01" />
+            <input type="number" id="numContrast" min="0.1" max="3" value="1" step="0.01" />
+          </div>
+
+          <div class="control-row">
+            <label class="small">Brightness</label>
+            <input type="range" id="slBrightness" min="-1" max="1" value="0" step="0.01" />
+            <input type="number" id="numBrightness" min="-1" max="1" value="0" step="0.01" />
+          </div>
+
+          <div class="control-row">
+            <label class="small">Gain</label>
+            <input type="range" id="slGain" min="0" max="4" value="1" step="0.01" />
+            <input type="number" id="numGain" min="0" max="4" value="1" step="0.01" />
+          </div>
+
+          <div class="row" style="margin-top:6px;">
+            <button class="btn ghost" id="btnAuto" title="Auto contrast: set min/max from percentiles, reset contrast/brightness/gain">Auto</button>
+            <button class="btn" id="btnReset" title="Reset display controls for this band">Reset</button>
+          </div>
+        </div>
+      </aside>
+    </div>
 
     <!-- Spectrum (z-profile) panel: double-click in the view to open -->
     <div id="specPanel" class="spec-panel" style="display:none;">

@@ -382,36 +382,60 @@ export function wireApp(deps) {
     state.histDrag.handle = null;
   });
 
+  const triggerFilePicker = () => {
+    try { els.filePicker.click(); } catch (_err) {}
+  };
+  const handleDroppedFiles = async (files) => {
+    if (!files || !files.length) return;
+    await addDatasetsFromFileList(files);
+  };
+  const setDropzoneActive = (active) => {
+    if (!els.dropzone || !els.dropzone.classList) return;
+    els.dropzone.classList[active ? "add" : "remove"]("dragover");
+  };
+
   els.dropzone.addEventListener("click", (ev) => {
     const t = ev.target;
     if (t && t.closest && t.closest("a,button")) return;
-    try { els.filePicker.click(); } catch (_err) {}
+    triggerFilePicker();
   });
   els.dropzone.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" || ev.key === " ") {
       ev.preventDefault();
-      els.filePicker.click();
+      triggerFilePicker();
     }
   });
 
   els.filePicker.onchange = async (ev) => {
     const files = ev.target.files;
     if (!files || !files.length) return;
-    await addDatasetsFromFileList(files);
+    await handleDroppedFiles(files);
     els.filePicker.value = "";
   };
 
   els.dropzone.addEventListener("dragover", (ev) => {
     ev.preventDefault();
-    els.dropzone.classList.add("dragover");
+    setDropzoneActive(true);
   });
-  els.dropzone.addEventListener("dragleave", () => els.dropzone.classList.remove("dragover"));
+  els.dropzone.addEventListener("dragleave", () => setDropzoneActive(false));
   els.dropzone.addEventListener("drop", async (ev) => {
     ev.preventDefault();
-    els.dropzone.classList.remove("dragover");
-    const files = ev.dataTransfer?.files;
-    if (!files || !files.length) return;
-    await addDatasetsFromFileList(files);
+    setDropzoneActive(false);
+    await handleDroppedFiles(ev.dataTransfer?.files);
+  });
+
+  els.main.addEventListener("dragover", (ev) => {
+    ev.preventDefault();
+    setDropzoneActive(true);
+  });
+  els.main.addEventListener("dragleave", (ev) => {
+    const rel = ev.relatedTarget;
+    if (!rel || !els.main.contains(rel)) setDropzoneActive(false);
+  });
+  els.main.addEventListener("drop", async (ev) => {
+    ev.preventDefault();
+    setDropzoneActive(false);
+    await handleDroppedFiles(ev.dataTransfer?.files);
   });
 
   resizeCanvases();

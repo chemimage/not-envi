@@ -27,10 +27,10 @@
   #app {
     @apply grid h-full gap-2.5 p-2.5;
     grid-template-rows: 52px 1fr;
-    grid-template-columns: 310px 1fr;
+    grid-template-columns: 1fr;
     grid-template-areas:
-      "top top"
-      "left main";
+      "top"
+      "main";
   }
 
   header {
@@ -82,20 +82,24 @@
     @apply flex min-h-0 flex-col overflow-hidden rounded-sm border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
   }
 
-  #left {
-    grid-area: left;
-  }
-
-  #right {
-    --flyout-visible-header: 150px;
-    @apply absolute right-2.5 z-20;
+  #rightDock {
+    @apply pointer-events-none absolute right-2.5 z-20 flex flex-col gap-2.5;
     top: 206px;
     bottom: 10px;
     width: min(390px, calc(100% - 20px));
+  }
+
+  #rightDock > * {
+    pointer-events: auto;
+  }
+
+  #right {
+    --flyout-visible-header: 132px;
+    @apply relative w-full;
+    flex: 1 1 auto;
     transform: translateX(0);
     transition: transform 220ms ease, box-shadow 180ms ease, opacity 180ms ease;
-    min-height: 220px;
-    overflow: hidden;
+    min-height: 170px;
     opacity: 1;
   }
 
@@ -130,6 +134,35 @@
 
   #right[data-open="false"] #btnRightToggle {
     @apply border-gray-500 text-gray-100;
+  }
+
+  #displayPanel {
+    @apply flex min-h-0 w-full overflow-hidden rounded-sm border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
+    flex: 0 0 clamp(220px, 36%, 300px);
+  }
+
+  #displayPanel .display-tab {
+    @apply relative border-r border-gray-700 bg-gray-800/70;
+    width: 34px;
+    flex: 0 0 34px;
+  }
+
+  #displayPanel .display-tab h2 {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    transform-origin: center center;
+    white-space: nowrap;
+    margin: 0;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 11px;
+    color: rgb(156 163 175);
+  }
+
+  #displayPanel .display-body {
+    @apply min-h-0 flex-1 overflow-auto p-3;
   }
 
   .panel-header {
@@ -354,6 +387,32 @@
     @apply rounded-sm border-gray-600 bg-gray-800/90 px-2 py-1 text-xs;
   }
 
+  #emptyState {
+    @apply absolute inset-0 z-30 hidden items-center justify-center p-4;
+  }
+
+  .empty-dropzone {
+    @apply w-[min(680px,88vw)] rounded-2xl border-2 border-dotted border-gray-500 bg-gray-900/65 px-6 py-10 text-center shadow-2xl shadow-black/40;
+  }
+
+  .empty-dropzone .hint {
+    @apply text-sm leading-7 text-gray-200;
+  }
+
+  #datasetDock {
+    @apply absolute bottom-2.5 left-2.5 z-20 flex w-[min(430px,56vw)] flex-col overflow-hidden rounded-sm border border-gray-700 bg-gray-900/90 shadow-2xl shadow-black/35;
+    backdrop-filter: blur(4px);
+  }
+
+  #datasetDock .panel-header {
+    @apply border-b border-gray-700 px-3 py-2;
+  }
+
+  .dataset-viewport {
+    @apply overflow-y-auto px-2.5 pb-2.5 pt-2;
+    height: 192px;
+  }
+
   .bar-label {
     @apply mb-1 mt-2 flex items-center justify-between gap-2.5 font-mono text-xs text-gray-400;
   }
@@ -409,11 +468,11 @@
   }
 
   .ds-list {
-    @apply flex flex-col gap-2;
+    @apply flex min-h-full flex-col gap-2;
   }
 
-  .datasets-wrap {
-    @apply relative;
+  .ds-list.few {
+    @apply justify-end;
   }
 
   .meta-hover-panel {
@@ -422,7 +481,8 @@
   }
 
   .ds-item {
-    @apply flex cursor-pointer items-start justify-between gap-2 rounded-sm border border-gray-700 bg-gray-800/70 px-2.5 py-2;
+    @apply grid cursor-pointer grid-cols-[1fr_auto] items-center gap-2 rounded-sm border border-gray-700 bg-gray-800/75 px-2.5 py-2;
+    min-height: 72px;
   }
 
   .ds-item:hover {
@@ -438,15 +498,37 @@
   }
 
   .ds-item .meta {
-    @apply mt-0.5 font-mono text-xs text-gray-400;
+    @apply mt-1 font-mono text-xs text-gray-400;
   }
 
   .ds-item .actions {
     @apply flex items-center self-center gap-1.5;
   }
 
-  .ds-item .actions .btn {
-    @apply rounded-sm px-2 py-1 text-xs;
+  .slot-btn {
+    @apply inline-flex h-[22px] w-[22px] items-center justify-center rounded-sm border border-gray-600 bg-gray-900 text-[11px] font-semibold text-gray-300 transition-colors;
+  }
+
+  .slot-btn.slot-a.active {
+    background: rgb(250 204 21);
+    border-color: rgb(253 224 71);
+    color: rgb(17 24 39);
+  }
+
+  .slot-btn.slot-b.active {
+    background: rgb(34 211 238);
+    border-color: rgb(103 232 249);
+    color: rgb(8 47 73);
+  }
+
+  .slot-btn.slot-close {
+    background: rgb(127 29 29 / 0.28);
+    border-color: rgb(153 27 27);
+    color: rgb(254 226 226);
+  }
+
+  .slot-btn.slot-close:hover {
+    background: rgb(185 28 28 / 0.55);
   }
 
   .search {
@@ -558,6 +640,19 @@
     @apply hidden;
   }
 
+  #app[data-empty="true"] header,
+  #app[data-empty="true"] #thumbDock,
+  #app[data-empty="true"] #overlayHUD,
+  #app[data-empty="true"] #datasetDock,
+  #app[data-empty="true"] #rightDock,
+  #app[data-empty="true"] #specPanel {
+    display: none;
+  }
+
+  #app[data-empty="true"] #emptyState {
+    @apply flex;
+  }
+
   .btn.tiny {
     @apply px-2 py-1 text-xs;
   }
@@ -584,10 +679,9 @@
   @media (max-width: 1200px) {
     #app {
       grid-template-columns: 1fr;
-      grid-template-rows: 52px auto 1fr;
+      grid-template-rows: 52px 1fr;
       grid-template-areas:
         "top"
-        "left"
         "main";
     }
 
@@ -599,11 +693,26 @@
       @apply h-[130px] w-[180px];
     }
 
-    #right {
-      --flyout-visible-header: 130px;
+    #rightDock {
       top: 178px;
       bottom: 7px;
       width: min(360px, calc(100% - 14px));
+    }
+
+    #displayPanel {
+      flex-basis: clamp(210px, 34%, 280px);
+    }
+
+    #datasetDock {
+      width: min(360px, calc(100% - 14px));
+    }
+
+    .dataset-viewport {
+      height: 182px;
+    }
+
+    .empty-dropzone {
+      @apply w-[min(640px,92vw)] px-4 py-8;
     }
   }
 }

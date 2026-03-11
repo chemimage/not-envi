@@ -66,6 +66,7 @@ export function createDatasetRuntime(deps) {
       bandStatsView: null,
       thumb: { ready: false, _t: 0, scale: 1, x0: 0, y0: 0, w: 0, h: 0 },
       treeExpanded: true,
+      displaySlot: 0,
       pyramid: null,
       lastRaster: null
     };
@@ -74,6 +75,10 @@ export function createDatasetRuntime(deps) {
   }
 
   function attachDataset(ds) {
+    const occupied = new Set(state.datasets.map((item) => Number(item.displaySlot || 0)));
+    if (!occupied.has(1)) ds.displaySlot = 1;
+    else if (!occupied.has(2)) ds.displaySlot = 2;
+    else ds.displaySlot = 0;
     state.datasets.unshift(ds);
     recomputeCacheBudgets();
     setActiveDataset(ds.id, { fit: true });

@@ -2,6 +2,7 @@ const $ = (sel) => document.querySelector(sel);
 
 export function collectElements() {
   return {
+    app: $("#app"),
     btnFit: $("#btnFit"),
     btn100: $("#btn100"),
     btnZoomIn: $("#btnZoomIn"),
@@ -16,6 +17,7 @@ export function collectElements() {
     filePicker: $("#filePicker"),
     dropzone: $("#dropzone"),
     datasetCount: $("#datasetCount"),
+    datasetViewport: $("#datasetViewport"),
     datasetList: $("#datasetList"),
     metaHoverPanel: $("#metaHoverPanel"),
     metaSamples: $("#metaSamples"),
@@ -39,10 +41,12 @@ export function collectElements() {
     hudVal: $("#hudVal"),
     thumbWrap: $("#thumbWrap"),
     thumb: $("#thumb"),
+    rightDock: $("#rightDock"),
     right: $("#right"),
     rightHeader: $("#rightHeader"),
     btnRightPin: $("#btnRightPin"),
     btnRightToggle: $("#btnRightToggle"),
+    displayPanel: $("#displayPanel"),
     specPanel: $("#specPanel"),
     specCanvas: $("#specCanvas"),
     specTitle: $("#specTitle"),
