@@ -547,6 +547,7 @@ export function createUIPanels(deps) {
   }
 
   function updatePerf() {
+    if (!els.perfBarCacheText || !els.perfBarCacheFill) return;
     const ds = getActive();
     if (!ds) {
       els.perfBarCacheText.textContent = "Cache: 0 B / 0 B";

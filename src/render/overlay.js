@@ -37,6 +37,7 @@ export function createOverlayRenderer(deps) {
   const { els, overlayCtx, getDevicePixelRatio, getDrawData } = deps;
   const SCALEBAR_EDGE_PAD_CSS = 10;
   const SCALEBAR_HUD_GAP_CSS = 8;
+  const HUD_RADIUS_CSS = 2;
 
   function colorWithAlpha(color, alpha) {
     if (!color) return `rgba(34,197,94,${alpha})`;
@@ -200,15 +201,18 @@ export function createOverlayRenderer(deps) {
     let right = canvasW - edgePad;
     let top = edgePad;
     const host = els.main;
-    const primaryAnchor = els.hudControls;
-    const fallbackAnchor = els.overlayHUD;
-    const anchor = (primaryAnchor && primaryAnchor.getBoundingClientRect)
-      ? primaryAnchor
-      : fallbackAnchor;
-    if (host && host.getBoundingClientRect && anchor && anchor.getBoundingClientRect) {
+    let anchorRect = null;
+    const anchors = [els.hudControls, els.overlayHUD];
+    for (const anchor of anchors) {
+      if (!anchor || !anchor.getBoundingClientRect) continue;
+      const rect = anchor.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+      anchorRect = rect;
+      break;
+    }
+    if (host && host.getBoundingClientRect && anchorRect) {
       const hostRect = host.getBoundingClientRect();
-      const anchorRect = anchor.getBoundingClientRect();
-      if (Number.isFinite(hostRect.left) && Number.isFinite(anchorRect.right) && anchorRect.width > 0 && anchorRect.height > 0) {
+      if (Number.isFinite(hostRect.left) && Number.isFinite(anchorRect.right)) {
         right = (anchorRect.right - hostRect.left) * dpr;
         top = (anchorRect.bottom - hostRect.top) * dpr + (SCALEBAR_HUD_GAP_CSS * dpr);
       }
@@ -237,7 +241,9 @@ export function createOverlayRenderer(deps) {
     }
 
     const innerPad = 10 * dpr;
-    const barYGap = 10 * dpr;
+    const tickLen = 6 * dpr;
+    const labelGap = 4 * dpr;
+    const linePadTop = 2 * dpr;
     const fontPx = 12 * dpr;
 
     overlayCtx.save();
@@ -248,38 +254,34 @@ export function createOverlayRenderer(deps) {
 
     const textW = overlayCtx.measureText(label).width;
     const boxW = Math.max(barDevPx, textW) + innerPad * 2;
-    const boxH = (fontPx + barYGap + 8 * dpr + innerPad * 2);
+    const boxH = (innerPad + linePadTop + tickLen + labelGap + fontPx + innerPad);
 
     const anchor = resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH);
     const anchoredX1 = anchor.right;
     const anchoredY0 = anchor.top;
-    const anchoredY1 = anchoredY0 + boxH;
     const anchoredX0 = anchoredX1 - boxW;
 
     overlayCtx.fillStyle = "rgba(0,0,0,0.55)";
-    overlayCtx.strokeStyle = "rgba(255,255,255,0.22)";
-    overlayCtx.lineWidth = 1 * dpr;
-    roundRect(overlayCtx, anchoredX0, anchoredY0, boxW, boxH, 8 * dpr);
+    roundRect(overlayCtx, anchoredX0, anchoredY0, boxW, boxH, HUD_RADIUS_CSS * dpr);
     overlayCtx.fill();
-    overlayCtx.stroke();
-
-    overlayCtx.fillStyle = "rgba(255,255,255,0.92)";
-    overlayCtx.fillText(label, anchoredX1 - innerPad, anchoredY0 + innerPad);
 
     const barX1 = anchoredX1 - innerPad;
     const barX0 = barX1 - barDevPx;
-    const barY = anchoredY1 - innerPad - 2 * dpr;
+    const barY = anchoredY0 + innerPad + linePadTop;
 
     overlayCtx.strokeStyle = "rgba(255,255,255,0.92)";
     overlayCtx.lineWidth = 1 * dpr;
     overlayCtx.beginPath();
     overlayCtx.moveTo(barX0, barY);
     overlayCtx.lineTo(barX1, barY);
-    overlayCtx.moveTo(barX0, barY - 6 * dpr);
-    overlayCtx.lineTo(barX0, barY + 1 * dpr);
-    overlayCtx.moveTo(barX1, barY - 6 * dpr);
-    overlayCtx.lineTo(barX1, barY + 1 * dpr);
+    overlayCtx.moveTo(barX0, barY);
+    overlayCtx.lineTo(barX0, barY + tickLen);
+    overlayCtx.moveTo(barX1, barY);
+    overlayCtx.lineTo(barX1, barY + tickLen);
     overlayCtx.stroke();
+
+    overlayCtx.fillStyle = "rgba(255,255,255,0.92)";
+    overlayCtx.fillText(label, anchoredX1 - innerPad, barY + tickLen + labelGap);
     overlayCtx.restore();
   }
 

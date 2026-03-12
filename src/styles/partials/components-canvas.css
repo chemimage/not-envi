@@ -167,7 +167,7 @@
   }
 
   .hud {
-    @apply rounded-sm border border-white/15 bg-gray-950/70 px-2 py-1 font-mono text-xs text-white;
+    @apply rounded-sm bg-gray-950/70 px-2 py-1 font-mono text-xs text-white;
   }
 
   .hud b {

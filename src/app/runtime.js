@@ -89,10 +89,15 @@ import { pointInPolygon } from "./draw-geometry.js";
   const cpuCtx = els.cpuCanvas.getContext('2d', {alpha:false});
   const specCtx = els.specCanvas.getContext('2d', {alpha:false});
 
+  let lastStatusKey = "";
   function setStatus(text, cls){
-    els.statusBadge.textContent = text || '';
-    els.statusBadge.classList.remove('warn','ok','err');
-    if (cls) els.statusBadge.classList.add(cls);
+    const statusText = text || "";
+    const statusClass = cls || "";
+    const key = `${statusClass}::${statusText}`;
+    if (key === lastStatusKey) return;
+    lastStatusKey = key;
+    const suffix = statusClass ? `/${statusClass}` : "";
+    console.info(`[state${suffix}] ${statusText || "idle"}`);
   }
 
   async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY); }
