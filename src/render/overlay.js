@@ -62,7 +62,158 @@ export function createOverlayRenderer(deps) {
     };
   }
 
-  function drawLine(ds, item, eff, dpr, rulerHover = null, itemIndex = -1) {
+  function rulerDistanceLabel(ds, item) {
+    if (!item || !Array.isArray(item.points) || item.points.length < 2) return "";
+    const a = item.points[0];
+    const b = item.points[item.points.length - 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const pxDist = Math.hypot(dx, dy);
+    if (!Number.isFinite(pxDist) || pxDist <= 0) return "";
+
+    const sc = ds && ds.meta ? ds.meta.scale : null;
+    const umX = Number(sc?.umPerPixelX);
+    const umY = Number.isFinite(sc?.umPerPixelY) && sc.umPerPixelY > 0 ? Number(sc.umPerPixelY) : umX;
+    if (Number.isFinite(umX) && umX > 0) {
+      const umDist = Math.hypot(dx * umX, dy * umY);
+      if (Number.isFinite(umDist) && umDist > 0) return formatDistanceUm(umDist);
+    }
+    const s = (Math.abs(pxDist - Math.round(pxDist)) < 1e-6)
+      ? String(Math.round(pxDist))
+      : pxDist.toFixed(1).replace(/0+$/, "").replace(/\.$/, "");
+    return `${s} px`;
+  }
+
+  function sampleRasterValue(raster, ix, iy) {
+    if (!raster || !raster.dataF32 || !Number.isFinite(raster.w) || !Number.isFinite(raster.h)) return Number.NaN;
+    const step = Math.max(1, Number(raster.step) || 1);
+    const x0 = Number(raster.x0) || 0;
+    const y0 = Number(raster.y0) || 0;
+    const rx = Math.round((ix - x0) / step);
+    const ry = Math.round((iy - y0) / step);
+    if (!Number.isFinite(rx) || !Number.isFinite(ry)) return Number.NaN;
+    if (rx < 0 || ry < 0 || rx >= raster.w || ry >= raster.h) return Number.NaN;
+    return raster.dataF32[ry * raster.w + rx];
+  }
+
+  function rulerUpNormal(a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (!Number.isFinite(len) || len <= 1e-6) return null;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (ny > 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    return { nx, ny, len };
+  }
+
+  function drawRulerProfile(ds, item, a, b, dpr) {
+    if (!ds || !item || !Array.isArray(item.points) || item.points.length < 2) return;
+    const raster = ds.lastRaster;
+    if (!raster || raster.band !== ds.activeBand || !raster.dataF32) return;
+    const ai = item.points[0];
+    const bi = item.points[item.points.length - 1];
+    const lenImg = Math.hypot(bi.x - ai.x, bi.y - ai.y);
+    if (!Number.isFinite(lenImg) || lenImg < 2) return;
+
+    const samples = Math.max(24, Math.min(256, Math.round(lenImg)));
+    const values = new Float32Array(samples);
+    let minV = Number.POSITIVE_INFINITY;
+    let maxV = Number.NEGATIVE_INFINITY;
+    let valid = 0;
+    for (let i = 0; i < samples; i += 1) {
+      const t = i / Math.max(1, samples - 1);
+      const ix = ai.x + (bi.x - ai.x) * t;
+      const iy = ai.y + (bi.y - ai.y) * t;
+      const v = sampleRasterValue(raster, ix, iy);
+      values[i] = v;
+      if (Number.isFinite(v)) {
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+        valid += 1;
+      }
+    }
+    if (valid < 2) return;
+
+    const n = rulerUpNormal(a, b);
+    if (!n) return;
+    const offset = 10 * dpr;
+    const amp = 22 * dpr;
+    const range = Math.max(1e-12, maxV - minV);
+
+    const ax = a.x + n.nx * offset;
+    const ay = a.y + n.ny * offset;
+    const bx = b.x + n.nx * offset;
+    const by = b.y + n.ny * offset;
+    overlayCtx.strokeStyle = "rgba(226,232,240,0.35)";
+    overlayCtx.lineWidth = 1 * dpr;
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(ax, ay);
+    overlayCtx.lineTo(bx, by);
+    overlayCtx.stroke();
+
+    overlayCtx.strokeStyle = colorWithAlpha(item.color, 0.95);
+    overlayCtx.lineWidth = 1.5 * dpr;
+    overlayCtx.beginPath();
+    let hasRun = false;
+    for (let i = 0; i < samples; i += 1) {
+      const v = values[i];
+      if (!Number.isFinite(v)) {
+        hasRun = false;
+        continue;
+      }
+      const t = i / Math.max(1, samples - 1);
+      const bx0 = a.x + (b.x - a.x) * t;
+      const by0 = a.y + (b.y - a.y) * t;
+      const u = (v - minV) / range;
+      const d = offset + (u * amp);
+      const px = bx0 + n.nx * d;
+      const py = by0 + n.ny * d;
+      if (!hasRun) {
+        overlayCtx.moveTo(px, py);
+        hasRun = true;
+      } else {
+        overlayCtx.lineTo(px, py);
+      }
+    }
+    if (hasRun) overlayCtx.stroke();
+  }
+
+  function drawRulerLabel(ds, item, a, b, dpr) {
+    const text = rulerDistanceLabel(ds, item);
+    if (!text) return;
+    const cx = (a.x + b.x) * 0.5;
+    const cy = (a.y + b.y) * 0.5;
+    let ang = Math.atan2(b.y - a.y, b.x - a.x);
+    if (ang > (Math.PI * 0.5)) ang -= Math.PI;
+    if (ang < -(Math.PI * 0.5)) ang += Math.PI;
+    const fontPx = 11 * dpr;
+    const padX = 6 * dpr;
+    const padY = 3 * dpr;
+
+    overlayCtx.save();
+    overlayCtx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
+    overlayCtx.textAlign = "left";
+    overlayCtx.textBaseline = "top";
+    const textW = overlayCtx.measureText(text).width;
+    const boxW = textW + (padX * 2);
+    const boxH = fontPx + (padY * 2);
+    const x = -boxW * 0.5;
+    const y = -boxH * 0.5;
+    overlayCtx.translate(cx, cy);
+    overlayCtx.rotate(ang);
+    overlayCtx.fillStyle = "rgba(0,0,0,0.68)";
+    roundRect(overlayCtx, x, y, boxW, boxH, 2 * dpr);
+    overlayCtx.fill();
+    overlayCtx.fillStyle = "rgba(255,255,255,0.93)";
+    overlayCtx.fillText(text, x + padX, y + padY);
+    overlayCtx.restore();
+  }
+
+  function drawLine(ds, item, eff, dpr) {
     if (!item.points || item.points.length < 2) return;
     const a = toScreen(ds, item.points[0], eff);
     const b = toScreen(ds, item.points[item.points.length - 1], eff);
@@ -72,6 +223,10 @@ export function createOverlayRenderer(deps) {
     overlayCtx.moveTo(a.x, a.y);
     overlayCtx.lineTo(b.x, b.y);
     overlayCtx.stroke();
+    if (item.tool === "ruler") {
+      drawRulerProfile(ds, item, a, b, dpr);
+      drawRulerLabel(ds, item, a, b, dpr);
+    }
   }
 
   function drawMarqueeStroke(pathBuilder, dpr, marqueeOffset = 0) {
@@ -139,10 +294,10 @@ export function createOverlayRenderer(deps) {
     }
   }
 
-  function drawOneAnnotation(ds, item, eff, dpr, rulerHover, itemIndex, selectionIds = null, marqueeOffset = 0) {
+  function drawOneAnnotation(ds, item, eff, dpr, selectionIds = null, marqueeOffset = 0) {
     if (!item || !item.tool) return;
     const isSelection = !!(selectionIds && selectionIds.has(item.id));
-    if (item.tool === "ruler" || item.tool === "line") drawLine(ds, item, eff, dpr, rulerHover, itemIndex);
+    if (item.tool === "ruler" || item.tool === "line") drawLine(ds, item, eff, dpr);
     else if (item.tool === "rect") drawRect(ds, item, eff, dpr, isSelection, marqueeOffset);
     else if (item.tool === "shape") drawShape(ds, item, eff, dpr, isSelection, marqueeOffset);
   }
@@ -154,7 +309,6 @@ export function createOverlayRenderer(deps) {
     const dpr = getDevicePixelRatio();
     const eff = ds.view.scale * dpr;
     const items = Array.isArray(drawData.items) ? drawData.items : [];
-    const rulerHover = drawData.rulerHover || null;
     const selectionIds = new Set(
       Array.isArray(drawData.selectionIds)
         ? drawData.selectionIds.filter((id) => Number.isFinite(id))
@@ -162,9 +316,9 @@ export function createOverlayRenderer(deps) {
     );
     const marqueeOffset = Number.isFinite(drawData.marqueeOffset) ? drawData.marqueeOffset : 0;
     for (let i = 0; i < items.length; i += 1) {
-      drawOneAnnotation(ds, items[i], eff, dpr, rulerHover, i, selectionIds, marqueeOffset);
+      drawOneAnnotation(ds, items[i], eff, dpr, selectionIds, marqueeOffset);
     }
-    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, null, -1, null, 0);
+    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, null, 0);
   }
 
   function computeReferenceSpacing(ds, dpr) {
