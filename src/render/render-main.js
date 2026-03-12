@@ -1,4 +1,5 @@
 import { clamp } from "../core/utils.js";
+import { resolveRasterSampling } from "./raster-geometry.js";
 
 export function createRenderer(deps) {
   const {
@@ -29,37 +30,22 @@ export function createRenderer(deps) {
   async function readRasterDirect(ds, band, eff) {
     const canvasW = els.cpuCanvas.width;
     const canvasH = els.cpuCanvas.height;
-
-    let rasterW;
-    let rasterH;
-    let step;
-    if (eff >= 1) {
-      rasterW = Math.ceil(canvasW / eff);
-      rasterH = Math.ceil(canvasH / eff);
-      step = 1;
-    } else {
-      step = Math.ceil(1 / eff);
-      const denom = Math.max(1e-9, eff * step);
-      rasterW = Math.max(1, Math.ceil(canvasW / denom));
-      rasterH = Math.max(1, Math.ceil(canvasH / denom));
-    }
-
-    const x0 = ds.view.x;
-    const y0 = ds.view.y;
-    const maxX = ds.meta.samples - 1;
-    const maxY = ds.meta.lines - 1;
-    const colStart = Math.max(0, Math.ceil((0 - x0) / step));
-    const colEnd = Math.min(rasterW - 1, Math.floor((maxX - x0) / step));
-    const rowStart = Math.max(0, Math.ceil((0 - y0) / step));
-    const rowEnd = Math.min(rasterH - 1, Math.floor((maxY - y0) / step));
-    const validW = Math.max(0, colEnd - colStart + 1);
-    const validH = Math.max(0, rowEnd - rowStart + 1);
+    const geom = resolveRasterSampling(ds, canvasW, canvasH, eff);
+    const {
+      step,
+      rasterW,
+      rasterH,
+      colStart,
+      rowStart,
+      validW,
+      validH,
+      srcX0,
+      srcY0
+    } = geom;
     const out = new Float32Array(rasterW * rasterH);
     out.fill(Number.NaN);
 
     if (validW > 0 && validH > 0) {
-      const srcX0 = x0 + (colStart * step);
-      const srcY0 = y0 + (rowStart * step);
       let raw;
       if (ds.meta.interleave === "bip") {
         raw = await readBandWindowBIP(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step);
@@ -74,7 +60,7 @@ export function createRenderer(deps) {
       }
     }
 
-    return { band, dataF32: out, w: rasterW, h: rasterH, source: "direct", level: 0, step, x0, y0 };
+    return { band, dataF32: out, w: rasterW, h: rasterH, source: "direct", level: 0, step, x0: ds.view.x, y0: ds.view.y };
   }
 
   function viewExtendsOutside(ds, eff) {

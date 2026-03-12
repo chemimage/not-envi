@@ -1,4 +1,5 @@
 import { fmtNoGroup } from "../core/utils.js";
+import { resolveRasterSampling } from "./raster-geometry.js";
 
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
@@ -287,44 +288,11 @@ export function createOverlayRenderer(deps) {
 
   function computeRenderedImageRect(ds) {
     const dpr = getDevicePixelRatio();
-    const eff = Math.max(1e-9, ds.view.scale * dpr);
+    const eff = ds.view.scale * dpr;
     const canvasW = els.overlayCanvas.width;
     const canvasH = els.overlayCanvas.height;
-
-    let rasterW = 0;
-    let rasterH = 0;
-    let step = 1;
-    if (eff >= 1) {
-      rasterW = Math.max(1, Math.ceil(canvasW / eff));
-      rasterH = Math.max(1, Math.ceil(canvasH / eff));
-      step = 1;
-    } else {
-      step = Math.max(1, Math.ceil(1 / eff));
-      const denom = Math.max(1e-9, eff * step);
-      rasterW = Math.max(1, Math.ceil(canvasW / denom));
-      rasterH = Math.max(1, Math.ceil(canvasH / denom));
-    }
-
-    const x0 = ds.view.x;
-    const y0 = ds.view.y;
-    const maxX = ds.meta.samples - 1;
-    const maxY = ds.meta.lines - 1;
-    const colStart = Math.max(0, Math.ceil((0 - x0) / step));
-    const colEnd = Math.min(rasterW - 1, Math.floor((maxX - x0) / step));
-    const rowStart = Math.max(0, Math.ceil((0 - y0) / step));
-    const rowEnd = Math.min(rasterH - 1, Math.floor((maxY - y0) / step));
-    const validW = Math.max(0, colEnd - colStart + 1);
-    const validH = Math.max(0, rowEnd - rowStart + 1);
-    if (validW <= 0 || validH <= 0) return null;
-
-    const sx = canvasW / Math.max(1, rasterW);
-    const sy = canvasH / Math.max(1, rasterH);
-    return {
-      x: colStart * sx,
-      y: rowStart * sy,
-      w: validW * sx,
-      h: validH * sy
-    };
+    const geom = resolveRasterSampling(ds, canvasW, canvasH, eff);
+    return geom.displayRect;
   }
 
   function drawOverlays(ds) {
