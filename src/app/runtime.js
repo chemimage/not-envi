@@ -160,7 +160,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     spectrumPickEnabled: false,
     areaSelectionMode: "single",
     analysisHist: { open: false, hoverBin: -1, stats: null },
-    draw: { tool: "none", color: "#ff2d2d", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null, areaMove: null, nextItemId: 1 },
+    draw: { tool: "none", color: "#ff2d2d", activePointerId: null, draft: null, rulerDrag: null, rulerMove: null, rulerHover: null, areaMove: null, nextItemId: 1 },
 
     exportKind: null,
   };
@@ -253,6 +253,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   function updateAreaMoveAtPointer(ev) { return annotation.updateAreaMoveAtPointer(ev); }
   function finishAreaMoveAtPointer(ev) { return annotation.finishAreaMoveAtPointer(ev); }
   function cancelAreaMove(pointerId = null) { return annotation.cancelAreaMove(pointerId); }
+  function resolvePointerCursor(ev) { return annotation.resolvePointerCursor(ev); }
 
   function resolveEffectiveSelectionBounds(ds, selections = null) {
     if (!ds) return null;
@@ -720,6 +721,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     updateAreaMoveAtPointer,
     finishAreaMoveAtPointer,
     cancelAreaMove,
+    resolvePointerCursor,
     isDrawingPointer,
     beginDrawingAtPointer,
     updateDrawingAtPointer,

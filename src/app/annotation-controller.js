@@ -1,4 +1,4 @@
-import { distanceToDrawing } from "./draw-geometry.js";
+import { distanceToDrawing, pointInPolygon } from "./draw-geometry.js";
 
 export function createAnnotationController(deps) {
   const {
@@ -45,13 +45,15 @@ export function createAnnotationController(deps) {
     if (enabled) {
       const hadDraft = !!state.draw.draft;
       const hadRulerDrag = !!state.draw.rulerDrag;
+      const hadRulerMove = !!state.draw.rulerMove;
       const hadRulerHover = !!state.draw.rulerHover;
       const hadAreaMove = !!state.draw.areaMove;
-      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerHover || hadAreaMove) {
+      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerMove || hadRulerHover || hadAreaMove) {
         state.draw.tool = "none";
         state.draw.activePointerId = null;
         state.draw.draft = null;
         state.draw.rulerDrag = null;
+        state.draw.rulerMove = null;
         state.draw.rulerHover = null;
         state.draw.areaMove = null;
         render({ reuseRaster: true });
@@ -67,6 +69,7 @@ export function createAnnotationController(deps) {
   function setDrawTool(tool) {
     const hadDraft = !!state.draw.draft;
     const hadRulerDrag = !!state.draw.rulerDrag;
+    const hadRulerMove = !!state.draw.rulerMove;
     const hadRulerHover = !!state.draw.rulerHover;
     const hadAreaMove = !!state.draw.areaMove;
     const prevTool = state.draw.tool;
@@ -78,9 +81,10 @@ export function createAnnotationController(deps) {
       state.draw.activePointerId = null;
       state.draw.draft = null;
       state.draw.rulerDrag = null;
+      state.draw.rulerMove = null;
       state.draw.rulerHover = null;
       state.draw.areaMove = null;
-      if (hadDraft || hadRulerDrag || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
+      if (hadDraft || hadRulerDrag || hadRulerMove || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
     }
   }
 
@@ -178,8 +182,75 @@ export function createAnnotationController(deps) {
     return true;
   }
 
-  function findAreaHitAtPointer(ds, ev) {
+  function rectBoundsFromItem(item) {
+    if (!item || !Array.isArray(item.points) || item.points.length < 2) return null;
+    const a = item.points[0];
+    const b = item.points[item.points.length - 1];
+    return {
+      x0: Math.min(a.x, b.x),
+      y0: Math.min(a.y, b.y),
+      x1: Math.max(a.x, b.x),
+      y1: Math.max(a.y, b.y)
+    };
+  }
+
+  function pointInsideArea(item, point) {
+    if (!item || !point) return false;
+    if (item.tool === "rect") {
+      const box = rectBoundsFromItem(item);
+      if (!box) return false;
+      return point.x >= box.x0 && point.x <= box.x1 && point.y >= box.y0 && point.y <= box.y1;
+    }
+    if (item.tool === "shape" && Array.isArray(item.points) && item.points.length >= 3) {
+      return pointInPolygon(point, item.points);
+    }
+    return false;
+  }
+
+  function activeAreaToolFilter() {
+    if (state.draw.tool === "rect") return "rect";
+    if (state.draw.tool === "shape") return "shape";
+    return null;
+  }
+
+  function findRectHandleAtPoint(item, point, tolImg) {
+    const box = rectBoundsFromItem(item);
+    if (!box) return null;
+    const { x0, y0, x1, y1 } = box;
+    const minDim = Math.max(1e-6, Math.min(x1 - x0, y1 - y0));
+    const cornerTol = Math.max(1, Math.min(tolImg, minDim * 0.2));
+    const edgeTol = Math.max(1, Math.min(tolImg, minDim * 0.18));
+
+    const corners = [
+      { key: "nw", x: x0, y: y0 },
+      { key: "ne", x: x1, y: y0 },
+      { key: "sw", x: x0, y: y1 },
+      { key: "se", x: x1, y: y1 }
+    ];
+    let bestCorner = null;
+    let bestCornerDist = Number.POSITIVE_INFINITY;
+    for (const c of corners) {
+      const d = Math.hypot(point.x - c.x, point.y - c.y);
+      if (d <= cornerTol && d < bestCornerDist) {
+        bestCornerDist = d;
+        bestCorner = c.key;
+      }
+    }
+    if (bestCorner) return bestCorner;
+
+    const withinX = point.x >= (x0 - edgeTol) && point.x <= (x1 + edgeTol);
+    const withinY = point.y >= (y0 - edgeTol) && point.y <= (y1 + edgeTol);
+    if (withinX && Math.abs(point.y - y0) <= edgeTol) return "n";
+    if (withinX && Math.abs(point.y - y1) <= edgeTol) return "s";
+    if (withinY && Math.abs(point.x - x0) <= edgeTol) return "w";
+    if (withinY && Math.abs(point.x - x1) <= edgeTol) return "e";
+    return null;
+  }
+
+  function findAreaHitAtPointer(ds, ev, options = null) {
     if (!ds) return null;
+    const opt = options || {};
+    const toolFilter = (opt.toolFilter === "rect" || opt.toolFilter === "shape") ? opt.toolFilter : null;
     const items = listHistogramSelectionItems(ds);
     if (!items.length) return null;
     const point = pointerToImagePoint(ev, ds);
@@ -189,6 +260,13 @@ export function createAnnotationController(deps) {
     let bestDist = Number.POSITIVE_INFINITY;
     for (let i = items.length - 1; i >= 0; i -= 1) {
       const item = items[i];
+      if (toolFilter && item.tool !== toolFilter) continue;
+      const inside = pointInsideArea(item, point);
+      if (inside) {
+        best = item;
+        bestDist = -1;
+        break;
+      }
       const dist = distanceToDrawing(point, item);
       if (!Number.isFinite(dist) || dist > imgTolerance || dist > bestDist) continue;
       best = item;
@@ -196,7 +274,7 @@ export function createAnnotationController(deps) {
       if (dist <= 0) break;
     }
     if (!best || !Number.isFinite(best.id)) return null;
-    return { item: best, point };
+    return { item: best, point, imgTolerance };
   }
 
   function refreshAreaSpectrumIfOpen(ds, anchor = null, noReposition = false) {
@@ -249,25 +327,102 @@ export function createAnnotationController(deps) {
   }
 
   function beginAreaMoveAtPointer(ev) {
-    if (getAreaSelectionMode() !== "single") return false;
     const ds = getActive();
     if (!ds) return false;
-    const hit = findAreaHitAtPointer(ds, ev);
+    const toolFilter = activeAreaToolFilter();
+    if (!toolFilter) return false;
+    const hit = findAreaHitAtPointer(ds, ev, { toolFilter });
     if (!hit) return false;
     const changed = setSelectedAreaId(ds, hit.item.id);
     if (changed) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
     }
+    let mode = "move";
+    let resizeHandle = null;
+    if (toolFilter === "rect" && hit.item.tool === "rect") {
+      resizeHandle = findRectHandleAtPoint(hit.item, hit.point, hit.imgTolerance);
+      if (resizeHandle) mode = "resize-rect";
+    }
+    const bounds = rectBoundsFromItem(hit.item);
     state.draw.areaMove = {
       activePointerId: ev.pointerId,
       dsId: ds.id,
       itemId: hit.item.id,
+      mode,
+      resizeHandle,
       lastPoint: hit.point,
+      startPoint: hit.point,
+      startBounds: bounds ? { ...bounds } : null,
       moved: false,
       lastRefreshMs: 0
     };
     if (changed) render({ reuseRaster: true });
+    return true;
+  }
+
+  function refreshSelectionProductsForManipulation(ds, ev, moveState) {
+    const wantsSpatial = !!(isAnalysisHistogramOpen && isAnalysisHistogramOpen() && isDatasetActive && isDatasetActive(ds));
+    const wantsSpectral = !!(state.spectrumPickEnabled && getSpectrumOpenForDatasetId && getSpectrumOpenForDatasetId(ds.id));
+    if (wantsSpatial && positionAnalysisHistogramPanel) positionAnalysisHistogramPanel();
+    const nowMs = performance.now();
+    if ((wantsSpatial || wantsSpectral) && (!Number.isFinite(moveState.lastRefreshMs) || (nowMs - moveState.lastRefreshMs) >= 120)) {
+      moveState.lastRefreshMs = nowMs;
+      if (wantsSpatial) updateSelectionHistogramForDataset(ds);
+      if (wantsSpectral) refreshAreaSpectrumIfOpen(ds, ev, false);
+    }
+  }
+
+  function updateRectResizeAtPointer(ev, ds, move, item) {
+    if (!move || move.mode !== "resize-rect" || item.tool !== "rect") return false;
+    const handle = move.resizeHandle;
+    const start = move.startBounds;
+    if (!handle || !start) return false;
+    const p = pointerToImagePoint(ev, ds);
+    const maxX = Math.max(0, ds.meta.samples - 1);
+    const maxY = Math.max(0, ds.meta.lines - 1);
+    const minSpan = Math.max(1e-6, 1 / Math.max(1e-6, ds.view.scale));
+
+    let x0 = start.x0;
+    let y0 = start.y0;
+    let x1 = start.x1;
+    let y1 = start.y1;
+    if (handle.includes("w")) x0 = clamp(p.x, 0, maxX);
+    if (handle.includes("e")) x1 = clamp(p.x, 0, maxX);
+    if (handle.includes("n")) y0 = clamp(p.y, 0, maxY);
+    if (handle.includes("s")) y1 = clamp(p.y, 0, maxY);
+
+    if ((x1 - x0) < minSpan) {
+      if (handle.includes("w")) x0 = x1 - minSpan;
+      else if (handle.includes("e")) x1 = x0 + minSpan;
+    }
+    if ((y1 - y0) < minSpan) {
+      if (handle.includes("n")) y0 = y1 - minSpan;
+      else if (handle.includes("s")) y1 = y0 + minSpan;
+    }
+
+    x0 = clamp(x0, 0, maxX);
+    x1 = clamp(x1, 0, maxX);
+    y0 = clamp(y0, 0, maxY);
+    y1 = clamp(y1, 0, maxY);
+    if (x1 < x0) {
+      const t = x0; x0 = x1; x1 = t;
+    }
+    if (y1 < y0) {
+      const t = y0; y0 = y1; y1 = t;
+    }
+
+    const p0 = item.points[0];
+    const p1 = item.points[item.points.length - 1];
+    if (Math.abs(p0.x - x0) < 1e-9 && Math.abs(p0.y - y0) < 1e-9 && Math.abs(p1.x - x1) < 1e-9 && Math.abs(p1.y - y1) < 1e-9) {
+      return true;
+    }
+    item.points[0] = { x: x0, y: y0 };
+    item.points[item.points.length - 1] = { x: x1, y: y1 };
+    move.lastPoint = p;
+    move.moved = true;
+    refreshSelectionProductsForManipulation(ds, ev, move);
+    render({ reuseRaster: true });
     return true;
   }
 
@@ -278,6 +433,7 @@ export function createAnnotationController(deps) {
     if (!ds || ds.id !== move.dsId || !Array.isArray(ds.drawings)) return false;
     const item = ds.drawings.find((it) => it && it.id === move.itemId && isHistogramSelectionTool(it));
     if (!item || !Array.isArray(item.points) || !item.points.length) return false;
+    if (move.mode === "resize-rect") return updateRectResizeAtPointer(ev, ds, move, item);
 
     const p = pointerToImagePoint(ev, ds);
     const dx = p.x - move.lastPoint.x;
@@ -314,15 +470,7 @@ export function createAnnotationController(deps) {
     }
     move.lastPoint = p;
     move.moved = true;
-    const wantsSpatial = !!(isAnalysisHistogramOpen && isAnalysisHistogramOpen() && isDatasetActive && isDatasetActive(ds));
-    const wantsSpectral = !!(state.spectrumPickEnabled && getSpectrumOpenForDatasetId && getSpectrumOpenForDatasetId(ds.id));
-    if (wantsSpatial && positionAnalysisHistogramPanel) positionAnalysisHistogramPanel();
-    const nowMs = performance.now();
-    if ((wantsSpatial || wantsSpectral) && (!Number.isFinite(move.lastRefreshMs) || (nowMs - move.lastRefreshMs) >= 120)) {
-      move.lastRefreshMs = nowMs;
-      if (wantsSpatial) updateSelectionHistogramForDataset(ds);
-      if (wantsSpectral) refreshAreaSpectrumIfOpen(ds, ev, false);
-    }
+    refreshSelectionProductsForManipulation(ds, ev, move);
     render({ reuseRaster: true });
     return true;
   }
@@ -348,6 +496,33 @@ export function createAnnotationController(deps) {
     state.draw.areaMove = null;
     render({ reuseRaster: true });
     return true;
+  }
+
+  function resolvePointerCursor(ev) {
+    const ds = getActive();
+    if (!ds) return "";
+    if (!ev) return "";
+    const tool = state.draw.tool;
+    if (tool === "ruler") {
+      const point = pointerToImagePoint(ev, ds);
+      if (findRulerEndpointHit(ds, point, ev.pointerType)) return "grab";
+      if (findRulerBodyHit(ds, point, ev.pointerType)) return "move";
+      return "";
+    }
+    if (tool === "rect") {
+      const hit = findAreaHitAtPointer(ds, ev, { toolFilter: "rect" });
+      if (!hit) return "";
+      if (findRectHandleAtPoint(hit.item, hit.point, hit.imgTolerance)) return "grab";
+      if (pointInsideArea(hit.item, hit.point)) return "move";
+      return "";
+    }
+    if (tool === "shape") {
+      const hit = findAreaHitAtPointer(ds, ev, { toolFilter: "shape" });
+      if (!hit) return "";
+      if (pointInsideArea(hit.item, hit.point)) return "move";
+      return "";
+    }
+    return "";
   }
 
   function getDrawData(ds) {
@@ -384,6 +559,30 @@ export function createAnnotationController(deps) {
         drawingIndex: i,
         pointIndex: d0 <= d1 ? 0 : lastIdx
       };
+    }
+    return best;
+  }
+
+  function findRulerBodyHit(ds, point, pointerType) {
+    if (!ds || !Array.isArray(ds.drawings) || !ds.drawings.length) return null;
+    const bodyPxTolerance = (pointerType === "touch") ? 18 : 12;
+    const endpointPxTolerance = (pointerType === "touch") ? 28 : 16;
+    const bodyTol = bodyPxTolerance / Math.max(1e-6, ds.view.scale);
+    const endpointTol = endpointPxTolerance / Math.max(1e-6, ds.view.scale);
+    let best = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
+      const item = ds.drawings[i];
+      if (!item || (item.tool !== "ruler" && item.tool !== "line")) continue;
+      if (!Array.isArray(item.points) || item.points.length < 2) continue;
+      const d = distanceToDrawing(point, item);
+      if (!Number.isFinite(d) || d > bodyTol || d > bestDist) continue;
+      const lastIdx = item.points.length - 1;
+      const d0 = Math.hypot(point.x - item.points[0].x, point.y - item.points[0].y);
+      const d1 = Math.hypot(point.x - item.points[lastIdx].x, point.y - item.points[lastIdx].y);
+      if (Math.min(d0, d1) <= endpointTol) continue;
+      best = { drawingIndex: i };
+      bestDist = d;
     }
     return best;
   }
@@ -460,6 +659,7 @@ export function createAnnotationController(deps) {
     state.draw.activePointerId = null;
     state.draw.draft = null;
     state.draw.rulerDrag = null;
+    state.draw.rulerMove = null;
     state.draw.rulerHover = null;
     state.draw.areaMove = null;
     updateSelectionHistogramForDataset(ds);
@@ -477,7 +677,8 @@ export function createAnnotationController(deps) {
     if (!ds) return false;
     if (!Array.isArray(ds.drawings)) ds.drawings = [];
     if (state.draw.tool === "ruler") {
-      const hit = findRulerEndpointHit(ds, pointerToImagePoint(ev, ds), ev.pointerType);
+      const pointer = pointerToImagePoint(ev, ds);
+      const hit = findRulerEndpointHit(ds, pointer, ev.pointerType);
       if (hit) {
         state.draw.activePointerId = ev.pointerId;
         state.draw.rulerDrag = {
@@ -490,6 +691,20 @@ export function createAnnotationController(deps) {
           drawingIndex: hit.drawingIndex,
           pointIndex: hit.pointIndex
         };
+        state.draw.draft = null;
+        render({ reuseRaster: true });
+        return true;
+      }
+      const bodyHit = findRulerBodyHit(ds, pointer, ev.pointerType);
+      if (bodyHit) {
+        state.draw.activePointerId = ev.pointerId;
+        state.draw.rulerMove = {
+          dsId: ds.id,
+          drawingIndex: bodyHit.drawingIndex,
+          lastPoint: pointer
+        };
+        state.draw.rulerDrag = null;
+        state.draw.rulerHover = null;
         state.draw.draft = null;
         render({ reuseRaster: true });
         return true;
@@ -510,6 +725,36 @@ export function createAnnotationController(deps) {
 
   function updateDrawingAtPointer(ev) {
     const ds = getActive();
+    const rulerMove = state.draw.rulerMove;
+    if (ds && rulerMove && rulerMove.dsId === ds.id) {
+      const item = ds.drawings[rulerMove.drawingIndex];
+      if (item && Array.isArray(item.points) && item.points.length >= 2) {
+        const p = pointerToImagePoint(ev, ds);
+        const a = item.points[0];
+        const b = item.points[item.points.length - 1];
+        const dx = p.x - rulerMove.lastPoint.x;
+        const dy = p.y - rulerMove.lastPoint.y;
+        if (Number.isFinite(dx) && Number.isFinite(dy) && (dx || dy)) {
+          const minX = Math.min(a.x, b.x);
+          const minY = Math.min(a.y, b.y);
+          const maxX = Math.max(a.x, b.x);
+          const maxY = Math.max(a.y, b.y);
+          const shiftX = clamp(dx, -minX, (ds.meta.samples - 1) - maxX);
+          const shiftY = clamp(dy, -minY, (ds.meta.lines - 1) - maxY);
+          if (shiftX || shiftY) {
+            item.points[0] = { x: a.x + shiftX, y: a.y + shiftY };
+            item.points[item.points.length - 1] = { x: b.x + shiftX, y: b.y + shiftY };
+          }
+        }
+        rulerMove.lastPoint = p;
+        render({ reuseRaster: true });
+        return;
+      }
+      state.draw.rulerMove = null;
+      state.draw.activePointerId = null;
+      return;
+    }
+
     const rulerDrag = state.draw.rulerDrag;
     if (ds && rulerDrag && rulerDrag.dsId === ds.id) {
       const item = ds.drawings[rulerDrag.drawingIndex];
@@ -543,17 +788,28 @@ export function createAnnotationController(deps) {
 
   function finishDrawingAtPointer(ev) {
     const ds = getActive();
+    const rulerMove = state.draw.rulerMove;
     const rulerDrag = state.draw.rulerDrag;
-    if (!ds || !((state.draw.draft && state.draw.draft.dsId === ds.id) || (rulerDrag && rulerDrag.dsId === ds.id))) {
+    if (!ds || !((state.draw.draft && state.draw.draft.dsId === ds.id) || (rulerDrag && rulerDrag.dsId === ds.id) || (rulerMove && rulerMove.dsId === ds.id))) {
       state.draw.activePointerId = null;
       state.draw.draft = null;
       state.draw.rulerDrag = null;
+      state.draw.rulerMove = null;
+      return;
+    }
+    if (rulerMove && rulerMove.dsId === ds.id) {
+      updateDrawingAtPointer(ev);
+      state.draw.activePointerId = null;
+      state.draw.rulerMove = null;
+      state.draw.areaMove = null;
+      render({ reuseRaster: true });
       return;
     }
     if (rulerDrag && rulerDrag.dsId === ds.id) {
       updateDrawingAtPointer(ev);
       state.draw.activePointerId = null;
       state.draw.rulerDrag = null;
+      state.draw.rulerMove = null;
       state.draw.areaMove = null;
       render({ reuseRaster: true });
       return;
@@ -596,6 +852,7 @@ export function createAnnotationController(deps) {
     state.draw.activePointerId = null;
     state.draw.draft = null;
     state.draw.rulerDrag = null;
+    state.draw.rulerMove = null;
     state.draw.areaMove = null;
     ensureMarqueeTicker();
     render({ reuseRaster: true });
@@ -605,6 +862,7 @@ export function createAnnotationController(deps) {
     state.draw.activePointerId = null;
     state.draw.draft = null;
     state.draw.rulerDrag = null;
+    state.draw.rulerMove = null;
     state.draw.areaMove = null;
     render({ reuseRaster: true });
   }
@@ -630,6 +888,7 @@ export function createAnnotationController(deps) {
     updateAreaMoveAtPointer,
     finishAreaMoveAtPointer,
     cancelAreaMove,
+    resolvePointerCursor,
     refreshAreaSpectrumIfOpen,
     getDrawData,
     updateRulerHoverAtPointer,

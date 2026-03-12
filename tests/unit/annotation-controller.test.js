@@ -13,6 +13,7 @@ function makeBase() {
       activePointerId: null,
       draft: null,
       rulerDrag: null,
+      rulerMove: null,
       rulerHover: null,
       areaMove: null,
       nextItemId: 10
@@ -81,5 +82,63 @@ describe("annotation-controller", () => {
 
     ann.setDrawTool("rect");
     expect(ann.getDrawTool()).toBe("none");
+  });
+
+  test("rect tool allows dragging an area from interior", () => {
+    const { ds, deps } = makeBase();
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("rect");
+
+    const down = { pointerId: 11, pointerType: "mouse", clientX: 4, clientY: 4 };
+    expect(ann.beginAreaMoveAtPointer(down)).toBe(true);
+    expect(ann.isAreaMovePointer(11)).toBe(true);
+
+    ann.updateAreaMoveAtPointer({ pointerId: 11, pointerType: "mouse", clientX: 6, clientY: 7 });
+    expect(ds.drawings[0].points[0]).toEqual({ x: 4, y: 5 });
+    expect(ds.drawings[0].points[1]).toEqual({ x: 10, y: 11 });
+
+    ann.finishAreaMoveAtPointer({ pointerId: 11, pointerType: "mouse", clientX: 6, clientY: 7 });
+    expect(ann.isAreaMovePointer(11)).toBe(false);
+  });
+
+  test("rect tool corner hit resizes rectangle", () => {
+    const { ds, deps } = makeBase();
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("rect");
+
+    const down = { pointerId: 12, pointerType: "mouse", clientX: 2.1, clientY: 2.1 };
+    expect(ann.beginAreaMoveAtPointer(down)).toBe(true);
+
+    ann.updateAreaMoveAtPointer({ pointerId: 12, pointerType: "mouse", clientX: 1, clientY: 1 });
+    expect(ds.drawings[0].points[0]).toEqual({ x: 1, y: 1 });
+    expect(ds.drawings[0].points[1]).toEqual({ x: 8, y: 8 });
+  });
+
+  test("ruler tool allows dragging ruler body", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings.push({ id: 9, tool: "ruler", color: "#fff", points: [{ x: 2, y: 2 }, { x: 42, y: 42 }] });
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("ruler");
+
+    expect(ann.beginDrawingAtPointer({ pointerId: 13, pointerType: "mouse", clientX: 20, clientY: 19.8 })).toBe(true);
+    ann.updateDrawingAtPointer({ pointerId: 13, pointerType: "mouse", clientX: 22, clientY: 20.8 });
+    const ruler = ds.drawings.find((item) => item.id === 9);
+    expect(ruler.points[0]).toEqual({ x: 4, y: 3 });
+    expect(ruler.points[1]).toEqual({ x: 44, y: 43 });
+    ann.finishDrawingAtPointer({ pointerId: 13, pointerType: "mouse", clientX: 22, clientY: 20.8 });
+  });
+
+  test("cursor resolves to grab for handles and move for movable regions", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings.push({ id: 9, tool: "ruler", color: "#fff", points: [{ x: 2, y: 2 }, { x: 42, y: 42 }] });
+    const ann = createAnnotationController(deps);
+
+    ann.setDrawTool("ruler");
+    expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 2.2, clientY: 2.1 })).toBe("grab");
+    expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 20, clientY: 20.1 })).toBe("move");
+
+    ann.setDrawTool("rect");
+    expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 2.1, clientY: 2.1 })).toBe("grab");
+    expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 5, clientY: 5 })).toBe("move");
   });
 });

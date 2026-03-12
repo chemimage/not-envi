@@ -64,6 +64,7 @@ export function wireApp(deps) {
     updateAreaMoveAtPointer,
     finishAreaMoveAtPointer,
     cancelAreaMove,
+    resolvePointerCursor,
     isDrawingPointer,
     beginDrawingAtPointer,
     updateDrawingAtPointer,
@@ -167,6 +168,13 @@ export function wireApp(deps) {
     if (els.drawColorFlyout && els.drawColorFlyout.setAttribute) {
       els.drawColorFlyout.setAttribute("aria-hidden", drawColorFlyoutOpen ? "false" : "true");
     }
+  }
+
+  function setCanvasCursor(cursor) {
+    const value = cursor || "";
+    if (els.main && els.main.style) els.main.style.cursor = value;
+    if (els.cpuCanvas && els.cpuCanvas.style) els.cpuCanvas.style.cursor = value;
+    if (els.gpuCanvas && els.gpuCanvas.style) els.gpuCanvas.style.cursor = value;
   }
 
   function syncDrawToolUI() {
@@ -331,18 +339,19 @@ export function wireApp(deps) {
   const isEraserEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "eraser");
   const isDrawingEnabled = () => isDrawCreateEnabled() || isEraserEnabled();
   const isRulerEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "ruler");
-  const isSingleAreaMode = () => !!(getAreaSelectionMode && getAreaSelectionMode() === "single");
+  const isAreaToolEnabled = () => !!(getDrawTool && getActive() && (getDrawTool() === "rect" || getDrawTool() === "shape"));
   const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#overlayHUD,#hudControls,#analysisHistPanel,#specPanel,dialog"));
 
   if (els.main && (beginAreaMoveAtPointer || selectAreaAtPointer)) {
     els.main.addEventListener("pointerdown", (ev) => {
-      if (!isSingleAreaMode()) return;
       if (!getActive()) return;
-      if (isDrawingEnabled()) return;
+      const areaToolEnabled = isAreaToolEnabled();
+      if (!areaToolEnabled && isDrawingEnabled()) return;
       if (state.selection && state.selection.enabled) return;
       if (isUiTarget(ev.target)) return;
       const startedMove = beginAreaMoveAtPointer ? beginAreaMoveAtPointer(ev) : false;
       if (!startedMove) {
+        if (areaToolEnabled) return;
         const hit = selectAreaAtPointer ? selectAreaAtPointer(ev) : false;
         if (!hit) {
           const hasAreas = !!(getEffectiveAreaSelectionCount && getEffectiveAreaSelectionCount() > 0);
@@ -355,6 +364,7 @@ export function wireApp(deps) {
       if (getSpectrumPickEnabled && getSpectrumPickEnabled() && openSpectrumForEffectiveArea) {
         openSpectrumForEffectiveArea(null, ev, false).catch(() => {});
       }
+      if (resolvePointerCursor) setCanvasCursor(resolvePointerCursor(ev));
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
@@ -367,12 +377,15 @@ export function wireApp(deps) {
     window.addEventListener("pointerup", (ev) => {
       if (!isAreaMovePointer || !isAreaMovePointer(ev.pointerId)) return;
       if (finishAreaMoveAtPointer) finishAreaMoveAtPointer(ev);
+      if (resolvePointerCursor) setCanvasCursor(resolvePointerCursor(ev));
+      else setCanvasCursor("");
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
     window.addEventListener("pointercancel", (ev) => {
       if (!isAreaMovePointer || !isAreaMovePointer(ev.pointerId)) return;
       if (cancelAreaMove) cancelAreaMove(ev.pointerId);
+      setCanvasCursor("");
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
@@ -392,6 +405,7 @@ export function wireApp(deps) {
       }
       const started = beginDrawingAtPointer(ev);
       if (!started) return;
+      if (resolvePointerCursor) setCanvasCursor(resolvePointerCursor(ev));
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
@@ -404,12 +418,15 @@ export function wireApp(deps) {
     window.addEventListener("pointerup", (ev) => {
       if (!isDrawingPointer || !isDrawingPointer(ev.pointerId)) return;
       finishDrawingAtPointer(ev);
+      if (resolvePointerCursor) setCanvasCursor(resolvePointerCursor(ev));
+      else setCanvasCursor("");
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
     window.addEventListener("pointercancel", (ev) => {
       if (!isDrawingPointer || !isDrawingPointer(ev.pointerId)) return;
       if (cancelDrawing) cancelDrawing();
+      setCanvasCursor("");
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
@@ -430,6 +447,21 @@ export function wireApp(deps) {
     });
     els.main.addEventListener("pointerleave", () => {
       if (clearRulerHover) clearRulerHover();
+      setCanvasCursor("");
+    });
+  }
+
+  if (els.main && resolvePointerCursor) {
+    els.main.addEventListener("pointermove", (ev) => {
+      if (isUiTarget(ev.target)) {
+        setCanvasCursor("");
+        return;
+      }
+      const cursor = resolvePointerCursor(ev);
+      setCanvasCursor(cursor);
+    });
+    els.main.addEventListener("pointerleave", () => {
+      setCanvasCursor("");
     });
   }
 
@@ -457,6 +489,7 @@ export function wireApp(deps) {
     window.addEventListener("pointerup", (ev) => {
       const ended = spectralDrag.endFromEvent(ev);
       if (!ended) return;
+      setCanvasCursor("");
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
@@ -464,6 +497,7 @@ export function wireApp(deps) {
     window.addEventListener("pointercancel", (ev) => {
       const ended = spectralDrag.endFromEvent(ev);
       if (!ended) return;
+      setCanvasCursor("");
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);

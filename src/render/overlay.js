@@ -72,19 +72,6 @@ export function createOverlayRenderer(deps) {
     overlayCtx.moveTo(a.x, a.y);
     overlayCtx.lineTo(b.x, b.y);
     overlayCtx.stroke();
-
-    if (item.tool === "ruler" && rulerHover && rulerHover.drawingIndex === itemIndex) {
-      const r = 5 * dpr;
-      overlayCtx.fillStyle = colorWithAlpha(item.color, 0.95);
-      overlayCtx.strokeStyle = "rgba(17,24,39,0.95)";
-      overlayCtx.lineWidth = 1.5 * dpr;
-      const showFirst = rulerHover.pointIndex === 0;
-      const endpoint = showFirst ? a : b;
-      overlayCtx.beginPath();
-      overlayCtx.arc(endpoint.x, endpoint.y, r, 0, Math.PI * 2);
-      overlayCtx.fill();
-      overlayCtx.stroke();
-    }
   }
 
   function drawMarqueeStroke(pathBuilder, dpr, marqueeOffset = 0) {
