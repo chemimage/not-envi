@@ -94,5 +94,8 @@ describe("spectrum-data", () => {
 
     const bad = makeDs({ ...makeMeta("bsq"), wavelengths: [450, "bad", 650] });
     expect(wavelengthArrayOrNull(bad)).toBeNull();
+
+    const withUnits = makeDs({ ...makeMeta("bsq"), wavelengths: ["4000 cm-1", "3990 cm^-1", "3980 cm⁻1"] });
+    expect(wavelengthArrayOrNull(withUnits)).toEqual([4000, 3990, 3980]);
   });
 });

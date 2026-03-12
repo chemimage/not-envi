@@ -169,9 +169,6 @@
     </div>
 
     <div id="analysisHistPanel" class="analysis-hist-panel" style="display:none;" aria-hidden="true">
-      <div class="analysis-hist-head">
-        <div class="analysis-hist-title">Histogram</div>
-      </div>
       <canvas id="analysisHistCanvas"></canvas>
       <div class="analysis-hist-hover" id="analysisHistHover">Hover a bin to inspect value/count.</div>
       <div class="analysis-hist-stats">
@@ -188,14 +185,10 @@
     <div id="specPanel" class="spec-panel" style="display:none;">
       <div class="spec-head">
         <div class="spec-head-left">
-          <div class="spec-title" id="specTitle">Spectrum</div>
           <div class="spec-sub" id="specSub">—</div>
         </div>
         <div class="spec-head-right">
           <button class="btn tiny" id="btnSpecCSV" title="Export spectrum as CSV">CSV</button>
-          <button class="btn ghost tiny icon-btn" id="btnSpecClose" title="Close spectrum" aria-label="Close spectrum">
-            <i data-lucide="x" aria-hidden="true"></i>
-          </button>
         </div>
       </div>
       <canvas id="specCanvas" class="spec-canvas"></canvas>

@@ -1,4 +1,3 @@
-import { histogramPlotRect } from "../render/histogram-math.js";
 import { choosePanelPlacementNearSelection } from "./panel-placement.js";
 
 export function createAnalysisHistogramController(deps) {
@@ -19,6 +18,15 @@ export function createAnalysisHistogramController(deps) {
     listHistogramSelectionItems,
     setStatus
   } = deps;
+
+  function getCanvasPlotRect(canvasWidth, canvasHeight) {
+    return {
+      plotX0: 0,
+      plotY0: 0,
+      plotW: canvasWidth,
+      plotH: canvasHeight
+    };
+  }
 
   function setBusy(isBusy) {
     if (!els.btnToolHistogram) return;
@@ -96,7 +104,7 @@ export function createAnalysisHistogramController(deps) {
 
     const bins = stats.bins;
     const maxBin = Math.max(1, ...bins);
-    const plot = histogramPlotRect(w, h, dpr);
+    const plot = getCanvasPlotRect(w, h);
     const barW = plot.plotW / bins.length;
     const hoverBin = state.analysisHist.hoverBin;
 
@@ -122,9 +130,18 @@ export function createAnalysisHistogramController(deps) {
       ctx.stroke();
     }
 
-    ctx.strokeStyle = "rgba(100,116,139,0.9)";
-    ctx.lineWidth = 1 * dpr;
-    ctx.strokeRect(plot.plotX0, plot.plotY0, plot.plotW, plot.plotH);
+    // Keep a visible light frame around the active histogram plotting region.
+    const borderW = 1 * dpr;
+    const inset = borderW * 0.5;
+    ctx.strokeStyle = "rgba(226,232,240,0.38)";
+    ctx.lineWidth = borderW;
+    ctx.strokeRect(
+      plot.plotX0 + inset,
+      plot.plotY0 + inset,
+      Math.max(0, plot.plotW - borderW),
+      Math.max(0, plot.plotH - borderW)
+    );
+
     ctx.restore();
   }
 
@@ -273,7 +290,7 @@ export function createAnalysisHistogramController(deps) {
     const rect = canvas.getBoundingClientRect();
     const x = (ev.clientX - rect.left) * dpr;
     const y = (ev.clientY - rect.top) * dpr;
-    const plot = histogramPlotRect(canvas.width, canvas.height, dpr);
+    const plot = getCanvasPlotRect(canvas.width, canvas.height);
     if (x < plot.plotX0 || x > (plot.plotX0 + plot.plotW) || y < plot.plotY0 || y > (plot.plotY0 + plot.plotH)) {
       if (state.analysisHist.hoverBin !== -1) {
         state.analysisHist.hoverBin = -1;

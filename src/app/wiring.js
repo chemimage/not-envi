@@ -152,6 +152,7 @@ export function wireApp(deps) {
   function syncDrawToolUI() {
     const active = getDrawTool ? getDrawTool() : "none";
     const spectral = getSpectrumPickEnabled ? !!getSpectrumPickEnabled() : false;
+    if (!spectral && els.specPanel && els.specPanel.style.display !== "none") closeSpectrum();
     const areaMode = getAreaSelectionMode ? getAreaSelectionMode() : "group";
     const singleArea = areaMode === "single";
     if (els.toolRuler) els.toolRuler.classList.toggle("active", active === "ruler");
@@ -193,7 +194,10 @@ export function wireApp(deps) {
   }
 
   function setSpectralActive(active) {
-    if (!active) spectralDrag.stop();
+    if (!active) {
+      spectralDrag.stop();
+      closeSpectrum();
+    }
     if (!setSpectrumPickEnabled) return;
     setSpectrumPickEnabled(!!active);
   }

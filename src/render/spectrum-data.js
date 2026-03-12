@@ -57,9 +57,21 @@ export function wavelengthArrayOrNull(ds) {
   if (!Array.isArray(wl) || wl.length !== ds.meta.bands) return null;
   const out = new Array(wl.length);
   for (let i = 0; i < wl.length; i += 1) {
-    const n = Number(wl[i]);
+    const n = parseSpectralNumber(wl[i]);
     if (!Number.isFinite(n)) return null;
     out[i] = n;
   }
   return out;
+}
+
+function parseSpectralNumber(v) {
+  const n = Number(v);
+  if (Number.isFinite(n)) return n;
+  if (typeof v !== "string") return Number.NaN;
+  const s = v.trim().replace(/,/g, "");
+  if (!s) return Number.NaN;
+  const m = s.match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/);
+  if (!m) return Number.NaN;
+  const parsed = Number(m[0]);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }

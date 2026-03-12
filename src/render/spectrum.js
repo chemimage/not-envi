@@ -9,6 +9,58 @@ function formatAxisNumber(v) {
   return v.toFixed(3);
 }
 
+export function isCmInverseUnit(unit) {
+  const raw = String(unit || "").trim().toLowerCase();
+  if (!raw) return false;
+  const normalized = raw.replace(/[−–]/g, "-").replace(/\s+/g, "");
+  return normalized.includes("cm-1")
+    || normalized.includes("cm^-1")
+    || normalized.includes("cm⁻1")
+    || normalized.includes("1/cm");
+}
+
+export function medianBandInterval(xVals) {
+  if (!xVals || xVals.length < 2) return null;
+  const steps = [];
+  for (let i = 1; i < xVals.length; i += 1) {
+    const a = Number(xVals[i - 1]);
+    const b = Number(xVals[i]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    const d = Math.abs(b - a);
+    if (d > 0) steps.push(d);
+  }
+  if (!steps.length) return null;
+  steps.sort((a, b) => a - b);
+  const mid = Math.floor(steps.length / 2);
+  if (steps.length % 2 === 1) return steps[mid];
+  return (steps[mid - 1] + steps[mid]) * 0.5;
+}
+
+export function shouldUseBarSpectrumPlot(xVals, wlUnits, threshold = 8) {
+  if (!isCmInverseUnit(wlUnits)) return false;
+  const med = medianBandInterval(xVals);
+  if (!Number.isFinite(med)) return false;
+  return med > threshold;
+}
+
+function inferCmInverseUnitFromWavelengthEntries(entries) {
+  if (!Array.isArray(entries)) return "";
+  for (let i = 0; i < entries.length; i += 1) {
+    const raw = entries[i];
+    if (raw == null) continue;
+    const text = String(raw).trim();
+    if (!text) continue;
+    if (isCmInverseUnit(text)) return "cm-1";
+  }
+  return "";
+}
+
+function resolveSpectralUnit(ds) {
+  const explicit = (ds?.meta?.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : "";
+  if (explicit) return explicit;
+  return inferCmInverseUnitFromWavelengthEntries(ds?.meta?.wavelengths);
+}
+
 export function createSpectrumController(deps) {
   const {
     els,
@@ -43,10 +95,6 @@ export function createSpectrumController(deps) {
     if (!els.specPanel) return;
     els.specPanel.style.display = show ? "block" : "none";
     specState.open = !!show;
-  }
-
-  function setSpecTitle(text) {
-    if (els.specTitle) els.specTitle.textContent = text;
   }
 
   function setSpecSub(text) {
@@ -215,7 +263,7 @@ export function createSpectrumController(deps) {
     const dpr = window.devicePixelRatio || 1;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "rgb(3, 7, 18)";
+    ctx.fillStyle = "rgb(17, 24, 39)";
     ctx.fillRect(0, 0, W, H);
 
     const padL = Math.round(52 * dpr);
@@ -236,6 +284,8 @@ export function createSpectrumController(deps) {
     let ymax = Number.NEGATIVE_INFINITY;
     const ciScale = (Number.isFinite(sampleCount) && sampleCount > 1) ? (1.96 / Math.sqrt(sampleCount)) : 0;
     const useCI = !!(stdVals && stdVals.length && ciScale > 0);
+    const unit = resolveSpectralUnit(ds);
+    const useBarPlot = !!(xVals && shouldUseBarSpectrumPlot(xVals, unit, 8));
     for (let i = 0; i < yVals.length; i++) {
       const xv = xVals ? xVals[i] : i;
       const yv = yVals[i];
@@ -264,7 +314,12 @@ export function createSpectrumController(deps) {
 
     const xToPx = (x) => x0 + ((x - xmin) / (xmax - xmin)) * plotW;
     const yToPx = (y) => y1 - ((y - ymin) / (ymax - ymin)) * plotH;
-    specState.plot = { x0, y0, x1, y1, plotW, plotH, n: yVals.length };
+    const bandCenters = new Float64Array(yVals.length);
+    for (let i = 0; i < yVals.length; i += 1) {
+      const xv = xVals ? xVals[i] : i;
+      bandCenters[i] = Number.isFinite(xv) ? xToPx(xv) : Number.NaN;
+    }
+    specState.plot = { x0, y0, x1, y1, plotW, plotH, n: yVals.length, bandCenters };
 
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = 1 * dpr;
@@ -290,8 +345,8 @@ export function createSpectrumController(deps) {
     ctx.stroke();
 
     const N = yVals.length;
-    const step = Math.max(1, Math.ceil(N / 1400));
-    if (useCI) {
+    const step = Math.max(1, Math.ceil(N / (useBarPlot ? 1000 : 1400)));
+    if (useCI && !useBarPlot) {
       const upper = [];
       const lower = [];
       for (let i = 0; i < N; i += step) {
@@ -316,19 +371,61 @@ export function createSpectrumController(deps) {
       }
     }
 
-    ctx.strokeStyle = "rgba(229,231,235,0.95)";
-    ctx.lineWidth = 1.5 * dpr;
-    ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < N; i += step) {
-      const xv = xVals ? xVals[i] : i;
-      const yv = yVals[i];
-      if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
-      const px = xToPx(xv);
-      const py = yToPx(yv);
-      if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
+    if (useBarPlot) {
+      const xRange = Math.max(1e-9, xmax - xmin);
+      ctx.fillStyle = "rgba(229,231,235,0.78)";
+      ctx.strokeStyle = "rgba(148,163,184,0.95)";
+      ctx.lineWidth = 1 * dpr;
+      for (let i = 0; i < N; i += step) {
+        const xv = xVals ? xVals[i] : i;
+        const yv = yVals[i];
+        if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
+        const px = xToPx(xv);
+        const py = yToPx(yv);
+        const prevX = (i > 0) ? Number(xVals ? xVals[i - 1] : (i - 1)) : Number.NaN;
+        const nextX = (i + 1 < N) ? Number(xVals ? xVals[i + 1] : (i + 1)) : Number.NaN;
+        const leftGap = Number.isFinite(prevX) ? Math.abs(xv - prevX) : Number.NaN;
+        const rightGap = Number.isFinite(nextX) ? Math.abs(nextX - xv) : Number.NaN;
+        let spanX = Number.NaN;
+        if (Number.isFinite(leftGap) && Number.isFinite(rightGap)) spanX = Math.min(leftGap, rightGap);
+        else if (Number.isFinite(leftGap)) spanX = leftGap;
+        else if (Number.isFinite(rightGap)) spanX = rightGap;
+        if (!Number.isFinite(spanX) || spanX <= 0) spanX = xRange / Math.max(1, N);
+        const barW = Math.max(1 * dpr, ((spanX / xRange) * plotW) * 0.72);
+        const left = px - (barW * 0.5);
+        const h = Math.max(1 * dpr, y1 - py);
+        ctx.fillRect(left, py, barW, h);
+
+        if (useCI && Number.isFinite(stdVals[i])) {
+          const ci = stdVals[i] * ciScale;
+          const top = yToPx(yv + ci);
+          const bot = yToPx(yv - ci);
+          const cap = Math.max(3 * dpr, Math.min(10 * dpr, barW * 0.45));
+          ctx.beginPath();
+          ctx.moveTo(px, top);
+          ctx.lineTo(px, bot);
+          ctx.moveTo(px - cap, top);
+          ctx.lineTo(px + cap, top);
+          ctx.moveTo(px - cap, bot);
+          ctx.lineTo(px + cap, bot);
+          ctx.stroke();
+        }
+      }
+    } else {
+      ctx.strokeStyle = "rgba(229,231,235,0.95)";
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < N; i += step) {
+        const xv = xVals ? xVals[i] : i;
+        const yv = yVals[i];
+        if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
+        const px = xToPx(xv);
+        const py = yToPx(yv);
+        if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
 
     const selBand = (ds && Number.isFinite(ds.activeBand)) ? ds.activeBand : null;
     specState.activeBandX = null;
@@ -379,12 +476,6 @@ export function createSpectrumController(deps) {
       const px = x0 + t * plotW;
       ctx.fillText(formatAxisNumber(xv), px, y1 + 6 * dpr);
     }
-    const unit = (ds.meta.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : "";
-    const xLabel = xVals ? (unit || "Wavelength") : "Band index";
-    ctx.textAlign = "right";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = "rgba(156,163,175,0.8)";
-    ctx.fillText(xLabel, x1, y1 + 6 * dpr);
   }
 
   async function openSpectrumAt(ds, ix, iy, opts = {}) {
@@ -401,7 +492,6 @@ export function createSpectrumController(deps) {
     const mySeq = ++specSeq;
 
     showSpectrumPanel(true);
-    setSpecTitle(ds.name);
     if (opts.subLabel && String(opts.subLabel).trim()) {
       setSpecSub(String(opts.subLabel));
     } else {
@@ -460,11 +550,26 @@ export function createSpectrumController(deps) {
 
   function bandFromClientX(clientX) {
     if (!els.specCanvas || !specState.plot || !Number.isFinite(clientX)) return null;
-    const { x0, plotW, n } = specState.plot;
-    if (!Number.isFinite(plotW) || plotW <= 0 || !Number.isFinite(n) || n <= 0) return null;
+    const { x0, plotW, n, bandCenters } = specState.plot;
+    if (!Number.isFinite(n) || n <= 0) return null;
     const rect = els.specCanvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     const x = (clientX - rect.left) * dpr;
+    if (bandCenters && bandCenters.length === n) {
+      let bestIdx = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < n; i += 1) {
+        const cx = Number(bandCenters[i]);
+        if (!Number.isFinite(cx)) continue;
+        const dist = Math.abs(cx - x);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx != null) return bestIdx;
+    }
+    if (!Number.isFinite(plotW) || plotW <= 0) return null;
     const t = Math.max(0, Math.min(1, (x - x0) / plotW));
     return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
   }

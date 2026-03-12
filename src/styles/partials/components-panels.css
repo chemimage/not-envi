@@ -164,16 +164,16 @@
   }
 
   .spec-panel {
-    @apply absolute bottom-3 left-3 z-10 w-[380px] select-none rounded-sm border border-white/10 bg-gray-900 p-2.5 shadow-2xl shadow-black/50;
+    @apply absolute bottom-3 left-3 z-10 w-[min(380px,calc(100vw-16px))] select-none overflow-hidden rounded-sm border border-white/10 bg-gray-900 shadow-2xl shadow-black/50;
     pointer-events: auto;
   }
 
   .spec-head {
-    @apply mb-2 flex items-start justify-between gap-2.5;
+    @apply flex items-center justify-between gap-2 px-2 py-1.5;
   }
 
   .spec-head-right {
-    @apply flex items-center self-center gap-1.5;
+    @apply flex items-center gap-1.5;
   }
 
   .spec-title {
@@ -181,11 +181,11 @@
   }
 
   .spec-sub {
-    @apply mt-0.5 text-xs text-gray-300;
+    @apply text-xs text-gray-300;
   }
 
   .spec-canvas {
-    @apply block h-[190px] w-full rounded-sm border border-white/10 bg-gray-950;
+    @apply block h-[250px] w-full bg-gray-900;
     position: static;
   }
 
