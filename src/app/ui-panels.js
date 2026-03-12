@@ -414,10 +414,19 @@ export function createUIPanels(deps) {
     if (!els.metaHoverPanel) return;
     renderMetaForDataset(ds);
     if (pinned) {
-      els.metaHoverPanel.style.top = "auto";
-      els.metaHoverPanel.style.left = "auto";
-      els.metaHoverPanel.style.right = "10px";
-      els.metaHoverPanel.style.bottom = "10px";
+      const gap = 10;
+      const panelW = Math.max(280, Math.min(420, els.metaHoverPanel.offsetWidth || 340));
+      const panelH = Math.max(160, els.metaHoverPanel.offsetHeight || 220);
+      const dockRect = (els.datasetDock && els.datasetDock.getBoundingClientRect)
+        ? els.datasetDock.getBoundingClientRect()
+        : null;
+      const rawLeft = dockRect ? (dockRect.right + gap) : gap;
+      const left = Math.max(8, Math.min(rawLeft, window.innerWidth - panelW - 8));
+      const top = Math.max(8, Math.min(window.innerHeight - panelH - gap, window.innerHeight - 8));
+      els.metaHoverPanel.style.left = `${left}px`;
+      els.metaHoverPanel.style.top = `${top}px`;
+      els.metaHoverPanel.style.right = "auto";
+      els.metaHoverPanel.style.bottom = "auto";
     } else if (rowEl) {
       const rowRect = rowEl.getBoundingClientRect();
       const panelW = 340;
