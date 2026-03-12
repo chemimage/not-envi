@@ -62,6 +62,31 @@ describe("overlay renderer", () => {
     expect(ctx.stroke).toHaveBeenCalled();
   });
 
+  test("grid spacing snaps to decimal 1/2/5 progression", () => {
+    const ctx = makeCtx();
+    const els = {
+      chkScale: { checked: false },
+      chkGrid: { checked: true },
+      overlayCanvas: { width: 512, height: 256 }
+    };
+    const overlay = createOverlayRenderer({
+      els,
+      overlayCtx: ctx,
+      getDevicePixelRatio: () => 1
+    });
+    const ds = {
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 1024, lines: 512 }
+    };
+
+    overlay.drawOverlays(ds);
+
+    const moveCalls = ctx.moveTo.mock.calls;
+    expect(moveCalls.length).toBeGreaterThan(1);
+    expect(moveCalls[0][0]).toBe(0);
+    expect(moveCalls[1][0]).toBe(100);
+  });
+
   test("drawOverlays boundary follows rendered raster footprint", () => {
     const ctx = makeCtx();
     const els = {

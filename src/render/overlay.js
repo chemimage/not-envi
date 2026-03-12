@@ -374,12 +374,23 @@ export function createOverlayRenderer(deps) {
     if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, -1, null, null, 0);
   }
 
+  function snapToDecimal125Step(value) {
+    const v = Math.max(1, Number(value) || 1);
+    const exp = Math.floor(Math.log10(v));
+    const base = Math.pow(10, exp);
+    const norm = v / base;
+    if (norm <= 1) return Math.max(1, base);
+    if (norm <= 2) return Math.max(1, 2 * base);
+    if (norm <= 5) return Math.max(1, 5 * base);
+    return Math.max(1, 10 * base);
+  }
+
   function computeReferenceSpacing(ds, dpr) {
     const eff = Math.max(1e-9, ds.view.scale * dpr);
     const targetCssPx = 96;
     const targetDevPx = targetCssPx * dpr;
     const imgSpacing = Math.max(1, targetDevPx / eff);
-    const stepImgPx = Math.max(1, Math.pow(2, Math.round(Math.log2(imgSpacing))));
+    const stepImgPx = snapToDecimal125Step(imgSpacing);
     return {
       stepImgPx,
       stepDevPx: stepImgPx * eff
