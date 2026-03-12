@@ -16,6 +16,7 @@ export function collectElements() {
     statusBadge: $("#statusBadge"),
     filePicker: $("#filePicker"),
     dropzone: $("#dropzone"),
+    datasetDock: $("#datasetDock"),
     datasetCount: $("#datasetCount"),
     datasetViewport: $("#datasetViewport"),
     datasetList: $("#datasetList"),

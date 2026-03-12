@@ -572,6 +572,10 @@
     overflow-y: auto;
   }
 
+  #datasetDock.has-expanded .dataset-viewport {
+    overflow-y: auto;
+  }
+
   @media (hover: none) {
     .dataset-viewport {
       overflow-y: auto;
@@ -678,7 +682,7 @@
 
   .meta-hover-panel {
     @apply fixed z-30 w-[340px] max-w-[min(48vw,420px)] border border-gray-600 bg-gray-900/80 p-2 backdrop-blur-sm;
-    pointer-events: none;
+    pointer-events: auto;
   }
 
   .ds-item {

@@ -278,11 +278,17 @@ export function createUIPanels(deps) {
 
   function refreshDatasetRowExpansion() {
     if (!els.datasetList) return;
+    let expandedCount = 0;
     const rows = els.datasetList.querySelectorAll(".ds-item[data-dsid]");
     rows.forEach((row) => {
       const dsId = row.getAttribute("data-dsid");
-      row.classList.toggle("expanded", isDatasetRowExpanded(dsId));
+      const expanded = isDatasetRowExpanded(dsId);
+      row.classList.toggle("expanded", expanded);
+      if (expanded) expandedCount += 1;
     });
+    if (els.datasetDock && els.datasetDock.classList) {
+      els.datasetDock.classList.toggle("has-expanded", expandedCount > 0);
+    }
   }
 
   function clearPinnedMetaPanel({ hidePanel = true } = {}) {
@@ -299,6 +305,9 @@ export function createUIPanels(deps) {
     renderMetaForDataset(ds);
     showMetaHover(ds, rowEl, { pinned: true });
     refreshDatasetRowExpansion();
+    if (rowEl && rowEl.scrollIntoView) {
+      try { rowEl.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (_err) {}
+    }
   }
 
   function closePinnedMetaPanel() {
