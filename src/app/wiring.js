@@ -62,6 +62,8 @@ export function wireApp(deps) {
     updateRulerHoverAtPointer,
     clearRulerHover,
     toggleAnalysisHistogramPanel,
+    getAnalysisHistogramOpen,
+    setAnalysisHistogramOpen,
     closeAnalysisHistogramPanel,
     refreshAnalysisHistogram,
     positionAnalysisHistogramPanel,
@@ -85,6 +87,67 @@ export function wireApp(deps) {
       return;
     }
     openExportDialog();
+  }
+
+  const spectralDrag = {
+    activePointerId: null,
+    lastDatasetId: null,
+    lastIx: null,
+    lastIy: null,
+    inFlight: false,
+    pending: null
+  };
+
+  function stopSpectralDrag() {
+    spectralDrag.activePointerId = null;
+    spectralDrag.pending = null;
+  }
+
+  function eventToSpectrumTarget(ev) {
+    const ds = getActive();
+    if (!ds) return null;
+    const rect = els.main.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const sx = (ev.clientX - rect.left) * dpr;
+    const sy = (ev.clientY - rect.top) * dpr;
+    const img = screenToImage(sx, sy);
+    const ix = clamp(Math.floor(img.x), 0, ds.meta.samples - 1);
+    const iy = clamp(Math.floor(img.y), 0, ds.meta.lines - 1);
+    const pointerType = ev.pointerType
+      || ((ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) ? "touch" : "mouse");
+    return { ds, ix, iy, clientX: ev.clientX, clientY: ev.clientY, pointerType };
+  }
+
+  function enqueueSpectrumUpdate(target) {
+    if (!target || !target.ds) return;
+    const sameTarget = (
+      spectralDrag.lastDatasetId === target.ds.id
+      && spectralDrag.lastIx === target.ix
+      && spectralDrag.lastIy === target.iy
+    );
+    if (sameTarget && !spectralDrag.inFlight) return;
+
+    if (spectralDrag.inFlight) {
+      spectralDrag.pending = target;
+      return;
+    }
+
+    spectralDrag.inFlight = true;
+    spectralDrag.lastDatasetId = target.ds.id;
+    spectralDrag.lastIx = target.ix;
+    spectralDrag.lastIy = target.iy;
+    Promise.resolve(openSpectrumAt(target.ds, target.ix, target.iy, {
+      clientX: target.clientX,
+      clientY: target.clientY,
+      pointerType: target.pointerType
+    })).catch((err) => {
+      console.warn("Spectrum update failed", err);
+    }).finally(() => {
+      spectralDrag.inFlight = false;
+      const pending = spectralDrag.pending;
+      spectralDrag.pending = null;
+      if (pending && getSpectrumPickEnabled && getSpectrumPickEnabled()) enqueueSpectrumUpdate(pending);
+    });
   }
 
   window.addEventListener("beforeunload", () => {
@@ -205,14 +268,52 @@ export function wireApp(deps) {
       }
     }
   }
+
+  function setSpatialActive(active) {
+    if (setAnalysisHistogramOpen) {
+      setAnalysisHistogramOpen(!!active);
+      return;
+    }
+    if (active) {
+      if (toggleAnalysisHistogramPanel && !(els.btnToolHistogram && els.btnToolHistogram.classList.contains("active"))) {
+        toggleAnalysisHistogramPanel();
+      }
+      return;
+    }
+    if (closeAnalysisHistogramPanel) closeAnalysisHistogramPanel();
+  }
+
+  function setSpectralActive(active) {
+    if (!active) stopSpectralDrag();
+    if (!setSpectrumPickEnabled) return;
+    setSpectrumPickEnabled(!!active);
+  }
+
+  function toggleSpatialMode() {
+    const isOpen = getAnalysisHistogramOpen
+      ? !!getAnalysisHistogramOpen()
+      : !!(els.btnToolHistogram && els.btnToolHistogram.classList.contains("active"));
+    const nextOpen = !isOpen;
+    if (nextOpen && getSpectrumPickEnabled && getSpectrumPickEnabled()) setSpectralActive(false);
+    setSpatialActive(nextOpen);
+    syncDrawToolUI();
+  }
+
+  function toggleSpectralMode() {
+    const isOn = getSpectrumPickEnabled ? !!getSpectrumPickEnabled() : false;
+    const nextOn = !isOn;
+    if (nextOn && getAnalysisHistogramOpen && getAnalysisHistogramOpen()) setSpatialActive(false);
+    setSpectralActive(nextOn);
+    syncDrawToolUI();
+  }
+
   if (els.toolRuler && setDrawTool) els.toolRuler.onclick = () => { setDrawTool("ruler"); syncDrawToolUI(); };
   if (els.toolRect && setDrawTool) els.toolRect.onclick = () => { setDrawTool("rect"); syncDrawToolUI(); };
   if (els.toolShape && setDrawTool) els.toolShape.onclick = () => { setDrawTool("shape"); syncDrawToolUI(); };
   if (els.toolEraser && setDrawTool) els.toolEraser.onclick = () => { setDrawTool("eraser"); syncDrawToolUI(); };
   if (els.btnToolSpectral && setSpectrumPickEnabled) {
     els.btnToolSpectral.onclick = () => {
-      setSpectrumPickEnabled();
-      syncDrawToolUI();
+      toggleSpectralMode();
     };
   }
   if (els.toolEraser) {
@@ -236,7 +337,7 @@ export function wireApp(deps) {
   }
   if (els.btnToolHistogram) {
     els.btnToolHistogram.onclick = () => {
-      if (toggleAnalysisHistogramPanel) toggleAnalysisHistogramPanel();
+      toggleSpatialMode();
     };
   }
   if (els.btnAnalysisHistClose) {
@@ -316,29 +417,45 @@ export function wireApp(deps) {
     });
   }
 
-  els.main.addEventListener("click", (ev) => {
-    if (!getSpectrumPickEnabled || !getSpectrumPickEnabled()) return;
-    if (isDrawingEnabled()) return;
-    if (state.selection && state.selection.enabled) return;
-    if (isUiTarget(ev.target)) return;
-    const ds = getActive();
-    if (!ds) return;
-    if (els.specPanel && els.specPanel.contains(ev.target)) return;
-    const rect = els.main.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const sx = (ev.clientX - rect.left) * dpr;
-    const sy = (ev.clientY - rect.top) * dpr;
-    const img = screenToImage(sx, sy);
-    const ix = clamp(Math.floor(img.x), 0, ds.meta.samples - 1);
-    const iy = clamp(Math.floor(img.y), 0, ds.meta.lines - 1);
-    const pointerType = ev.pointerType
-      || ((ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) ? "touch" : "mouse");
-    openSpectrumAt(ds, ix, iy, {
-      clientX: ev.clientX,
-      clientY: ev.clientY,
-      pointerType
-    });
-  });
+  if (els.main) {
+    els.main.addEventListener("pointerdown", (ev) => {
+      if (!getSpectrumPickEnabled || !getSpectrumPickEnabled()) return;
+      if (isDrawingEnabled()) return;
+      if (state.selection && state.selection.enabled) return;
+      if (isUiTarget(ev.target)) return;
+      if (els.specPanel && els.specPanel.contains(ev.target)) return;
+      const target = eventToSpectrumTarget(ev);
+      if (!target) return;
+      spectralDrag.activePointerId = ev.pointerId;
+      enqueueSpectrumUpdate(target);
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+
+    window.addEventListener("pointermove", (ev) => {
+      if (!getSpectrumPickEnabled || !getSpectrumPickEnabled()) return;
+      if (spectralDrag.activePointerId == null || ev.pointerId !== spectralDrag.activePointerId) return;
+      const target = eventToSpectrumTarget(ev);
+      if (!target) return;
+      enqueueSpectrumUpdate(target);
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+
+    window.addEventListener("pointerup", (ev) => {
+      if (spectralDrag.activePointerId == null || ev.pointerId !== spectralDrag.activePointerId) return;
+      stopSpectralDrag();
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+
+    window.addEventListener("pointercancel", (ev) => {
+      if (spectralDrag.activePointerId == null || ev.pointerId !== spectralDrag.activePointerId) return;
+      stopSpectralDrag();
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+  }
 
   els.main.addEventListener("pointerdown", (ev) => {
     if (!els.specPanel || els.specPanel.style.display === "none") return;

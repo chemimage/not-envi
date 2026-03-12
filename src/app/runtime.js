@@ -910,6 +910,15 @@ import { APP_CONFIG } from "./config.js";
     else openAnalysisHistogramPanel();
   }
 
+  function getAnalysisHistogramOpen() {
+    return !!state.analysisHist.open;
+  }
+
+  function setAnalysisHistogramOpen(nextOpen) {
+    if (nextOpen) openAnalysisHistogramPanel();
+    else closeAnalysisHistogramPanel();
+  }
+
   function onAnalysisHistogramPointerMove(ev) {
     const stats = state.analysisHist.stats;
     const canvas = els.analysisHistCanvas;
@@ -1250,6 +1259,8 @@ import { APP_CONFIG } from "./config.js";
     updateRulerHoverAtPointer,
     clearRulerHover,
     toggleAnalysisHistogramPanel,
+    getAnalysisHistogramOpen,
+    setAnalysisHistogramOpen,
     closeAnalysisHistogramPanel,
     refreshAnalysisHistogram,
     positionAnalysisHistogramPanel,
