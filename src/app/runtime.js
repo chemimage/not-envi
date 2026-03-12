@@ -146,7 +146,7 @@ import { APP_CONFIG } from "./config.js";
     spectrumPickEnabled: false,
     areaSelectionMode: "group",
     analysisHist: { open: false, hoverBin: -1, stats: null },
-    draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null, nextItemId: 1 },
+    draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null, areaMove: null, nextItemId: 1 },
 
     exportKind: null,
   };
@@ -217,12 +217,14 @@ import { APP_CONFIG } from "./config.js";
       const hadDraft = !!state.draw.draft;
       const hadRulerDrag = !!state.draw.rulerDrag;
       const hadRulerHover = !!state.draw.rulerHover;
-      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerHover) {
+      const hadAreaMove = !!state.draw.areaMove;
+      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerHover || hadAreaMove) {
         state.draw.tool = "none";
         state.draw.activePointerId = null;
         state.draw.draft = null;
         state.draw.rulerDrag = null;
         state.draw.rulerHover = null;
+        state.draw.areaMove = null;
         render({ reuseRaster: true });
       }
     }
@@ -237,6 +239,7 @@ import { APP_CONFIG } from "./config.js";
     const hadDraft = !!state.draw.draft;
     const hadRulerDrag = !!state.draw.rulerDrag;
     const hadRulerHover = !!state.draw.rulerHover;
+    const hadAreaMove = !!state.draw.areaMove;
     const prevTool = state.draw.tool;
     const next = (tool === "ruler" || tool === "rect" || tool === "shape" || tool === "eraser") ? tool : "none";
     if (next !== "none") state.spectrumPickEnabled = false;
@@ -247,7 +250,8 @@ import { APP_CONFIG } from "./config.js";
       state.draw.draft = null;
       state.draw.rulerDrag = null;
       state.draw.rulerHover = null;
-      if (hadDraft || hadRulerDrag || hadRulerHover) render({ reuseRaster: true });
+      state.draw.areaMove = null;
+      if (hadDraft || hadRulerDrag || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
     }
   }
 
@@ -337,11 +341,10 @@ import { APP_CONFIG } from "./config.js";
     return true;
   }
 
-  function selectAreaAtPointer(ev) {
-    const ds = getActive();
-    if (!ds) return false;
+  function findAreaHitAtPointer(ds, ev) {
+    if (!ds) return null;
     const items = listHistogramSelectionItems(ds);
-    if (!items.length) return false;
+    if (!items.length) return null;
     const point = pointerToImagePoint(ev, ds);
     const pxTolerance = (ev.pointerType === "touch") ? 24 : 14;
     const imgTolerance = pxTolerance / Math.max(1e-6, ds.view.scale);
@@ -355,13 +358,116 @@ import { APP_CONFIG } from "./config.js";
       bestDist = dist;
       if (dist <= 0) break;
     }
-    if (!best || !Number.isFinite(best.id)) return false;
-    const changed = setSelectedAreaId(ds, best.id);
+    if (!best || !Number.isFinite(best.id)) return null;
+    return { item: best, point };
+  }
+
+  function selectAreaAtPointer(ev) {
+    const ds = getActive();
+    if (!ds) return false;
+    const hit = findAreaHitAtPointer(ds, ev);
+    if (!hit) return false;
+    const changed = setSelectedAreaId(ds, hit.item.id);
     if (changed) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
       render({ reuseRaster: true });
     }
+    return true;
+  }
+
+  function isAreaMovePointer(pointerId) {
+    return !!(Number.isFinite(pointerId) && state.draw.areaMove && state.draw.areaMove.activePointerId === pointerId);
+  }
+
+  function beginAreaMoveAtPointer(ev) {
+    if (getAreaSelectionMode() !== "single") return false;
+    const ds = getActive();
+    if (!ds) return false;
+    const hit = findAreaHitAtPointer(ds, ev);
+    if (!hit) return false;
+    const changed = setSelectedAreaId(ds, hit.item.id);
+    if (changed) {
+      updateSelectionHistogramForDataset(ds);
+      ensureMarqueeTicker();
+    }
+    state.draw.areaMove = {
+      activePointerId: ev.pointerId,
+      dsId: ds.id,
+      itemId: hit.item.id,
+      lastPoint: hit.point,
+      moved: false
+    };
+    if (changed) render({ reuseRaster: true });
+    return true;
+  }
+
+  function updateAreaMoveAtPointer(ev) {
+    const move = state.draw.areaMove;
+    if (!move || move.activePointerId !== ev.pointerId) return false;
+    const ds = getActive();
+    if (!ds || ds.id !== move.dsId || !Array.isArray(ds.drawings)) return false;
+    const item = ds.drawings.find((it) => it && it.id === move.itemId && isHistogramSelectionTool(it));
+    if (!item || !Array.isArray(item.points) || !item.points.length) return false;
+
+    const p = pointerToImagePoint(ev, ds);
+    const dx = p.x - move.lastPoint.x;
+    const dy = p.y - move.lastPoint.y;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || (!dx && !dy)) return true;
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const pt of item.points) {
+      if (!pt) continue;
+      if (pt.x < minX) minX = pt.x;
+      if (pt.y < minY) minY = pt.y;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.y > maxY) maxY = pt.y;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return true;
+
+    const maxShiftLeft = -minX;
+    const maxShiftRight = (ds.meta.samples - 1) - maxX;
+    const maxShiftUp = -minY;
+    const maxShiftDown = (ds.meta.lines - 1) - maxY;
+    const shiftX = clamp(dx, maxShiftLeft, maxShiftRight);
+    const shiftY = clamp(dy, maxShiftUp, maxShiftDown);
+    if (!shiftX && !shiftY) {
+      move.lastPoint = p;
+      return true;
+    }
+    for (const pt of item.points) {
+      if (!pt) continue;
+      pt.x += shiftX;
+      pt.y += shiftY;
+    }
+    move.lastPoint = p;
+    move.moved = true;
+    render({ reuseRaster: true });
+    return true;
+  }
+
+  function finishAreaMoveAtPointer(ev) {
+    const move = state.draw.areaMove;
+    if (!move || move.activePointerId !== ev.pointerId) return false;
+    const ds = getActive();
+    const moved = !!move.moved;
+    state.draw.areaMove = null;
+    if (moved && ds && ds.id === move.dsId) {
+      updateSelectionHistogramForDataset(ds);
+      ensureMarqueeTicker();
+    }
+    render({ reuseRaster: true });
+    return true;
+  }
+
+  function cancelAreaMove(pointerId = null) {
+    if (!state.draw.areaMove) return false;
+    if (Number.isFinite(pointerId) && state.draw.areaMove.activePointerId !== pointerId) return false;
+    state.draw.areaMove = null;
+    render({ reuseRaster: true });
     return true;
   }
 
@@ -570,6 +676,7 @@ import { APP_CONFIG } from "./config.js";
     state.draw.draft = null;
     state.draw.rulerDrag = null;
     state.draw.rulerHover = null;
+    state.draw.areaMove = null;
     updateSelectionHistogramForDataset(ds);
     ensureMarqueeTicker();
     render({ reuseRaster: true });
@@ -662,6 +769,7 @@ import { APP_CONFIG } from "./config.js";
       updateDrawingAtPointer(ev);
       state.draw.activePointerId = null;
       state.draw.rulerDrag = null;
+      state.draw.areaMove = null;
       render({ reuseRaster: true });
       return;
     }
@@ -703,6 +811,7 @@ import { APP_CONFIG } from "./config.js";
     state.draw.activePointerId = null;
     state.draw.draft = null;
     state.draw.rulerDrag = null;
+    state.draw.areaMove = null;
     ensureMarqueeTicker();
     render({ reuseRaster: true });
   }
@@ -711,6 +820,7 @@ import { APP_CONFIG } from "./config.js";
     state.draw.activePointerId = null;
     state.draw.draft = null;
     state.draw.rulerDrag = null;
+    state.draw.areaMove = null;
     render({ reuseRaster: true });
   }
 
@@ -1358,6 +1468,11 @@ import { APP_CONFIG } from "./config.js";
     setAreaSelectionMode,
     setDrawColor,
     selectAreaAtPointer,
+    isAreaMovePointer,
+    beginAreaMoveAtPointer,
+    updateAreaMoveAtPointer,
+    finishAreaMoveAtPointer,
+    cancelAreaMove,
     isDrawingPointer,
     beginDrawingAtPointer,
     updateDrawingAtPointer,

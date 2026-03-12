@@ -55,6 +55,11 @@ export function wireApp(deps) {
     setAreaSelectionMode,
     setDrawColor,
     selectAreaAtPointer,
+    isAreaMovePointer,
+    beginAreaMoveAtPointer,
+    updateAreaMoveAtPointer,
+    finishAreaMoveAtPointer,
+    cancelAreaMove,
     isDrawingPointer,
     beginDrawingAtPointer,
     updateDrawingAtPointer,
@@ -265,9 +270,10 @@ export function wireApp(deps) {
     if (els.toolShape) els.toolShape.classList.toggle("active", active === "shape");
     if (els.toolEraser) els.toolEraser.classList.toggle("active", active === "eraser");
     if (els.btnToolAreaMode) {
-      els.btnToolAreaMode.classList.toggle("active", singleArea);
+      els.btnToolAreaMode.classList.remove("active");
       els.btnToolAreaMode.setAttribute("aria-pressed", singleArea ? "true" : "false");
-      els.btnToolAreaMode.title = singleArea ? "Area mode: selected area only" : "Area mode: grouped selections";
+      els.btnToolAreaMode.title = singleArea ? "Selected area only" : "Union of all area";
+      els.btnToolAreaMode.setAttribute("aria-label", singleArea ? "Selected area only" : "Union of all area");
     }
     if (els.iconToolAreaMode) {
       els.iconToolAreaMode.classList.remove("fa-object-group", "fa-object-ungroup");
@@ -383,7 +389,7 @@ export function wireApp(deps) {
   const isSingleAreaMode = () => !!(getAreaSelectionMode && getAreaSelectionMode() === "single");
   const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#analysisHistPanel,#specPanel,header,dialog"));
 
-  if (els.main && selectAreaAtPointer) {
+  if (els.main && (beginAreaMoveAtPointer || selectAreaAtPointer)) {
     els.main.addEventListener("pointerdown", (ev) => {
       if (!isSingleAreaMode()) return;
       if (!getActive()) return;
@@ -391,8 +397,29 @@ export function wireApp(deps) {
       if (getSpectrumPickEnabled && getSpectrumPickEnabled()) return;
       if (state.selection && state.selection.enabled) return;
       if (isUiTarget(ev.target)) return;
-      const changed = selectAreaAtPointer(ev);
-      if (!changed) return;
+      const startedMove = beginAreaMoveAtPointer ? beginAreaMoveAtPointer(ev) : false;
+      if (!startedMove) {
+        const hit = selectAreaAtPointer ? selectAreaAtPointer(ev) : false;
+        if (!hit) return;
+      }
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+    window.addEventListener("pointermove", (ev) => {
+      if (!isAreaMovePointer || !isAreaMovePointer(ev.pointerId)) return;
+      if (updateAreaMoveAtPointer) updateAreaMoveAtPointer(ev);
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+    window.addEventListener("pointerup", (ev) => {
+      if (!isAreaMovePointer || !isAreaMovePointer(ev.pointerId)) return;
+      if (finishAreaMoveAtPointer) finishAreaMoveAtPointer(ev);
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+    window.addEventListener("pointercancel", (ev) => {
+      if (!isAreaMovePointer || !isAreaMovePointer(ev.pointerId)) return;
+      if (cancelAreaMove) cancelAreaMove(ev.pointerId);
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
