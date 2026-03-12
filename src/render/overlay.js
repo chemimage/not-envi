@@ -319,6 +319,26 @@ export function createOverlayRenderer(deps) {
       overlayCtx.stroke();
     }
 
+    {
+      const dpr = getDevicePixelRatio();
+      const eff = ds.view.scale * dpr;
+      const canvasW = els.overlayCanvas.width;
+      const canvasH = els.overlayCanvas.height;
+      const imgW = ds.meta.samples * eff;
+      const imgH = ds.meta.lines * eff;
+      if (imgW < (canvasW - 1) || imgH < (canvasH - 1)) {
+        const x = (0 - ds.view.x) * eff;
+        const y = (0 - ds.view.y) * eff;
+        overlayCtx.save();
+        overlayCtx.setLineDash([4 * dpr, 4 * dpr]);
+        overlayCtx.lineDashOffset = 0;
+        overlayCtx.strokeStyle = "rgba(226,232,240,0.5)";
+        overlayCtx.lineWidth = 1.25 * dpr;
+        overlayCtx.strokeRect(x, y, imgW, imgH);
+        overlayCtx.restore();
+      }
+    }
+
     drawAnnotations(ds);
     drawScaleBar(ds);
     overlayCtx.restore();

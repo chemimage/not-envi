@@ -61,8 +61,16 @@ export function createViewControls(deps) {
     const eff = ds.view.scale * dpr;
     const viewW = els.cpuCanvas.width / eff;
     const viewH = els.cpuCanvas.height / eff;
-    ds.view.x = clamp(ds.view.x, 0, Math.max(0, ds.meta.samples - viewW));
-    ds.view.y = clamp(ds.view.y, 0, Math.max(0, ds.meta.lines - viewH));
+    if (viewW >= ds.meta.samples) {
+      ds.view.x = (ds.meta.samples - viewW) * 0.5;
+    } else {
+      ds.view.x = clamp(ds.view.x, 0, Math.max(0, ds.meta.samples - viewW));
+    }
+    if (viewH >= ds.meta.lines) {
+      ds.view.y = (ds.meta.lines - viewH) * 0.5;
+    } else {
+      ds.view.y = clamp(ds.view.y, 0, Math.max(0, ds.meta.lines - viewH));
+    }
   }
 
   function fitToScreen() {

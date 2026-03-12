@@ -45,13 +45,45 @@ export function createRenderer(deps) {
 
     const x0 = ds.view.x;
     const y0 = ds.view.y;
-    let raw;
-    if (ds.meta.interleave === "bip") {
-      raw = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, rasterW, rasterH, step);
-    } else {
-      raw = await readBandWindow(ds.meta, ds.ds, band, x0, y0, rasterW, rasterH, step);
+    const maxX = ds.meta.samples - 1;
+    const maxY = ds.meta.lines - 1;
+    const colStart = Math.max(0, Math.ceil((0 - x0) / step));
+    const colEnd = Math.min(rasterW - 1, Math.floor((maxX - x0) / step));
+    const rowStart = Math.max(0, Math.ceil((0 - y0) / step));
+    const rowEnd = Math.min(rasterH - 1, Math.floor((maxY - y0) / step));
+    const validW = Math.max(0, colEnd - colStart + 1);
+    const validH = Math.max(0, rowEnd - rowStart + 1);
+    const out = new Float32Array(rasterW * rasterH);
+
+    if (validW > 0 && validH > 0) {
+      const srcX0 = x0 + (colStart * step);
+      const srcY0 = y0 + (rowStart * step);
+      let raw;
+      if (ds.meta.interleave === "bip") {
+        raw = await readBandWindowBIP(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step);
+      } else {
+        raw = await readBandWindow(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step);
+      }
+      const src = toFloat32(raw);
+      for (let r = 0; r < validH; r += 1) {
+        const srcOff = r * validW;
+        const dstOff = (rowStart + r) * rasterW + colStart;
+        out.set(src.subarray(srcOff, srcOff + validW), dstOff);
+      }
     }
-    return { band, dataF32: toFloat32(raw), w: rasterW, h: rasterH, source: "direct", level: 0, step, x0, y0 };
+
+    return { band, dataF32: out, w: rasterW, h: rasterH, source: "direct", level: 0, step, x0, y0 };
+  }
+
+  function viewExtendsOutside(ds, eff) {
+    const viewW = els.cpuCanvas.width / eff;
+    const viewH = els.cpuCanvas.height / eff;
+    return (
+      ds.view.x < 0
+      || ds.view.y < 0
+      || (ds.view.x + viewW) > ds.meta.samples
+      || (ds.view.y + viewH) > ds.meta.lines
+    );
   }
 
   function resizeCanvases() {
@@ -121,7 +153,7 @@ export function createRenderer(deps) {
     if (reuse && ds.lastRaster && ds.lastRaster.band === band) {
       raster = ds.lastRaster;
     } else {
-      if (eff < 1) raster = await tryRasterFromPyramid(ds, band, eff);
+      if (eff < 1 && !viewExtendsOutside(ds, eff)) raster = await tryRasterFromPyramid(ds, band, eff);
       if (!raster) {
         setStatus("reading…", "warn");
         raster = await readRasterDirect(ds, band, eff);

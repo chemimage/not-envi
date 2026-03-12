@@ -18,6 +18,7 @@ export function createSpectrumController(deps) {
     updatePerf,
     sanitizeFilePart,
     downloadBlob,
+    setActiveBand,
     readSpectrumAtPixel,
     wavelengthArrayOrNull
   } = deps;
@@ -31,6 +32,10 @@ export function createSpectrumController(deps) {
     xVals: null,
     yVals: null,
     stdVals: null,
+    plot: null,
+    activeBandX: null,
+    bandDragPointerId: null,
+    bandDragByHandle: false,
     source: { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 }
   };
 
@@ -259,6 +264,7 @@ export function createSpectrumController(deps) {
 
     const xToPx = (x) => x0 + ((x - xmin) / (xmax - xmin)) * plotW;
     const yToPx = (y) => y1 - ((y - ymin) / (ymax - ymin)) * plotH;
+    specState.plot = { x0, y0, x1, y1, plotW, plotH, n: yVals.length };
 
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = 1 * dpr;
@@ -325,11 +331,13 @@ export function createSpectrumController(deps) {
     ctx.stroke();
 
     const selBand = (ds && Number.isFinite(ds.activeBand)) ? ds.activeBand : null;
+    specState.activeBandX = null;
     if (selBand != null && selBand >= 0 && selBand < yVals.length) {
       const xv = xVals ? xVals[selBand] : selBand;
       const yv = yVals[selBand];
       if (Number.isFinite(xv)) {
         const px = xToPx(xv);
+        specState.activeBandX = px;
         ctx.save();
         ctx.strokeStyle = "rgba(156,163,175,0.65)";
         ctx.lineWidth = 1 * dpr;
@@ -450,6 +458,30 @@ export function createSpectrumController(deps) {
     }
   }
 
+  function bandFromClientX(clientX) {
+    if (!els.specCanvas || !specState.plot || !Number.isFinite(clientX)) return null;
+    const { x0, plotW, n } = specState.plot;
+    if (!Number.isFinite(plotW) || plotW <= 0 || !Number.isFinite(n) || n <= 0) return null;
+    const rect = els.specCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const x = (clientX - rect.left) * dpr;
+    const t = Math.max(0, Math.min(1, (x - x0) / plotW));
+    return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
+  }
+
+  function applyActiveBandFromIndex(idx) {
+    const ds = getActive();
+    if (!ds || ds.id !== specState.dsId || !Number.isFinite(idx)) return false;
+    const band = Math.max(0, Math.min(ds.meta.bands - 1, idx | 0));
+    if (ds.activeBand === band) return false;
+    if (setActiveBand) setActiveBand(ds, band);
+    else ds.activeBand = band;
+    if (specState.yVals) {
+      drawSpectrumPlot(ds, specState.xVals, specState.yVals, specState.stdVals, specState.source?.sampleCount || 0);
+    }
+    return true;
+  }
+
   function redrawSpectrum() {
     if (!specState.open) return;
     const ds = getActive();
@@ -525,6 +557,48 @@ export function createSpectrumController(deps) {
 
   function isOpenForDatasetId(id) {
     return !!specState.open && specState.dsId === id;
+  }
+
+  if (els.specCanvas && typeof els.specCanvas.addEventListener === "function") {
+    els.specCanvas.addEventListener("pointerdown", (ev) => {
+      if (!specState.open || !specState.plot) return;
+      const rect = els.specCanvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const x = (ev.clientX - rect.left) * dpr;
+      const y = (ev.clientY - rect.top) * dpr;
+      const plot = specState.plot;
+      const withinPlot = (x >= plot.x0 && x <= plot.x1 && y >= plot.y0 && y <= plot.y1);
+      if (!withinPlot) return;
+      const handleTol = Math.max(8 * dpr, 10);
+      const onHandle = Number.isFinite(specState.activeBandX) && Math.abs(x - specState.activeBandX) <= handleTol;
+      if (!onHandle) return;
+      specState.bandDragPointerId = ev.pointerId;
+      specState.bandDragByHandle = true;
+      try { els.specCanvas.setPointerCapture(ev.pointerId); } catch (_err) {}
+      const idx = bandFromClientX(ev.clientX);
+      if (idx != null) applyActiveBandFromIndex(idx);
+      ev.preventDefault();
+      ev.stopPropagation();
+    });
+
+    els.specCanvas.addEventListener("pointermove", (ev) => {
+      if (specState.bandDragPointerId == null || ev.pointerId !== specState.bandDragPointerId) return;
+      const idx = bandFromClientX(ev.clientX);
+      if (idx != null) applyActiveBandFromIndex(idx);
+      ev.preventDefault();
+      ev.stopPropagation();
+    });
+
+    const endBandDrag = (ev) => {
+      if (specState.bandDragPointerId == null || ev.pointerId !== specState.bandDragPointerId) return;
+      try { els.specCanvas.releasePointerCapture(ev.pointerId); } catch (_err) {}
+      specState.bandDragPointerId = null;
+      specState.bandDragByHandle = false;
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
+    els.specCanvas.addEventListener("pointerup", endBandDrag);
+    els.specCanvas.addEventListener("pointercancel", endBandDrag);
   }
 
   return {

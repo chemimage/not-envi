@@ -144,7 +144,7 @@ import { APP_CONFIG } from "./config.js";
     histMode: 'whole',
     histViewDebounce: null,
     spectrumPickEnabled: false,
-    areaSelectionMode: "group",
+    areaSelectionMode: "single",
     analysisHist: { open: false, hoverBin: -1, stats: null },
     draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null, areaMove: null, nextItemId: 1 },
 
@@ -1651,6 +1651,7 @@ import { APP_CONFIG } from "./config.js";
     updatePerf,
     sanitizeFilePart,
     downloadBlob,
+    setActiveBand,
     readSpectrumAtPixel: (ds, ix, iy) => readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY),
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });

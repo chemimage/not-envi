@@ -520,7 +520,9 @@
   }
 
   #overlayHUD {
-    @apply pointer-events-none absolute left-2.5 top-2.5 flex flex-col gap-1.5;
+    @apply pointer-events-none absolute top-2.5 z-20 flex flex-col items-end gap-1.5;
+    left: auto;
+    right: calc(2.5rem + 14rem + 0.5rem);
   }
 
   .hud {
@@ -923,6 +925,10 @@
 
     #thumbWrap {
       @apply h-[130px] w-[180px];
+    }
+
+    #overlayHUD {
+      right: calc(2.5rem + 180px + 0.5rem);
     }
 
     #rightDock {

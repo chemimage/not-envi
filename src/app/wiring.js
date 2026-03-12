@@ -613,21 +613,25 @@ export function wireApp(deps) {
   els.chkGrid.oninput = () => render();
   els.chkScale.oninput = () => render();
 
-  els.btnSelect.onclick = () => {
-    const ds = getActive();
-    if (!ds) return;
-    state.selection.enabled = !state.selection.enabled;
-    if (state.selection.enabled) {
-      els.btnSelect.classList.add("primary");
-      setStatus("select a region", "warn");
-    } else {
-      els.btnSelect.classList.remove("primary");
-      clearSelection();
-      setStatus("ready", "ok");
-    }
-  };
+  if (els.btnSelect) {
+    els.btnSelect.onclick = () => {
+      const ds = getActive();
+      if (!ds) return;
+      state.selection.enabled = !state.selection.enabled;
+      if (state.selection.enabled) {
+        els.btnSelect.classList.add("primary");
+        setStatus("select a region", "warn");
+      } else {
+        els.btnSelect.classList.remove("primary");
+        clearSelection();
+        setStatus("ready", "ok");
+      }
+    };
+  }
 
-  els.btnExport.onclick = () => triggerSaveExport();
+  if (els.btnExport) {
+    els.btnExport.onclick = () => triggerSaveExport();
+  }
 
   els.expFormatPng.oninput = () => updateExportDialogUI();
   els.expFormatTiff.oninput = () => updateExportDialogUI();
