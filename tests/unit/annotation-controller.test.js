@@ -182,6 +182,30 @@ describe("annotation-controller", () => {
     ann.finishDrawingAtPointer({ pointerId: 31, pointerType: "mouse", clientX: 30, clientY: 0 });
   });
 
+  test("ruler profile scale drag follows ruler-normal direction", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings = [{ id: 22, tool: "ruler", color: "#fff", points: [{ x: 20, y: 10 }, { x: 20, y: 50 }] }];
+    ds.activeBand = 0;
+    ds.lastRaster = {
+      band: 0,
+      dataF32: new Float32Array(ds.meta.samples * ds.meta.lines).fill(3),
+      w: ds.meta.samples,
+      h: ds.meta.lines,
+      step: 1,
+      x0: 0,
+      y0: 0
+    };
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("ruler");
+
+    expect(ann.beginDrawingAtPointer({ pointerId: 32, pointerType: "mouse", clientX: 10, clientY: 30 })).toBe(true);
+    ann.updateDrawingAtPointer({ pointerId: 32, pointerType: "mouse", clientX: 10, clientY: 40 });
+    expect(ds.drawings[0].profileScale || 1).toBeCloseTo(1, 3);
+    ann.updateDrawingAtPointer({ pointerId: 32, pointerType: "mouse", clientX: 0, clientY: 40 });
+    expect(ds.drawings[0].profileScale).toBeGreaterThan(1);
+    ann.finishDrawingAtPointer({ pointerId: 32, pointerType: "mouse", clientX: 0, clientY: 40 });
+  });
+
   test("new ruler replaces only same-color rulers", () => {
     const { ds, deps } = makeBase();
     ds.drawings = [

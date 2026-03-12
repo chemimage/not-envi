@@ -633,6 +633,15 @@ export function createAnnotationController(deps) {
     };
   }
 
+  function rulerScreenNormal(ds, item, dpr) {
+    if (!ds || !item || !Array.isArray(item.points) || item.points.length < 2) return null;
+    const aImg = item.points[0];
+    const bImg = item.points[item.points.length - 1];
+    const a = imageToScreenPoint(ds, aImg, dpr);
+    const b = imageToScreenPoint(ds, bImg, dpr);
+    return rulerUpNormal(a, b);
+  }
+
   function rulerProfileScale(item) {
     const raw = Number(item?.profileScale);
     if (!Number.isFinite(raw) || raw <= 0) return 1;
@@ -878,12 +887,17 @@ export function createAnnotationController(deps) {
       if (profileHit) {
         const item = ds.drawings[profileHit.drawingIndex];
         if (item) {
+          const startScreen = pointerToScreenPoint(ev);
+          const normal = rulerScreenNormal(ds, item, startScreen.dpr);
           state.draw.activePointerId = ev.pointerId;
           state.draw.rulerProfileDrag = {
             dsId: ds.id,
             drawingIndex: profileHit.drawingIndex,
-            startClientY: ev.clientY,
-            startScale: rulerProfileScale(item)
+            startScale: rulerProfileScale(item),
+            startScreenX: startScreen.x,
+            startScreenY: startScreen.y,
+            normalX: Number.isFinite(normal?.nx) ? normal.nx : 0,
+            normalY: Number.isFinite(normal?.ny) ? normal.ny : -1
           };
           state.draw.rulerProfileHover = {
             dsId: ds.id,
@@ -953,10 +967,14 @@ export function createAnnotationController(deps) {
     if (ds && rulerProfileDrag && rulerProfileDrag.dsId === ds.id) {
       const item = ds.drawings[rulerProfileDrag.drawingIndex];
       if (item && (item.tool === "ruler" || item.tool === "line")) {
-        const dy = ev.clientY - rulerProfileDrag.startClientY;
-        const next = clamp(rulerProfileDrag.startScale * Math.exp(-dy / 90), 0.15, 12);
-        const cur = rulerProfileScale(item);
         const sp = pointerToScreenPoint(ev);
+        const nx = Number.isFinite(rulerProfileDrag.normalX) ? rulerProfileDrag.normalX : 0;
+        const ny = Number.isFinite(rulerProfileDrag.normalY) ? rulerProfileDrag.normalY : -1;
+        const dx = sp.x - (Number.isFinite(rulerProfileDrag.startScreenX) ? rulerProfileDrag.startScreenX : sp.x);
+        const dy = sp.y - (Number.isFinite(rulerProfileDrag.startScreenY) ? rulerProfileDrag.startScreenY : sp.y);
+        const proj = (dx * nx) + (dy * ny);
+        const next = clamp(rulerProfileDrag.startScale * Math.exp(proj / 90), 0.15, 12);
+        const cur = rulerProfileScale(item);
         let hoverChanged = false;
         const hover = state.draw.rulerProfileHover;
         if (!hover || hover.drawingIndex !== rulerProfileDrag.drawingIndex || Math.abs((hover.x || 0) - sp.x) > 0.75 || Math.abs((hover.y || 0) - sp.y) > 0.75) {
