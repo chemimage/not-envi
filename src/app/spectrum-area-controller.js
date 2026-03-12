@@ -11,6 +11,7 @@ export function createSpectrumAreaController(deps) {
     readBandWindow,
     readBandWindowBIP,
     toFloat32,
+    areaReducer,
     pointInPolygon,
     wavelengthArrayOrNull,
     fmtNoGroup
@@ -77,6 +78,33 @@ export function createSpectrumAreaController(deps) {
     return { sampleItems, sampleCount };
   }
 
+  async function reduceBandValues(values, sampleIndices, shouldAbort) {
+    if (isAborted(shouldAbort)) return ABORTED;
+    if (!values || !sampleIndices || !sampleIndices.length) return { sum: 0, sumSq: 0, count: 0 };
+    if (areaReducer && typeof areaReducer.reduce === "function") {
+      try {
+        const out = await areaReducer.reduce(values, sampleIndices);
+        if (isAborted(shouldAbort)) return ABORTED;
+        return {
+          sum: Number(out?.sum) || 0,
+          sumSq: Number(out?.sumSq) || 0,
+          count: Number(out?.count) || 0
+        };
+      } catch (_err) {
+        // Fallback to local reduction if worker/client path fails.
+      }
+    }
+    let sum = 0;
+    let sumSq = 0;
+    const count = sampleIndices.length;
+    for (let i = 0; i < count; i += 1) {
+      const v = values[sampleIndices[i]];
+      sum += v;
+      sumSq += (v * v);
+    }
+    return { sum, sumSq, count };
+  }
+
   async function buildAreaAverageSpectrum(ds, selections, options = {}) {
     const shouldAbort = options.shouldAbort;
     if (!ds || !Array.isArray(selections) || !selections.length) return null;
@@ -118,11 +146,10 @@ export function createSpectrumAreaController(deps) {
         }
         if (isAborted(shouldAbort)) return ABORTED;
         const f32 = toFloat32(raw);
-        for (let i = 0; i < sampleIndices.length; i += 1) {
-          const v = f32[sampleIndices[i]];
-          sum += v;
-          sumSq += (v * v);
-        }
+        const reduced = await reduceBandValues(f32, sampleIndices, shouldAbort);
+        if (reduced === ABORTED) return ABORTED;
+        sum += reduced.sum;
+        sumSq += reduced.sumSq;
       }
 
       if (sampleCount > 0) {

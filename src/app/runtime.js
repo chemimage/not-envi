@@ -34,6 +34,7 @@ import { APP_CONFIG } from "./config.js";
 import { createAnalysisHistogramController } from "./analysis-histogram-controller.js";
 import { createAnnotationController } from "./annotation-controller.js";
 import { createSpectrumAreaController } from "./spectrum-area-controller.js";
+import { createAreaReductionWorkerClient } from "./area-reduction-worker-client.js";
 import { createSelectionSyncController } from "./selection-sync-controller.js";
 import {
   resolveSelectionBoundsForSpectrum,
@@ -568,6 +569,11 @@ import { pointInPolygon } from "./draw-geometry.js";
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });
 
+  const areaReducer = createAreaReductionWorkerClient();
+  window.addEventListener("beforeunload", () => {
+    if (areaReducer && typeof areaReducer.dispose === "function") areaReducer.dispose();
+  }, { once: true });
+
   const spectrumArea = createSpectrumAreaController({
     getActive,
     spectrum,
@@ -580,6 +586,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     readBandWindow,
     readBandWindowBIP,
     toFloat32,
+    areaReducer,
     pointInPolygon,
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
     fmtNoGroup

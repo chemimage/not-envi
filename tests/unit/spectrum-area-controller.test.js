@@ -121,4 +121,50 @@ describe("spectrum-area-controller", () => {
     expect(openSpy).toHaveBeenCalledTimes(1);
     expect(pointInPolygon).toHaveBeenCalledTimes(16);
   });
+
+  test("uses injected area reducer for per-band reduction", async () => {
+    const selection = { id: 4, tool: "rect", points: [{ x: 0, y: 0 }, { x: 0, y: 0 }] };
+    const ds = {
+      id: 10,
+      meta: { bands: 2, interleave: "bsq", samples: 2, lines: 2 },
+      ds: {}
+    };
+    const openSpy = vi.fn(async () => {});
+    let readCall = 0;
+    const areaReducer = {
+      reduce: vi.fn(async (values, indices) => {
+        const v = values[indices[0]];
+        return { sum: v, sumSq: v * v, count: indices.length };
+      })
+    };
+
+    const ctrl = createSpectrumAreaController({
+      getActive: () => ds,
+      spectrum: { openSpectrumAt: openSpy },
+      isHistogramSelectionTool: (item) => item?.tool === "rect" || item?.tool === "shape",
+      getHistogramSelectionItems: () => [selection],
+      resolveSelectionBoundsForSpectrum: () => ({ x0: 0, y0: 0, x1: 0, y1: 0, width: 1, height: 1 }),
+      resolveEffectiveSelectionBounds: () => ({ x0: 0, y0: 0, x1: 0, y1: 0 }),
+      resolveSelectionBoundsList: () => [{ id: 4, x0: 0, y0: 0, x1: 0, y1: 0 }],
+      listHistogramSelectionItems: () => [selection],
+      readBandWindow: async () => {
+        readCall += 1;
+        return new Float32Array([readCall === 1 ? 3 : 5]);
+      },
+      readBandWindowBIP: async () => new Float32Array([0]),
+      toFloat32: (arr) => arr,
+      areaReducer,
+      pointInPolygon: () => true,
+      wavelengthArrayOrNull: () => null,
+      fmtNoGroup: (n) => String(n)
+    });
+
+    await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
+
+    expect(areaReducer.reduce).toHaveBeenCalledTimes(2);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const opts = openSpy.mock.calls[0][3];
+    expect(opts.yVals[0]).toBeCloseTo(3);
+    expect(opts.yVals[1]).toBeCloseTo(5);
+  });
 });
