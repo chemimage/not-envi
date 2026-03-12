@@ -412,6 +412,7 @@
 
   #drawTools {
     --draw-color-preview: #22c55e;
+    --tool-btn-size: 46px;
     @apply absolute left-2.5 top-2.5 z-20 flex flex-col items-center gap-1.5 rounded-sm border border-gray-700 bg-gray-900/80 p-1.5;
     padding-bottom: 10px;
     backdrop-filter: blur(4px);
@@ -425,7 +426,10 @@
   }
 
   .draw-tool-btn {
-    @apply inline-flex h-10 min-h-10 w-[46px] items-center justify-center rounded-sm border border-gray-600 bg-gray-800 text-xs font-semibold text-gray-200 transition-colors hover:border-gray-400;
+    @apply inline-flex items-center justify-center rounded-sm border border-gray-600 bg-gray-800 text-xs font-semibold text-gray-200 transition-colors hover:border-gray-400;
+    width: var(--tool-btn-size);
+    height: var(--tool-btn-size);
+    min-height: var(--tool-btn-size);
     touch-action: manipulation;
   }
 
@@ -450,7 +454,10 @@
   }
 
   .draw-color-wrap {
-    @apply relative mt-0.5 inline-flex h-11 w-[46px] cursor-pointer items-center justify-center rounded-sm border border-gray-500 bg-gray-800;
+    @apply relative inline-flex cursor-pointer items-center justify-center rounded-sm border border-gray-500 bg-gray-800;
+    width: var(--tool-btn-size);
+    height: var(--tool-btn-size);
+    min-height: var(--tool-btn-size);
     color: var(--draw-color-preview);
     touch-action: manipulation;
   }
@@ -615,7 +622,43 @@
   }
 
   #selRect {
-    @apply pointer-events-none absolute hidden rounded-sm border-2 border-dashed border-gray-300 bg-gray-500/20;
+    @apply pointer-events-none absolute hidden rounded-sm bg-gray-500/20;
+  }
+
+  #selRect::before,
+  #selRect::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      repeating-linear-gradient(90deg, var(--marquee-color) 0 4px, transparent 4px 8px),
+      repeating-linear-gradient(90deg, var(--marquee-color) 0 4px, transparent 4px 8px),
+      repeating-linear-gradient(0deg, var(--marquee-color) 0 4px, transparent 4px 8px),
+      repeating-linear-gradient(0deg, var(--marquee-color) 0 4px, transparent 4px 8px);
+    background-size: 100% 2px, 100% 2px, 2px 100%, 2px 100%;
+    background-position: 0 0, 0 100%, 0 0, 100% 0;
+    background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+    animation: sel-marquee-forward 0.7s linear infinite;
+  }
+
+  #selRect::before {
+    --marquee-color: rgba(17, 24, 39, 0.95);
+  }
+
+  #selRect::after {
+    --marquee-color: rgba(244, 244, 245, 0.95);
+    animation-name: sel-marquee-backward;
+  }
+
+  @keyframes sel-marquee-forward {
+    from { background-position: 0 0, 0 100%, 0 0, 100% 0; }
+    to { background-position: 8px 0, -8px 100%, 0 -8px, 100% 8px; }
+  }
+
+  @keyframes sel-marquee-backward {
+    from { background-position: 0 0, 0 100%, 0 0, 100% 0; }
+    to { background-position: -8px 0, 8px 100%, 0 8px, 100% -8px; }
   }
 
   .ds-list {

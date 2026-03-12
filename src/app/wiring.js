@@ -56,6 +56,7 @@ export function wireApp(deps) {
     finishDrawingAtPointer,
     cancelDrawing,
     eraseDrawingAtPointer,
+    clearAllAnnotations,
     updateRulerHoverAtPointer,
     clearRulerHover,
     toggleAnalysisHistogramPanel,
@@ -67,6 +68,22 @@ export function wireApp(deps) {
     updateZoomLabelBoot,
     setGpuBadgeAvailable
   } = deps;
+
+  function runExportWithErrorHandling() {
+    return runExportFromDialog().catch((err) => {
+      console.error(err);
+      alert("Export failed. See console for details.");
+      setStatus("ready", "ok");
+    });
+  }
+
+  function triggerSaveExport() {
+    if (els.exportDlg && els.exportDlg.open) {
+      runExportWithErrorHandling();
+      return;
+    }
+    openExportDialog();
+  }
 
   window.addEventListener("beforeunload", () => {
     try {
@@ -188,6 +205,18 @@ export function wireApp(deps) {
   if (els.toolRect && setDrawTool) els.toolRect.onclick = () => { setDrawTool("rect"); syncDrawToolUI(); };
   if (els.toolShape && setDrawTool) els.toolShape.onclick = () => { setDrawTool("shape"); syncDrawToolUI(); };
   if (els.toolEraser && setDrawTool) els.toolEraser.onclick = () => { setDrawTool("eraser"); syncDrawToolUI(); };
+  if (els.toolEraser) {
+    els.toolEraser.ondblclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (clearAllAnnotations) clearAllAnnotations();
+      if (setDrawTool) {
+        setDrawTool("none");
+        setDrawTool("eraser");
+      }
+      syncDrawToolUI();
+    };
+  }
   if (els.drawColor && setDrawColor) {
     els.drawColor.oninput = () => {
       setDrawColor(els.drawColor.value);
@@ -212,7 +241,7 @@ export function wireApp(deps) {
     }
   }
   if (els.btnToolExport) {
-    els.btnToolExport.onclick = () => openExportDialog();
+    els.btnToolExport.onclick = () => triggerSaveExport();
   }
   syncDrawToolUI();
 
@@ -381,7 +410,7 @@ export function wireApp(deps) {
     }
   };
 
-  els.btnExport.onclick = () => openExportDialog();
+  els.btnExport.onclick = () => triggerSaveExport();
 
   els.expFormatPng.oninput = () => updateExportDialogUI();
   els.expFormatTiff.oninput = () => updateExportDialogUI();
@@ -392,16 +421,14 @@ export function wireApp(deps) {
   els.expRenScopeSel.oninput = () => updateExportEstimate();
   els.expRenScopeView.oninput = () => updateExportEstimate();
   els.expRenScopeWhole.oninput = () => updateExportEstimate();
+  if (els.expSelModeTogether) els.expSelModeTogether.oninput = () => updateExportEstimate();
+  if (els.expSelModeSeparate) els.expSelModeSeparate.oninput = () => updateExportEstimate();
 
   els.btnExpCancel.onclick = () => {
     try { els.exportDlg.close(); } catch { els.exportDlg.open = false; }
   };
   els.btnExpGo.onclick = () => {
-    runExportFromDialog().catch((err) => {
-      console.error(err);
-      alert("Export failed. See console for details.");
-      setStatus("ready", "ok");
-    });
+    runExportWithErrorHandling();
   };
 
   els.bandSearch.oninput = () => rebuildBandTree();

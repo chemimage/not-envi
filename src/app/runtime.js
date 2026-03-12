@@ -429,6 +429,22 @@ import { APP_CONFIG } from "./config.js";
     return true;
   }
 
+  function clearAllAnnotations() {
+    const ds = getActive();
+    if (!ds) return false;
+    if (!Array.isArray(ds.drawings)) ds.drawings = [];
+    if (!ds.drawings.length) return false;
+    ds.drawings.length = 0;
+    state.draw.activePointerId = null;
+    state.draw.draft = null;
+    state.draw.rulerDrag = null;
+    state.draw.rulerHover = null;
+    updateSelectionHistogramForDataset(ds);
+    ensureMarqueeTicker();
+    render({ reuseRaster: true });
+    return true;
+  }
+
   function isDrawingPointer(pointerId) {
     return Number.isFinite(pointerId) && state.draw.activePointerId === pointerId;
   }
@@ -1129,6 +1145,9 @@ import { APP_CONFIG } from "./config.js";
     getActive,
     bandLabel,
     humanBytes,
+    collectAreaSelections: (ds) => exportService.collectAreaSelections(ds),
+    hasNonRectSelections: (selections) => exportService.hasNonRectSelections(selections),
+    resolveSelectionExportPlan: (ds, selections, separate) => exportService.resolveSelectionExportPlan(ds, selections, separate),
     resolveExportRect: (ds, scope) => exportService.resolveExportRect(ds, scope),
     alertFn: (msg) => alert(msg),
   });
@@ -1200,6 +1219,7 @@ import { APP_CONFIG } from "./config.js";
     finishDrawingAtPointer,
     cancelDrawing,
     eraseDrawingAtPointer,
+    clearAllAnnotations,
     updateRulerHoverAtPointer,
     clearRulerHover,
     toggleAnalysisHistogramPanel,

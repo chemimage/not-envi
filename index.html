@@ -62,7 +62,7 @@
       <button class="draw-tool-btn" id="toolShape" type="button" title="Shape" aria-label="Shape">
         <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>
       </button>
-      <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing" aria-label="Eraser">
+      <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing (double-click to clear all)" aria-label="Eraser (double-click to clear all)">
         <i class="fa-solid fa-eraser" aria-hidden="true"></i>
       </button>
       <label class="draw-color-wrap" title="Pick drawing color" aria-label="Color">
@@ -193,7 +193,6 @@
     <div id="analysisHistPanel" class="analysis-hist-panel" style="display:none;" aria-hidden="true">
       <div class="analysis-hist-head">
         <div class="analysis-hist-title">Histogram</div>
-        <button class="btn tiny ghost" id="btnAnalysisHistClose" type="button" aria-label="Close histogram">Hide</button>
       </div>
       <canvas id="analysisHistCanvas"></canvas>
       <div class="analysis-hist-hover" id="analysisHistHover">Hover a bin to inspect value/count.</div>
@@ -296,6 +295,24 @@
         <span>Whole dataset</span>
       </label>
     </div>
+  </div>
+
+  <div id="expSelModeWrap" style="margin-top:10px; display:none;">
+    <label class="small">Multiple selections</label>
+    <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
+      <label class="toggle">
+        <input type="radio" id="expSelModeTogether" name="expSelMode" value="together" checked />
+        <span>Export together (fill unselected with 0)</span>
+      </label>
+      <label class="toggle">
+        <input type="radio" id="expSelModeSeparate" name="expSelMode" value="separate" />
+        <span>Export each region independently</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="hint tiny" id="expShapeWarn" style="display:none; margin-top:8px;">
+    Non-rectangular selections will be padded to square with 0s.
   </div>
 
   <div class="divider"></div>

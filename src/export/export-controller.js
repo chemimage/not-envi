@@ -15,6 +15,35 @@ export function createExportDialogController(deps) {
     return deps.els.expFormatPng.checked ? "png" : "tiff";
   }
 
+  function getAreaSelections(ds) {
+    if (!ds || !deps.collectAreaSelections) return [];
+    return deps.collectAreaSelections(ds);
+  }
+
+  function hasNonRect(selections) {
+    if (!Array.isArray(selections) || !selections.length) return false;
+    if (deps.hasNonRectSelections) return deps.hasNonRectSelections(selections);
+    return selections.some((s) => s && s.tool === "shape");
+  }
+
+  function useSeparateMulti(selections) {
+    return !!(
+      Array.isArray(selections)
+      && selections.length > 1
+      && deps.els.expSelModeSeparate
+      && deps.els.expSelModeSeparate.checked
+    );
+  }
+
+  function resolveSelectionPlan(ds, selections) {
+    if (!ds || !Array.isArray(selections) || !selections.length) return { jobs: [], hasNonRect: false };
+    if (deps.resolveSelectionExportPlan) {
+      return deps.resolveSelectionExportPlan(ds, selections, useSeparateMulti(selections));
+    }
+    const rect = resolveExportRect(ds, "sel");
+    return { jobs: [{ w: rect.w, h: rect.h }], hasNonRect: false };
+  }
+
   function openExportDialog() {
     const ds = getActive();
     if (!ds || ds.activeBand == null) {
@@ -26,8 +55,12 @@ export function createExportDialogController(deps) {
     }
     state.exportKind = selectedKind();
 
-    const hasSel = !!state.selection.imgRect;
-    els.expTitle.textContent = "Export";
+    const selections = getAreaSelections(ds);
+    const selectionCount = selections.length;
+    const hasSel = selectionCount > 0;
+    if (selectionCount > 1) els.expTitle.textContent = "Export Multiple Selections";
+    else if (selectionCount === 1) els.expTitle.textContent = "Export Selection";
+    else els.expTitle.textContent = "Export";
 
     const b = ds.activeBand;
     els.expInfo.textContent = `${ds.name} • ${bandLabel(ds, b)} (band ${b})`;
@@ -37,11 +70,25 @@ export function createExportDialogController(deps) {
       els.expModeRaw.checked = true;
     }
 
-    els.expLblRawSel.textContent = hasSel ? "Selection stack (all bands)" : "Current view stack (all bands)";
-    els.expLblRenSel.textContent = hasSel ? "Selection" : "Selection (none)";
+    if (selectionCount > 1) {
+      els.expLblRawSel.textContent = "Selected regions stack (all bands)";
+      els.expLblRenSel.textContent = "Selected regions";
+    } else {
+      els.expLblRawSel.textContent = hasSel ? "Selection stack (all bands)" : "Current view stack (all bands)";
+      els.expLblRenSel.textContent = hasSel ? "Selection" : "Selection (none)";
+    }
     els.expRenScopeSel.disabled = !hasSel;
     if (hasSel) els.expRenScopeSel.checked = true;
     else els.expRenScopeView.checked = true;
+    if (els.expSelModeWrap) {
+      els.expSelModeWrap.style.display = (selectionCount > 1) ? "block" : "none";
+    }
+    if (els.expSelModeTogether && selectionCount <= 1) {
+      els.expSelModeTogether.checked = true;
+    }
+    if (els.expShapeWarn) {
+      els.expShapeWarn.style.display = hasNonRect(selections) ? "block" : "none";
+    }
 
     updateExportDialogUI();
     try { els.exportDlg.showModal(); } catch { els.exportDlg.open = true; }
@@ -72,28 +119,62 @@ export function createExportDialogController(deps) {
     const kind = selectedKind();
     state.exportKind = kind;
     const mode = (els.expModeRaw.checked && kind === "tiff") ? "raw" : "rendered";
+    const selections = getAreaSelections(ds);
+    const selectionCount = selections.length;
+    const hasSel = selectionCount > 0;
+    const nonRect = hasNonRect(selections);
+    if (els.expSelModeWrap) els.expSelModeWrap.style.display = (selectionCount > 1) ? "block" : "none";
+    if (els.expShapeWarn) els.expShapeWarn.style.display = nonRect ? "block" : "none";
 
     let rect;
     let estBytes = 0;
+    let warnByPixels = false;
 
     if (mode === "raw") {
       const scope = els.expRawScopeWhole.checked ? "whole" : "sel";
-      rect = resolveExportRect(ds, scope);
-      const bpp = ds.meta.dataTypeInfo.bytes;
-      estBytes = rect.w * rect.h * ds.meta.bands * bpp;
-      els.expNote.innerHTML = `Raw stack (all bands): <b>${rect.w}×${rect.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), uncompressed TIFF.`;
+      if (scope === "sel" && hasSel) {
+        const plan = resolveSelectionPlan(ds, selections);
+        const bpp = ds.meta.dataTypeInfo.bytes;
+        estBytes = plan.jobs.reduce((sum, job) => sum + (job.w * job.h * ds.meta.bands * bpp), 0);
+        warnByPixels = plan.jobs.some((job) => (job.w * job.h > 20_000_000));
+        if (plan.jobs.length > 1) {
+          els.expNote.innerHTML = `Raw stacks: <b>${plan.jobs.length}</b> files, each with <b>${ds.meta.bands}</b> bands (${ds.meta.dataTypeInfo.name}).`;
+        } else {
+          const one = plan.jobs[0];
+          els.expNote.innerHTML = `Raw stack (all bands): <b>${one.w}×${one.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), uncompressed TIFF.`;
+        }
+      } else {
+        rect = resolveExportRect(ds, scope);
+        const bpp = ds.meta.dataTypeInfo.bytes;
+        estBytes = rect.w * rect.h * ds.meta.bands * bpp;
+        warnByPixels = (rect.w * rect.h > 20_000_000);
+        els.expNote.innerHTML = `Raw stack (all bands): <b>${rect.w}×${rect.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), uncompressed TIFF.`;
+      }
     } else {
       const scope = els.expRenScopeWhole.checked ? "whole" : (els.expRenScopeSel.checked ? "sel" : "view");
-      rect = resolveExportRect(ds, scope);
-      estBytes = rect.w * rect.h * 4;
-      els.expNote.innerHTML = `Rendered view: <b>${rect.w}×${rect.h}</b> pixels from the current band.`;
+      if (scope === "sel" && hasSel) {
+        const plan = resolveSelectionPlan(ds, selections);
+        estBytes = plan.jobs.reduce((sum, job) => sum + (job.w * job.h * 4), 0);
+        warnByPixels = plan.jobs.some((job) => (job.w * job.h > 20_000_000));
+        if (plan.jobs.length > 1) {
+          els.expNote.innerHTML = `Rendered export: <b>${plan.jobs.length}</b> files from selected regions on the current band.`;
+        } else {
+          const one = plan.jobs[0];
+          els.expNote.innerHTML = `Rendered view: <b>${one.w}×${one.h}</b> pixels from the current band.`;
+        }
+      } else {
+        rect = resolveExportRect(ds, scope);
+        estBytes = rect.w * rect.h * 4;
+        warnByPixels = (rect.w * rect.h > 20_000_000);
+        els.expNote.innerHTML = `Rendered view: <b>${rect.w}×${rect.h}</b> pixels from the current band.`;
+      }
       if (kind === "png") {
         els.expNote.innerHTML += ` <span class="badge">PNG is rendered only</span> (use TIFF for raw).`;
       }
     }
 
     els.expEstimate.textContent = `Estimated output: ${humanBytes(estBytes)}`;
-    const warn = estBytes > (512 * 1024 * 1024) || (rect && rect.w * rect.h > 20_000_000);
+    const warn = estBytes > (512 * 1024 * 1024) || warnByPixels;
     els.expWarning.style.display = warn ? "inline-flex" : "none";
   }
 
