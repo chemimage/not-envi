@@ -18,6 +18,9 @@ export function createUIPanels(deps) {
     onNeedWholeStats,
     onBandChanged
   } = deps;
+  let metaPinnedDatasetId = null;
+  let metaPinnedRowEl = null;
+  let metaHoverDatasetId = null;
 
   function getBandSettings(ds, band) {
     if (!ds.bandSettings.has(band)) {
@@ -269,14 +272,54 @@ export function createUIPanels(deps) {
     rebuildDatasetList();
   }
 
+  function isDatasetRowExpanded(dsId) {
+    return !!(dsId && (metaHoverDatasetId === dsId || metaPinnedDatasetId === dsId));
+  }
+
+  function refreshDatasetRowExpansion() {
+    if (!els.datasetList) return;
+    const rows = els.datasetList.querySelectorAll(".ds-item[data-dsid]");
+    rows.forEach((row) => {
+      const dsId = row.getAttribute("data-dsid");
+      row.classList.toggle("expanded", isDatasetRowExpanded(dsId));
+    });
+  }
+
+  function clearPinnedMetaPanel({ hidePanel = true } = {}) {
+    metaPinnedDatasetId = null;
+    metaPinnedRowEl = null;
+    if (hidePanel) hideMetaHover();
+  }
+
+  function showPinnedMetaPanel(ds, rowEl = null) {
+    if (!ds || !els.metaHoverPanel) return;
+    metaPinnedDatasetId = ds.id;
+    metaPinnedRowEl = rowEl || null;
+    metaHoverDatasetId = ds.id;
+    renderMetaForDataset(ds);
+    showMetaHover(ds, rowEl, { pinned: true });
+    refreshDatasetRowExpansion();
+  }
+
+  function closePinnedMetaPanel() {
+    if (!metaPinnedDatasetId) return;
+    clearPinnedMetaPanel();
+    metaHoverDatasetId = null;
+    refreshDatasetRowExpansion();
+  }
+
   function rebuildDatasetList() {
     setAppEmptyMode();
     if (!els.datasetList) return;
     if (els.datasetCount) els.datasetCount.textContent = String(state.datasets.length);
     els.datasetList.innerHTML = "";
+    if (metaPinnedDatasetId && !state.datasets.some((d) => d.id === metaPinnedDatasetId)) {
+      clearPinnedMetaPanel();
+    }
     for (const ds of state.datasets) {
       const div = document.createElement("div");
       div.className = `ds-item${ds.id === state.activeId ? " active" : ""}`;
+      div.dataset.dsid = ds.id;
       div.onclick = () => setActiveDataset(ds.id);
 
       const left = document.createElement("div");
@@ -329,13 +372,27 @@ export function createUIPanels(deps) {
       div.appendChild(left);
       div.appendChild(actions);
       div.onmouseenter = () => {
-        showMetaHover(ds, div);
+        if (metaPinnedDatasetId && metaPinnedDatasetId !== ds.id) return;
+        metaHoverDatasetId = ds.id;
+        refreshDatasetRowExpansion();
       };
       div.onmouseleave = () => {
-        hideMetaHover();
+        if (metaPinnedDatasetId === ds.id) return;
+        if (metaHoverDatasetId === ds.id) metaHoverDatasetId = null;
+        refreshDatasetRowExpansion();
+      };
+      div.ondblclick = (ev) => {
+        ev.stopPropagation();
+        showPinnedMetaPanel(ds, div);
+      };
+      div.onpointerdown = (ev) => {
+        if (ev.pointerType !== "touch") return;
+        showPinnedMetaPanel(ds, div);
       };
       els.datasetList.appendChild(div);
+      if (metaPinnedDatasetId === ds.id) metaPinnedRowEl = div;
     }
+    refreshDatasetRowExpansion();
     els.datasetList.classList.toggle("few", state.datasets.length <= 2);
     if (els.datasetViewport) {
       if (state.datasets.length > 2) {
@@ -346,12 +403,22 @@ export function createUIPanels(deps) {
         els.datasetViewport.scrollTop = 0;
       }
     }
+    if (metaPinnedDatasetId) {
+      const pinned = state.datasets.find((d) => d.id === metaPinnedDatasetId) || null;
+      if (pinned) showMetaHover(pinned, metaPinnedRowEl, { pinned: true });
+      else clearPinnedMetaPanel();
+    }
   }
 
-  function showMetaHover(ds, rowEl) {
+  function showMetaHover(ds, rowEl, { pinned = false } = {}) {
     if (!els.metaHoverPanel) return;
     renderMetaForDataset(ds);
-    if (rowEl) {
+    if (pinned) {
+      els.metaHoverPanel.style.top = "auto";
+      els.metaHoverPanel.style.left = "auto";
+      els.metaHoverPanel.style.right = "10px";
+      els.metaHoverPanel.style.bottom = "10px";
+    } else if (rowEl) {
       const rowRect = rowEl.getBoundingClientRect();
       const panelW = 340;
       const gap = 8;
@@ -360,6 +427,7 @@ export function createUIPanels(deps) {
       const left = Math.max(8, Math.min(rawLeft, window.innerWidth - panelW - 8));
       const top = Math.max(8, Math.min(rawTop, window.innerHeight - 220));
       els.metaHoverPanel.style.top = `${top}px`;
+      els.metaHoverPanel.style.bottom = "auto";
       els.metaHoverPanel.style.left = `${left}px`;
       els.metaHoverPanel.style.right = "auto";
     }
@@ -440,8 +508,24 @@ export function createUIPanels(deps) {
   }
 
   function updateMetaUI() {
-    const ds = getActive();
+    const ds = metaPinnedDatasetId
+      ? (state.datasets.find((item) => item.id === metaPinnedDatasetId) || getActive())
+      : getActive();
     renderMetaForDataset(ds);
+  }
+
+  if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("pointerdown", (ev) => {
+      if (!metaPinnedDatasetId) return;
+      const target = ev.target;
+      if (!target || !target.closest) {
+        closePinnedMetaPanel();
+        return;
+      }
+      if (metaPinnedRowEl && metaPinnedRowEl.contains(target)) return;
+      if (els.metaHoverPanel && els.metaHoverPanel.contains(target)) return;
+      closePinnedMetaPanel();
+    }, true);
   }
 
   function updatePerf() {

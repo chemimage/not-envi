@@ -249,7 +249,7 @@ export function wireApp(deps) {
   const isEraserEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "eraser");
   const isDrawingEnabled = () => isDrawCreateEnabled() || isEraserEnabled();
   const isRulerEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "ruler");
-  const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,header,dialog"));
+  const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#analysisHistPanel,#specPanel,header,dialog"));
 
   if (els.main && (beginDrawingAtPointer || eraseDrawingAtPointer)) {
     els.main.addEventListener("pointerdown", (ev) => {
@@ -308,6 +308,7 @@ export function wireApp(deps) {
 
   els.main.addEventListener("dblclick", (ev) => {
     if (isDrawingEnabled()) return;
+    if (isUiTarget(ev.target)) return;
     const ds = getActive();
     if (!ds) return;
     if (els.specPanel && els.specPanel.contains(ev.target)) return;
