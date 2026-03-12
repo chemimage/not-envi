@@ -15,6 +15,7 @@ function makeBase() {
       rulerDrag: null,
       rulerMove: null,
       rulerProfileDrag: null,
+      rulerProfileHover: null,
       rulerHover: null,
       areaMove: null,
       nextItemId: 10
@@ -164,5 +165,24 @@ describe("annotation-controller", () => {
     ann.updateDrawingAtPointer({ pointerId: 31, pointerType: "mouse", clientX: 30, clientY: 0 });
     expect(ds.drawings[0].profileScale).toBeGreaterThan(1);
     ann.finishDrawingAtPointer({ pointerId: 31, pointerType: "mouse", clientX: 30, clientY: 0 });
+  });
+
+  test("new ruler replaces only same-color rulers", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings = [
+      { id: 30, tool: "ruler", color: "#ff2d2d", points: [{ x: 3, y: 3 }, { x: 9, y: 9 }] },
+      { id: 31, tool: "ruler", color: "#22c55e", points: [{ x: 4, y: 12 }, { x: 10, y: 12 }] }
+    ];
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("ruler");
+    ann.setDrawColor("#ff2d2d");
+    expect(ann.beginDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 20, clientY: 20 })).toBe(true);
+    ann.updateDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 28, clientY: 28 });
+    ann.finishDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 28, clientY: 28 });
+
+    const rulers = ds.drawings.filter((d) => d.tool === "ruler");
+    expect(rulers).toHaveLength(2);
+    expect(rulers.some((r) => r.color.toLowerCase() === "#22c55e")).toBe(true);
+    expect(rulers.some((r) => r.color.toLowerCase() === "#ff2d2d")).toBe(true);
   });
 });

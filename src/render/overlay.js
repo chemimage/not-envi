@@ -110,7 +110,45 @@ export function createOverlayRenderer(deps) {
     return { nx, ny, len };
   }
 
-  function drawRulerProfile(ds, item, a, b, dpr) {
+  function normalizedLabelAngle(a, b) {
+    let ang = Math.atan2(b.y - a.y, b.x - a.x);
+    if (ang > (Math.PI * 0.5)) ang -= Math.PI;
+    if (ang < -(Math.PI * 0.5)) ang += Math.PI;
+    return ang;
+  }
+
+  function drawOrientedLabel(text, cx, cy, ang, dpr) {
+    if (!text) return;
+    const fontPx = 11 * dpr;
+    const padX = 6 * dpr;
+    const padY = 3 * dpr;
+    overlayCtx.save();
+    overlayCtx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
+    overlayCtx.textAlign = "left";
+    overlayCtx.textBaseline = "top";
+    const textW = overlayCtx.measureText(text).width;
+    const boxW = textW + (padX * 2);
+    const boxH = fontPx + (padY * 2);
+    const x = -boxW * 0.5;
+    const y = -boxH * 0.5;
+    overlayCtx.translate(cx, cy);
+    overlayCtx.rotate(ang);
+    overlayCtx.fillStyle = "rgba(0,0,0,0.68)";
+    roundRect(overlayCtx, x, y, boxW, boxH, 2 * dpr);
+    overlayCtx.fill();
+    overlayCtx.fillStyle = "rgba(255,255,255,0.93)";
+    overlayCtx.fillText(text, x + padX, y + padY);
+    overlayCtx.restore();
+  }
+
+  function formatProfileValue(v) {
+    if (!Number.isFinite(v)) return "—";
+    const av = Math.abs(v);
+    if (av > 0 && (av >= 1e5 || av < 1e-3)) return v.toExponential(3);
+    return Number(v).toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  }
+
+  function drawRulerProfile(ds, item, a, b, dpr, profileHover = null) {
     if (!ds || !item || !Array.isArray(item.points) || item.points.length < 2) return;
     const raster = ds.lastRaster;
     if (!raster || raster.band !== ds.activeBand || !raster.dataF32) return;
@@ -182,6 +220,37 @@ export function createOverlayRenderer(deps) {
       }
     }
     if (hasRun) overlayCtx.stroke();
+
+    if (!profileHover || !Number.isFinite(profileHover.x) || !Number.isFinite(profileHover.y)) return;
+    const vAxisX = bx - ax;
+    const vAxisY = by - ay;
+    const vLen2 = (vAxisX * vAxisX) + (vAxisY * vAxisY);
+    if (!Number.isFinite(vLen2) || vLen2 <= 1e-9) return;
+    const rawT = (((profileHover.x - ax) * vAxisX) + ((profileHover.y - ay) * vAxisY)) / vLen2;
+    const t = Math.max(0, Math.min(1, rawT));
+    const ix = ai.x + (bi.x - ai.x) * t;
+    const iy = ai.y + (bi.y - ai.y) * t;
+    const v = sampleRasterValue(raster, ix, iy);
+    if (!Number.isFinite(v)) return;
+    const u = (v - minV) / range;
+    const d = offset + (u * amp);
+    const bx0 = a.x + (b.x - a.x) * t;
+    const by0 = a.y + (b.y - a.y) * t;
+    const x0 = bx0 + (n.nx * offset);
+    const y0 = by0 + (n.ny * offset);
+    const x1 = bx0 + (n.nx * d);
+    const y1 = by0 + (n.ny * d);
+    overlayCtx.strokeStyle = "rgba(226,232,240,0.35)";
+    overlayCtx.lineWidth = 1 * dpr;
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(x0, y0);
+    overlayCtx.lineTo(x1, y1);
+    overlayCtx.stroke();
+
+    const ang = normalizedLabelAngle(a, b);
+    const labelX = x1 + (n.nx * (8 * dpr));
+    const labelY = y1 + (n.ny * (8 * dpr));
+    drawOrientedLabel(formatProfileValue(v), labelX, labelY, ang, dpr);
   }
 
   function drawRulerLabel(ds, item, a, b, dpr) {
@@ -189,33 +258,11 @@ export function createOverlayRenderer(deps) {
     if (!text) return;
     const cx = (a.x + b.x) * 0.5;
     const cy = (a.y + b.y) * 0.5;
-    let ang = Math.atan2(b.y - a.y, b.x - a.x);
-    if (ang > (Math.PI * 0.5)) ang -= Math.PI;
-    if (ang < -(Math.PI * 0.5)) ang += Math.PI;
-    const fontPx = 11 * dpr;
-    const padX = 6 * dpr;
-    const padY = 3 * dpr;
-
-    overlayCtx.save();
-    overlayCtx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
-    overlayCtx.textAlign = "left";
-    overlayCtx.textBaseline = "top";
-    const textW = overlayCtx.measureText(text).width;
-    const boxW = textW + (padX * 2);
-    const boxH = fontPx + (padY * 2);
-    const x = -boxW * 0.5;
-    const y = -boxH * 0.5;
-    overlayCtx.translate(cx, cy);
-    overlayCtx.rotate(ang);
-    overlayCtx.fillStyle = "rgba(0,0,0,0.68)";
-    roundRect(overlayCtx, x, y, boxW, boxH, 2 * dpr);
-    overlayCtx.fill();
-    overlayCtx.fillStyle = "rgba(255,255,255,0.93)";
-    overlayCtx.fillText(text, x + padX, y + padY);
-    overlayCtx.restore();
+    const ang = normalizedLabelAngle(a, b);
+    drawOrientedLabel(text, cx, cy, ang, dpr);
   }
 
-  function drawLine(ds, item, eff, dpr) {
+  function drawLine(ds, item, eff, dpr, profileHover = null) {
     if (!item.points || item.points.length < 2) return;
     const a = toScreen(ds, item.points[0], eff);
     const b = toScreen(ds, item.points[item.points.length - 1], eff);
@@ -226,7 +273,7 @@ export function createOverlayRenderer(deps) {
     overlayCtx.lineTo(b.x, b.y);
     overlayCtx.stroke();
     if (item.tool === "ruler") {
-      drawRulerProfile(ds, item, a, b, dpr);
+      drawRulerProfile(ds, item, a, b, dpr, profileHover);
       drawRulerLabel(ds, item, a, b, dpr);
     }
   }
@@ -296,10 +343,13 @@ export function createOverlayRenderer(deps) {
     }
   }
 
-  function drawOneAnnotation(ds, item, eff, dpr, selectionIds = null, marqueeOffset = 0) {
+  function drawOneAnnotation(ds, item, eff, dpr, itemIndex = -1, rulerProfileHover = null, selectionIds = null, marqueeOffset = 0) {
     if (!item || !item.tool) return;
     const isSelection = !!(selectionIds && selectionIds.has(item.id));
-    if (item.tool === "ruler" || item.tool === "line") drawLine(ds, item, eff, dpr);
+    if (item.tool === "ruler" || item.tool === "line") {
+      const hover = (rulerProfileHover && rulerProfileHover.drawingIndex === itemIndex) ? rulerProfileHover : null;
+      drawLine(ds, item, eff, dpr, hover);
+    }
     else if (item.tool === "rect") drawRect(ds, item, eff, dpr, isSelection, marqueeOffset);
     else if (item.tool === "shape") drawShape(ds, item, eff, dpr, isSelection, marqueeOffset);
   }
@@ -311,6 +361,7 @@ export function createOverlayRenderer(deps) {
     const dpr = getDevicePixelRatio();
     const eff = ds.view.scale * dpr;
     const items = Array.isArray(drawData.items) ? drawData.items : [];
+    const rulerProfileHover = drawData.rulerProfileHover || null;
     const selectionIds = new Set(
       Array.isArray(drawData.selectionIds)
         ? drawData.selectionIds.filter((id) => Number.isFinite(id))
@@ -318,9 +369,9 @@ export function createOverlayRenderer(deps) {
     );
     const marqueeOffset = Number.isFinite(drawData.marqueeOffset) ? drawData.marqueeOffset : 0;
     for (let i = 0; i < items.length; i += 1) {
-      drawOneAnnotation(ds, items[i], eff, dpr, selectionIds, marqueeOffset);
+      drawOneAnnotation(ds, items[i], eff, dpr, i, rulerProfileHover, selectionIds, marqueeOffset);
     }
-    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, null, 0);
+    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, -1, null, null, 0);
   }
 
   function computeReferenceSpacing(ds, dpr) {

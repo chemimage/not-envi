@@ -47,15 +47,17 @@ export function createAnnotationController(deps) {
       const hadRulerDrag = !!state.draw.rulerDrag;
       const hadRulerMove = !!state.draw.rulerMove;
       const hadRulerProfileDrag = !!state.draw.rulerProfileDrag;
+      const hadRulerProfileHover = !!state.draw.rulerProfileHover;
       const hadRulerHover = !!state.draw.rulerHover;
       const hadAreaMove = !!state.draw.areaMove;
-      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerHover || hadAreaMove) {
+      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerProfileHover || hadRulerHover || hadAreaMove) {
         state.draw.tool = "none";
         state.draw.activePointerId = null;
         state.draw.draft = null;
         state.draw.rulerDrag = null;
         state.draw.rulerMove = null;
         state.draw.rulerProfileDrag = null;
+        state.draw.rulerProfileHover = null;
         state.draw.rulerHover = null;
         state.draw.areaMove = null;
         render({ reuseRaster: true });
@@ -73,6 +75,7 @@ export function createAnnotationController(deps) {
     const hadRulerDrag = !!state.draw.rulerDrag;
     const hadRulerMove = !!state.draw.rulerMove;
     const hadRulerProfileDrag = !!state.draw.rulerProfileDrag;
+    const hadRulerProfileHover = !!state.draw.rulerProfileHover;
     const hadRulerHover = !!state.draw.rulerHover;
     const hadAreaMove = !!state.draw.areaMove;
     const prevTool = state.draw.tool;
@@ -86,9 +89,10 @@ export function createAnnotationController(deps) {
       state.draw.rulerDrag = null;
       state.draw.rulerMove = null;
       state.draw.rulerProfileDrag = null;
+      state.draw.rulerProfileHover = null;
       state.draw.rulerHover = null;
       state.draw.areaMove = null;
-      if (hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
+      if (hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerProfileHover || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
     }
   }
 
@@ -536,12 +540,13 @@ export function createAnnotationController(deps) {
     const items = Array.isArray(ds.drawings) ? ds.drawings : [];
     const draft = (state.draw.draft && state.draw.draft.dsId === ds.id) ? state.draw.draft : null;
     const rulerHover = (state.draw.rulerHover && state.draw.rulerHover.dsId === ds.id) ? state.draw.rulerHover : null;
+    const rulerProfileHover = (state.draw.rulerProfileHover && state.draw.rulerProfileHover.dsId === ds.id) ? state.draw.rulerProfileHover : null;
     const selectionItems = getHistogramSelectionItems(ds);
     const selectionIds = selectionItems
       .map((item) => item.id)
       .filter((id) => Number.isFinite(id));
     const marqueeOffset = selectionIds.length ? ((performance.now() / 110) % 14) : 0;
-    return { items, draft, rulerHover, selectionIds, marqueeOffset };
+    return { items, draft, rulerHover, rulerProfileHover, selectionIds, marqueeOffset };
   }
 
   function findRulerEndpointHit(ds, point, pointerType) {
@@ -717,7 +722,7 @@ export function createAnnotationController(deps) {
           const d = pointDistanceToSegment(sp, run[j], run[j + 1]);
           if (!Number.isFinite(d) || d > tol || d > bestDist) continue;
           bestDist = d;
-          best = { drawingIndex: i };
+          best = { drawingIndex: i, x: sp.x, y: sp.y };
         }
       }
     }
@@ -730,6 +735,17 @@ export function createAnnotationController(deps) {
     return a.dsId === b.dsId && a.drawingIndex === b.drawingIndex && a.pointIndex === b.pointIndex;
   }
 
+  function sameRulerProfileHover(a, b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    return (
+      a.dsId === b.dsId
+      && a.drawingIndex === b.drawingIndex
+      && Math.abs((a.x || 0) - (b.x || 0)) < 0.75
+      && Math.abs((a.y || 0) - (b.y || 0)) < 0.75
+    );
+  }
+
   function setRulerHover(nextHover) {
     if (sameRulerHandle(state.draw.rulerHover, nextHover)) return false;
     state.draw.rulerHover = nextHover;
@@ -737,13 +753,38 @@ export function createAnnotationController(deps) {
     return true;
   }
 
+  function setRulerProfileHover(nextHover) {
+    if (sameRulerProfileHover(state.draw.rulerProfileHover, nextHover)) return false;
+    state.draw.rulerProfileHover = nextHover;
+    render({ reuseRaster: true });
+    return true;
+  }
+
+  function clearRulerProfileHover() {
+    return setRulerProfileHover(null);
+  }
+
   function clearRulerHover() {
-    return setRulerHover(null);
+    const a = setRulerHover(null);
+    const b = clearRulerProfileHover();
+    return a || b;
   }
 
   function updateRulerHoverAtPointer(ev) {
     const ds = getActive();
     if (!ds || state.draw.tool !== "ruler") return clearRulerHover();
+    if (state.draw.rulerProfileDrag) return false;
+    const pHit = findRulerProfileHit(ds, ev);
+    if (pHit) {
+      setRulerHover(null);
+      return setRulerProfileHover({
+        dsId: ds.id,
+        drawingIndex: pHit.drawingIndex,
+        x: pHit.x,
+        y: pHit.y
+      });
+    }
+    clearRulerProfileHover();
     const point = pointerToImagePoint(ev, ds);
     const hit = findRulerEndpointHit(ds, point, ev.pointerType);
     if (!hit) return clearRulerHover();
@@ -798,6 +839,7 @@ export function createAnnotationController(deps) {
     state.draw.rulerDrag = null;
     state.draw.rulerMove = null;
     state.draw.rulerProfileDrag = null;
+    state.draw.rulerProfileHover = null;
     state.draw.rulerHover = null;
     state.draw.areaMove = null;
     updateSelectionHistogramForDataset(ds);
@@ -825,6 +867,12 @@ export function createAnnotationController(deps) {
             drawingIndex: profileHit.drawingIndex,
             startClientY: ev.clientY,
             startScale: rulerProfileScale(item)
+          };
+          state.draw.rulerProfileHover = {
+            dsId: ds.id,
+            drawingIndex: profileHit.drawingIndex,
+            x: profileHit.x,
+            y: profileHit.y
           };
           state.draw.rulerDrag = null;
           state.draw.rulerMove = null;
@@ -891,8 +939,22 @@ export function createAnnotationController(deps) {
         const dy = ev.clientY - rulerProfileDrag.startClientY;
         const next = clamp(rulerProfileDrag.startScale * Math.exp(-dy / 90), 0.15, 12);
         const cur = rulerProfileScale(item);
+        const sp = pointerToScreenPoint(ev);
+        let hoverChanged = false;
+        const hover = state.draw.rulerProfileHover;
+        if (!hover || hover.drawingIndex !== rulerProfileDrag.drawingIndex || Math.abs((hover.x || 0) - sp.x) > 0.75 || Math.abs((hover.y || 0) - sp.y) > 0.75) {
+          state.draw.rulerProfileHover = {
+            dsId: ds.id,
+            drawingIndex: rulerProfileDrag.drawingIndex,
+            x: sp.x,
+            y: sp.y
+          };
+          hoverChanged = true;
+        }
         if (Math.abs(next - cur) > 1e-4) {
           item.profileScale = next;
+          render({ reuseRaster: true });
+        } else if (hoverChanged) {
           render({ reuseRaster: true });
         }
         return;
@@ -976,12 +1038,14 @@ export function createAnnotationController(deps) {
       state.draw.rulerDrag = null;
       state.draw.rulerMove = null;
       state.draw.rulerProfileDrag = null;
+      state.draw.rulerProfileHover = null;
       return;
     }
     if (rulerProfileDrag && rulerProfileDrag.dsId === ds.id) {
       updateDrawingAtPointer(ev);
       state.draw.activePointerId = null;
       state.draw.rulerProfileDrag = null;
+      state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
       render({ reuseRaster: true });
       return;
@@ -991,6 +1055,7 @@ export function createAnnotationController(deps) {
       state.draw.activePointerId = null;
       state.draw.rulerMove = null;
       state.draw.rulerProfileDrag = null;
+      state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
       render({ reuseRaster: true });
       return;
@@ -1001,6 +1066,7 @@ export function createAnnotationController(deps) {
       state.draw.rulerDrag = null;
       state.draw.rulerMove = null;
       state.draw.rulerProfileDrag = null;
+      state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
       render({ reuseRaster: true });
       return;
@@ -1024,8 +1090,12 @@ export function createAnnotationController(deps) {
     }
     if (keep) {
       if (draft.tool === "ruler") {
+        const targetColor = String(draft.color || "").toLowerCase();
         for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
-          if (ds.drawings[i] && ds.drawings[i].tool === "ruler") ds.drawings.splice(i, 1);
+          const cur = ds.drawings[i];
+          if (!cur || cur.tool !== "ruler") continue;
+          const curColor = String(cur.color || "").toLowerCase();
+          if (curColor === targetColor) ds.drawings.splice(i, 1);
         }
       }
       const newItem = {
@@ -1045,6 +1115,7 @@ export function createAnnotationController(deps) {
     state.draw.rulerDrag = null;
     state.draw.rulerMove = null;
     state.draw.rulerProfileDrag = null;
+    state.draw.rulerProfileHover = null;
     state.draw.areaMove = null;
     ensureMarqueeTicker();
     render({ reuseRaster: true });
@@ -1056,6 +1127,7 @@ export function createAnnotationController(deps) {
     state.draw.rulerDrag = null;
     state.draw.rulerMove = null;
     state.draw.rulerProfileDrag = null;
+    state.draw.rulerProfileHover = null;
     state.draw.areaMove = null;
     render({ reuseRaster: true });
   }
