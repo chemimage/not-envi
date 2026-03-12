@@ -47,8 +47,10 @@ export function wireApp(deps) {
     updateMetaUI,
     updatePerf,
     getDrawTool,
+    getSpectrumPickEnabled,
     getDrawColor,
     setDrawTool,
+    setSpectrumPickEnabled,
     setDrawColor,
     isDrawingPointer,
     beginDrawingAtPointer,
@@ -189,10 +191,12 @@ export function wireApp(deps) {
 
   function syncDrawToolUI() {
     const active = getDrawTool ? getDrawTool() : "none";
+    const spectral = getSpectrumPickEnabled ? !!getSpectrumPickEnabled() : false;
     if (els.toolRuler) els.toolRuler.classList.toggle("active", active === "ruler");
     if (els.toolRect) els.toolRect.classList.toggle("active", active === "rect");
     if (els.toolShape) els.toolShape.classList.toggle("active", active === "shape");
     if (els.toolEraser) els.toolEraser.classList.toggle("active", active === "eraser");
+    if (els.btnToolSpectral) els.btnToolSpectral.classList.toggle("active", spectral);
     if (els.drawColor && getDrawColor) {
       const color = getDrawColor();
       els.drawColor.value = color;
@@ -205,6 +209,12 @@ export function wireApp(deps) {
   if (els.toolRect && setDrawTool) els.toolRect.onclick = () => { setDrawTool("rect"); syncDrawToolUI(); };
   if (els.toolShape && setDrawTool) els.toolShape.onclick = () => { setDrawTool("shape"); syncDrawToolUI(); };
   if (els.toolEraser && setDrawTool) els.toolEraser.onclick = () => { setDrawTool("eraser"); syncDrawToolUI(); };
+  if (els.btnToolSpectral && setSpectrumPickEnabled) {
+    els.btnToolSpectral.onclick = () => {
+      setSpectrumPickEnabled();
+      syncDrawToolUI();
+    };
+  }
   if (els.toolEraser) {
     els.toolEraser.ondblclick = (ev) => {
       ev.preventDefault();
@@ -306,8 +316,10 @@ export function wireApp(deps) {
     });
   }
 
-  els.main.addEventListener("dblclick", (ev) => {
+  els.main.addEventListener("click", (ev) => {
+    if (!getSpectrumPickEnabled || !getSpectrumPickEnabled()) return;
     if (isDrawingEnabled()) return;
+    if (state.selection && state.selection.enabled) return;
     if (isUiTarget(ev.target)) return;
     const ds = getActive();
     if (!ds) return;
@@ -319,10 +331,12 @@ export function wireApp(deps) {
     const img = screenToImage(sx, sy);
     const ix = clamp(Math.floor(img.x), 0, ds.meta.samples - 1);
     const iy = clamp(Math.floor(img.y), 0, ds.meta.lines - 1);
+    const pointerType = ev.pointerType
+      || ((ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) ? "touch" : "mouse");
     openSpectrumAt(ds, ix, iy, {
       clientX: ev.clientX,
       clientY: ev.clientY,
-      pointerType: ev.pointerType || "mouse"
+      pointerType
     });
   });
 

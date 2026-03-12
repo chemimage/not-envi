@@ -25,7 +25,6 @@ export function createInteractionController(deps) {
     setStatus,
     updateHud,
     screenToImage,
-    openSpectrumAt,
     clampView,
     render,
     minScaleFor,
@@ -35,13 +34,8 @@ export function createInteractionController(deps) {
 
   const touchPoints = new Map();
   const touchGesture = {
-    pinch: null,
-    longPressTimer: null,
-    longPressPointerId: null,
-    longPressStart: null
+    pinch: null
   };
-  const LONG_PRESS_MS = 520;
-  const LONG_PRESS_MOVE_TOL = 10;
 
   function updateSelectionRect() {
     const x0 = Math.min(state.selection.x0, state.selection.x1);
@@ -109,36 +103,7 @@ export function createInteractionController(deps) {
     if (ev.pointerType === "touch") {
       touchPoints.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
 
-      if (touchPoints.size === 1 && !state.selection.enabled) {
-        clearLongPress();
-        touchGesture.longPressPointerId = ev.pointerId;
-        touchGesture.longPressStart = { x: ev.clientX, y: ev.clientY };
-        touchGesture.longPressTimer = window.setTimeout(() => {
-          const active = getActive();
-          if (!active || touchPoints.size !== 1) return;
-          const p = touchPoints.get(ev.pointerId);
-          if (!p) return;
-          const r = els.main.getBoundingClientRect();
-          const dpr = window.devicePixelRatio || 1;
-          const sx = (p.x - r.left) * dpr;
-          const sy = (p.y - r.top) * dpr;
-          const img = screenToImage(sx, sy);
-          const ix = clamp(Math.floor(img.x), 0, active.meta.samples - 1);
-          const iy = clamp(Math.floor(img.y), 0, active.meta.lines - 1);
-          if (openSpectrumAt) {
-            openSpectrumAt(active, ix, iy, {
-              clientX: p.x,
-              clientY: p.y,
-              pointerType: "touch"
-            });
-          }
-        }, LONG_PRESS_MS);
-      } else {
-        clearLongPress();
-      }
-
       if (touchPoints.size === 2) {
-        clearLongPress();
         const pts = Array.from(touchPoints.values());
         touchGesture.pinch = {
           startDist: distance(pts[0], pts[1]),
@@ -158,13 +123,6 @@ export function createInteractionController(deps) {
     if (ev.pointerType === "touch" && touchPoints.has(ev.pointerId)) {
       ev.preventDefault();
       touchPoints.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
-      if (touchGesture.longPressPointerId === ev.pointerId && touchGesture.longPressStart) {
-        const dx = ev.clientX - touchGesture.longPressStart.x;
-        const dy = ev.clientY - touchGesture.longPressStart.y;
-        if ((dx * dx + dy * dy) > (LONG_PRESS_MOVE_TOL * LONG_PRESS_MOVE_TOL)) {
-          clearLongPress();
-        }
-      }
 
       if (touchPoints.size === 2 && touchGesture.pinch && ds && !state.selection.drawing) {
         const pts = Array.from(touchPoints.values());
@@ -209,7 +167,6 @@ export function createInteractionController(deps) {
       if (touchPoints.size < 2) touchGesture.pinch = null;
     }
     state.mouse.dragging = false;
-    clearLongPress();
     if (state.selection.drawing) {
       state.selection.drawing = false;
       finalizeSelection();
@@ -222,11 +179,9 @@ export function createInteractionController(deps) {
       if (ev.pointerType === "touch") ev.preventDefault();
       touchPoints.delete(ev.pointerId);
       if (touchPoints.size < 2) touchGesture.pinch = null;
-      if (touchGesture.longPressPointerId === ev.pointerId) clearLongPress();
     } else {
       touchPoints.clear();
       touchGesture.pinch = null;
-      clearLongPress();
     }
     state.mouse.dragging = false;
   }
@@ -234,7 +189,6 @@ export function createInteractionController(deps) {
   function onPointerLeave() {
     state.mouse.in = false;
     state.mouse.dragging = false;
-    clearLongPress();
   }
 
   function applyScaleAt(targetScale, sx, sy) {
@@ -272,15 +226,6 @@ export function createInteractionController(deps) {
 
     const factor = ev.deltaY < 0 ? 1.25 : 0.8;
     zoomAt(factor, sx, sy);
-  }
-
-  function clearLongPress() {
-    if (touchGesture.longPressTimer != null) {
-      clearTimeout(touchGesture.longPressTimer);
-    }
-    touchGesture.longPressTimer = null;
-    touchGesture.longPressPointerId = null;
-    touchGesture.longPressStart = null;
   }
 
   function distance(a, b) {

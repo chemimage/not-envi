@@ -68,7 +68,6 @@ describe("interaction controller", () => {
   });
 
   test("touch handlers prevent browser defaults and clear touch pointers on up", () => {
-    const setTimeoutSpy = vi.spyOn(window, "setTimeout").mockImplementation(() => 1);
     const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 1000 } };
     const state = {
       selection: { enabled: false, drawing: false, imgRect: null },
@@ -109,8 +108,6 @@ describe("interaction controller", () => {
 
     const down2 = { pointerType: "touch", pointerId: 2, clientX: 20, clientY: 20, preventDefault: vi.fn() };
     controller.onPointerDown(down2);
-    expect(setTimeoutSpy).toHaveBeenCalledTimes(2);
-
-    setTimeoutSpy.mockRestore();
+    expect(down2.preventDefault).toHaveBeenCalledTimes(1);
   });
 });

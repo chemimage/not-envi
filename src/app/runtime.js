@@ -143,6 +143,7 @@ import { APP_CONFIG } from "./config.js";
     histDrag: {active:false, handle:null},
     histMode: 'whole',
     histViewDebounce: null,
+    spectrumPickEnabled: false,
     analysisHist: { open: false, hoverBin: -1, stats: null },
     draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null, nextItemId: 1 },
 
@@ -203,6 +204,30 @@ import { APP_CONFIG } from "./config.js";
     return state.draw.tool;
   }
 
+  function getSpectrumPickEnabled() {
+    return !!state.spectrumPickEnabled;
+  }
+
+  function setSpectrumPickEnabled(next = null) {
+    const enabled = (typeof next === "boolean") ? next : !state.spectrumPickEnabled;
+    if (enabled === state.spectrumPickEnabled) return enabled;
+    state.spectrumPickEnabled = enabled;
+    if (enabled) {
+      const hadDraft = !!state.draw.draft;
+      const hadRulerDrag = !!state.draw.rulerDrag;
+      const hadRulerHover = !!state.draw.rulerHover;
+      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerHover) {
+        state.draw.tool = "none";
+        state.draw.activePointerId = null;
+        state.draw.draft = null;
+        state.draw.rulerDrag = null;
+        state.draw.rulerHover = null;
+        render({ reuseRaster: true });
+      }
+    }
+    return enabled;
+  }
+
   function getDrawColor() {
     return state.draw.color;
   }
@@ -213,6 +238,7 @@ import { APP_CONFIG } from "./config.js";
     const hadRulerHover = !!state.draw.rulerHover;
     const prevTool = state.draw.tool;
     const next = (tool === "ruler" || tool === "rect" || tool === "shape" || tool === "eraser") ? tool : "none";
+    if (next !== "none") state.spectrumPickEnabled = false;
     state.draw.tool = (prevTool === next) ? "none" : next;
     const isCreateTool = state.draw.tool === "ruler" || state.draw.tool === "rect" || state.draw.tool === "shape";
     if (state.draw.tool !== prevTool || !isCreateTool) {
@@ -1105,7 +1131,6 @@ import { APP_CONFIG } from "./config.js";
     setStatus,
     updateHud,
     screenToImage,
-    openSpectrumAt,
     clampView,
     render,
     minScaleFor,
@@ -1210,8 +1235,10 @@ import { APP_CONFIG } from "./config.js";
     updateMetaUI,
     updatePerf,
     getDrawTool,
+    getSpectrumPickEnabled,
     getDrawColor,
     setDrawTool,
+    setSpectrumPickEnabled,
     setDrawColor,
     isDrawingPointer,
     beginDrawingAtPointer,
