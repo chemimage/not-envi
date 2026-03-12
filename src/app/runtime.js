@@ -472,6 +472,7 @@ import { APP_CONFIG } from "./config.js";
     move.moved = true;
     const wantsSpatial = !!(state.analysisHist.open && ds.id === state.activeId);
     const wantsSpectral = !!(state.spectrumPickEnabled && spectrum && spectrum.isOpenForDatasetId(ds.id));
+    if (wantsSpatial) positionAnalysisHistogramPanel();
     const nowMs = performance.now();
     if ((wantsSpatial || wantsSpectral) && (!Number.isFinite(move.lastRefreshMs) || (nowMs - move.lastRefreshMs) >= 120)) {
       move.lastRefreshMs = nowMs;
@@ -540,6 +541,105 @@ import { APP_CONFIG } from "./config.js";
     return { x0, y0, x1, y1 };
   }
 
+  function resolveSelectionBoundsList(ds, selections = null) {
+    if (!ds) return [];
+    const list = Array.isArray(selections) ? selections : getHistogramSelectionItems(ds);
+    if (!Array.isArray(list) || !list.length) return [];
+    const out = [];
+    for (const selection of list) {
+      const bounds = resolveSelectionBoundsForSpectrum(ds, selection);
+      if (!bounds) continue;
+      out.push({
+        id: Number.isFinite(selection?.id) ? selection.id : null,
+        x0: bounds.x0,
+        y0: bounds.y0,
+        x1: bounds.x1,
+        y1: bounds.y1
+      });
+    }
+    return out;
+  }
+
+  function rectOverlapArea(a, b) {
+    const x0 = Math.max(a.x, b.x);
+    const y0 = Math.max(a.y, b.y);
+    const x1 = Math.min(a.x + a.w, b.x + b.w);
+    const y1 = Math.min(a.y + a.h, b.y + b.h);
+    if (x1 <= x0 || y1 <= y0) return 0;
+    return (x1 - x0) * (y1 - y0);
+  }
+
+  function imageBoundsToScreenRect(ds, bounds) {
+    if (!ds || !bounds) return null;
+    const scale = Math.max(1e-9, Number(ds?.view?.scale) || 1);
+    const sx0 = (bounds.x0 - ds.view.x) * scale;
+    const sy0 = (bounds.y0 - ds.view.y) * scale;
+    const sx1 = (bounds.x1 + 1 - ds.view.x) * scale;
+    const sy1 = (bounds.y1 + 1 - ds.view.y) * scale;
+    return {
+      x: Math.min(sx0, sx1),
+      y: Math.min(sy0, sy1),
+      w: Math.max(1, Math.abs(sx1 - sx0)),
+      h: Math.max(1, Math.abs(sy1 - sy0))
+    };
+  }
+
+  function choosePanelPlacementNearSelection({
+    ds,
+    panelWidth,
+    panelHeight,
+    targetBounds,
+    avoidBounds = [],
+    pointerType = "mouse"
+  }) {
+    if (!ds || !targetBounds || !els.main) return null;
+    const mainRect = els.main.getBoundingClientRect();
+    const panelW = Math.max(220, panelWidth || 380);
+    const panelH = Math.max(120, panelHeight || 230);
+    const gap = pointerType === "touch" ? 56 : 28;
+    const margin = 8;
+    const targetRect = imageBoundsToScreenRect(ds, targetBounds);
+    if (!targetRect) return null;
+    const avoidRects = Array.isArray(avoidBounds)
+      ? avoidBounds.map((b) => imageBoundsToScreenRect(ds, b)).filter(Boolean)
+      : [];
+
+    const cx = targetRect.x + (targetRect.w / 2);
+    const cy = targetRect.y + (targetRect.h / 2);
+    const candidates = [
+      { x: targetRect.x + targetRect.w + gap, y: cy - (panelH / 2) },
+      { x: targetRect.x - panelW - gap, y: cy - (panelH / 2) },
+      { x: cx - (panelW / 2), y: targetRect.y + targetRect.h + gap },
+      { x: cx - (panelW / 2), y: targetRect.y - panelH - gap },
+      { x: targetRect.x + targetRect.w + gap, y: targetRect.y + targetRect.h + gap },
+      { x: targetRect.x - panelW - gap, y: targetRect.y - panelH - gap },
+      { x: targetRect.x + targetRect.w + gap, y: targetRect.y - panelH - gap },
+      { x: targetRect.x - panelW - gap, y: targetRect.y + targetRect.h + gap }
+    ];
+
+    let best = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    let bestAvoidOverlap = Number.POSITIVE_INFINITY;
+    for (const cand of candidates) {
+      const x = Math.max(margin, Math.min(cand.x, mainRect.width - panelW - margin));
+      const y = Math.max(margin, Math.min(cand.y, mainRect.height - panelH - margin));
+      const panel = { x, y, w: panelW, h: panelH };
+      const targetOverlap = rectOverlapArea(panel, targetRect);
+      let avoidOverlap = 0;
+      for (const avoidRect of avoidRects) avoidOverlap += rectOverlapArea(panel, avoidRect);
+      const dx = x - cand.x;
+      const dy = y - cand.y;
+      const dist = Math.hypot(dx, dy);
+      const score = (avoidOverlap * 40) + (targetOverlap * 6) + dist;
+      if (avoidOverlap < bestAvoidOverlap || (avoidOverlap === bestAvoidOverlap && score < bestScore)) {
+        bestAvoidOverlap = avoidOverlap;
+        bestScore = score;
+        best = { x, y };
+      }
+    }
+    return best;
+  }
+
   function resolveSelectionBoundsForSpectrum(ds, selection) {
     if (!ds || !selection || !Array.isArray(selection.points) || !selection.points.length) return null;
     const maxX = Math.max(0, ds.meta.samples - 1);
@@ -597,11 +697,13 @@ import { APP_CONFIG } from "./config.js";
     const sampleStep = Math.max(1, Math.ceil(Math.sqrt(totalArea / Math.max(1, targetSamples))));
     const bands = ds.meta.bands;
     const spectrumMean = new Float32Array(bands);
+    const spectrumStd = new Float32Array(bands);
     let sampleCount = 0;
 
     for (let band = 0; band < bands; band += 1) {
       const seen = new Set();
       let sum = 0;
+      let sumSq = 0;
       let count = 0;
 
       for (const item of valid) {
@@ -630,23 +732,30 @@ import { APP_CONFIG } from "./config.js";
             const key = iy * ds.meta.samples + ix;
             if (seen.has(key)) continue;
             seen.add(key);
-            sum += f32[row * outW + col];
+            const v = f32[row * outW + col];
+            sum += v;
+            sumSq += (v * v);
             count += 1;
           }
         }
       }
 
       if (count > 0) {
-        spectrumMean[band] = sum / count;
+        const mean = sum / count;
+        const variance = Math.max(0, (sumSq / count) - (mean * mean));
+        spectrumMean[band] = mean;
+        spectrumStd[band] = Math.sqrt(variance);
         if (!sampleCount) sampleCount = count;
       } else {
         spectrumMean[band] = NaN;
+        spectrumStd[band] = NaN;
       }
     }
 
     if (!sampleCount) return null;
     return {
       yVals: spectrumMean,
+      stdVals: spectrumStd,
       sampleCount,
       sampleStep,
       selectionCount: valid.length
@@ -1232,6 +1341,31 @@ import { APP_CONFIG } from "./config.js";
 
   function positionAnalysisHistogramPanel() {
     if (!els.analysisHistPanel || !els.btnToolHistogram) return;
+    const ds = getActive();
+    const selections = ds ? getHistogramSelectionItems(ds) : [];
+    if (ds && selections.length) {
+      const targetBounds = resolveEffectiveSelectionBounds(ds, selections);
+      const effectiveIds = new Set(selections.map((item) => item.id));
+      const allBounds = resolveSelectionBoundsList(ds, listHistogramSelectionItems(ds));
+      const avoidBounds = allBounds
+        .filter((b) => !effectiveIds.has(b.id))
+        .map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
+      const panelRect = els.analysisHistPanel.getBoundingClientRect();
+      const placement = choosePanelPlacementNearSelection({
+        ds,
+        panelWidth: panelRect.width || 380,
+        panelHeight: panelRect.height || 360,
+        targetBounds,
+        avoidBounds,
+        pointerType: "mouse"
+      });
+      if (placement) {
+        els.analysisHistPanel.style.left = `${Math.round(placement.x)}px`;
+        els.analysisHistPanel.style.top = `${Math.round(placement.y)}px`;
+        return;
+      }
+    }
+
     const trigger = els.btnToolHistogram.getBoundingClientRect();
     const panelWidth = 380;
     const left = clamp(trigger.right + 8, 8, Math.max(8, window.innerWidth - panelWidth - 8));
@@ -1242,6 +1376,7 @@ import { APP_CONFIG } from "./config.js";
 
   async function refreshAnalysisHistogram() {
     if (!state.analysisHist.open || !els.analysisHistPanel) return;
+    positionAnalysisHistogramPanel();
     const ds = getActive();
     state.analysisHist.hoverBin = -1;
     if (!ds) {
@@ -1535,6 +1670,10 @@ import { APP_CONFIG } from "./config.js";
       return;
     }
     const selectionBounds = resolveEffectiveSelectionBounds(ds, selections);
+    const effectiveIds = new Set(selections.map((item) => item.id));
+    const occluderBounds = resolveSelectionBoundsList(ds, listHistogramSelectionItems(ds))
+      .filter((b) => !effectiveIds.has(b.id))
+      .map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
 
     const sampled = area.sampleStep > 1;
     const sampleLabel = sampled
@@ -1544,6 +1683,7 @@ import { APP_CONFIG } from "./config.js";
     await spectrum.openSpectrumAt(ds, ix, iy, {
       ...opts,
       yVals: area.yVals,
+      stdVals: area.stdVals,
       xVals: wavelengthArrayOrNullCore(ds),
       subLabel,
       sourceType: "area",
@@ -1552,7 +1692,8 @@ import { APP_CONFIG } from "./config.js";
         selectionCount: area.selectionCount,
         sampleStep: area.sampleStep
       },
-      selectionBounds
+      selectionBounds,
+      selectionOccluders: occluderBounds
     });
   }
   async function openSpectrumForEffectiveArea(ds = null, anchor = null, noReposition = false) {

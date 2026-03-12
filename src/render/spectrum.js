@@ -30,6 +30,7 @@ export function createSpectrumController(deps) {
     y: 0,
     xVals: null,
     yVals: null,
+    stdVals: null,
     source: { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 }
   };
 
@@ -122,7 +123,7 @@ export function createSpectrumController(deps) {
     return (x1 - x0) * (y1 - y0);
   }
 
-  function positionSpectrumPanelNearSelection(ds, selectionBounds, pointerType = "mouse") {
+  function positionSpectrumPanelNearSelection(ds, selectionBounds, occluderBounds = [], pointerType = "mouse") {
     if (!els.specPanel || !els.main || !selectionBounds) return false;
     const mainRect = els.main.getBoundingClientRect();
     const panelRect = els.specPanel.getBoundingClientRect();
@@ -145,6 +146,22 @@ export function createSpectrumController(deps) {
 
     const cx = selRect.x + (selRect.w / 2);
     const cy = selRect.y + (selRect.h / 2);
+    const occluderRects = Array.isArray(occluderBounds)
+      ? occluderBounds.map((b) => {
+        const ox0 = (b.x0 - ds.view.x) * scale;
+        const oy0 = (b.y0 - ds.view.y) * scale;
+        const ox1 = (b.x1 + 1 - ds.view.x) * scale;
+        const oy1 = (b.y1 + 1 - ds.view.y) * scale;
+        return {
+          x: Math.min(ox0, ox1),
+          y: Math.min(oy0, oy1),
+          w: Math.max(1, Math.abs(ox1 - ox0)),
+          h: Math.max(1, Math.abs(oy1 - oy0))
+        };
+      })
+      .filter((r) => Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.w) && Number.isFinite(r.h))
+      : [];
+
     const candidates = [
       { x: selRect.x + selRect.w + gap, y: cy - (panelH / 2) },
       { x: selRect.x - panelW - gap, y: cy - (panelH / 2) },
@@ -158,16 +175,20 @@ export function createSpectrumController(deps) {
 
     let best = null;
     let bestScore = Number.POSITIVE_INFINITY;
+    let bestOccluderOverlap = Number.POSITIVE_INFINITY;
     for (const cand of candidates) {
       const x = Math.max(margin, Math.min(cand.x, mainRect.width - panelW - margin));
       const y = Math.max(margin, Math.min(cand.y, mainRect.height - panelH - margin));
       const panel = { x, y, w: panelW, h: panelH };
-      const overlap = rectOverlapArea(panel, selRect);
+      const targetOverlap = rectOverlapArea(panel, selRect);
+      let occluderOverlap = 0;
+      for (const occ of occluderRects) occluderOverlap += rectOverlapArea(panel, occ);
       const dx = x - cand.x;
       const dy = y - cand.y;
       const dist = Math.hypot(dx, dy);
-      const score = overlap * 10 + dist;
-      if (score < bestScore) {
+      const score = (occluderOverlap * 40) + (targetOverlap * 6) + dist;
+      if (occluderOverlap < bestOccluderOverlap || (occluderOverlap === bestOccluderOverlap && score < bestScore)) {
+        bestOccluderOverlap = occluderOverlap;
         bestScore = score;
         best = { x, y };
       }
@@ -180,7 +201,7 @@ export function createSpectrumController(deps) {
     return true;
   }
 
-  function drawSpectrumPlot(ds, xVals, yVals) {
+  function drawSpectrumPlot(ds, xVals, yVals, stdVals = null, sampleCount = 0) {
     resizeSpecCanvas();
     const c = els.specCanvas;
     const ctx = specCtx;
@@ -208,11 +229,21 @@ export function createSpectrumController(deps) {
     let xmax = Number.NEGATIVE_INFINITY;
     let ymin = Number.POSITIVE_INFINITY;
     let ymax = Number.NEGATIVE_INFINITY;
+    const ciScale = (Number.isFinite(sampleCount) && sampleCount > 1) ? (1.96 / Math.sqrt(sampleCount)) : 0;
+    const useCI = !!(stdVals && stdVals.length && ciScale > 0);
     for (let i = 0; i < yVals.length; i++) {
       const xv = xVals ? xVals[i] : i;
       const yv = yVals[i];
       if (Number.isFinite(xv)) { xmin = Math.min(xmin, xv); xmax = Math.max(xmax, xv); }
-      if (Number.isFinite(yv)) { ymin = Math.min(ymin, yv); ymax = Math.max(ymax, yv); }
+      if (!Number.isFinite(yv)) continue;
+      if (useCI && Number.isFinite(stdVals[i])) {
+        const ci = stdVals[i] * ciScale;
+        ymin = Math.min(ymin, yv - ci);
+        ymax = Math.max(ymax, yv + ci);
+      } else {
+        ymin = Math.min(ymin, yv);
+        ymax = Math.max(ymax, yv);
+      }
     }
     if (!Number.isFinite(xmin) || !Number.isFinite(xmax) || xmin === xmax) {
       xmin = 0;
@@ -254,6 +285,31 @@ export function createSpectrumController(deps) {
 
     const N = yVals.length;
     const step = Math.max(1, Math.ceil(N / 1400));
+    if (useCI) {
+      const upper = [];
+      const lower = [];
+      for (let i = 0; i < N; i += step) {
+        const xv = xVals ? xVals[i] : i;
+        const yv = yVals[i];
+        const sd = stdVals[i];
+        if (!Number.isFinite(xv) || !Number.isFinite(yv) || !Number.isFinite(sd)) continue;
+        const ci = sd * ciScale;
+        upper.push({ x: xToPx(xv), y: yToPx(yv + ci) });
+        lower.push({ x: xToPx(xv), y: yToPx(yv - ci) });
+      }
+      if (upper.length > 1 && lower.length > 1) {
+        ctx.save();
+        ctx.fillStyle = "rgba(148,163,184,0.22)";
+        ctx.beginPath();
+        ctx.moveTo(upper[0].x, upper[0].y);
+        for (let i = 1; i < upper.length; i += 1) ctx.lineTo(upper[i].x, upper[i].y);
+        for (let i = lower.length - 1; i >= 0; i -= 1) ctx.lineTo(lower[i].x, lower[i].y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
     ctx.strokeStyle = "rgba(229,231,235,0.95)";
     ctx.lineWidth = 1.5 * dpr;
     ctx.beginPath();
@@ -357,7 +413,7 @@ export function createSpectrumController(deps) {
       const pointerType = opts.pointerType === "touch" ? "touch" : "mouse";
       const hasAreaPlacement = (specState.source.type === "area" && opts.selectionBounds);
       const didAreaPlace = hasAreaPlacement
-        ? positionSpectrumPanelNearSelection(ds, opts.selectionBounds, pointerType)
+        ? positionSpectrumPanelNearSelection(ds, opts.selectionBounds, opts.selectionOccluders || [], pointerType)
         : false;
       if (!didAreaPlace) {
         positionSpectrumPanel({
@@ -373,9 +429,11 @@ export function createSpectrumController(deps) {
       if (!(yVals && yVals.length)) yVals = await readSpectrumAtPixel(ds, ix, iy);
       if (mySeq !== specSeq) return;
       const xVals = (opts.xVals && opts.xVals.length) ? opts.xVals : wavelengthArrayOrNull(ds);
-      drawSpectrumPlot(ds, xVals, yVals);
+      const stdVals = (opts.stdVals && opts.stdVals.length) ? opts.stdVals : null;
+      drawSpectrumPlot(ds, xVals, yVals, stdVals, specState.source.sampleCount || 0);
       specState.xVals = xVals;
       specState.yVals = yVals;
+      specState.stdVals = stdVals;
       const stats = summarizeSpectrum(yVals);
       if (!stats) {
         setSpecFoot("No finite values.");
@@ -396,13 +454,14 @@ export function createSpectrumController(deps) {
     if (!specState.open) return;
     const ds = getActive();
     if (!ds || ds.id !== specState.dsId || !specState.yVals) return;
-    drawSpectrumPlot(ds, specState.xVals, specState.yVals);
+    drawSpectrumPlot(ds, specState.xVals, specState.yVals, specState.stdVals, specState.source?.sampleCount || 0);
   }
 
   function closeSpectrum() {
     specSeq++;
     specState.xVals = null;
     specState.yVals = null;
+    specState.stdVals = null;
     specState.source = { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 };
     showSpectrumPanel(false);
   }
