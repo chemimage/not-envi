@@ -9,43 +9,6 @@
 </head>
 <body>
 <div id="app" data-empty="true">
-  <header>
-    <div class="group" style="display:none;">
-      <div class="title">ENVI Local Viewer</div>
-    </div>
-
-    <div class="group" style="display:none;">
-      <button class="btn" id="btnZoomOut">−</button>
-      <input id="zoom" type="range" min="0" max="100" value="40" />
-      <button class="btn" id="btnZoomIn">+</button>
-      <span class="badge" id="zoomLabel">—</span>
-    </div>
-
-    <div class="group controls-center">
-      <label class="toggle tiny switch" title="Show grid overlay">
-        <input type="checkbox" id="chkGrid" />
-        <span>Grid</span>
-      </label>
-      <label class="toggle tiny switch" title="Show scalebar (lower right)">
-        <input type="checkbox" id="chkScale" />
-        <span>Scalebar</span>
-      </label>
-    </div>
-
-    <div class="header-right">
-      <div class="group perf-top">
-        <div class="bar perf-top-bar" aria-label="Cache usage">
-          <div class="fill" id="perfBarCacheFill"></div>
-          <span class="bar-text" id="perfBarCacheText">Cache: 0 B / 0 B</span>
-        </div>
-      </div>
-
-      <div class="group">
-        <span class="badge badge-rect" id="statusBadge">idle</span>
-      </div>
-    </div>
-  </header>
-
   <main id="main">
     <canvas id="gpuCanvas"></canvas>
     <canvas id="cpuCanvas"></canvas>
@@ -87,6 +50,31 @@
 
     <div id="overlayHUD">
       <div class="hud" id="hudPos"><b>x</b>: —  <b>y</b>: —  <b>ν</b>: —</div>
+    </div>
+    <div id="hudControls" aria-label="View controls">
+      <div id="hudToggleRow">
+        <label class="toggle tiny switch" title="Show grid overlay">
+          <input type="checkbox" id="chkGrid" />
+          <span>Grid</span>
+        </label>
+        <label class="toggle tiny switch" title="Show scalebar (lower right)">
+          <input type="checkbox" id="chkScale" />
+          <span>Scalebar</span>
+        </label>
+      </div>
+      <div class="bar perf-top-bar" aria-label="Cache usage">
+        <div class="fill" id="perfBarCacheFill"></div>
+        <span class="bar-text" id="perfBarCacheText">Cache: 0 B / 0 B</span>
+      </div>
+      <div id="hudStatusRow">
+        <span class="badge badge-rect" id="statusBadge">idle</span>
+      </div>
+      <div id="zoomDock" style="display:none;">
+        <button class="btn" id="btnZoomOut">−</button>
+        <input id="zoom" type="range" min="0" max="100" value="40" />
+        <button class="btn" id="btnZoomIn">+</button>
+        <span class="badge" id="zoomLabel">—</span>
+      </div>
     </div>
 
     <div id="thumbDock">

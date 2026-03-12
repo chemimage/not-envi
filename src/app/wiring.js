@@ -1,4 +1,6 @@
 import { bindCoreEvents } from "../ui/events.js";
+import { wireFlyoutPanel } from "./wiring/flyout-panel.js";
+import { createSpectralDragController } from "./wiring/spectral-drag.js";
 
 export function wireApp(deps) {
   const {
@@ -100,72 +102,15 @@ export function wireApp(deps) {
     openExportDialog();
   }
 
-  const spectralDrag = {
-    activePointerId: null,
-    lastDatasetId: null,
-    lastIx: null,
-    lastIy: null,
-    lastAreaKey: "",
-    inFlight: false,
-    pending: null
-  };
-
-  function stopSpectralDrag() {
-    spectralDrag.activePointerId = null;
-    spectralDrag.pending = null;
-    spectralDrag.lastAreaKey = "";
-  }
-
-  function eventToSpectrumTarget(ev) {
-    const ds = getActive();
-    if (!ds) return null;
-    const rect = els.main.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const sx = (ev.clientX - rect.left) * dpr;
-    const sy = (ev.clientY - rect.top) * dpr;
-    const img = screenToImage(sx, sy);
-    const ix = clamp(Math.floor(img.x), 0, ds.meta.samples - 1);
-    const iy = clamp(Math.floor(img.y), 0, ds.meta.lines - 1);
-    const areaKey = getEffectiveAreaSelectionKey ? String(getEffectiveAreaSelectionKey(ds) || "") : "";
-    const pointerType = ev.pointerType
-      || ((ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) ? "touch" : "mouse");
-    return { ds, ix, iy, areaKey, clientX: ev.clientX, clientY: ev.clientY, pointerType };
-  }
-
-  function enqueueSpectrumUpdate(target) {
-    if (!target || !target.ds) return;
-    const sameTarget = target.areaKey
-      ? (spectralDrag.lastDatasetId === target.ds.id && spectralDrag.lastAreaKey === target.areaKey)
-      : (
-        spectralDrag.lastDatasetId === target.ds.id
-        && spectralDrag.lastIx === target.ix
-        && spectralDrag.lastIy === target.iy
-      );
-    if (sameTarget && !spectralDrag.inFlight) return;
-
-    if (spectralDrag.inFlight) {
-      spectralDrag.pending = target;
-      return;
-    }
-
-    spectralDrag.inFlight = true;
-    spectralDrag.lastDatasetId = target.ds.id;
-    spectralDrag.lastIx = target.ix;
-    spectralDrag.lastIy = target.iy;
-    spectralDrag.lastAreaKey = target.areaKey || "";
-    Promise.resolve(openSpectrumAt(target.ds, target.ix, target.iy, {
-      clientX: target.clientX,
-      clientY: target.clientY,
-      pointerType: target.pointerType
-    })).catch((err) => {
-      console.warn("Spectrum update failed", err);
-    }).finally(() => {
-      spectralDrag.inFlight = false;
-      const pending = spectralDrag.pending;
-      spectralDrag.pending = null;
-      if (pending && getSpectrumPickEnabled && getSpectrumPickEnabled()) enqueueSpectrumUpdate(pending);
-    });
-  }
+  const spectralDrag = createSpectralDragController({
+    els,
+    clamp,
+    getActive,
+    screenToImage,
+    getEffectiveAreaSelectionKey,
+    getSpectrumPickEnabled,
+    openSpectrumAt
+  });
 
   window.addEventListener("beforeunload", () => {
     try {
@@ -186,71 +131,6 @@ export function wireApp(deps) {
     if (positionAnalysisHistogramPanel) positionAnalysisHistogramPanel();
     if (refreshAnalysisHistogram) refreshAnalysisHistogram().catch(() => {});
   });
-
-  function wireFlyoutPanel({
-    panel,
-    header,
-    btnToggle,
-    btnPin,
-    collapseTitle = "Retract panel",
-    expandTitle = "Expand panel"
-  }) {
-    if (!panel) return;
-    const isOpen = () => panel.dataset.open !== "false";
-    const isPinned = () => panel.dataset.pinned !== "false";
-    const setOpen = (open) => {
-      const nextOpen = !!open;
-      panel.dataset.open = nextOpen ? "true" : "false";
-      if (btnToggle) {
-        btnToggle.textContent = nextOpen ? "Hide" : "Show";
-        btnToggle.title = nextOpen ? collapseTitle : expandTitle;
-        btnToggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-      }
-    };
-    const setPinned = (pinned, { forceOpen = true } = {}) => {
-      const nextPinned = !!pinned;
-      panel.dataset.pinned = nextPinned ? "true" : "false";
-      if (btnPin) {
-        btnPin.textContent = nextPinned ? "Pinned" : "Pin";
-        btnPin.title = nextPinned ? "Unpin panel" : "Pin panel open";
-        btnPin.setAttribute("aria-pressed", nextPinned ? "true" : "false");
-      }
-      if (nextPinned && forceOpen) setOpen(true);
-    };
-
-    setPinned(isPinned(), { forceOpen: false });
-    setOpen(isOpen());
-    if (isPinned() && !isOpen()) setOpen(true);
-
-    if (btnToggle) {
-      btnToggle.onclick = (ev) => {
-        ev.stopPropagation();
-        const nextOpen = !isOpen();
-        if (!nextOpen) setPinned(false, { forceOpen: false });
-        setOpen(nextOpen);
-      };
-    }
-    if (btnPin) {
-      btnPin.onclick = (ev) => {
-        ev.stopPropagation();
-        setPinned(!isPinned());
-      };
-    }
-    if (header) {
-      header.addEventListener("click", (ev) => {
-        if (!ev.target) return;
-        const target = ev.target;
-        if (target.closest && target.closest("button")) return;
-        if (!isOpen()) setOpen(true);
-      });
-    }
-    panel.addEventListener("pointerenter", () => {
-      if (!isPinned() && !isOpen()) setOpen(true);
-    });
-    panel.addEventListener("pointerleave", () => {
-      if (!isPinned()) setOpen(false);
-    });
-  }
 
   wireFlyoutPanel({
     panel: els.right,
@@ -313,7 +193,7 @@ export function wireApp(deps) {
   }
 
   function setSpectralActive(active) {
-    if (!active) stopSpectralDrag();
+    if (!active) spectralDrag.stop();
     if (!setSpectrumPickEnabled) return;
     setSpectrumPickEnabled(!!active);
   }
@@ -399,7 +279,7 @@ export function wireApp(deps) {
   const isDrawingEnabled = () => isDrawCreateEnabled() || isEraserEnabled();
   const isRulerEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "ruler");
   const isSingleAreaMode = () => !!(getAreaSelectionMode && getAreaSelectionMode() === "single");
-  const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#analysisHistPanel,#specPanel,header,dialog"));
+  const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#overlayHUD,#hudControls,#analysisHistPanel,#specPanel,dialog"));
 
   if (els.main && (beginAreaMoveAtPointer || selectAreaAtPointer)) {
     els.main.addEventListener("pointerdown", (ev) => {
@@ -507,34 +387,30 @@ export function wireApp(deps) {
       if (state.selection && state.selection.enabled) return;
       if (isUiTarget(ev.target)) return;
       if (els.specPanel && els.specPanel.contains(ev.target)) return;
-      const target = eventToSpectrumTarget(ev);
-      if (!target) return;
-      spectralDrag.activePointerId = ev.pointerId;
-      enqueueSpectrumUpdate(target);
+      const started = spectralDrag.beginFromEvent(ev);
+      if (!started) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
 
     window.addEventListener("pointermove", (ev) => {
       if (!getSpectrumPickEnabled || !getSpectrumPickEnabled()) return;
-      if (spectralDrag.activePointerId == null || ev.pointerId !== spectralDrag.activePointerId) return;
-      const target = eventToSpectrumTarget(ev);
-      if (!target) return;
-      enqueueSpectrumUpdate(target);
+      const updated = spectralDrag.updateFromEvent(ev);
+      if (!updated) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
 
     window.addEventListener("pointerup", (ev) => {
-      if (spectralDrag.activePointerId == null || ev.pointerId !== spectralDrag.activePointerId) return;
-      stopSpectralDrag();
+      const ended = spectralDrag.endFromEvent(ev);
+      if (!ended) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);
 
     window.addEventListener("pointercancel", (ev) => {
-      if (spectralDrag.activePointerId == null || ev.pointerId !== spectralDrag.activePointerId) return;
-      stopSpectralDrag();
+      const ended = spectralDrag.endFromEvent(ev);
+      if (!ended) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
     }, true);

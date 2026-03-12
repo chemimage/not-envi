@@ -1,0 +1,318 @@
+@layer components {
+  #main {
+    @apply relative h-full min-h-0 overflow-hidden bg-gray-950;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  #gpuCanvas,
+  #cpuCanvas,
+  #overlayCanvas {
+    @apply absolute inset-0 block h-full w-full;
+  }
+
+  #gpuCanvas,
+  #cpuCanvas {
+    @apply bg-black;
+  }
+
+  #cpuCanvas {
+    display: none;
+  }
+
+  #overlayCanvas {
+    @apply pointer-events-none bg-transparent;
+  }
+
+  #rightDock,
+  #analysisHistPanel,
+  #metaHoverPanel {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  #drawTools {
+    --draw-color-preview: #22c55e;
+    --tool-btn-size: 46px;
+    @apply absolute left-2.5 top-2.5 z-20 flex flex-col items-center gap-1.5 rounded-sm border border-gray-700 bg-gray-900/80 p-1.5;
+    padding-bottom: 10px;
+    backdrop-filter: blur(4px);
+  }
+
+  .draw-tools-separator {
+    width: 84%;
+    height: 1px;
+    margin: 2px 0;
+    background: rgb(75 85 99 / 0.8);
+  }
+
+  .draw-tool-gap-before {
+    margin-top: 8px;
+  }
+
+  .draw-tool-btn {
+    @apply inline-flex items-center justify-center rounded-sm border border-gray-600 bg-gray-800 text-xs font-semibold text-gray-200 transition-colors hover:border-gray-400;
+    width: var(--tool-btn-size);
+    height: var(--tool-btn-size);
+    min-height: var(--tool-btn-size);
+    touch-action: manipulation;
+  }
+
+  .draw-tool-btn i,
+  .draw-color-wrap i {
+    width: 90%;
+    height: 90%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .draw-tool-btn.active {
+    @apply border-gray-200 bg-gray-100 text-gray-900;
+  }
+
+  .draw-tool-btn.loading {
+    @apply cursor-wait opacity-70;
+  }
+
+  .draw-color-wrap {
+    @apply relative inline-flex cursor-pointer items-center justify-center rounded-sm border border-gray-500 bg-gray-800;
+    width: var(--tool-btn-size);
+    height: var(--tool-btn-size);
+    min-height: var(--tool-btn-size);
+    color: var(--draw-color-preview);
+    touch-action: manipulation;
+  }
+
+  .draw-color-wrap input[type="color"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .analysis-hist-panel {
+    @apply fixed z-40 w-[min(380px,calc(100vw-16px))] overflow-hidden rounded-sm border border-gray-700 bg-gray-900 p-2.5 shadow-2xl shadow-black/50;
+    max-height: calc(100vh - 12px);
+  }
+
+  .analysis-hist-head {
+    @apply mb-1 flex items-center justify-between gap-2;
+  }
+
+  .analysis-hist-title {
+    @apply text-xs uppercase tracking-[0.12em] text-gray-300;
+  }
+
+  #analysisHistCanvas {
+    @apply block h-[170px] w-full rounded-sm border border-gray-700 bg-gray-950;
+  }
+
+  .analysis-hist-hover {
+    @apply mt-1 rounded-sm border border-gray-700 bg-gray-950 px-2 py-1 font-mono text-xs text-gray-300;
+  }
+
+  .analysis-hist-stats {
+    @apply mt-1 grid gap-x-2 gap-y-1 text-xs;
+    grid-template-columns: 96px 1fr;
+  }
+
+  .analysis-hist-stats .k {
+    @apply text-gray-400;
+  }
+
+  .analysis-hist-stats .v {
+    @apply font-mono text-gray-200;
+  }
+
+  #overlayHUD {
+    @apply pointer-events-none absolute top-2.5 z-20 flex flex-col items-end gap-1.5;
+    left: auto;
+    right: calc(2.5rem + 14rem + 0.5rem);
+  }
+
+  #hudControls {
+    @apply absolute z-20 flex flex-col items-end gap-1.5;
+    pointer-events: auto;
+    left: auto;
+    right: calc(2.5rem + 14rem + 0.5rem);
+    top: calc(2.5rem + 1.9rem);
+  }
+
+  #hudToggleRow {
+    @apply flex items-center gap-2 rounded-sm border border-gray-700 bg-gray-900/80 px-2 py-1.5;
+    backdrop-filter: blur(4px);
+  }
+
+  #hudStatusRow {
+    @apply flex w-full justify-end;
+  }
+
+  #zoomDock {
+    @apply items-center gap-2;
+  }
+
+  .hud {
+    @apply rounded-sm border border-white/15 bg-gray-950/70 px-2 py-1 font-mono text-xs text-white;
+  }
+
+  .hud b {
+    @apply font-semibold text-white;
+  }
+
+  #thumbDock {
+    @apply absolute right-2.5 top-2.5 z-10 flex flex-col items-end gap-[5px];
+  }
+
+  #thumbWrap {
+    @apply h-40 w-56 overflow-hidden rounded-sm border border-gray-600 bg-gray-950/70 shadow-xl shadow-black/40;
+  }
+
+  #thumbWrap canvas {
+    @apply static h-full w-full;
+  }
+
+  #thumbControls {
+    @apply flex items-center gap-1;
+  }
+
+  #thumbControls .btn.tiny {
+    @apply rounded-sm border-gray-600 bg-gray-800/90 px-2 py-1 text-xs;
+  }
+
+  #emptyState {
+    @apply absolute inset-0 z-30 hidden items-center justify-center p-4;
+  }
+
+  .empty-dropzone {
+    @apply w-[min(680px,88vw)] rounded-2xl border-2 border-dotted border-gray-500 bg-gray-900/65 px-6 py-10 text-center shadow-2xl shadow-black/40;
+  }
+
+  .empty-dropzone .hint {
+    @apply text-sm leading-7 text-gray-200;
+  }
+
+  #datasetDock {
+    @apply absolute bottom-2.5 left-2.5 z-20 w-[min(340px,46vw)];
+  }
+
+  .dataset-viewport {
+    @apply overflow-y-hidden;
+    height: 192px;
+  }
+
+  #datasetDock:hover .dataset-viewport {
+    overflow-y: auto;
+  }
+
+  #datasetDock.has-expanded .dataset-viewport {
+    overflow-y: auto;
+  }
+
+  @media (hover: none) {
+    .dataset-viewport {
+      overflow-y: auto;
+    }
+  }
+
+  .bar-label {
+    @apply mb-1 mt-2 flex items-center justify-between gap-2.5 font-mono text-xs text-gray-400;
+  }
+
+  #perfBarCacheText {
+    @apply text-gray-200;
+  }
+
+  .bar {
+    @apply relative h-2.5 overflow-hidden rounded-sm border border-gray-700 bg-gray-800;
+  }
+
+  .bar > .fill {
+    @apply absolute left-0 top-0 h-full w-0;
+    background-image: linear-gradient(90deg, rgb(75 85 99), rgb(107 114 128));
+    transition: width 140ms ease;
+    z-index: 1;
+  }
+
+  .bar > .bar-text {
+    @apply pointer-events-none absolute inset-0 flex items-center justify-center px-1 font-mono text-xs text-gray-200;
+    text-shadow: 0 1px 0 rgb(3 7 18 / 0.65);
+    z-index: 2;
+  }
+
+  .perf-grid {
+    @apply mb-1 grid items-center gap-x-2.5 gap-y-1.5 text-sm;
+    grid-template-columns: 96px 1fr auto;
+  }
+
+  .perf-grid .k {
+    @apply text-xs text-gray-400;
+  }
+
+  .perf-grid .v {
+    @apply overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-gray-200;
+  }
+
+  .perf-io {
+    @apply row-span-2 flex items-center justify-end pl-2;
+  }
+
+  dialog {
+    @apply w-[min(560px,calc(100vw-28px))] rounded-sm border border-gray-700 bg-gray-900 p-3.5 text-gray-100 shadow-2xl shadow-black/50;
+  }
+
+  dialog::backdrop {
+    @apply bg-black/60;
+  }
+
+  #selRect {
+    @apply pointer-events-none absolute hidden rounded-sm bg-gray-500/20;
+  }
+
+  #selRect::before,
+  #selRect::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      repeating-linear-gradient(90deg, var(--marquee-color) 0 4px, transparent 4px 8px),
+      repeating-linear-gradient(90deg, var(--marquee-color) 0 4px, transparent 4px 8px),
+      repeating-linear-gradient(0deg, var(--marquee-color) 0 4px, transparent 4px 8px),
+      repeating-linear-gradient(0deg, var(--marquee-color) 0 4px, transparent 4px 8px);
+    background-size: 100% 2px, 100% 2px, 2px 100%, 2px 100%;
+    background-position: 0 0, 0 100%, 0 0, 100% 0;
+    background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+    animation: sel-marquee-forward 0.7s linear infinite;
+  }
+
+  #selRect::before {
+    --marquee-color: rgba(17, 24, 39, 0.95);
+  }
+
+  #selRect::after {
+    --marquee-color: rgba(244, 244, 245, 0.95);
+    animation-name: sel-marquee-backward;
+  }
+
+  @keyframes sel-marquee-forward {
+    from { background-position: 0 0, 0 100%, 0 0, 100% 0; }
+    to { background-position: 8px 0, -8px 100%, 0 -8px, 100% 8px; }
+  }
+
+  @keyframes sel-marquee-backward {
+    from { background-position: 0 0, 0 100%, 0 0, 100% 0; }
+    to { background-position: -8px 0, 8px 100%, 0 8px, 100% -8px; }
+  }
+}
+
