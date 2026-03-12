@@ -5,6 +5,49 @@ export function createExportService(deps) {
   const RAW_ENVI_INTERLEAVE = "bsq";
   const RAW_ENVI_LITTLE_ENDIAN = true;
 
+  function parseHexColor(color, alpha = 0.95) {
+    const raw = String(color || "").trim();
+    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(raw);
+    if (!m) return `rgba(255,45,45,${alpha})`;
+    let hex = m[1];
+    if (hex.length === 3) hex = `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function listRulerDrawings(ds) {
+    if (!ds || !Array.isArray(ds.drawings)) return [];
+    return ds.drawings.filter((item) => {
+      if (!item || (item.tool !== "ruler" && item.tool !== "line")) return false;
+      if (!Array.isArray(item.points) || item.points.length < 2) return false;
+      return !!(item.points[0] && item.points[item.points.length - 1]);
+    });
+  }
+
+  function drawRulersOnRenderedContext(ctx, ds, rect) {
+    if (!ctx || !ds || !rect) return;
+    const rulers = listRulerDrawings(ds);
+    if (!rulers.length) return;
+    ctx.save();
+    ctx.lineWidth = 2;
+    for (const item of rulers) {
+      const a = item.points[0];
+      const b = item.points[item.points.length - 1];
+      const ax = a.x - rect.x0;
+      const ay = a.y - rect.y0;
+      const bx = b.x - rect.x0;
+      const by = b.y - rect.y0;
+      ctx.strokeStyle = parseHexColor(item.color, 0.95);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function pointInPolygon(x, y, points) {
     let inside = false;
     for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
@@ -71,10 +114,9 @@ export function createExportService(deps) {
     };
   }
 
-  function collectAreaSelections(ds) {
-    if (!ds) return [];
+  function collectSelectionsFromItems(ds, items) {
     const out = [];
-    const drawings = Array.isArray(ds.drawings) ? ds.drawings.slice() : [];
+    const drawings = Array.isArray(items) ? items.slice() : [];
     drawings.sort((a, b) => (Number(a?.id) || 0) - (Number(b?.id) || 0));
 
     for (const item of drawings) {
@@ -103,6 +145,14 @@ export function createExportService(deps) {
         out.push({ id: item.id, tool: "shape", rect, points });
       }
     }
+    return out;
+  }
+
+  function collectAreaSelections(ds) {
+    if (!ds) return [];
+    const out = (typeof deps.getEffectiveAreaSelections === "function")
+      ? collectSelectionsFromItems(ds, deps.getEffectiveAreaSelections(ds))
+      : collectSelectionsFromItems(ds, ds.drawings);
 
     if (out.length) return out;
     const r = deps.state.selection.imgRect;
@@ -314,12 +364,14 @@ export function createExportService(deps) {
       }
 
       outCtx.putImageData(outImg, 0, 0);
+      drawRulersOnRenderedContext(outCtx, ds, { x0: job.x0, y0: job.y0, w: job.w, h: job.h });
       const base = selectionBaseName(ds, band, job, false);
       if (kind === "png") {
         const blob = await new Promise((res) => outCanvas.toBlob(res, "image/png"));
         deps.downloadBlob(blob, `${base}.png`);
       } else {
-        const blob = encodeRenderedTiff({ imageData: outImg });
+        const finalImg = outCtx.getImageData(0, 0, job.w, job.h);
+        const blob = encodeRenderedTiff({ imageData: finalImg });
         deps.downloadBlob(blob, `${base}.tiff`);
       }
     }
@@ -340,12 +392,14 @@ export function createExportService(deps) {
     deps.setStatus("export…", "warn");
     const img = await deps.renderWindowToImageData(ds, band, rect.x0, rect.y0, w, h, 1);
     const base = `${ds.name}_${sanitizeFilePart(deps.bandLabel(ds, band))}_${rect.x0}_${rect.y0}_${w}x${h}`;
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const outCtx = c.getContext("2d", { alpha: false });
+    outCtx.putImageData(img, 0, 0);
+    drawRulersOnRenderedContext(outCtx, ds, rect);
 
     if (kind === "png") {
-      const c = document.createElement("canvas");
-      c.width = w;
-      c.height = h;
-      c.getContext("2d", { alpha: false }).putImageData(img, 0, 0);
       const blob = await new Promise((res) => c.toBlob(res, "image/png"));
       deps.downloadBlob(blob, `${base}.png`);
       deps.setStatus("ready", "ok");
@@ -353,7 +407,8 @@ export function createExportService(deps) {
     }
 
     if (kind === "tiff") {
-      const blob = encodeRenderedTiff({ imageData: img });
+      const finalImg = outCtx.getImageData(0, 0, w, h);
+      const blob = encodeRenderedTiff({ imageData: finalImg });
       deps.downloadBlob(blob, `${base}.tiff`);
       deps.setStatus("ready", "ok");
     }

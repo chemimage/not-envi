@@ -630,6 +630,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     state,
     els,
     getActive,
+    getEffectiveAreaSelections: (ds) => getHistogramSelectionItems(ds),
     setStatus,
     humanBytes,
     fmt,
