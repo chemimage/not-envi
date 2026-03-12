@@ -26,10 +26,19 @@
       <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing (double-click to clear all)" aria-label="Eraser (double-click to clear all)">
         <i class="fa-solid fa-eraser" aria-hidden="true"></i>
       </button>
-      <label class="draw-color-wrap" title="Pick drawing color" aria-label="Color">
-        <i class="fa-solid fa-brush" aria-hidden="true"></i>
-        <input id="drawColor" type="color" value="#22c55e" />
-      </label>
+      <div class="draw-color-anchor">
+        <button class="draw-color-wrap" id="drawColorPreview" type="button" title="Drawing color swatches" aria-label="Drawing color swatches" aria-expanded="false" aria-haspopup="true">
+          <i class="fa-solid fa-brush" aria-hidden="true"></i>
+        </button>
+        <div id="drawColorSwatches" class="draw-color-flyout" role="group" aria-label="Drawing swatches" aria-hidden="true">
+          <button class="draw-color-swatch active" type="button" data-color="#ff2d2d" aria-pressed="true" title="Red" aria-label="Red swatch"></button>
+          <button class="draw-color-swatch" type="button" data-color="#ff9500" aria-pressed="false" title="Orange" aria-label="Orange swatch"></button>
+          <button class="draw-color-swatch" type="button" data-color="#ffd60a" aria-pressed="false" title="Yellow" aria-label="Yellow swatch"></button>
+          <button class="draw-color-swatch" type="button" data-color="#22c55e" aria-pressed="false" title="Green" aria-label="Green swatch"></button>
+          <button class="draw-color-swatch" type="button" data-color="#0ea5e9" aria-pressed="false" title="Blue" aria-label="Blue swatch"></button>
+          <button class="draw-color-swatch" type="button" data-color="#f8fafc" aria-pressed="false" title="White" aria-label="White swatch"></button>
+        </div>
+      </div>
       <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
       <button class="draw-tool-btn" id="btnToolAreaMode" type="button" title="Selected area only" aria-label="Selected area only">
         <i class="fa-regular fa-object-ungroup" id="iconToolAreaMode" aria-hidden="true"></i>

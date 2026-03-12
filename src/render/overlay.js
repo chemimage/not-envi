@@ -41,7 +41,7 @@ export function createOverlayRenderer(deps) {
   const HUD_RADIUS_CSS = 2;
 
   function colorWithAlpha(color, alpha) {
-    if (!color) return `rgba(34,197,94,${alpha})`;
+    if (!color) return `rgba(255,45,45,${alpha})`;
     const c = String(color).trim();
     const m = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i.exec(c);
     if (!m) return c;

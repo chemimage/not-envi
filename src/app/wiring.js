@@ -149,6 +149,26 @@ export function wireApp(deps) {
     expandTitle: "Expand display panel"
   });
 
+  let drawColorFlyoutOpen = false;
+  function setDrawColorFlyoutOpen(nextOpen) {
+    drawColorFlyoutOpen = !!nextOpen;
+    if (els.drawTools && els.drawTools.classList) {
+      if (typeof els.drawTools.classList.toggle === "function") {
+        els.drawTools.classList.toggle("draw-color-open", drawColorFlyoutOpen);
+      } else if (drawColorFlyoutOpen && typeof els.drawTools.classList.add === "function") {
+        els.drawTools.classList.add("draw-color-open");
+      } else if (!drawColorFlyoutOpen && typeof els.drawTools.classList.remove === "function") {
+        els.drawTools.classList.remove("draw-color-open");
+      }
+    }
+    if (els.drawColorPreview && els.drawColorPreview.setAttribute) {
+      els.drawColorPreview.setAttribute("aria-expanded", drawColorFlyoutOpen ? "true" : "false");
+    }
+    if (els.drawColorFlyout && els.drawColorFlyout.setAttribute) {
+      els.drawColorFlyout.setAttribute("aria-hidden", drawColorFlyoutOpen ? "false" : "true");
+    }
+  }
+
   function syncDrawToolUI() {
     const active = getDrawTool ? getDrawTool() : "none";
     const spectral = getSpectrumPickEnabled ? !!getSpectrumPickEnabled() : false;
@@ -170,11 +190,17 @@ export function wireApp(deps) {
       els.iconToolAreaMode.classList.add(singleArea ? "fa-object-ungroup" : "fa-object-group");
     }
     if (els.btnToolSpectral) els.btnToolSpectral.classList.toggle("active", spectral);
-    if (els.drawColor && getDrawColor) {
+    if (getDrawColor) {
       const color = getDrawColor();
-      els.drawColor.value = color;
       if (els.drawTools && els.drawTools.style) {
         els.drawTools.style.setProperty("--draw-color-preview", color);
+      }
+      if (Array.isArray(els.drawColorSwatches)) {
+        for (const sw of els.drawColorSwatches) {
+          const on = String(sw?.dataset?.color || "").toLowerCase() === String(color).toLowerCase();
+          if (sw && sw.classList) sw.classList.toggle("active", on);
+          if (sw && sw.setAttribute) sw.setAttribute("aria-pressed", on ? "true" : "false");
+        }
       }
     }
   }
@@ -250,13 +276,35 @@ export function wireApp(deps) {
       syncDrawToolUI();
     };
   }
-  if (els.drawColor && setDrawColor) {
-    els.drawColor.oninput = () => {
-      setDrawColor(els.drawColor.value);
-      syncDrawToolUI();
-      render({ reuseRaster: true });
-    };
+  if (Array.isArray(els.drawColorSwatches) && setDrawColor) {
+    for (const swatch of els.drawColorSwatches) {
+      if (!swatch || !swatch.addEventListener) continue;
+      swatch.addEventListener("click", () => {
+        const color = swatch.dataset ? swatch.dataset.color : "";
+        setDrawColor(color);
+        setDrawColorFlyoutOpen(false);
+        syncDrawToolUI();
+        render({ reuseRaster: true });
+      });
+    }
   }
+  if (els.drawColorPreview && els.drawColorPreview.addEventListener) {
+    els.drawColorPreview.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      setDrawColorFlyoutOpen(!drawColorFlyoutOpen);
+    });
+  }
+  window.addEventListener("pointerdown", (ev) => {
+    if (!drawColorFlyoutOpen) return;
+    const target = ev.target;
+    if (target && target.closest && target.closest("#drawColorPreview,#drawColorSwatches")) return;
+    setDrawColorFlyoutOpen(false);
+  }, true);
+  window.addEventListener("keydown", (ev) => {
+    if (!drawColorFlyoutOpen || ev.key !== "Escape") return;
+    setDrawColorFlyoutOpen(false);
+  });
   if (els.btnToolHistogram) {
     els.btnToolHistogram.onclick = () => {
       toggleSpatialMode();
@@ -276,6 +324,7 @@ export function wireApp(deps) {
   if (els.btnToolExport) {
     els.btnToolExport.onclick = () => triggerSaveExport();
   }
+  setDrawColorFlyoutOpen(false);
   syncDrawToolUI();
 
   const isDrawCreateEnabled = () => !!(getDrawTool && getActive() && (getDrawTool() === "ruler" || getDrawTool() === "rect" || getDrawTool() === "shape"));
