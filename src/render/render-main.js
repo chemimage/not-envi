@@ -54,6 +54,7 @@ export function createRenderer(deps) {
     const validW = Math.max(0, colEnd - colStart + 1);
     const validH = Math.max(0, rowEnd - rowStart + 1);
     const out = new Float32Array(rasterW * rasterH);
+    out.fill(Number.NaN);
 
     if (validW > 0 && validH > 0) {
       const srcX0 = x0 + (colStart * step);
