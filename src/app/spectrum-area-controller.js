@@ -16,11 +16,74 @@ export function createSpectrumAreaController(deps) {
     fmtNoGroup
   } = deps;
 
-  async function buildAreaAverageSpectrum(ds, selections) {
+  const ABORTED = Symbol("spectrum-area-aborted");
+  const ABORT_CHECK_MASK = 1023;
+  let nonAreaSeq = 0;
+  let areaInFlight = false;
+  let areaPending = null;
+  let areaPromise = Promise.resolve();
+
+  function isAborted(shouldAbort) {
+    return !!(typeof shouldAbort === "function" && shouldAbort());
+  }
+
+  function buildSamplePlan(ds, valid, sampleStep, shouldAbort) {
+    const sampleItems = [];
+    const seen = new Set();
+    let sampleCount = 0;
+    const rowStride = ds.meta.samples;
+
+    for (const item of valid) {
+      if (isAborted(shouldAbort)) return ABORTED;
+      const { selection, bounds } = item;
+      const outW = Math.max(1, Math.ceil(bounds.width / sampleStep));
+      const outH = Math.max(1, Math.ceil(bounds.height / sampleStep));
+      const isShape = selection.tool === "shape" && Array.isArray(selection.points) && selection.points.length >= 3;
+      const sampleIndices = [];
+      let loopCount = 0;
+
+      for (let row = 0; row < outH; row += 1) {
+        const iy = bounds.y0 + row * sampleStep;
+        if (iy > bounds.y1) continue;
+        for (let col = 0; col < outW; col += 1) {
+          loopCount += 1;
+          if ((loopCount & ABORT_CHECK_MASK) === 0 && isAborted(shouldAbort)) return ABORTED;
+          const ix = bounds.x0 + col * sampleStep;
+          if (ix > bounds.x1) continue;
+          if (isShape) {
+            const cx = ix + (0.5 * sampleStep);
+            const cy = iy + (0.5 * sampleStep);
+            if (!pointInPolygon({ x: cx, y: cy }, selection.points)) continue;
+          }
+          const key = iy * rowStride + ix;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          sampleIndices.push((row * outW) + col);
+          sampleCount += 1;
+        }
+      }
+
+      if (sampleIndices.length) {
+        sampleItems.push({
+          bounds,
+          outW,
+          outH,
+          sampleIndices: Uint32Array.from(sampleIndices)
+        });
+      }
+    }
+
+    if (!sampleCount || !sampleItems.length) return null;
+    return { sampleItems, sampleCount };
+  }
+
+  async function buildAreaAverageSpectrum(ds, selections, options = {}) {
+    const shouldAbort = options.shouldAbort;
     if (!ds || !Array.isArray(selections) || !selections.length) return null;
     const valid = [];
     let totalArea = 0;
     for (const selection of selections) {
+      if (isAborted(shouldAbort)) return ABORTED;
       if (!isHistogramSelectionTool(selection)) continue;
       const bounds = resolveSelectionBoundsForSpectrum(ds, selection);
       if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue;
@@ -34,54 +97,39 @@ export function createSpectrumAreaController(deps) {
     const bands = ds.meta.bands;
     const spectrumMean = new Float32Array(bands);
     const spectrumStd = new Float32Array(bands);
-    let sampleCount = 0;
+    const samplePlan = buildSamplePlan(ds, valid, sampleStep, shouldAbort);
+    if (samplePlan === ABORTED) return ABORTED;
+    if (!samplePlan) return null;
+    const { sampleItems, sampleCount } = samplePlan;
 
     for (let band = 0; band < bands; band += 1) {
-      const seen = new Set();
+      if (isAborted(shouldAbort)) return ABORTED;
       let sum = 0;
       let sumSq = 0;
-      let count = 0;
 
-      for (const item of valid) {
-        const { selection, bounds } = item;
-        const outW = Math.max(1, Math.ceil(bounds.width / sampleStep));
-        const outH = Math.max(1, Math.ceil(bounds.height / sampleStep));
+      for (const item of sampleItems) {
+        if (isAborted(shouldAbort)) return ABORTED;
+        const { bounds, outW, outH, sampleIndices } = item;
         let raw;
         if (ds.meta.interleave === "bip") {
           raw = await readBandWindowBIP(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep);
         } else {
           raw = await readBandWindow(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep);
         }
+        if (isAborted(shouldAbort)) return ABORTED;
         const f32 = toFloat32(raw);
-        const isShape = selection.tool === "shape" && Array.isArray(selection.points) && selection.points.length >= 3;
-        for (let row = 0; row < outH; row += 1) {
-          const iy = bounds.y0 + row * sampleStep;
-          if (iy > bounds.y1) continue;
-          for (let col = 0; col < outW; col += 1) {
-            const ix = bounds.x0 + col * sampleStep;
-            if (ix > bounds.x1) continue;
-            if (isShape) {
-              const cx = ix + (0.5 * sampleStep);
-              const cy = iy + (0.5 * sampleStep);
-              if (!pointInPolygon({ x: cx, y: cy }, selection.points)) continue;
-            }
-            const key = iy * ds.meta.samples + ix;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            const v = f32[row * outW + col];
-            sum += v;
-            sumSq += (v * v);
-            count += 1;
-          }
+        for (let i = 0; i < sampleIndices.length; i += 1) {
+          const v = f32[sampleIndices[i]];
+          sum += v;
+          sumSq += (v * v);
         }
       }
 
-      if (count > 0) {
-        const mean = sum / count;
-        const variance = Math.max(0, (sumSq / count) - (mean * mean));
+      if (sampleCount > 0) {
+        const mean = sum / sampleCount;
+        const variance = Math.max(0, (sumSq / sampleCount) - (mean * mean));
         spectrumMean[band] = mean;
         spectrumStd[band] = Math.sqrt(variance);
-        if (!sampleCount) sampleCount = count;
       } else {
         spectrumMean[band] = Number.NaN;
         spectrumStd[band] = Number.NaN;
@@ -103,41 +151,68 @@ export function createSpectrumAreaController(deps) {
     const selections = getHistogramSelectionItems(ds);
     const useArea = !!(opts.forceArea || selections.length);
     if (!useArea) {
+      nonAreaSeq += 1;
       await spectrum.openSpectrumAt(ds, ix, iy, opts);
       return;
     }
+    areaPending = {
+      ds,
+      ix,
+      iy,
+      opts: { ...opts }
+    };
+    if (areaInFlight) return areaPromise;
 
-    const area = await buildAreaAverageSpectrum(ds, selections);
-    if (!area || !area.yVals || !area.yVals.length) {
-      await spectrum.openSpectrumAt(ds, ix, iy, opts);
-      return;
-    }
-    const selectionBounds = resolveEffectiveSelectionBounds(ds, selections);
-    const effectiveIds = new Set(selections.map((item) => item.id));
-    const occluderBounds = resolveSelectionBoundsList(ds, listHistogramSelectionItems(ds))
-      .filter((b) => !effectiveIds.has(b.id))
-      .map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
+    areaInFlight = true;
+    areaPromise = (async () => {
+      try {
+        while (areaPending) {
+          const req = areaPending;
+          areaPending = null;
+          const seqAtStart = nonAreaSeq;
+          const shouldAbort = () => seqAtStart !== nonAreaSeq;
+          const reqSelections = getHistogramSelectionItems(req.ds);
+          const area = await buildAreaAverageSpectrum(req.ds, reqSelections, { shouldAbort });
+          if (areaPending) continue;
+          if (area === ABORTED || shouldAbort()) continue;
+          if (!area || !area.yVals || !area.yVals.length) {
+            if (shouldAbort()) continue;
+            await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
+            continue;
+          }
+          const selectionBounds = resolveEffectiveSelectionBounds(req.ds, reqSelections);
+          const effectiveIds = new Set(reqSelections.map((item) => item.id));
+          const occluderBounds = resolveSelectionBoundsList(req.ds, listHistogramSelectionItems(req.ds))
+            .filter((b) => !effectiveIds.has(b.id))
+            .map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
 
-    const sampled = area.sampleStep > 1;
-    const sampleLabel = sampled
-      ? `${fmtNoGroup(area.sampleCount)} sampled px (step ${area.sampleStep})`
-      : `${fmtNoGroup(area.sampleCount)} px`;
-    const subLabel = `Area average (${sampleLabel}, ${fmtNoGroup(area.selectionCount)} region${area.selectionCount > 1 ? "s" : ""})`;
-    await spectrum.openSpectrumAt(ds, ix, iy, {
-      ...opts,
-      yVals: area.yVals,
-      stdVals: area.stdVals,
-      xVals: wavelengthArrayOrNull(ds),
-      subLabel,
-      sourceType: "area",
-      sourceMeta: {
-        sampleCount: area.sampleCount,
-        selectionCount: area.selectionCount,
-        sampleStep: area.sampleStep
-      },
-      selectionBounds,
-      selectionOccluders: occluderBounds
-    });
+          const sampled = area.sampleStep > 1;
+          const sampleLabel = sampled
+            ? `${fmtNoGroup(area.sampleCount)} sampled px (step ${area.sampleStep})`
+            : `${fmtNoGroup(area.sampleCount)} px`;
+          const subLabel = `Area average (${sampleLabel}, ${fmtNoGroup(area.selectionCount)} region${area.selectionCount > 1 ? "s" : ""})`;
+          if (shouldAbort()) continue;
+          await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, {
+            ...req.opts,
+            yVals: area.yVals,
+            stdVals: area.stdVals,
+            xVals: wavelengthArrayOrNull(req.ds),
+            subLabel,
+            sourceType: "area",
+            sourceMeta: {
+              sampleCount: area.sampleCount,
+              selectionCount: area.selectionCount,
+              sampleStep: area.sampleStep
+            },
+            selectionBounds,
+            selectionOccluders: occluderBounds
+          });
+        }
+      } finally {
+        areaInFlight = false;
+      }
+    })();
+    return areaPromise;
   }
 
   async function openSpectrumForEffectiveArea(ds = null, anchor = null, noReposition = false) {

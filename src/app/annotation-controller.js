@@ -221,6 +221,14 @@ export function createAnnotationController(deps) {
     return null;
   }
 
+  function canMoveSelectedAreaWithoutTool() {
+    if (state.draw.tool !== "none") return false;
+    if (getAreaSelectionMode() !== "single") return false;
+    const spatialOn = !!(isAnalysisHistogramOpen && isAnalysisHistogramOpen());
+    const spectralOn = !!state.spectrumPickEnabled;
+    return spatialOn || spectralOn;
+  }
+
   function findRectHandleAtPoint(item, point, tolImg) {
     const box = rectBoundsFromItem(item);
     if (!box) return null;
@@ -338,8 +346,11 @@ export function createAnnotationController(deps) {
     const ds = getActive();
     if (!ds) return false;
     const toolFilter = activeAreaToolFilter();
-    if (!toolFilter) return false;
-    const hit = findAreaHitAtPointer(ds, ev, { toolFilter });
+    const allowAnyAreaMove = canMoveSelectedAreaWithoutTool();
+    if (!toolFilter && !allowAnyAreaMove) return false;
+    const hit = toolFilter
+      ? findAreaHitAtPointer(ds, ev, { toolFilter })
+      : findAreaHitAtPointer(ds, ev);
     if (!hit) return false;
     const changed = setSelectedAreaId(ds, hit.item.id);
     if (changed) {
@@ -528,6 +539,12 @@ export function createAnnotationController(deps) {
     }
     if (tool === "shape") {
       const hit = findAreaHitAtPointer(ds, ev, { toolFilter: "shape" });
+      if (!hit) return "";
+      if (pointInsideArea(hit.item, hit.point)) return "move";
+      return "";
+    }
+    if (canMoveSelectedAreaWithoutTool()) {
+      const hit = findAreaHitAtPointer(ds, ev);
       if (!hit) return "";
       if (pointInsideArea(hit.item, hit.point)) return "move";
       return "";

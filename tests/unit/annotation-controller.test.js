@@ -116,6 +116,21 @@ describe("annotation-controller", () => {
     expect(ds.drawings[0].points[1]).toEqual({ x: 8, y: 8 });
   });
 
+  test("spectral mode allows dragging selected area with no draw tool", () => {
+    const { state, ds, deps } = makeBase();
+    state.spectrumPickEnabled = true;
+    const ann = createAnnotationController(deps);
+
+    const down = { pointerId: 77, pointerType: "mouse", clientX: 4, clientY: 4 };
+    expect(ann.beginAreaMoveAtPointer(down)).toBe(true);
+    expect(ann.isAreaMovePointer(77)).toBe(true);
+    expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 5, clientY: 5 })).toBe("move");
+
+    ann.updateAreaMoveAtPointer({ pointerId: 77, pointerType: "mouse", clientX: 7, clientY: 6 });
+    expect(ds.drawings[0].points[0]).toEqual({ x: 5, y: 4 });
+    expect(ds.drawings[0].points[1]).toEqual({ x: 11, y: 10 });
+  });
+
   test("ruler tool allows dragging ruler body", () => {
     const { ds, deps } = makeBase();
     ds.drawings.push({ id: 9, tool: "ruler", color: "#fff", points: [{ x: 2, y: 2 }, { x: 42, y: 42 }] });
