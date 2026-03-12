@@ -1,4 +1,4 @@
-import { distanceToDrawing, pointInPolygon } from "./draw-geometry.js";
+import { distanceToDrawing, pointDistanceToSegment, pointInPolygon } from "./draw-geometry.js";
 
 export function createAnnotationController(deps) {
   const {
@@ -46,14 +46,16 @@ export function createAnnotationController(deps) {
       const hadDraft = !!state.draw.draft;
       const hadRulerDrag = !!state.draw.rulerDrag;
       const hadRulerMove = !!state.draw.rulerMove;
+      const hadRulerProfileDrag = !!state.draw.rulerProfileDrag;
       const hadRulerHover = !!state.draw.rulerHover;
       const hadAreaMove = !!state.draw.areaMove;
-      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerMove || hadRulerHover || hadAreaMove) {
+      if (state.draw.tool !== "none" || hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerHover || hadAreaMove) {
         state.draw.tool = "none";
         state.draw.activePointerId = null;
         state.draw.draft = null;
         state.draw.rulerDrag = null;
         state.draw.rulerMove = null;
+        state.draw.rulerProfileDrag = null;
         state.draw.rulerHover = null;
         state.draw.areaMove = null;
         render({ reuseRaster: true });
@@ -70,6 +72,7 @@ export function createAnnotationController(deps) {
     const hadDraft = !!state.draw.draft;
     const hadRulerDrag = !!state.draw.rulerDrag;
     const hadRulerMove = !!state.draw.rulerMove;
+    const hadRulerProfileDrag = !!state.draw.rulerProfileDrag;
     const hadRulerHover = !!state.draw.rulerHover;
     const hadAreaMove = !!state.draw.areaMove;
     const prevTool = state.draw.tool;
@@ -82,9 +85,10 @@ export function createAnnotationController(deps) {
       state.draw.draft = null;
       state.draw.rulerDrag = null;
       state.draw.rulerMove = null;
+      state.draw.rulerProfileDrag = null;
       state.draw.rulerHover = null;
       state.draw.areaMove = null;
-      if (hadDraft || hadRulerDrag || hadRulerMove || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
+      if (hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
     }
   }
 
@@ -504,6 +508,8 @@ export function createAnnotationController(deps) {
     if (!ev) return "";
     const tool = state.draw.tool;
     if (tool === "ruler") {
+      if (state.draw.rulerProfileDrag) return "ns-resize";
+      if (findRulerProfileHit(ds, ev)) return "ns-resize";
       const point = pointerToImagePoint(ev, ds);
       if (findRulerEndpointHit(ds, point, ev.pointerType)) return "grab";
       if (findRulerBodyHit(ds, point, ev.pointerType)) return "move";
@@ -587,6 +593,137 @@ export function createAnnotationController(deps) {
     return best;
   }
 
+  function pointerToScreenPoint(ev) {
+    const rect = els.main.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    return {
+      x: (ev.clientX - rect.left) * dpr,
+      y: (ev.clientY - rect.top) * dpr,
+      dpr
+    };
+  }
+
+  function imageToScreenPoint(ds, pt, dpr) {
+    const eff = Math.max(1e-9, ds.view.scale * dpr);
+    return {
+      x: (pt.x - ds.view.x) * eff,
+      y: (pt.y - ds.view.y) * eff
+    };
+  }
+
+  function rulerProfileScale(item) {
+    const raw = Number(item?.profileScale);
+    if (!Number.isFinite(raw) || raw <= 0) return 1;
+    return clamp(raw, 0.15, 12);
+  }
+
+  function sampleRasterValue(ds, ix, iy) {
+    const raster = ds ? ds.lastRaster : null;
+    if (!raster || !raster.dataF32) return Number.NaN;
+    if (raster.band !== ds.activeBand) return Number.NaN;
+    const step = Math.max(1, Number(raster.step) || 1);
+    const x0 = Number(raster.x0) || 0;
+    const y0 = Number(raster.y0) || 0;
+    const rx = Math.round((ix - x0) / step);
+    const ry = Math.round((iy - y0) / step);
+    if (!Number.isFinite(rx) || !Number.isFinite(ry)) return Number.NaN;
+    if (rx < 0 || ry < 0 || rx >= raster.w || ry >= raster.h) return Number.NaN;
+    return raster.dataF32[ry * raster.w + rx];
+  }
+
+  function rulerUpNormal(a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (!Number.isFinite(len) || len <= 1e-6) return null;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (ny > 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    return { nx, ny, len };
+  }
+
+  function buildRulerProfileScreenRuns(ds, item, dpr) {
+    if (!ds || !item || !Array.isArray(item.points) || item.points.length < 2) return null;
+    const aImg = item.points[0];
+    const bImg = item.points[item.points.length - 1];
+    const lenImg = Math.hypot(bImg.x - aImg.x, bImg.y - aImg.y);
+    if (!Number.isFinite(lenImg) || lenImg < 2) return null;
+    const a = imageToScreenPoint(ds, aImg, dpr);
+    const b = imageToScreenPoint(ds, bImg, dpr);
+    const n = rulerUpNormal(a, b);
+    if (!n) return null;
+
+    const samples = Math.max(24, Math.min(256, Math.round(lenImg)));
+    const values = new Float32Array(samples);
+    let minV = Number.POSITIVE_INFINITY;
+    let maxV = Number.NEGATIVE_INFINITY;
+    let valid = 0;
+    for (let i = 0; i < samples; i += 1) {
+      const t = i / Math.max(1, samples - 1);
+      const ix = aImg.x + (bImg.x - aImg.x) * t;
+      const iy = aImg.y + (bImg.y - aImg.y) * t;
+      const v = sampleRasterValue(ds, ix, iy);
+      values[i] = v;
+      if (Number.isFinite(v)) {
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+        valid += 1;
+      }
+    }
+    if (valid < 2) return null;
+
+    const range = Math.max(1e-12, maxV - minV);
+    const offset = 10 * dpr;
+    const amp = 22 * dpr * rulerProfileScale(item);
+    const runs = [];
+    let run = null;
+    for (let i = 0; i < samples; i += 1) {
+      const v = values[i];
+      if (!Number.isFinite(v)) {
+        if (run && run.length > 1) runs.push(run);
+        run = null;
+        continue;
+      }
+      const t = i / Math.max(1, samples - 1);
+      const bx = a.x + (b.x - a.x) * t;
+      const by = a.y + (b.y - a.y) * t;
+      const u = (v - minV) / range;
+      const d = offset + (u * amp);
+      const p = { x: bx + n.nx * d, y: by + n.ny * d };
+      if (!run) run = [];
+      run.push(p);
+    }
+    if (run && run.length > 1) runs.push(run);
+    if (!runs.length) return null;
+    return runs;
+  }
+
+  function findRulerProfileHit(ds, ev) {
+    if (!ds || !Array.isArray(ds.drawings) || !ds.drawings.length) return null;
+    const sp = pointerToScreenPoint(ev);
+    const tol = ((ev.pointerType === "touch") ? 18 : 10) * sp.dpr;
+    let best = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
+      const item = ds.drawings[i];
+      if (!item || (item.tool !== "ruler" && item.tool !== "line")) continue;
+      const runs = buildRulerProfileScreenRuns(ds, item, sp.dpr);
+      if (!runs) continue;
+      for (const run of runs) {
+        for (let j = 0; j < run.length - 1; j += 1) {
+          const d = pointDistanceToSegment(sp, run[j], run[j + 1]);
+          if (!Number.isFinite(d) || d > tol || d > bestDist) continue;
+          bestDist = d;
+          best = { drawingIndex: i };
+        }
+      }
+    }
+    return best;
+  }
+
   function sameRulerHandle(a, b) {
     if (!a && !b) return true;
     if (!a || !b) return false;
@@ -660,6 +797,7 @@ export function createAnnotationController(deps) {
     state.draw.draft = null;
     state.draw.rulerDrag = null;
     state.draw.rulerMove = null;
+    state.draw.rulerProfileDrag = null;
     state.draw.rulerHover = null;
     state.draw.areaMove = null;
     updateSelectionHistogramForDataset(ds);
@@ -677,6 +815,25 @@ export function createAnnotationController(deps) {
     if (!ds) return false;
     if (!Array.isArray(ds.drawings)) ds.drawings = [];
     if (state.draw.tool === "ruler") {
+      const profileHit = findRulerProfileHit(ds, ev);
+      if (profileHit) {
+        const item = ds.drawings[profileHit.drawingIndex];
+        if (item) {
+          state.draw.activePointerId = ev.pointerId;
+          state.draw.rulerProfileDrag = {
+            dsId: ds.id,
+            drawingIndex: profileHit.drawingIndex,
+            startClientY: ev.clientY,
+            startScale: rulerProfileScale(item)
+          };
+          state.draw.rulerDrag = null;
+          state.draw.rulerMove = null;
+          state.draw.rulerHover = null;
+          state.draw.draft = null;
+          render({ reuseRaster: true });
+          return true;
+        }
+      }
       const pointer = pointerToImagePoint(ev, ds);
       const hit = findRulerEndpointHit(ds, pointer, ev.pointerType);
       if (hit) {
@@ -686,6 +843,7 @@ export function createAnnotationController(deps) {
           drawingIndex: hit.drawingIndex,
           pointIndex: hit.pointIndex
         };
+        state.draw.rulerProfileDrag = null;
         state.draw.rulerHover = {
           dsId: ds.id,
           drawingIndex: hit.drawingIndex,
@@ -703,6 +861,7 @@ export function createAnnotationController(deps) {
           drawingIndex: bodyHit.drawingIndex,
           lastPoint: pointer
         };
+        state.draw.rulerProfileDrag = null;
         state.draw.rulerDrag = null;
         state.draw.rulerHover = null;
         state.draw.draft = null;
@@ -725,6 +884,24 @@ export function createAnnotationController(deps) {
 
   function updateDrawingAtPointer(ev) {
     const ds = getActive();
+    const rulerProfileDrag = state.draw.rulerProfileDrag;
+    if (ds && rulerProfileDrag && rulerProfileDrag.dsId === ds.id) {
+      const item = ds.drawings[rulerProfileDrag.drawingIndex];
+      if (item && (item.tool === "ruler" || item.tool === "line")) {
+        const dy = ev.clientY - rulerProfileDrag.startClientY;
+        const next = clamp(rulerProfileDrag.startScale * Math.exp(-dy / 90), 0.15, 12);
+        const cur = rulerProfileScale(item);
+        if (Math.abs(next - cur) > 1e-4) {
+          item.profileScale = next;
+          render({ reuseRaster: true });
+        }
+        return;
+      }
+      state.draw.rulerProfileDrag = null;
+      state.draw.activePointerId = null;
+      return;
+    }
+
     const rulerMove = state.draw.rulerMove;
     if (ds && rulerMove && rulerMove.dsId === ds.id) {
       const item = ds.drawings[rulerMove.drawingIndex];
@@ -751,6 +928,7 @@ export function createAnnotationController(deps) {
         return;
       }
       state.draw.rulerMove = null;
+      state.draw.rulerProfileDrag = null;
       state.draw.activePointerId = null;
       return;
     }
@@ -766,6 +944,7 @@ export function createAnnotationController(deps) {
         return;
       }
       state.draw.rulerDrag = null;
+      state.draw.rulerProfileDrag = null;
       state.draw.activePointerId = null;
       return;
     }
@@ -788,19 +967,30 @@ export function createAnnotationController(deps) {
 
   function finishDrawingAtPointer(ev) {
     const ds = getActive();
+    const rulerProfileDrag = state.draw.rulerProfileDrag;
     const rulerMove = state.draw.rulerMove;
     const rulerDrag = state.draw.rulerDrag;
-    if (!ds || !((state.draw.draft && state.draw.draft.dsId === ds.id) || (rulerDrag && rulerDrag.dsId === ds.id) || (rulerMove && rulerMove.dsId === ds.id))) {
+    if (!ds || !((state.draw.draft && state.draw.draft.dsId === ds.id) || (rulerDrag && rulerDrag.dsId === ds.id) || (rulerMove && rulerMove.dsId === ds.id) || (rulerProfileDrag && rulerProfileDrag.dsId === ds.id))) {
       state.draw.activePointerId = null;
       state.draw.draft = null;
       state.draw.rulerDrag = null;
       state.draw.rulerMove = null;
+      state.draw.rulerProfileDrag = null;
+      return;
+    }
+    if (rulerProfileDrag && rulerProfileDrag.dsId === ds.id) {
+      updateDrawingAtPointer(ev);
+      state.draw.activePointerId = null;
+      state.draw.rulerProfileDrag = null;
+      state.draw.areaMove = null;
+      render({ reuseRaster: true });
       return;
     }
     if (rulerMove && rulerMove.dsId === ds.id) {
       updateDrawingAtPointer(ev);
       state.draw.activePointerId = null;
       state.draw.rulerMove = null;
+      state.draw.rulerProfileDrag = null;
       state.draw.areaMove = null;
       render({ reuseRaster: true });
       return;
@@ -810,6 +1000,7 @@ export function createAnnotationController(deps) {
       state.draw.activePointerId = null;
       state.draw.rulerDrag = null;
       state.draw.rulerMove = null;
+      state.draw.rulerProfileDrag = null;
       state.draw.areaMove = null;
       render({ reuseRaster: true });
       return;
@@ -853,6 +1044,7 @@ export function createAnnotationController(deps) {
     state.draw.draft = null;
     state.draw.rulerDrag = null;
     state.draw.rulerMove = null;
+    state.draw.rulerProfileDrag = null;
     state.draw.areaMove = null;
     ensureMarqueeTicker();
     render({ reuseRaster: true });
@@ -863,6 +1055,7 @@ export function createAnnotationController(deps) {
     state.draw.draft = null;
     state.draw.rulerDrag = null;
     state.draw.rulerMove = null;
+    state.draw.rulerProfileDrag = null;
     state.draw.areaMove = null;
     render({ reuseRaster: true });
   }

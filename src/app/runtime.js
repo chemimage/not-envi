@@ -160,7 +160,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     spectrumPickEnabled: false,
     areaSelectionMode: "single",
     analysisHist: { open: false, hoverBin: -1, stats: null },
-    draw: { tool: "none", color: "#ff2d2d", activePointerId: null, draft: null, rulerDrag: null, rulerMove: null, rulerHover: null, areaMove: null, nextItemId: 1 },
+    draw: { tool: "none", color: "#ff2d2d", activePointerId: null, draft: null, rulerDrag: null, rulerMove: null, rulerProfileDrag: null, rulerHover: null, areaMove: null, nextItemId: 1 },
 
     exportKind: null,
   };

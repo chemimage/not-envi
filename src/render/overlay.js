@@ -141,7 +141,9 @@ export function createOverlayRenderer(deps) {
     const n = rulerUpNormal(a, b);
     if (!n) return;
     const offset = 10 * dpr;
-    const amp = 22 * dpr;
+    const profileScaleRaw = Number(item?.profileScale);
+    const profileScale = Number.isFinite(profileScaleRaw) && profileScaleRaw > 0 ? Math.min(12, Math.max(0.15, profileScaleRaw)) : 1;
+    const amp = 22 * dpr * profileScale;
     const range = Math.max(1e-12, maxV - minV);
 
     const ax = a.x + n.nx * offset;

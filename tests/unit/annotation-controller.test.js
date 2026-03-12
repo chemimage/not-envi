@@ -14,6 +14,7 @@ function makeBase() {
       draft: null,
       rulerDrag: null,
       rulerMove: null,
+      rulerProfileDrag: null,
       rulerHover: null,
       areaMove: null,
       nextItemId: 10
@@ -22,7 +23,7 @@ function makeBase() {
   const ds = {
     id: 1,
     selectedAreaId: null,
-    view: { scale: 1 },
+    view: { x: 0, y: 0, scale: 1 },
     meta: { samples: 100, lines: 80 },
     drawings: [
       { id: 1, tool: "rect", color: "#fff", points: [{ x: 2, y: 2 }, { x: 8, y: 8 }] },
@@ -140,5 +141,28 @@ describe("annotation-controller", () => {
     ann.setDrawTool("rect");
     expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 2.1, clientY: 2.1 })).toBe("grab");
     expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 5, clientY: 5 })).toBe("move");
+  });
+
+  test("ruler profile hover/drag uses stretch cursor and updates scale", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings = [{ id: 21, tool: "ruler", color: "#fff", points: [{ x: 10, y: 20 }, { x: 50, y: 20 }] }];
+    ds.activeBand = 0;
+    ds.lastRaster = {
+      band: 0,
+      dataF32: new Float32Array(ds.meta.samples * ds.meta.lines).fill(3),
+      w: ds.meta.samples,
+      h: ds.meta.lines,
+      step: 1,
+      x0: 0,
+      y0: 0
+    };
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("ruler");
+
+    expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 30, clientY: 10 })).toBe("ns-resize");
+    expect(ann.beginDrawingAtPointer({ pointerId: 31, pointerType: "mouse", clientX: 30, clientY: 10 })).toBe(true);
+    ann.updateDrawingAtPointer({ pointerId: 31, pointerType: "mouse", clientX: 30, clientY: 0 });
+    expect(ds.drawings[0].profileScale).toBeGreaterThan(1);
+    ann.finishDrawingAtPointer({ pointerId: 31, pointerType: "mouse", clientX: 30, clientY: 0 });
   });
 });
