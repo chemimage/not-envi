@@ -78,8 +78,18 @@ export function createRenderer(deps) {
     const ds = getActive();
     if (!ds || ds.activeBand == null) {
       resizeCanvases();
+      const gpuCtx = (els.gpuCanvas && typeof els.gpuCanvas.getContext === "function")
+        ? els.gpuCanvas.getContext("2d", { alpha: false })
+        : null;
       const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
       const overlayCtx = els.overlayCanvas.getContext("2d", { alpha: true });
+      if (els.gpuCanvas && els.gpuCanvas.style) els.gpuCanvas.style.display = "none";
+      if (els.cpuCanvas && els.cpuCanvas.style) els.cpuCanvas.style.display = "block";
+      if (gpuCtx) {
+        gpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+        gpuCtx.fillStyle = "#000";
+        gpuCtx.fillRect(0, 0, els.gpuCanvas.width, els.gpuCanvas.height);
+      }
       cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
       cpuCtx.fillStyle = "#000";
       cpuCtx.fillRect(0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
