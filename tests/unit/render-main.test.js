@@ -85,4 +85,32 @@ describe("render-main", () => {
     expect(cpuCtx.fillRect).toHaveBeenCalledTimes(1);
     raf.mockRestore();
   });
+
+  test("render keeps zoomed-out direct raster sizing consistent", async () => {
+    const ds = {
+      id: 1,
+      activeBand: 0,
+      view: { x: -150, y: -62.5, scale: 0.8 },
+      meta: { samples: 100, lines: 100, interleave: "bsq" },
+      ds: {},
+      lastRaster: null
+    };
+    const readBandWindow = vi.fn(async (_meta, _src, _band, _x0, _y0, outW, outH) => (
+      new Float32Array(outW * outH)
+    ));
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      readBandWindow,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
+    expect(deps.cpuRenderGray.mock.calls[0][1]).toBe(200);
+    expect(deps.cpuRenderGray.mock.calls[0][2]).toBe(113);
+    expect(readBandWindow).toHaveBeenCalledTimes(1);
+  });
 });

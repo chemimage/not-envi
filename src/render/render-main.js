@@ -39,8 +39,9 @@ export function createRenderer(deps) {
       step = 1;
     } else {
       step = Math.ceil(1 / eff);
-      rasterW = canvasW;
-      rasterH = canvasH;
+      const denom = Math.max(1e-9, eff * step);
+      rasterW = Math.max(1, Math.ceil(canvasW / denom));
+      rasterH = Math.max(1, Math.ceil(canvasH / denom));
     }
 
     const x0 = ds.view.x;

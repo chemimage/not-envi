@@ -6,10 +6,13 @@ function makeCtx() {
     save: vi.fn(),
     restore: vi.fn(),
     setTransform: vi.fn(),
+    setLineDash: vi.fn(),
     clearRect: vi.fn(),
     beginPath: vi.fn(),
     moveTo: vi.fn(),
     lineTo: vi.fn(),
+    rect: vi.fn(),
+    strokeRect: vi.fn(),
     stroke: vi.fn(),
     fill: vi.fn(),
     arcTo: vi.fn(),
@@ -57,5 +60,26 @@ describe("overlay renderer", () => {
     overlay.drawOverlays(ds);
     expect(ctx.beginPath).toHaveBeenCalled();
     expect(ctx.stroke).toHaveBeenCalled();
+  });
+
+  test("drawOverlays boundary follows rendered raster footprint", () => {
+    const ctx = makeCtx();
+    const els = {
+      chkScale: { checked: false },
+      chkGrid: { checked: false },
+      overlayCanvas: { width: 10, height: 10 }
+    };
+    const overlay = createOverlayRenderer({
+      els,
+      overlayCtx: ctx,
+      getDevicePixelRatio: () => 1
+    });
+    const ds = {
+      view: { x: -0.2, y: -0.2, scale: 1 },
+      meta: { samples: 5, lines: 5 }
+    };
+
+    overlay.drawOverlays(ds);
+    expect(ctx.strokeRect).toHaveBeenCalledWith(1, 1, 4, 4);
   });
 });

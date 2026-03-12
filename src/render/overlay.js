@@ -248,7 +248,7 @@ export function createOverlayRenderer(deps) {
 
     overlayCtx.save();
     overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
-    overlayCtx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    overlayCtx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
     overlayCtx.textAlign = "right";
     overlayCtx.textBaseline = "top";
 
@@ -283,6 +283,48 @@ export function createOverlayRenderer(deps) {
     overlayCtx.fillStyle = "rgba(255,255,255,0.92)";
     overlayCtx.fillText(label, anchoredX1 - innerPad, barY + tickLen + labelGap);
     overlayCtx.restore();
+  }
+
+  function computeRenderedImageRect(ds) {
+    const dpr = getDevicePixelRatio();
+    const eff = Math.max(1e-9, ds.view.scale * dpr);
+    const canvasW = els.overlayCanvas.width;
+    const canvasH = els.overlayCanvas.height;
+
+    let rasterW = 0;
+    let rasterH = 0;
+    let step = 1;
+    if (eff >= 1) {
+      rasterW = Math.max(1, Math.ceil(canvasW / eff));
+      rasterH = Math.max(1, Math.ceil(canvasH / eff));
+      step = 1;
+    } else {
+      step = Math.max(1, Math.ceil(1 / eff));
+      const denom = Math.max(1e-9, eff * step);
+      rasterW = Math.max(1, Math.ceil(canvasW / denom));
+      rasterH = Math.max(1, Math.ceil(canvasH / denom));
+    }
+
+    const x0 = ds.view.x;
+    const y0 = ds.view.y;
+    const maxX = ds.meta.samples - 1;
+    const maxY = ds.meta.lines - 1;
+    const colStart = Math.max(0, Math.ceil((0 - x0) / step));
+    const colEnd = Math.min(rasterW - 1, Math.floor((maxX - x0) / step));
+    const rowStart = Math.max(0, Math.ceil((0 - y0) / step));
+    const rowEnd = Math.min(rasterH - 1, Math.floor((maxY - y0) / step));
+    const validW = Math.max(0, colEnd - colStart + 1);
+    const validH = Math.max(0, rowEnd - rowStart + 1);
+    if (validW <= 0 || validH <= 0) return null;
+
+    const sx = canvasW / Math.max(1, rasterW);
+    const sy = canvasH / Math.max(1, rasterH);
+    return {
+      x: colStart * sx,
+      y: rowStart * sy,
+      w: validW * sx,
+      h: validH * sy
+    };
   }
 
   function drawOverlays(ds) {
@@ -327,20 +369,16 @@ export function createOverlayRenderer(deps) {
 
     {
       const dpr = getDevicePixelRatio();
-      const eff = ds.view.scale * dpr;
       const canvasW = els.overlayCanvas.width;
       const canvasH = els.overlayCanvas.height;
-      const imgW = ds.meta.samples * eff;
-      const imgH = ds.meta.lines * eff;
-      if (imgW < (canvasW - 1) || imgH < (canvasH - 1)) {
-        const x = (0 - ds.view.x) * eff;
-        const y = (0 - ds.view.y) * eff;
+      const imgRect = computeRenderedImageRect(ds);
+      if (imgRect && (imgRect.w < (canvasW - 1) || imgRect.h < (canvasH - 1))) {
         overlayCtx.save();
         overlayCtx.setLineDash([4 * dpr, 4 * dpr]);
         overlayCtx.lineDashOffset = 0;
         overlayCtx.strokeStyle = "rgba(226,232,240,0.5)";
         overlayCtx.lineWidth = 1.25 * dpr;
-        overlayCtx.strokeRect(x, y, imgW, imgH);
+        overlayCtx.strokeRect(imgRect.x, imgRect.y, imgRect.w, imgRect.h);
         overlayCtx.restore();
       }
     }
