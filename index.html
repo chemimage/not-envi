@@ -225,12 +225,16 @@
       <input type="radio" id="expFormatTiff" name="expFormat" value="tiff" checked />
       <span>TIFF</span>
     </label>
+    <label class="toggle" title="Choose export file format">
+      <input type="radio" id="expFormatEnvi" name="expFormat" value="envi" />
+      <span>ENVI</span>
+    </label>
   </div>
 
   <div class="divider"></div>
 
   <div class="row" style="flex-wrap:wrap;">
-    <label class="toggle" title="Raw export writes original numeric samples (TIFF only)">
+    <label class="toggle" title="Raw export writes original numeric samples (TIFF or ENVI)">
       <input type="radio" id="expModeRaw" name="expMode" value="raw" checked />
       <span>Raw data</span>
     </label>
@@ -242,7 +246,7 @@
   </div>
 
   <div id="expRawOptions" style="margin-top:10px;">
-    <div class="hint tiny">Exports a <b>stack</b> (all bands) as an uncompressed, multi-page TIFF. This preserves the original data type.</div>
+    <div class="hint tiny">Exports a <b>stack</b> (all bands) as raw numeric values. TIFF writes a multi-page stack; ENVI writes <code>.hdr</code> + <code>.dat</code>.</div>
     <div style="height:8px"></div>
     <label class="small">What to export</label>
     <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">

@@ -12,7 +12,9 @@ export function createExportDialogController(deps) {
   } = deps;
 
   function selectedKind() {
-    return deps.els.expFormatPng.checked ? "png" : "tiff";
+    if (deps.els.expFormatPng.checked) return "png";
+    if (deps.els.expFormatEnvi && deps.els.expFormatEnvi.checked) return "envi";
+    return "tiff";
   }
 
   function getAreaSelections(ds) {
@@ -50,7 +52,7 @@ export function createExportDialogController(deps) {
       alertFn("Please select a dataset and band first.");
       return;
     }
-    if (!els.expFormatPng.checked && !els.expFormatTiff.checked) {
+    if (!els.expFormatPng.checked && !els.expFormatTiff.checked && !(els.expFormatEnvi && els.expFormatEnvi.checked)) {
       els.expFormatTiff.checked = true;
     }
     state.exportKind = selectedKind();
@@ -101,7 +103,7 @@ export function createExportDialogController(deps) {
       els.expModeRendered.checked = true;
     }
     els.expModeRaw.disabled = (kind === "png");
-    const mode = (els.expModeRaw.checked && kind === "tiff") ? "raw" : "rendered";
+    const mode = (els.expModeRaw.checked && kind !== "png") ? "raw" : "rendered";
     els.expRawOptions.style.display = (mode === "raw") ? "block" : "none";
     els.expRenderedOptions.style.display = (mode === "rendered") ? "block" : "none";
     updateExportEstimate();
@@ -118,7 +120,7 @@ export function createExportDialogController(deps) {
 
     const kind = selectedKind();
     state.exportKind = kind;
-    const mode = (els.expModeRaw.checked && kind === "tiff") ? "raw" : "rendered";
+    const mode = (els.expModeRaw.checked && kind !== "png") ? "raw" : "rendered";
     const selections = getAreaSelections(ds);
     const selectionCount = selections.length;
     const hasSel = selectionCount > 0;
@@ -137,18 +139,20 @@ export function createExportDialogController(deps) {
         const bpp = ds.meta.dataTypeInfo.bytes;
         estBytes = plan.jobs.reduce((sum, job) => sum + (job.w * job.h * ds.meta.bands * bpp), 0);
         warnByPixels = plan.jobs.some((job) => (job.w * job.h > 20_000_000));
+        const rawFormatLabel = (kind === "envi") ? "ENVI (.hdr + .dat)" : "TIFF";
         if (plan.jobs.length > 1) {
-          els.expNote.innerHTML = `Raw stacks: <b>${plan.jobs.length}</b> files, each with <b>${ds.meta.bands}</b> bands (${ds.meta.dataTypeInfo.name}).`;
+          els.expNote.innerHTML = `Raw stacks (${rawFormatLabel}): <b>${plan.jobs.length}</b> files, each with <b>${ds.meta.bands}</b> bands (${ds.meta.dataTypeInfo.name}).`;
         } else {
           const one = plan.jobs[0];
-          els.expNote.innerHTML = `Raw stack (all bands): <b>${one.w}×${one.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), uncompressed TIFF.`;
+          els.expNote.innerHTML = `Raw stack (all bands): <b>${one.w}×${one.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), ${rawFormatLabel}.`;
         }
       } else {
         rect = resolveExportRect(ds, scope);
         const bpp = ds.meta.dataTypeInfo.bytes;
         estBytes = rect.w * rect.h * ds.meta.bands * bpp;
         warnByPixels = (rect.w * rect.h > 20_000_000);
-        els.expNote.innerHTML = `Raw stack (all bands): <b>${rect.w}×${rect.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), uncompressed TIFF.`;
+        const rawFormatLabel = (kind === "envi") ? "ENVI (.hdr + .dat)" : "TIFF";
+        els.expNote.innerHTML = `Raw stack (all bands): <b>${rect.w}×${rect.h}</b> × <b>${ds.meta.bands}</b> (${ds.meta.dataTypeInfo.name}), ${rawFormatLabel}.`;
       }
     } else {
       const scope = els.expRenScopeWhole.checked ? "whole" : (els.expRenScopeSel.checked ? "sel" : "view");

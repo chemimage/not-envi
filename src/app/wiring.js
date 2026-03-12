@@ -618,6 +618,7 @@ export function wireApp(deps) {
 
   els.expFormatPng.oninput = () => updateExportDialogUI();
   els.expFormatTiff.oninput = () => updateExportDialogUI();
+  if (els.expFormatEnvi) els.expFormatEnvi.oninput = () => updateExportDialogUI();
   els.expModeRaw.oninput = () => updateExportDialogUI();
   els.expModeRendered.oninput = () => updateExportDialogUI();
   els.expRawScopeSel.oninput = () => updateExportEstimate();

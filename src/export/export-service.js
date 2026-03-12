@@ -1,6 +1,10 @@
 import { encodeRawMultipageTiff, encodeRenderedTiff } from "./tiff-backend.js";
+import { buildEnviHeaderText, encodeEnviBandBytes } from "./envi-backend.js";
 
 export function createExportService(deps) {
+  const RAW_ENVI_INTERLEAVE = "bsq";
+  const RAW_ENVI_LITTLE_ENDIAN = true;
+
   function pointInPolygon(x, y, points) {
     let inside = false;
     for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
@@ -406,6 +410,69 @@ export function createExportService(deps) {
     deps.setStatus("ready", "ok");
   }
 
+  async function exportRawSelectionJobsENVI(ds, jobs) {
+    if (!Array.isArray(jobs) || !jobs.length) return;
+    const bpp = ds.meta.dataTypeInfo.bytes;
+    const totalBytes = jobs.reduce((sum, job) => sum + (job.w * job.h * ds.meta.bands * bpp), 0);
+    if (totalBytes > (1024 * 1024 * 1024)) {
+      const ok = deps.confirmFn(`This raw stack export is about ${deps.humanBytes(totalBytes)} and may crash the browser. Continue?`);
+      if (!ok) return;
+    }
+
+    for (let jobIdx = 0; jobIdx < jobs.length; jobIdx += 1) {
+      const job = jobs[jobIdx];
+      const srcWin = sourceWindowForJob(ds, job);
+      const mask = buildSelectionMask(ds, job);
+      const parts = [];
+      for (let b = 0; b < ds.meta.bands; b += 1) {
+        deps.setStatus(
+          jobs.length > 1
+            ? `export raw… ${jobIdx + 1}/${jobs.length} (${b + 1}/${ds.meta.bands})`
+            : `export raw… ${b + 1}/${ds.meta.bands}`,
+          "warn"
+        );
+        let src = null;
+        if (srcWin.w > 0 && srcWin.h > 0) {
+          if (ds.meta.interleave === "bip") {
+            src = await deps.readBandWindowBIP(ds.meta, ds.ds, b, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
+          } else {
+            src = await deps.readBandWindow(ds.meta, ds.ds, b, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
+          }
+        }
+        const Ctor = src ? src.constructor : (ds.meta.dataTypeInfo.ctor || Float64Array);
+        const out = new Ctor(job.w * job.h);
+        if (src && srcWin.w > 0 && srcWin.h > 0) {
+          for (let row = 0; row < srcWin.h; row += 1) {
+            const outRow = row + srcWin.offY;
+            for (let col = 0; col < srcWin.w; col += 1) {
+              const outCol = col + srcWin.offX;
+              const outIndex = outRow * job.w + outCol;
+              if (!mask[outIndex]) continue;
+              out[outIndex] = src[row * srcWin.w + col];
+            }
+          }
+        }
+        parts.push(encodeEnviBandBytes(ds.meta, out, RAW_ENVI_LITTLE_ENDIAN));
+      }
+
+      const base = selectionBaseName(ds, ds.activeBand, job, true);
+      const datName = `${base}.dat`;
+      const dataBlob = new Blob(parts, { type: "application/octet-stream" });
+      const hdrText = buildEnviHeaderText({
+        meta: ds.meta,
+        width: job.w,
+        height: job.h,
+        bands: ds.meta.bands,
+        interleave: RAW_ENVI_INTERLEAVE,
+        littleEndian: RAW_ENVI_LITTLE_ENDIAN,
+        dataFileName: datName
+      });
+      deps.downloadBlob(dataBlob, datName);
+      deps.downloadBlob(new Blob([hdrText], { type: "text/plain;charset=utf-8" }), `${base}.hdr`);
+    }
+    deps.setStatus("ready", "ok");
+  }
+
   async function exportRawStackTIFF(ds, rect) {
     const w = rect.w;
     const h = rect.h;
@@ -436,10 +503,50 @@ export function createExportService(deps) {
     deps.setStatus("ready", "ok");
   }
 
+  async function exportRawStackENVI(ds, rect) {
+    const w = rect.w;
+    const h = rect.h;
+    const bpp = ds.meta.dataTypeInfo.bytes;
+    const totalBytes = w * h * ds.meta.bands * bpp;
+
+    if (totalBytes > (1024 * 1024 * 1024)) {
+      const ok = deps.confirmFn(`This raw stack is about ${deps.humanBytes(totalBytes)} and may crash the browser. Continue?`);
+      if (!ok) return;
+    }
+
+    deps.setStatus("export raw…", "warn");
+    const parts = [];
+    for (let b = 0; b < ds.meta.bands; b += 1) {
+      deps.setStatus(`export raw… ${b + 1}/${ds.meta.bands}`, "warn");
+      let data;
+      if (ds.meta.interleave === "bip") {
+        data = await deps.readBandWindowBIP(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
+      } else {
+        data = await deps.readBandWindow(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
+      }
+      parts.push(encodeEnviBandBytes(ds.meta, data, RAW_ENVI_LITTLE_ENDIAN));
+    }
+
+    const base = `${ds.name}_${rect.x0}_${rect.y0}_${w}x${h}_rawstack`;
+    const datName = `${base}.dat`;
+    const hdrText = buildEnviHeaderText({
+      meta: ds.meta,
+      width: w,
+      height: h,
+      bands: ds.meta.bands,
+      interleave: RAW_ENVI_INTERLEAVE,
+      littleEndian: RAW_ENVI_LITTLE_ENDIAN,
+      dataFileName: datName
+    });
+    deps.downloadBlob(new Blob(parts, { type: "application/octet-stream" }), datName);
+    deps.downloadBlob(new Blob([hdrText], { type: "text/plain;charset=utf-8" }), `${base}.hdr`);
+    deps.setStatus("ready", "ok");
+  }
+
   async function runExportFromDialog() {
     const ds = deps.getActive();
     if (!ds || ds.activeBand == null) return;
-    const kind = deps.els.expFormatPng.checked ? "png" : "tiff";
+    const kind = deps.els.expFormatPng.checked ? "png" : (deps.els.expFormatEnvi?.checked ? "envi" : "tiff");
     deps.state.exportKind = kind;
     const selections = collectAreaSelections(ds);
     const multiSel = selections.length > 1;
@@ -449,16 +556,18 @@ export function createExportService(deps) {
       deps.els.exportDlg.close();
     } catch {}
 
-    const rawMode = deps.els.expModeRaw.checked && kind === "tiff";
+    const rawMode = deps.els.expModeRaw.checked && kind !== "png";
     if (rawMode) {
       const scope = deps.els.expRawScopeWhole.checked ? "whole" : "sel";
       if (scope === "sel" && selections.length) {
         const plan = resolveSelectionExportPlan(ds, selections, separateMulti);
-        await exportRawSelectionJobs(ds, plan.jobs);
+        if (kind === "envi") await exportRawSelectionJobsENVI(ds, plan.jobs);
+        else await exportRawSelectionJobs(ds, plan.jobs);
         return;
       }
       const rect = resolveExportRect(ds, scope);
-      await exportRawStackTIFF(ds, rect);
+      if (kind === "envi") await exportRawStackENVI(ds, rect);
+      else await exportRawStackTIFF(ds, rect);
       return;
     }
 
@@ -483,6 +592,7 @@ export function createExportService(deps) {
     resolveExportRect,
     exportRendered,
     exportRawStackTIFF,
+    exportRawStackENVI,
     runExportFromDialog
   };
 }

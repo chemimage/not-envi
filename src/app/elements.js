@@ -103,6 +103,7 @@ export function collectElements() {
     expInfo: $("#expInfo"),
     expFormatPng: $("#expFormatPng"),
     expFormatTiff: $("#expFormatTiff"),
+    expFormatEnvi: $("#expFormatEnvi"),
     expModeRaw: $("#expModeRaw"),
     expModeRendered: $("#expModeRendered"),
     expRawOptions: $("#expRawOptions"),

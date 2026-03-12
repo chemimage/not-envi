@@ -7,6 +7,7 @@ function makeEls() {
     expInfo: { textContent: "" },
     expFormatPng: { checked: false },
     expFormatTiff: { checked: true },
+    expFormatEnvi: { checked: false },
     expModeRaw: { disabled: false, checked: false },
     expModeRendered: { checked: false },
     expLblRawSel: { textContent: "" },
@@ -71,5 +72,11 @@ describe("export dialog controller", () => {
     expect(els.expModeRaw.disabled).toBe(true);
     expect(els.expModeRendered.checked).toBe(true);
     expect(els.expEstimate.textContent).toContain("800 B");
+
+    els.expFormatPng.checked = false;
+    els.expFormatEnvi.checked = true;
+    ctrl.updateExportDialogUI();
+    expect(state.exportKind).toBe("envi");
+    expect(els.expModeRaw.disabled).toBe(false);
   });
 });
