@@ -4,7 +4,7 @@ export function collectElements() {
   return {
     app: $("#app"),
     btnFit: $("#btnFit"),
-    btn100: $("#btn100"),
+    btnGrid: $("#btnGrid"),
     btnZoomIn: $("#btnZoomIn"),
     btnZoomOut: $("#btnZoomOut"),
     zoom: $("#zoom"),
@@ -59,6 +59,8 @@ export function collectElements() {
     analysisStatBinWidth: $("#analysisStatBinWidth"),
     btnAnalysisHistClose: $("#btnAnalysisHistClose"),
     selRect: $("#selRect"),
+    overlayHUD: $("#overlayHUD"),
+    hudControls: $("#hudControls"),
     hudPos: $("#hudPos"),
     thumbWrap: $("#thumbWrap"),
     thumb: $("#thumb"),

@@ -1,6 +1,9 @@
 @layer components {
   #main {
     @apply relative h-full min-h-0 overflow-hidden bg-gray-950;
+    --canvas-edge-pad: 10px;
+    --thumb-wrap-w: 14rem;
+    --thumb-hud-gap: 8px;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -136,17 +139,18 @@
   }
 
   #overlayHUD {
-    @apply pointer-events-none absolute top-2.5 z-20 flex flex-col items-end gap-1.5;
+    @apply pointer-events-none absolute z-20 flex flex-col items-end gap-1.5;
+    top: var(--canvas-edge-pad);
     left: auto;
-    right: calc(2.5rem + 14rem + 0.5rem);
+    right: calc(var(--canvas-edge-pad) + var(--thumb-wrap-w) + var(--thumb-hud-gap));
   }
 
   #hudControls {
     @apply absolute z-20 flex flex-col items-end gap-1.5;
     pointer-events: auto;
     left: auto;
-    right: calc(2.5rem + 14rem + 0.5rem);
-    top: calc(2.5rem + 1.9rem);
+    right: calc(var(--canvas-edge-pad) + var(--thumb-wrap-w) + var(--thumb-hud-gap));
+    top: calc(var(--canvas-edge-pad) + 30px);
   }
 
   #hudToggleRow {
@@ -171,11 +175,14 @@
   }
 
   #thumbDock {
-    @apply absolute right-2.5 top-2.5 z-10 flex flex-col items-end gap-[5px];
+    @apply absolute z-10 flex flex-col items-end gap-[5px];
+    top: var(--canvas-edge-pad);
+    right: var(--canvas-edge-pad);
   }
 
   #thumbWrap {
-    @apply h-40 w-56 overflow-hidden rounded-sm border border-gray-600 bg-gray-950/70 shadow-xl shadow-black/40;
+    @apply h-40 overflow-hidden rounded-sm border border-gray-600 bg-gray-950/70 shadow-xl shadow-black/40;
+    width: var(--thumb-wrap-w);
   }
 
   #thumbWrap canvas {
@@ -188,6 +195,11 @@
 
   #thumbControls .btn.tiny {
     @apply rounded-sm border-gray-600 bg-gray-800/90 px-2 py-1 text-xs;
+  }
+
+  #thumbControls .btn.tiny.active,
+  #thumbControls .btn.tiny[aria-pressed="true"] {
+    @apply border-gray-200 bg-gray-100 text-gray-900;
   }
 
   #emptyState {

@@ -33,36 +33,10 @@ function formatDistanceUm(um) {
   return `${s} nm`;
 }
 
-function chooseNiceValue(ideal, toCssLen) {
-  if (!Number.isFinite(ideal) || ideal <= 0) return null;
-  const target = 140;
-  const minOk = 60;
-  const maxOk = 240;
-
-  const exp = Math.floor(Math.log10(ideal));
-  const mults = [1, 2, 5];
-
-  let best = null;
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (let e = exp - 2; e <= exp + 2; e++) {
-    const pow = Math.pow(10, e);
-    for (const m of mults) {
-      const v = m * pow;
-      const len = toCssLen(v);
-      if (!Number.isFinite(len) || len <= 0) continue;
-      const penalty = (len < minOk || len > maxOk) ? 500 : 0;
-      const score = Math.abs(len - target) + penalty;
-      if (score < bestScore) {
-        bestScore = score;
-        best = v;
-      }
-    }
-  }
-  return best ?? ideal;
-}
-
 export function createOverlayRenderer(deps) {
   const { els, overlayCtx, getDevicePixelRatio, getDrawData } = deps;
+  const SCALEBAR_EDGE_PAD_CSS = 10;
+  const SCALEBAR_HUD_GAP_CSS = 8;
 
   function colorWithAlpha(color, alpha) {
     if (!color) return `rgba(34,197,94,${alpha})`;
@@ -204,33 +178,64 @@ export function createOverlayRenderer(deps) {
     if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, null, -1, null, 0);
   }
 
-  function drawScaleBar(ds) {
-    if (!els.chkScale.checked) return;
+  function computeReferenceSpacing(ds, dpr) {
+    const eff = Math.max(1e-9, ds.view.scale * dpr);
+    const targetCssPx = 96;
+    const targetDevPx = targetCssPx * dpr;
+    const imgSpacing = Math.max(1, targetDevPx / eff);
+    const stepImgPx = Math.max(1, Math.pow(2, Math.round(Math.log2(imgSpacing))));
+    return {
+      stepImgPx,
+      stepDevPx: stepImgPx * eff
+    };
+  }
 
+  function isGridEnabled() {
+    if (els.btnGrid) return els.btnGrid.getAttribute("aria-pressed") === "true";
+    return !!(els.chkGrid && els.chkGrid.checked);
+  }
+
+  function resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH) {
+    const edgePad = SCALEBAR_EDGE_PAD_CSS * dpr;
+    let right = canvasW - edgePad;
+    let top = edgePad;
+    const host = els.main;
+    const primaryAnchor = els.hudControls;
+    const fallbackAnchor = els.overlayHUD;
+    const anchor = (primaryAnchor && primaryAnchor.getBoundingClientRect)
+      ? primaryAnchor
+      : fallbackAnchor;
+    if (host && host.getBoundingClientRect && anchor && anchor.getBoundingClientRect) {
+      const hostRect = host.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
+      if (Number.isFinite(hostRect.left) && Number.isFinite(anchorRect.right) && anchorRect.width > 0 && anchorRect.height > 0) {
+        right = (anchorRect.right - hostRect.left) * dpr;
+        top = (anchorRect.bottom - hostRect.top) * dpr + (SCALEBAR_HUD_GAP_CSS * dpr);
+      }
+    }
+    const clampedRight = Math.min(canvasW - edgePad, Math.max(edgePad, right));
+    const maxTop = Math.max(edgePad, canvasH - edgePad - boxH);
+    const clampedTop = Math.min(maxTop, Math.max(edgePad, top));
+    return { right: clampedRight, top: clampedTop };
+  }
+
+  function drawScaleBar(ds) {
     const dpr = getDevicePixelRatio();
-    const eff = ds.view.scale * dpr;
+    const ref = computeReferenceSpacing(ds, dpr);
+    const barImgPx = ref.stepImgPx;
+    const barDevPx = ref.stepDevPx;
     const canvasW = els.overlayCanvas.width;
     const canvasH = els.overlayCanvas.height;
-
-    let barImgPx = 0;
     let label = "";
     const sc = ds.meta.scale;
 
     if (sc && Number.isFinite(sc.umPerPixelX) && sc.umPerPixelX > 0) {
       const umPerPx = Number(sc.umPerPixelX);
-      const idealUm = 140 * umPerPx / Math.max(1e-9, ds.view.scale);
-      const niceUm = chooseNiceValue(idealUm, (um) => (um / umPerPx) * ds.view.scale);
-      barImgPx = niceUm / umPerPx;
-      label = formatDistanceUm(niceUm);
+      label = formatDistanceUm(barImgPx * umPerPx);
     } else {
-      const idealPx = 140 / Math.max(1e-9, ds.view.scale);
-      const nicePx = chooseNiceValue(idealPx, (px) => px * ds.view.scale);
-      barImgPx = Math.max(1, Math.round(nicePx));
       label = `${fmtNoGroup(barImgPx)} px`;
     }
 
-    const barDevPx = barImgPx * eff;
-    const pad = 12 * dpr;
     const innerPad = 10 * dpr;
     const barYGap = 10 * dpr;
     const fontPx = 12 * dpr;
@@ -245,24 +250,25 @@ export function createOverlayRenderer(deps) {
     const boxW = Math.max(barDevPx, textW) + innerPad * 2;
     const boxH = (fontPx + barYGap + 8 * dpr + innerPad * 2);
 
-    const x1 = canvasW - pad;
-    const y1 = canvasH - pad;
-    const x0 = x1 - boxW;
-    const y0 = y1 - boxH;
+    const anchor = resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH);
+    const anchoredX1 = anchor.right;
+    const anchoredY0 = anchor.top;
+    const anchoredY1 = anchoredY0 + boxH;
+    const anchoredX0 = anchoredX1 - boxW;
 
     overlayCtx.fillStyle = "rgba(0,0,0,0.55)";
     overlayCtx.strokeStyle = "rgba(255,255,255,0.22)";
     overlayCtx.lineWidth = 1 * dpr;
-    roundRect(overlayCtx, x0, y0, boxW, boxH, 8 * dpr);
+    roundRect(overlayCtx, anchoredX0, anchoredY0, boxW, boxH, 8 * dpr);
     overlayCtx.fill();
     overlayCtx.stroke();
 
     overlayCtx.fillStyle = "rgba(255,255,255,0.92)";
-    overlayCtx.fillText(label, x1 - innerPad, y0 + innerPad);
+    overlayCtx.fillText(label, anchoredX1 - innerPad, anchoredY0 + innerPad);
 
-    const barX1 = x1 - innerPad;
+    const barX1 = anchoredX1 - innerPad;
     const barX0 = barX1 - barDevPx;
-    const barY = y1 - innerPad - 2 * dpr;
+    const barY = anchoredY1 - innerPad - 2 * dpr;
 
     overlayCtx.strokeStyle = "rgba(255,255,255,0.92)";
     overlayCtx.lineWidth = 1 * dpr;
@@ -286,17 +292,15 @@ export function createOverlayRenderer(deps) {
       return;
     }
 
-    if (els.chkGrid.checked) {
+    if (isGridEnabled()) {
       const dpr = getDevicePixelRatio();
       const eff = ds.view.scale * dpr;
       const canvasW = els.overlayCanvas.width;
       const canvasH = els.overlayCanvas.height;
       const viewW = canvasW / eff;
       const viewH = canvasH / eff;
-
-      const targetPx = 100;
-      const imgSpacing = Math.max(1, targetPx / eff);
-      const step = Math.pow(2, Math.round(Math.log2(imgSpacing)));
+      const ref = computeReferenceSpacing(ds, dpr);
+      const step = ref.stepImgPx;
 
       const startX = Math.floor(ds.view.x / step) * step;
       const endX = ds.view.x + viewW;

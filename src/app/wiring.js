@@ -454,40 +454,60 @@ export function wireApp(deps) {
 
   els.thumb.addEventListener("click", onThumbClick);
 
-  els.btnFit.onclick = () => fitToScreen();
-  els.btn100.onclick = () => {
-    const ds = getActive();
-    if (!ds) return;
-    ds.view.scale = 1;
-    clampView();
-    els.zoom.value = String(scaleToSlider(ds.view.scale));
-    updateZoomLabel();
-    render();
+  const setGridEnabled = (enabled) => {
+    const on = !!enabled;
+    if (els.chkGrid) els.chkGrid.checked = on;
+    if (els.btnGrid) {
+      els.btnGrid.classList.toggle("active", on);
+      els.btnGrid.setAttribute("aria-pressed", on ? "true" : "false");
+    }
   };
-  els.btnZoomIn.onclick = () => zoomAt(1.25, els.cpuCanvas.width / 2, els.cpuCanvas.height / 2);
-  els.btnZoomOut.onclick = () => zoomAt(0.8, els.cpuCanvas.width / 2, els.cpuCanvas.height / 2);
+  const getGridEnabled = () => !!(els.chkGrid && els.chkGrid.checked);
+  setGridEnabled(getGridEnabled());
 
-  els.zoom.oninput = () => {
-    const ds = getActive();
-    if (!ds) return;
-    const s = sliderToScale(Number(els.zoom.value));
-    const centerX = els.cpuCanvas.width / 2;
-    const centerY = els.cpuCanvas.height / 2;
-    const before = screenToImage(centerX, centerY);
-    ds.view.scale = s;
-    const minS = minScaleFor(ds);
-    ds.view.scale = clamp(ds.view.scale, minS, 128);
-    const after = screenToImage(centerX, centerY);
-    ds.view.x += (before.x - after.x);
-    ds.view.y += (before.y - after.y);
-    clampView();
-    els.zoom.value = String(scaleToSlider(ds.view.scale));
-    updateZoomLabel();
-    render();
-  };
+  if (els.btnFit) {
+    els.btnFit.onclick = () => fitToScreen();
+  }
+  if (els.btnGrid) {
+    els.btnGrid.onclick = () => {
+      setGridEnabled(!getGridEnabled());
+      render();
+    };
+  }
+  if (els.btnZoomIn) {
+    els.btnZoomIn.onclick = () => zoomAt(1.25, els.cpuCanvas.width / 2, els.cpuCanvas.height / 2);
+  }
+  if (els.btnZoomOut) {
+    els.btnZoomOut.onclick = () => zoomAt(0.8, els.cpuCanvas.width / 2, els.cpuCanvas.height / 2);
+  }
 
-  els.chkGrid.oninput = () => render();
-  els.chkScale.oninput = () => render();
+  if (els.zoom) {
+    els.zoom.oninput = () => {
+      const ds = getActive();
+      if (!ds) return;
+      const s = sliderToScale(Number(els.zoom.value));
+      const centerX = els.cpuCanvas.width / 2;
+      const centerY = els.cpuCanvas.height / 2;
+      const before = screenToImage(centerX, centerY);
+      ds.view.scale = s;
+      const minS = minScaleFor(ds);
+      ds.view.scale = clamp(ds.view.scale, minS, 128);
+      const after = screenToImage(centerX, centerY);
+      ds.view.x += (before.x - after.x);
+      ds.view.y += (before.y - after.y);
+      clampView();
+      els.zoom.value = String(scaleToSlider(ds.view.scale));
+      updateZoomLabel();
+      render();
+    };
+  }
+
+  if (els.chkGrid) {
+    els.chkGrid.oninput = () => {
+      setGridEnabled(!!els.chkGrid.checked);
+      render();
+    };
+  }
 
   if (els.btnSelect) {
     els.btnSelect.onclick = () => {

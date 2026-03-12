@@ -243,16 +243,20 @@
       @apply w-[120px];
     }
 
+    #main {
+      --thumb-wrap-w: 180px;
+    }
+
     #thumbWrap {
       @apply h-[130px] w-[180px];
     }
 
     #overlayHUD {
-      right: calc(2.5rem + 180px + 0.5rem);
+      right: calc(var(--canvas-edge-pad) + var(--thumb-wrap-w) + var(--thumb-hud-gap));
     }
 
     #hudControls {
-      right: calc(2.5rem + 180px + 0.5rem);
+      right: calc(var(--canvas-edge-pad) + var(--thumb-wrap-w) + var(--thumb-hud-gap));
     }
 
     #rightDock {
