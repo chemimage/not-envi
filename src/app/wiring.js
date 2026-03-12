@@ -48,10 +48,13 @@ export function wireApp(deps) {
     updatePerf,
     getDrawTool,
     getSpectrumPickEnabled,
+    getAreaSelectionMode,
     getDrawColor,
     setDrawTool,
     setSpectrumPickEnabled,
+    setAreaSelectionMode,
     setDrawColor,
+    selectAreaAtPointer,
     isDrawingPointer,
     beginDrawingAtPointer,
     updateDrawingAtPointer,
@@ -255,10 +258,21 @@ export function wireApp(deps) {
   function syncDrawToolUI() {
     const active = getDrawTool ? getDrawTool() : "none";
     const spectral = getSpectrumPickEnabled ? !!getSpectrumPickEnabled() : false;
+    const areaMode = getAreaSelectionMode ? getAreaSelectionMode() : "group";
+    const singleArea = areaMode === "single";
     if (els.toolRuler) els.toolRuler.classList.toggle("active", active === "ruler");
     if (els.toolRect) els.toolRect.classList.toggle("active", active === "rect");
     if (els.toolShape) els.toolShape.classList.toggle("active", active === "shape");
     if (els.toolEraser) els.toolEraser.classList.toggle("active", active === "eraser");
+    if (els.btnToolAreaMode) {
+      els.btnToolAreaMode.classList.toggle("active", singleArea);
+      els.btnToolAreaMode.setAttribute("aria-pressed", singleArea ? "true" : "false");
+      els.btnToolAreaMode.title = singleArea ? "Area mode: selected area only" : "Area mode: grouped selections";
+    }
+    if (els.iconToolAreaMode) {
+      els.iconToolAreaMode.classList.remove("fa-object-group", "fa-object-ungroup");
+      els.iconToolAreaMode.classList.add(singleArea ? "fa-object-ungroup" : "fa-object-group");
+    }
     if (els.btnToolSpectral) els.btnToolSpectral.classList.toggle("active", spectral);
     if (els.drawColor && getDrawColor) {
       const color = getDrawColor();
@@ -311,6 +325,12 @@ export function wireApp(deps) {
   if (els.toolRect && setDrawTool) els.toolRect.onclick = () => { setDrawTool("rect"); syncDrawToolUI(); };
   if (els.toolShape && setDrawTool) els.toolShape.onclick = () => { setDrawTool("shape"); syncDrawToolUI(); };
   if (els.toolEraser && setDrawTool) els.toolEraser.onclick = () => { setDrawTool("eraser"); syncDrawToolUI(); };
+  if (els.btnToolAreaMode && setAreaSelectionMode) {
+    els.btnToolAreaMode.onclick = () => {
+      setAreaSelectionMode();
+      syncDrawToolUI();
+    };
+  }
   if (els.btnToolSpectral && setSpectrumPickEnabled) {
     els.btnToolSpectral.onclick = () => {
       toggleSpectralMode();
@@ -360,7 +380,23 @@ export function wireApp(deps) {
   const isEraserEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "eraser");
   const isDrawingEnabled = () => isDrawCreateEnabled() || isEraserEnabled();
   const isRulerEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "ruler");
+  const isSingleAreaMode = () => !!(getAreaSelectionMode && getAreaSelectionMode() === "single");
   const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#analysisHistPanel,#specPanel,header,dialog"));
+
+  if (els.main && selectAreaAtPointer) {
+    els.main.addEventListener("pointerdown", (ev) => {
+      if (!isSingleAreaMode()) return;
+      if (!getActive()) return;
+      if (isDrawingEnabled()) return;
+      if (getSpectrumPickEnabled && getSpectrumPickEnabled()) return;
+      if (state.selection && state.selection.enabled) return;
+      if (isUiTarget(ev.target)) return;
+      const changed = selectAreaAtPointer(ev);
+      if (!changed) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+  }
 
   if (els.main && (beginDrawingAtPointer || eraseDrawingAtPointer)) {
     els.main.addEventListener("pointerdown", (ev) => {

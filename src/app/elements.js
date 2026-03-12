@@ -43,6 +43,8 @@ export function collectElements() {
     toolShape: $("#toolShape"),
     toolEraser: $("#toolEraser"),
     drawColor: $("#drawColor"),
+    btnToolAreaMode: $("#btnToolAreaMode"),
+    iconToolAreaMode: $("#iconToolAreaMode"),
     btnToolSpectral: $("#btnToolSpectral"),
     btnToolHistogram: $("#btnToolHistogram"),
     btnToolExport: $("#btnToolExport"),

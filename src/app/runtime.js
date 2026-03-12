@@ -144,6 +144,7 @@ import { APP_CONFIG } from "./config.js";
     histMode: 'whole',
     histViewDebounce: null,
     spectrumPickEnabled: false,
+    areaSelectionMode: "group",
     analysisHist: { open: false, hoverBin: -1, stats: null },
     draw: { tool: "none", color: "#22c55e", activePointerId: null, draft: null, rulerDrag: null, rulerHover: null, nextItemId: 1 },
 
@@ -255,13 +256,113 @@ import { APP_CONFIG } from "./config.js";
     state.draw.color = color;
   }
 
+  function getAreaSelectionMode() {
+    return state.areaSelectionMode === "single" ? "single" : "group";
+  }
+
+  function isAreaSelectionGrouped() {
+    return getAreaSelectionMode() === "group";
+  }
+
   function isHistogramSelectionTool(item) {
     return !!(item && (item.tool === "rect" || item.tool === "shape"));
   }
 
-  function getHistogramSelectionItems(ds) {
+  function listHistogramSelectionItems(ds) {
     if (!ds || !Array.isArray(ds.drawings)) return [];
     return ds.drawings.filter((item) => isHistogramSelectionTool(item));
+  }
+
+  function latestHistogramSelectionItem(ds) {
+    if (!ds || !Array.isArray(ds.drawings)) return null;
+    for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
+      const item = ds.drawings[i];
+      if (isHistogramSelectionTool(item) && Number.isFinite(item.id)) return item;
+    }
+    return null;
+  }
+
+  function ensureSelectedAreaId(ds, { preferLatest = true } = {}) {
+    if (!ds) return null;
+    const items = listHistogramSelectionItems(ds);
+    if (!items.length) {
+      ds.selectedAreaId = null;
+      return null;
+    }
+    const current = ds.selectedAreaId;
+    const hasCurrent = Number.isFinite(current) && items.some((item) => item.id === current);
+    if (hasCurrent) return current;
+    if (!preferLatest) return null;
+    const latest = latestHistogramSelectionItem(ds);
+    ds.selectedAreaId = latest ? latest.id : null;
+    return ds.selectedAreaId;
+  }
+
+  function setAreaSelectionMode(next = null) {
+    const current = getAreaSelectionMode();
+    const target = (next === "single" || next === "group") ? next : (current === "group" ? "single" : "group");
+    if (target === current) return current;
+    state.areaSelectionMode = target;
+    const ds = getActive();
+    if (ds && target === "single") ensureSelectedAreaId(ds, { preferLatest: true });
+    if (ds) updateSelectionHistogramForDataset(ds);
+    ensureMarqueeTicker();
+    render({ reuseRaster: true });
+    return target;
+  }
+
+  function getHistogramSelectionItems(ds) {
+    const items = listHistogramSelectionItems(ds);
+    if (!items.length) return [];
+    if (isAreaSelectionGrouped()) return items;
+    const selectedId = ensureSelectedAreaId(ds, { preferLatest: true });
+    if (!Number.isFinite(selectedId)) return [];
+    return items.filter((item) => item.id === selectedId);
+  }
+
+  function setSelectedAreaId(ds, nextId) {
+    if (!ds) return false;
+    const items = listHistogramSelectionItems(ds);
+    if (!items.length) {
+      if (ds.selectedAreaId == null) return false;
+      ds.selectedAreaId = null;
+      return true;
+    }
+    const resolved = Number.isFinite(nextId) && items.some((item) => item.id === nextId)
+      ? nextId
+      : null;
+    const fallback = (resolved == null) ? ensureSelectedAreaId(ds, { preferLatest: true }) : resolved;
+    if (ds.selectedAreaId === fallback) return false;
+    ds.selectedAreaId = fallback;
+    return true;
+  }
+
+  function selectAreaAtPointer(ev) {
+    const ds = getActive();
+    if (!ds) return false;
+    const items = listHistogramSelectionItems(ds);
+    if (!items.length) return false;
+    const point = pointerToImagePoint(ev, ds);
+    const pxTolerance = (ev.pointerType === "touch") ? 24 : 14;
+    const imgTolerance = pxTolerance / Math.max(1e-6, ds.view.scale);
+    let best = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      const item = items[i];
+      const dist = distanceToDrawing(point, item);
+      if (!Number.isFinite(dist) || dist > imgTolerance || dist > bestDist) continue;
+      best = item;
+      bestDist = dist;
+      if (dist <= 0) break;
+    }
+    if (!best || !Number.isFinite(best.id)) return false;
+    const changed = setSelectedAreaId(ds, best.id);
+    if (changed) {
+      updateSelectionHistogramForDataset(ds);
+      ensureMarqueeTicker();
+      render({ reuseRaster: true });
+    }
+    return true;
   }
 
   function histogramSelectionKeyFromItems(items) {
@@ -448,7 +549,10 @@ import { APP_CONFIG } from "./config.js";
     if (bestIdx < 0) return false;
     const [removed] = ds.drawings.splice(bestIdx, 1);
     const selectionChanged = !!(removed && isHistogramSelectionTool(removed));
-    if (selectionChanged) updateSelectionHistogramForDataset(ds);
+    if (selectionChanged) {
+      ensureSelectedAreaId(ds, { preferLatest: true });
+      updateSelectionHistogramForDataset(ds);
+    }
     ensureMarqueeTicker();
     if (!selectionChanged && state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
     render({ reuseRaster: true });
@@ -461,6 +565,7 @@ import { APP_CONFIG } from "./config.js";
     if (!Array.isArray(ds.drawings)) ds.drawings = [];
     if (!ds.drawings.length) return false;
     ds.drawings.length = 0;
+    ds.selectedAreaId = null;
     state.draw.activePointerId = null;
     state.draw.draft = null;
     state.draw.rulerDrag = null;
@@ -591,6 +696,7 @@ import { APP_CONFIG } from "./config.js";
       };
       ds.drawings.push(newItem);
       if (draft.tool === "rect" || draft.tool === "shape") {
+        ds.selectedAreaId = newItem.id;
         updateSelectionHistogramForDataset(ds);
       }
     }
@@ -1245,10 +1351,13 @@ import { APP_CONFIG } from "./config.js";
     updatePerf,
     getDrawTool,
     getSpectrumPickEnabled,
+    getAreaSelectionMode,
     getDrawColor,
     setDrawTool,
     setSpectrumPickEnabled,
+    setAreaSelectionMode,
     setDrawColor,
+    selectAreaAtPointer,
     isDrawingPointer,
     beginDrawingAtPointer,
     updateDrawingAtPointer,
