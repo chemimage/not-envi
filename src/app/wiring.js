@@ -48,6 +48,7 @@ export function wireApp(deps) {
     updatePerf,
     getDrawTool,
     getSpectrumPickEnabled,
+    getEffectiveAreaSelectionKey,
     getAreaSelectionMode,
     getDrawColor,
     setDrawTool,
@@ -102,6 +103,7 @@ export function wireApp(deps) {
     lastDatasetId: null,
     lastIx: null,
     lastIy: null,
+    lastAreaKey: "",
     inFlight: false,
     pending: null
   };
@@ -109,6 +111,7 @@ export function wireApp(deps) {
   function stopSpectralDrag() {
     spectralDrag.activePointerId = null;
     spectralDrag.pending = null;
+    spectralDrag.lastAreaKey = "";
   }
 
   function eventToSpectrumTarget(ev) {
@@ -121,18 +124,21 @@ export function wireApp(deps) {
     const img = screenToImage(sx, sy);
     const ix = clamp(Math.floor(img.x), 0, ds.meta.samples - 1);
     const iy = clamp(Math.floor(img.y), 0, ds.meta.lines - 1);
+    const areaKey = getEffectiveAreaSelectionKey ? String(getEffectiveAreaSelectionKey(ds) || "") : "";
     const pointerType = ev.pointerType
       || ((ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) ? "touch" : "mouse");
-    return { ds, ix, iy, clientX: ev.clientX, clientY: ev.clientY, pointerType };
+    return { ds, ix, iy, areaKey, clientX: ev.clientX, clientY: ev.clientY, pointerType };
   }
 
   function enqueueSpectrumUpdate(target) {
     if (!target || !target.ds) return;
-    const sameTarget = (
-      spectralDrag.lastDatasetId === target.ds.id
-      && spectralDrag.lastIx === target.ix
-      && spectralDrag.lastIy === target.iy
-    );
+    const sameTarget = target.areaKey
+      ? (spectralDrag.lastDatasetId === target.ds.id && spectralDrag.lastAreaKey === target.areaKey)
+      : (
+        spectralDrag.lastDatasetId === target.ds.id
+        && spectralDrag.lastIx === target.ix
+        && spectralDrag.lastIy === target.iy
+      );
     if (sameTarget && !spectralDrag.inFlight) return;
 
     if (spectralDrag.inFlight) {
@@ -144,6 +150,7 @@ export function wireApp(deps) {
     spectralDrag.lastDatasetId = target.ds.id;
     spectralDrag.lastIx = target.ix;
     spectralDrag.lastIy = target.iy;
+    spectralDrag.lastAreaKey = target.areaKey || "";
     Promise.resolve(openSpectrumAt(target.ds, target.ix, target.iy, {
       clientX: target.clientX,
       clientY: target.clientY,
@@ -394,7 +401,6 @@ export function wireApp(deps) {
       if (!isSingleAreaMode()) return;
       if (!getActive()) return;
       if (isDrawingEnabled()) return;
-      if (getSpectrumPickEnabled && getSpectrumPickEnabled()) return;
       if (state.selection && state.selection.enabled) return;
       if (isUiTarget(ev.target)) return;
       const startedMove = beginAreaMoveAtPointer ? beginAreaMoveAtPointer(ev) : false;

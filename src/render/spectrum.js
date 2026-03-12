@@ -23,7 +23,15 @@ export function createSpectrumController(deps) {
   } = deps;
 
   let specSeq = 0;
-  const specState = { open: false, dsId: null, x: 0, y: 0, xVals: null, yVals: null };
+  const specState = {
+    open: false,
+    dsId: null,
+    x: 0,
+    y: 0,
+    xVals: null,
+    yVals: null,
+    source: { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 }
+  };
 
   function showSpectrumPanel(show) {
     if (!els.specPanel) return;
@@ -37,6 +45,34 @@ export function createSpectrumController(deps) {
 
   function setSpecSub(text) {
     if (els.specSub) els.specSub.textContent = text;
+  }
+
+  function setSpecFoot(text) {
+    if (els.specFoot) els.specFoot.textContent = text;
+  }
+
+  function summarizeSpectrum(yVals) {
+    if (!yVals || !yVals.length) return null;
+    let n = 0;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    let sum = 0;
+    let sumSq = 0;
+    for (let i = 0; i < yVals.length; i += 1) {
+      const v = Number(yVals[i]);
+      if (!Number.isFinite(v)) continue;
+      n += 1;
+      sum += v;
+      sumSq += (v * v);
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!n) return null;
+    const mean = sum / n;
+    const rms = Math.sqrt(sumSq / n);
+    const variance = Math.max(0, (sumSq / n) - (mean * mean));
+    const std = Math.sqrt(variance);
+    return { n, min, max, mean, std, rms };
   }
 
   function resizeSpecCanvas() {
@@ -225,38 +261,60 @@ export function createSpectrumController(deps) {
     specState.dsId = ds.id;
     specState.x = ix;
     specState.y = iy;
+    specState.source = {
+      type: opts.sourceType === "area" ? "area" : "pixel",
+      sampleCount: Number.isFinite(opts?.sourceMeta?.sampleCount) ? opts.sourceMeta.sampleCount : 0,
+      selectionCount: Number.isFinite(opts?.sourceMeta?.selectionCount) ? opts.sourceMeta.selectionCount : 0,
+      sampleStep: Number.isFinite(opts?.sourceMeta?.sampleStep) ? opts.sourceMeta.sampleStep : 1
+    };
     const mySeq = ++specSeq;
 
     showSpectrumPanel(true);
     setSpecTitle(ds.name);
-    const sc = ds.meta.scale;
-    if (sc && Number.isFinite(sc.umPerPixelX) && Number.isFinite(sc.umPerPixelY)) {
-      const xUm = ix * Number(sc.umPerPixelX);
-      const yUm = iy * Number(sc.umPerPixelY);
-      setSpecSub(`x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`);
+    if (opts.subLabel && String(opts.subLabel).trim()) {
+      setSpecSub(String(opts.subLabel));
     } else {
-      setSpecSub(`px ${ix}, ${iy}`);
+      const sc = ds.meta.scale;
+      if (sc && Number.isFinite(sc.umPerPixelX) && Number.isFinite(sc.umPerPixelY)) {
+        const xUm = ix * Number(sc.umPerPixelX);
+        const yUm = iy * Number(sc.umPerPixelY);
+        setSpecSub(`x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`);
+      } else {
+        setSpecSub(`px ${ix}, ${iy}`);
+      }
     }
 
     await new Promise((r) => requestAnimationFrame(r));
     if (mySeq !== specSeq) return;
-    positionSpectrumPanel({
-      clientX: Number(opts.clientX),
-      clientY: Number(opts.clientY),
-      pointerType: opts.pointerType === "touch" ? "touch" : "mouse"
-    });
+    if (!opts.noReposition) {
+      positionSpectrumPanel({
+        clientX: Number(opts.clientX),
+        clientY: Number(opts.clientY),
+        pointerType: opts.pointerType === "touch" ? "touch" : "mouse"
+      });
+    }
 
     try {
-      const yVals = await readSpectrumAtPixel(ds, ix, iy);
+      let yVals = opts.yVals || null;
+      if (!(yVals && yVals.length)) yVals = await readSpectrumAtPixel(ds, ix, iy);
       if (mySeq !== specSeq) return;
-      const xVals = wavelengthArrayOrNull(ds);
+      const xVals = (opts.xVals && opts.xVals.length) ? opts.xVals : wavelengthArrayOrNull(ds);
       drawSpectrumPlot(ds, xVals, yVals);
       specState.xVals = xVals;
       specState.yVals = yVals;
+      const stats = summarizeSpectrum(yVals);
+      if (!stats) {
+        setSpecFoot("No finite values.");
+      } else {
+        setSpecFoot(
+          `Mean ${formatAxisNumber(stats.mean)}  StdDev ${formatAxisNumber(stats.std)}  RMS ${formatAxisNumber(stats.rms)}  Min/Max ${formatAxisNumber(stats.min)} / ${formatAxisNumber(stats.max)}`
+        );
+      }
       updatePerf();
     } catch (e) {
       console.error(e);
       setSpecSub("Failed to read spectrum.");
+      setSpecFoot("Failed to compute spectrum.");
     }
   }
 
@@ -271,6 +329,7 @@ export function createSpectrumController(deps) {
     specSeq++;
     specState.xVals = null;
     specState.yVals = null;
+    specState.source = { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 };
     showSpectrumPanel(false);
   }
 
@@ -288,11 +347,24 @@ export function createSpectrumController(deps) {
 
     const lines = [];
     lines.push(`# dataset: ${ds.name}`);
-    lines.push(`# pixel: ${specState.x},${specState.y}`);
-    if (ds.meta.scale && Number.isFinite(ds.meta.scale.umPerPixelX) && Number.isFinite(ds.meta.scale.umPerPixelY)) {
-      const xUm = specState.x * Number(ds.meta.scale.umPerPixelX);
-      const yUm = specState.y * Number(ds.meta.scale.umPerPixelY);
-      lines.push(`# physical_um: ${fmtUm(xUm)},${fmtUm(yUm)}`);
+    if (specState.source && specState.source.type === "area") {
+      lines.push("# source: area_average");
+      if (Number.isFinite(specState.source.sampleCount) && specState.source.sampleCount > 0) {
+        lines.push(`# sample_pixels: ${specState.source.sampleCount}`);
+      }
+      if (Number.isFinite(specState.source.selectionCount) && specState.source.selectionCount > 0) {
+        lines.push(`# selection_count: ${specState.source.selectionCount}`);
+      }
+      if (Number.isFinite(specState.source.sampleStep) && specState.source.sampleStep > 1) {
+        lines.push(`# sample_step: ${specState.source.sampleStep}`);
+      }
+    } else {
+      lines.push(`# pixel: ${specState.x},${specState.y}`);
+      if (ds.meta.scale && Number.isFinite(ds.meta.scale.umPerPixelX) && Number.isFinite(ds.meta.scale.umPerPixelY)) {
+        const xUm = specState.x * Number(ds.meta.scale.umPerPixelX);
+        const yUm = specState.y * Number(ds.meta.scale.umPerPixelY);
+        lines.push(`# physical_um: ${fmtUm(xUm)},${fmtUm(yUm)}`);
+      }
     }
     lines.push(`# bands: ${ds.meta.bands}`);
     if (ds.activeBand != null) lines.push(`# active_band: ${ds.activeBand}`);
@@ -312,7 +384,9 @@ export function createSpectrumController(deps) {
     }
 
     const csv = `${lines.join("\n")}\n`;
-    const base = `${ds.name}_spectrum_${specState.x}_${specState.y}`;
+    const base = (specState.source && specState.source.type === "area")
+      ? `${ds.name}_spectrum_area`
+      : `${ds.name}_spectrum_${specState.x}_${specState.y}`;
     downloadBlob(new Blob([csv], { type: "text/csv" }), `${sanitizeFilePart(base)}.csv`);
   }
 

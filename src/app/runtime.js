@@ -309,7 +309,10 @@ import { APP_CONFIG } from "./config.js";
     state.areaSelectionMode = target;
     const ds = getActive();
     if (ds && target === "single") ensureSelectedAreaId(ds, { preferLatest: true });
-    if (ds) updateSelectionHistogramForDataset(ds);
+    if (ds) {
+      updateSelectionHistogramForDataset(ds);
+      refreshAreaSpectrumIfOpen(ds, null, true);
+    }
     ensureMarqueeTicker();
     render({ reuseRaster: true });
     return target;
@@ -362,6 +365,20 @@ import { APP_CONFIG } from "./config.js";
     return { item: best, point };
   }
 
+  function refreshAreaSpectrumIfOpen(ds, anchor = null, noReposition = true) {
+    if (!ds || !state.spectrumPickEnabled) return;
+    if (!spectrum || !spectrum.isOpenForDatasetId(ds.id)) return;
+    const selections = getHistogramSelectionItems(ds);
+    if (!selections.length) return;
+    openSpectrumAt(ds, 0, 0, {
+      clientX: Number(anchor?.clientX),
+      clientY: Number(anchor?.clientY),
+      pointerType: anchor?.pointerType === "touch" ? "touch" : "mouse",
+      noReposition: !!noReposition,
+      forceArea: true
+    }).catch(() => {});
+  }
+
   function selectAreaAtPointer(ev) {
     const ds = getActive();
     if (!ds) return false;
@@ -371,6 +388,7 @@ import { APP_CONFIG } from "./config.js";
     if (changed) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
+      refreshAreaSpectrumIfOpen(ds, ev, true);
       render({ reuseRaster: true });
     }
     return true;
@@ -396,7 +414,8 @@ import { APP_CONFIG } from "./config.js";
       dsId: ds.id,
       itemId: hit.item.id,
       lastPoint: hit.point,
-      moved: false
+      moved: false,
+      lastRefreshMs: 0
     };
     if (changed) render({ reuseRaster: true });
     return true;
@@ -445,6 +464,14 @@ import { APP_CONFIG } from "./config.js";
     }
     move.lastPoint = p;
     move.moved = true;
+    const wantsSpatial = !!(state.analysisHist.open && ds.id === state.activeId);
+    const wantsSpectral = !!(state.spectrumPickEnabled && spectrum && spectrum.isOpenForDatasetId(ds.id));
+    const nowMs = performance.now();
+    if ((wantsSpatial || wantsSpectral) && (!Number.isFinite(move.lastRefreshMs) || (nowMs - move.lastRefreshMs) >= 120)) {
+      move.lastRefreshMs = nowMs;
+      if (wantsSpatial) updateSelectionHistogramForDataset(ds);
+      if (wantsSpectral) refreshAreaSpectrumIfOpen(ds, ev, true);
+    }
     render({ reuseRaster: true });
     return true;
   }
@@ -458,6 +485,7 @@ import { APP_CONFIG } from "./config.js";
     if (moved && ds && ds.id === move.dsId) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
+      refreshAreaSpectrumIfOpen(ds, ev, true);
     }
     render({ reuseRaster: true });
     return true;
@@ -478,6 +506,125 @@ import { APP_CONFIG } from "./config.js";
       .sort((a, b) => a.id - b.id)
       .map((item) => String(item.id))
       .join(",");
+  }
+
+  function getEffectiveAreaSelectionKey(ds = null) {
+    const target = ds || getActive();
+    if (!target) return "";
+    return histogramSelectionKeyFromItems(getHistogramSelectionItems(target));
+  }
+
+  function resolveSelectionBoundsForSpectrum(ds, selection) {
+    if (!ds || !selection || !Array.isArray(selection.points) || !selection.points.length) return null;
+    const maxX = Math.max(0, ds.meta.samples - 1);
+    const maxY = Math.max(0, ds.meta.lines - 1);
+
+    if (selection.tool === "rect" && selection.points.length >= 2) {
+      const a = selection.points[0];
+      const b = selection.points[selection.points.length - 1];
+      const x0 = Math.max(0, Math.floor(Math.min(a.x, b.x)));
+      const y0 = Math.max(0, Math.floor(Math.min(a.y, b.y)));
+      const x1 = Math.min(maxX, Math.ceil(Math.max(a.x, b.x)));
+      const y1 = Math.min(maxY, Math.ceil(Math.max(a.y, b.y)));
+      if (x1 < x0 || y1 < y0) return null;
+      return { x0, y0, x1, y1, width: x1 - x0 + 1, height: y1 - y0 + 1 };
+    }
+
+    if (selection.tool === "shape" && selection.points.length >= 3) {
+      let minX = Number.POSITIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      let maxXv = Number.NEGATIVE_INFINITY;
+      let maxYv = Number.NEGATIVE_INFINITY;
+      for (const p of selection.points) {
+        if (!p) continue;
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxXv) maxXv = p.x;
+        if (p.y > maxYv) maxYv = p.y;
+      }
+      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxXv) || !Number.isFinite(maxYv)) return null;
+      const x0 = Math.max(0, Math.floor(minX));
+      const y0 = Math.max(0, Math.floor(minY));
+      const x1 = Math.min(maxX, Math.ceil(maxXv));
+      const y1 = Math.min(maxY, Math.ceil(maxYv));
+      if (x1 < x0 || y1 < y0) return null;
+      return { x0, y0, x1, y1, width: x1 - x0 + 1, height: y1 - y0 + 1 };
+    }
+
+    return null;
+  }
+
+  async function buildAreaAverageSpectrum(ds, selections) {
+    if (!ds || !Array.isArray(selections) || !selections.length) return null;
+    const valid = [];
+    let totalArea = 0;
+    for (const selection of selections) {
+      if (!isHistogramSelectionTool(selection)) continue;
+      const bounds = resolveSelectionBoundsForSpectrum(ds, selection);
+      if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue;
+      valid.push({ selection, bounds });
+      totalArea += bounds.width * bounds.height;
+    }
+    if (!valid.length) return null;
+
+    const targetSamples = 220_000;
+    const sampleStep = Math.max(1, Math.ceil(Math.sqrt(totalArea / Math.max(1, targetSamples))));
+    const bands = ds.meta.bands;
+    const spectrumMean = new Float32Array(bands);
+    let sampleCount = 0;
+
+    for (let band = 0; band < bands; band += 1) {
+      const seen = new Set();
+      let sum = 0;
+      let count = 0;
+
+      for (const item of valid) {
+        const { selection, bounds } = item;
+        const outW = Math.max(1, Math.ceil(bounds.width / sampleStep));
+        const outH = Math.max(1, Math.ceil(bounds.height / sampleStep));
+        let raw;
+        if (ds.meta.interleave === "bip") {
+          raw = await readBandWindowBIP(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep);
+        } else {
+          raw = await readBandWindow(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep);
+        }
+        const f32 = toFloat32(raw);
+        const isShape = selection.tool === "shape" && Array.isArray(selection.points) && selection.points.length >= 3;
+        for (let row = 0; row < outH; row += 1) {
+          const iy = bounds.y0 + row * sampleStep;
+          if (iy > bounds.y1) continue;
+          for (let col = 0; col < outW; col += 1) {
+            const ix = bounds.x0 + col * sampleStep;
+            if (ix > bounds.x1) continue;
+            if (isShape) {
+              const cx = ix + (0.5 * sampleStep);
+              const cy = iy + (0.5 * sampleStep);
+              if (!pointInPolygon({ x: cx, y: cy }, selection.points)) continue;
+            }
+            const key = iy * ds.meta.samples + ix;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            sum += f32[row * outW + col];
+            count += 1;
+          }
+        }
+      }
+
+      if (count > 0) {
+        spectrumMean[band] = sum / count;
+        if (!sampleCount) sampleCount = count;
+      } else {
+        spectrumMean[band] = NaN;
+      }
+    }
+
+    if (!sampleCount) return null;
+    return {
+      yVals: spectrumMean,
+      sampleCount,
+      sampleStep,
+      selectionCount: valid.length
+    };
   }
 
   function getDrawData(ds) {
@@ -1181,6 +1328,7 @@ import { APP_CONFIG } from "./config.js";
     updateSelectionHistogram(ds, selections).then(() => {
       if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
     }).catch(() => {});
+    refreshAreaSpectrumIfOpen(ds, null, true);
     ensureMarqueeTicker();
   }
   // ========= Rendering (direct read or pyramid) =========
@@ -1342,7 +1490,39 @@ import { APP_CONFIG } from "./config.js";
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });
 
-  async function openSpectrumAt(ds, ix, iy, opts){ await spectrum.openSpectrumAt(ds, ix, iy, opts); }
+  async function openSpectrumAt(ds, ix, iy, opts = {}) {
+    if (!ds) return;
+    const selections = getHistogramSelectionItems(ds);
+    const useArea = !!(opts.forceArea || selections.length);
+    if (!useArea) {
+      await spectrum.openSpectrumAt(ds, ix, iy, opts);
+      return;
+    }
+
+    const area = await buildAreaAverageSpectrum(ds, selections);
+    if (!area || !area.yVals || !area.yVals.length) {
+      await spectrum.openSpectrumAt(ds, ix, iy, opts);
+      return;
+    }
+
+    const sampled = area.sampleStep > 1;
+    const sampleLabel = sampled
+      ? `${fmtNoGroup(area.sampleCount)} sampled px (step ${area.sampleStep})`
+      : `${fmtNoGroup(area.sampleCount)} px`;
+    const subLabel = `Area average (${sampleLabel}, ${fmtNoGroup(area.selectionCount)} region${area.selectionCount > 1 ? "s" : ""})`;
+    await spectrum.openSpectrumAt(ds, ix, iy, {
+      ...opts,
+      yVals: area.yVals,
+      xVals: wavelengthArrayOrNullCore(ds),
+      subLabel,
+      sourceType: "area",
+      sourceMeta: {
+        sampleCount: area.sampleCount,
+        selectionCount: area.selectionCount,
+        sampleStep: area.sampleStep
+      }
+    });
+  }
   function redrawSpectrum(){ spectrum.redrawSpectrum(); }
   function closeSpectrum(){ spectrum.closeSpectrum(); }
   function exportSpectrumCSV(){ spectrum.exportSpectrumCSV(); }
@@ -1461,6 +1641,7 @@ import { APP_CONFIG } from "./config.js";
     updatePerf,
     getDrawTool,
     getSpectrumPickEnabled,
+    getEffectiveAreaSelectionKey,
     getAreaSelectionMode,
     getDrawColor,
     setDrawTool,
