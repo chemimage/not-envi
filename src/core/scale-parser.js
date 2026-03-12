@@ -6,7 +6,7 @@ export function unitToMicronsFactor(unitStr) {
   if (u.includes("nanometer") || u.includes("nanometre") || u === "nm") return 0.001;
   if (u.includes("millimeter") || u.includes("millimetre") || u === "mm") return 1000;
   if (u.includes("centimeter") || u.includes("centimetre") || u === "cm") return 10000;
-  if (u === "m" || u === "meter" || u === "metre" || u.includes(" meters") || u.includes(" metres")) return 1_000_000;
+  if (u === "m" || u === "meter" || u === "metre" || u.includes("meter") || u.includes("metre")) return 1_000_000;
   return null;
 }
 
@@ -35,6 +35,8 @@ export function parseUmPerPixelFromMapInfo(mapInfo) {
 
 export function parseUmPerPixelFromCustomFields(raw) {
   if (!raw || typeof raw !== "object") return null;
+  // ENVI "pixel size" is natively expressed in meters unless a unit override is provided.
+  const ENVI_NATIVE_PIXEL_SIZE_TO_UM = 1_000_000;
   const unitHints = [
     raw["pixel size units"],
     raw["spatial units"],
@@ -44,8 +46,8 @@ export function parseUmPerPixelFromCustomFields(raw) {
   const hintedFactor = unitToMicronsFactor(unitHints[0] || "");
 
   const candidates = [
-    ["pixel size", hintedFactor || 1],
-    ["pixel_size", hintedFactor || 1],
+    ["pixel size", hintedFactor || ENVI_NATIVE_PIXEL_SIZE_TO_UM],
+    ["pixel_size", hintedFactor || ENVI_NATIVE_PIXEL_SIZE_TO_UM],
     ["pixel size (um)", 1],
     ["pixel_size_um", 1]
   ];

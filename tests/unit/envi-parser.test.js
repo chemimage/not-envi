@@ -73,6 +73,12 @@ wavelength = {0.45,
       umPerPixelY: 3,
       source: "header:pixel size"
     });
+
+    expect(parseUmPerPixelFromCustomFields({ "pixel size": [0.000002, 0.000003] })).toEqual({
+      umPerPixelX: 2,
+      umPerPixelY: 3,
+      source: "header:pixel size"
+    });
   });
 
   test("normalizeMeta restores braces for settings-like description", () => {
