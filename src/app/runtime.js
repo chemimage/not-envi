@@ -311,7 +311,7 @@ import { APP_CONFIG } from "./config.js";
     if (ds && target === "single") ensureSelectedAreaId(ds, { preferLatest: true });
     if (ds) {
       updateSelectionHistogramForDataset(ds);
-      refreshAreaSpectrumIfOpen(ds, null, true);
+      refreshAreaSpectrumIfOpen(ds, null, false);
     }
     ensureMarqueeTicker();
     render({ reuseRaster: true });
@@ -325,6 +325,12 @@ import { APP_CONFIG } from "./config.js";
     const selectedId = ensureSelectedAreaId(ds, { preferLatest: true });
     if (!Number.isFinite(selectedId)) return [];
     return items.filter((item) => item.id === selectedId);
+  }
+
+  function getEffectiveAreaSelectionCount(ds = null) {
+    const target = ds || getActive();
+    if (!target) return 0;
+    return getHistogramSelectionItems(target).length;
   }
 
   function setSelectedAreaId(ds, nextId) {
@@ -365,7 +371,7 @@ import { APP_CONFIG } from "./config.js";
     return { item: best, point };
   }
 
-  function refreshAreaSpectrumIfOpen(ds, anchor = null, noReposition = true) {
+  function refreshAreaSpectrumIfOpen(ds, anchor = null, noReposition = false) {
     if (!ds || !state.spectrumPickEnabled) return;
     if (!spectrum || !spectrum.isOpenForDatasetId(ds.id)) return;
     const selections = getHistogramSelectionItems(ds);
@@ -388,7 +394,7 @@ import { APP_CONFIG } from "./config.js";
     if (changed) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
-      refreshAreaSpectrumIfOpen(ds, ev, true);
+      refreshAreaSpectrumIfOpen(ds, ev, false);
       render({ reuseRaster: true });
     }
     return true;
@@ -470,7 +476,7 @@ import { APP_CONFIG } from "./config.js";
     if ((wantsSpatial || wantsSpectral) && (!Number.isFinite(move.lastRefreshMs) || (nowMs - move.lastRefreshMs) >= 120)) {
       move.lastRefreshMs = nowMs;
       if (wantsSpatial) updateSelectionHistogramForDataset(ds);
-      if (wantsSpectral) refreshAreaSpectrumIfOpen(ds, ev, true);
+      if (wantsSpectral) refreshAreaSpectrumIfOpen(ds, ev, false);
     }
     render({ reuseRaster: true });
     return true;
@@ -485,7 +491,7 @@ import { APP_CONFIG } from "./config.js";
     if (moved && ds && ds.id === move.dsId) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
-      refreshAreaSpectrumIfOpen(ds, ev, true);
+      refreshAreaSpectrumIfOpen(ds, ev, false);
     }
     render({ reuseRaster: true });
     return true;
@@ -512,6 +518,26 @@ import { APP_CONFIG } from "./config.js";
     const target = ds || getActive();
     if (!target) return "";
     return histogramSelectionKeyFromItems(getHistogramSelectionItems(target));
+  }
+
+  function resolveEffectiveSelectionBounds(ds, selections = null) {
+    if (!ds) return null;
+    const list = Array.isArray(selections) ? selections : getHistogramSelectionItems(ds);
+    if (!Array.isArray(list) || !list.length) return null;
+    let x0 = Number.POSITIVE_INFINITY;
+    let y0 = Number.POSITIVE_INFINITY;
+    let x1 = Number.NEGATIVE_INFINITY;
+    let y1 = Number.NEGATIVE_INFINITY;
+    for (const selection of list) {
+      const bounds = resolveSelectionBoundsForSpectrum(ds, selection);
+      if (!bounds) continue;
+      if (bounds.x0 < x0) x0 = bounds.x0;
+      if (bounds.y0 < y0) y0 = bounds.y0;
+      if (bounds.x1 > x1) x1 = bounds.x1;
+      if (bounds.y1 > y1) y1 = bounds.y1;
+    }
+    if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) return null;
+    return { x0, y0, x1, y1 };
   }
 
   function resolveSelectionBoundsForSpectrum(ds, selection) {
@@ -1328,7 +1354,11 @@ import { APP_CONFIG } from "./config.js";
     updateSelectionHistogram(ds, selections).then(() => {
       if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
     }).catch(() => {});
-    refreshAreaSpectrumIfOpen(ds, null, true);
+    if (state.spectrumPickEnabled && ds.id === state.activeId && (!spectrum || !spectrum.isOpenForDatasetId(ds.id))) {
+      openSpectrumForEffectiveArea(ds, null, false).catch(() => {});
+    } else {
+      refreshAreaSpectrumIfOpen(ds, null, false);
+    }
     ensureMarqueeTicker();
   }
   // ========= Rendering (direct read or pyramid) =========
@@ -1504,6 +1534,7 @@ import { APP_CONFIG } from "./config.js";
       await spectrum.openSpectrumAt(ds, ix, iy, opts);
       return;
     }
+    const selectionBounds = resolveEffectiveSelectionBounds(ds, selections);
 
     const sampled = area.sampleStep > 1;
     const sampleLabel = sampled
@@ -1520,8 +1551,23 @@ import { APP_CONFIG } from "./config.js";
         sampleCount: area.sampleCount,
         selectionCount: area.selectionCount,
         sampleStep: area.sampleStep
-      }
+      },
+      selectionBounds
     });
+  }
+  async function openSpectrumForEffectiveArea(ds = null, anchor = null, noReposition = false) {
+    const target = ds || getActive();
+    if (!target) return false;
+    const selections = getHistogramSelectionItems(target);
+    if (!selections.length) return false;
+    await openSpectrumAt(target, 0, 0, {
+      clientX: Number(anchor?.clientX),
+      clientY: Number(anchor?.clientY),
+      pointerType: anchor?.pointerType === "touch" ? "touch" : "mouse",
+      noReposition: !!noReposition,
+      forceArea: true
+    });
+    return true;
   }
   function redrawSpectrum(){ spectrum.redrawSpectrum(); }
   function closeSpectrum(){ spectrum.closeSpectrum(); }
@@ -1641,6 +1687,7 @@ import { APP_CONFIG } from "./config.js";
     updatePerf,
     getDrawTool,
     getSpectrumPickEnabled,
+    getEffectiveAreaSelectionCount,
     getEffectiveAreaSelectionKey,
     getAreaSelectionMode,
     getDrawColor,
@@ -1671,6 +1718,7 @@ import { APP_CONFIG } from "./config.js";
     positionAnalysisHistogramPanel,
     onAnalysisHistogramPointerMove,
     onAnalysisHistogramPointerLeave,
+    openSpectrumForEffectiveArea,
     updateZoomLabelBoot: updateZoomLabel,
     setGpuBadgeAvailable: () => {}
   });

@@ -48,6 +48,7 @@ export function wireApp(deps) {
     updatePerf,
     getDrawTool,
     getSpectrumPickEnabled,
+    getEffectiveAreaSelectionCount,
     getEffectiveAreaSelectionKey,
     getAreaSelectionMode,
     getDrawColor,
@@ -78,6 +79,7 @@ export function wireApp(deps) {
     positionAnalysisHistogramPanel,
     onAnalysisHistogramPointerMove,
     onAnalysisHistogramPointerLeave,
+    openSpectrumForEffectiveArea,
     updateZoomLabelBoot,
     setGpuBadgeAvailable
   } = deps;
@@ -331,6 +333,9 @@ export function wireApp(deps) {
     const nextOn = !isOn;
     if (nextOn && getAnalysisHistogramOpen && getAnalysisHistogramOpen()) setSpatialActive(false);
     setSpectralActive(nextOn);
+    if (nextOn && openSpectrumForEffectiveArea) {
+      openSpectrumForEffectiveArea().catch(() => {});
+    }
     syncDrawToolUI();
   }
 
@@ -406,7 +411,16 @@ export function wireApp(deps) {
       const startedMove = beginAreaMoveAtPointer ? beginAreaMoveAtPointer(ev) : false;
       if (!startedMove) {
         const hit = selectAreaAtPointer ? selectAreaAtPointer(ev) : false;
-        if (!hit) return;
+        if (!hit) {
+          const hasAreas = !!(getEffectiveAreaSelectionCount && getEffectiveAreaSelectionCount() > 0);
+          if (!(getSpectrumPickEnabled && getSpectrumPickEnabled() && hasAreas)) return;
+          ev.preventDefault();
+          ev.stopImmediatePropagation();
+          return;
+        }
+      }
+      if (getSpectrumPickEnabled && getSpectrumPickEnabled() && openSpectrumForEffectiveArea) {
+        openSpectrumForEffectiveArea(null, ev, false).catch(() => {});
       }
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -529,6 +543,8 @@ export function wireApp(deps) {
   els.main.addEventListener("pointerdown", (ev) => {
     if (!els.specPanel || els.specPanel.style.display === "none") return;
     if (els.specPanel.contains(ev.target)) return;
+    const hasAreas = !!(getEffectiveAreaSelectionCount && getEffectiveAreaSelectionCount() > 0);
+    if (getSpectrumPickEnabled && getSpectrumPickEnabled() && hasAreas) return;
     closeSpectrum();
   });
 
