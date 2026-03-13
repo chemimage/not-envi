@@ -1,32 +1,38 @@
 export function wireFlyoutPanel({
   panel,
   header,
-  btnToggle,
-  btnPin,
-  collapseTitle = "Retract panel",
-  expandTitle = "Expand panel"
+  btnPin
 }) {
   if (!panel) return;
   const isOpen = () => panel.dataset.open !== "false";
   const isPinned = () => panel.dataset.pinned !== "false";
 
   const setOpen = (open) => {
-    const nextOpen = !!open;
-    panel.dataset.open = nextOpen ? "true" : "false";
-    if (!btnToggle) return;
-    btnToggle.textContent = nextOpen ? "Hide" : "Show";
-    btnToggle.title = nextOpen ? collapseTitle : expandTitle;
-    btnToggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+    panel.dataset.open = open ? "true" : "false";
+  };
+
+  const syncPinButton = () => {
+    if (!btnPin) return;
+    const nextPinned = isPinned();
+    const stateLabel = nextPinned
+      ? "Pinned: panel stays open"
+      : "Auto-hide: panel hides after cursor leaves";
+    btnPin.dataset.pinned = nextPinned ? "true" : "false";
+    btnPin.title = stateLabel;
+    btnPin.setAttribute("aria-label", stateLabel);
+    btnPin.setAttribute("aria-pressed", nextPinned ? "true" : "false");
+
+    const icon = btnPin.querySelector ? btnPin.querySelector("i") : null;
+    if (icon && icon.classList) {
+      icon.classList.remove("fa-thumbtack");
+      icon.classList.add("fa-thumbtack");
+    }
   };
 
   const setPinned = (pinned, { forceOpen = true } = {}) => {
     const nextPinned = !!pinned;
     panel.dataset.pinned = nextPinned ? "true" : "false";
-    if (btnPin) {
-      btnPin.textContent = nextPinned ? "Pinned" : "Pin";
-      btnPin.title = nextPinned ? "Unpin panel" : "Pin panel open";
-      btnPin.setAttribute("aria-pressed", nextPinned ? "true" : "false");
-    }
+    syncPinButton();
     if (nextPinned && forceOpen) setOpen(true);
   };
 
@@ -34,19 +40,10 @@ export function wireFlyoutPanel({
   setOpen(isOpen());
   if (isPinned() && !isOpen()) setOpen(true);
 
-  if (btnToggle) {
-    btnToggle.onclick = (ev) => {
-      ev.stopPropagation();
-      const nextOpen = !isOpen();
-      if (!nextOpen) setPinned(false, { forceOpen: false });
-      setOpen(nextOpen);
-    };
-  }
-
   if (btnPin) {
     btnPin.onclick = (ev) => {
       ev.stopPropagation();
-      setPinned(!isPinned());
+      setPinned(!isPinned(), { forceOpen: true });
     };
   }
 

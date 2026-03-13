@@ -14,18 +14,6 @@
     <canvas id="cpuCanvas"></canvas>
     <canvas id="overlayCanvas"></canvas>
     <div id="drawTools" aria-label="Drawing tools">
-      <button class="draw-tool-btn" id="toolRuler" type="button" title="Ruler" aria-label="Ruler">
-        <i class="fa-solid fa-ruler" aria-hidden="true"></i>
-      </button>
-      <button class="draw-tool-btn" id="toolRect" type="button" title="Rectangle" aria-label="Rectangle">
-        <i class="fa-regular fa-square" aria-hidden="true"></i>
-      </button>
-      <button class="draw-tool-btn" id="toolShape" type="button" title="Shape" aria-label="Shape">
-        <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>
-      </button>
-      <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing (double-click to clear all)" aria-label="Eraser (double-click to clear all)">
-        <i class="fa-solid fa-eraser" aria-hidden="true"></i>
-      </button>
       <div class="draw-color-anchor">
         <button class="draw-color-wrap" id="drawColorPreview" type="button" title="Drawing color swatches" aria-label="Drawing color swatches" aria-expanded="false" aria-haspopup="true">
           <i class="fa-solid fa-brush" aria-hidden="true"></i>
@@ -39,9 +27,21 @@
           <button class="draw-color-swatch" type="button" data-color="#f8fafc" aria-pressed="false" title="White" aria-label="White swatch"></button>
         </div>
       </div>
-      <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
       <button class="draw-tool-btn" id="btnToolAreaMode" type="button" title="Selected area only" aria-label="Selected area only">
         <i class="fa-regular fa-object-ungroup" id="iconToolAreaMode" aria-hidden="true"></i>
+      </button>
+      <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
+      <button class="draw-tool-btn" id="toolRuler" type="button" title="Ruler" aria-label="Ruler">
+        <i class="fa-solid fa-ruler" aria-hidden="true"></i>
+      </button>
+      <button class="draw-tool-btn" id="toolRect" type="button" title="Rectangle" aria-label="Rectangle">
+        <i class="fa-regular fa-square" aria-hidden="true"></i>
+      </button>
+      <button class="draw-tool-btn" id="toolShape" type="button" title="Shape" aria-label="Shape">
+        <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>
+      </button>
+      <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing (double-click to clear all)" aria-label="Eraser (double-click to clear all)">
+        <i class="fa-solid fa-eraser" aria-hidden="true"></i>
       </button>
       <button class="draw-tool-btn draw-tool-gap-before" id="btnToolSpectral" type="button" title="Spectral" aria-label="Spectral">
         <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
@@ -116,8 +116,12 @@
         <div class="panel-header" id="rightHeader">
           <h2>Bands</h2>
           <div class="panel-header-actions">
-            <button class="btn tiny ghost" id="btnRightPin" type="button" aria-pressed="true" title="Pin panel open">Pin</button>
-            <button class="btn tiny ghost" id="btnRightToggle" type="button" aria-expanded="true" title="Retract panel">Hide</button>
+            <button class="btn tiny ghost panel-pin-btn" id="btnRightPin" type="button" aria-pressed="true" title="Pinned: panel stays open" aria-label="Pinned: panel stays open">
+              <span class="panel-pin-icon" aria-hidden="true">
+                <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
+                <span class="panel-pin-slash"></span>
+              </span>
+            </button>
           </div>
         </div>
         <div class="panel-body">
@@ -136,8 +140,12 @@
         <div class="panel-header display-header" id="displayHeader">
           <h2>Display</h2>
           <div class="panel-header-actions">
-            <button class="btn tiny ghost" id="btnDisplayPin" type="button" aria-pressed="true" title="Pin panel open">Pin</button>
-            <button class="btn tiny ghost" id="btnDisplayToggle" type="button" aria-expanded="true" title="Retract panel">Hide</button>
+            <button class="btn tiny ghost panel-pin-btn" id="btnDisplayPin" type="button" aria-pressed="true" title="Pinned: panel stays open" aria-label="Pinned: panel stays open">
+              <span class="panel-pin-icon" aria-hidden="true">
+                <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
+                <span class="panel-pin-slash"></span>
+              </span>
+            </button>
           </div>
         </div>
         <div class="display-body">

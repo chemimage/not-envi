@@ -136,18 +136,12 @@ export function wireApp(deps) {
   wireFlyoutPanel({
     panel: els.right,
     header: els.rightHeader,
-    btnToggle: els.btnRightToggle,
-    btnPin: els.btnRightPin,
-    collapseTitle: "Retract bands panel",
-    expandTitle: "Expand bands panel"
+    btnPin: els.btnRightPin
   });
   wireFlyoutPanel({
     panel: els.displayPanel,
     header: els.displayHeader,
-    btnToggle: els.btnDisplayToggle,
-    btnPin: els.btnDisplayPin,
-    collapseTitle: "Retract display panel",
-    expandTitle: "Expand display panel"
+    btnPin: els.btnDisplayPin
   });
 
   let drawColorFlyoutOpen = false;
