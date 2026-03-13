@@ -87,6 +87,7 @@ export function collectElements() {
     btnCollapseAll: $("#btnCollapseAll"),
     bandTree: $("#bandTree"),
     hist: $("#hist"),
+    btnHistChannel: $("#btnHistChannel"),
     numMin: $("#numMin"),
     numMax: $("#numMax"),
     slContrast: $("#slContrast"),

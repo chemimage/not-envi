@@ -150,7 +150,10 @@
           </div>
         </div>
         <div class="display-body">
-          <canvas id="hist"></canvas>
+          <div class="display-hist-wrap">
+            <canvas id="hist"></canvas>
+            <button class="hist-channel-btn" id="btnHistChannel" type="button" title="Adjust red channel" aria-label="Adjust red channel" style="display:none;"></button>
+          </div>
           <div class="display-range-layout">
             <div class="display-range-box display-range-box-min">
               <label class="display-range-label display-range-label-min" for="numMin">Min</label>

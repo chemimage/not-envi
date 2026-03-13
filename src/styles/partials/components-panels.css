@@ -178,9 +178,42 @@
   }
 
 
+  .display-hist-wrap {
+    @apply relative;
+  }
+
   #hist {
     @apply block h-[170px] w-full touch-none rounded-sm border border-gray-700 bg-gray-950;
     cursor: crosshair;
+  }
+
+  .hist-channel-btn {
+    @apply absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-sm border border-gray-600 bg-gray-950 p-0 font-black leading-none shadow-lg shadow-black/30;
+    background-color: rgb(3 7 18 / 0.88);
+    backdrop-filter: blur(4px);
+    font-size: 1.45rem;
+    line-height: 1;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+
+  .hist-channel-btn.channel-red {
+    background-color: rgb(252 165 165 / 0.96);
+    border-color: rgb(239 68 68 / 0.96);
+    color: rgb(127 29 29);
+  }
+
+  .hist-channel-btn.channel-green {
+    background-color: rgb(134 239 172 / 0.96);
+    border-color: rgb(34 197 94 / 0.96);
+    color: rgb(20 83 45);
+  }
+
+  .hist-channel-btn.channel-blue {
+    background-color: rgb(147 197 253 / 0.96);
+    border-color: rgb(59 130 246 / 0.96);
+    color: rgb(30 58 138);
   }
 
   .display-range-layout {

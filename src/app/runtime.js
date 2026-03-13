@@ -36,7 +36,7 @@ import { createAnnotationController } from "./annotation-controller.js";
 import { createSpectrumAreaController } from "./spectrum-area-controller.js";
 import { createAreaReductionWorkerClient } from "./area-reduction-worker-client.js";
 import { createSelectionSyncController } from "./selection-sync-controller.js";
-import { isThreeBandColorMode } from "./three-band-display.js";
+import { getThreeBandAdjustColor, isThreeBandColorMode } from "./three-band-display.js";
 import {
   resolveSelectionBoundsForSpectrum,
   resolveSelectionBoundsList as resolveSelectionBoundsListCore,
@@ -305,6 +305,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   function updatePerf(){ uiPanels.updatePerf(); }
   function rebuildBandTree(opts){ uiPanels.rebuildBandTree(opts); }
   function getBandSettings(ds, band){ return uiPanels.getBandSettings(ds, band); }
+  function resolveDisplayControlBand(ds){ return uiPanels.resolveDisplayControlBand(ds); }
   function resolveStats(ds){ return uiPanels.resolveStats(ds); }
   function setActiveBand(ds, band){ uiPanels.setActiveBand(ds, band); }
   function updateDisplayUI(force=false){ uiPanels.updateDisplayUI(force); }
@@ -312,6 +313,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   function applyRangeFromNumbers(ds){ uiPanels.applyRangeFromNumbers(ds); }
   function resetDisplay(ds){ uiPanels.resetDisplay(ds); }
   function autoDisplay(ds){ uiPanels.autoDisplay(ds); }
+  function cycleDisplayAdjustColor(ds){ uiPanels.cycleDisplayAdjustColor(ds); }
 
   datasetRuntime = createDatasetRuntime({
     state,
@@ -360,6 +362,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     computeHistogram,
     tone01,
     getBandSettings,
+    getDisplayBand: resolveDisplayControlBand,
+    getDisplayColor: (ds) => (isThreeBandColorMode(ds) ? getThreeBandAdjustColor(ds) : null),
     resolveStats,
     syncRangeInputsFromSettings,
     render,
@@ -744,6 +748,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     rebuildBandTree,
     resetDisplay,
     autoDisplay,
+    resolveDisplayControlBand,
+    cycleDisplayAdjustColor,
     getBandSettings,
     drawHistogram,
     applyRangeFromNumbers,

@@ -1,9 +1,16 @@
 import { formatExperimentSettingsInline, parseExperimentSettings } from "./experiment-meta.js";
 import {
+  THREE_BAND_ADJUST_BLUE,
+  THREE_BAND_ADJUST_GREEN,
+  THREE_BAND_ADJUST_RED,
   THREE_BAND_DISPLAY_MODE_BGR,
   THREE_BAND_DISPLAY_MODE_GRAY,
   THREE_BAND_DISPLAY_MODE_RGB,
+  cycleThreeBandAdjustColor,
   cycleThreeBandDisplayMode,
+  getThreeBandAdjustColor,
+  resolveThreeBandAdjustBand,
+  resolveThreeBandAdjustColorForBand,
   getThreeBandDisplayMode,
   isThreeBandColorMode,
   isThreeBandDataset
@@ -39,9 +46,9 @@ export function createUIPanels(deps) {
   }
 
   function resolveStats(ds) {
-    const band = ds.activeBand;
+    const band = resolveDisplayControlBand(ds);
     if (band == null) return null;
-    // Display panel histogram is always whole-image for the active band.
+    // Display panel histogram always follows the currently adjusted display band.
     return ds.bandStatsWhole.get(band) || null;
   }
 
@@ -51,9 +58,51 @@ export function createUIPanels(deps) {
     return "Band list: black and white";
   }
 
+  function describeAdjustColor(color) {
+    if (color === THREE_BAND_ADJUST_GREEN) return "Adjust green channel";
+    if (color === THREE_BAND_ADJUST_BLUE) return "Adjust blue channel";
+    return "Adjust red channel";
+  }
+
+  function resolveDisplayControlBand(ds) {
+    return resolveThreeBandAdjustBand(ds);
+  }
+
+  function syncDisplayAdjustButton(ds) {
+    if (!els.btnHistChannel) return;
+    if (!ds || !isThreeBandColorMode(ds)) {
+      els.btnHistChannel.style.display = "none";
+      els.btnHistChannel.textContent = "";
+      els.btnHistChannel.className = "hist-channel-btn";
+      return;
+    }
+    const color = getThreeBandAdjustColor(ds);
+    const label = describeAdjustColor(color);
+    els.btnHistChannel.style.display = "inline-flex";
+    els.btnHistChannel.className = `hist-channel-btn channel-${color}`;
+    els.btnHistChannel.textContent = color === THREE_BAND_ADJUST_GREEN
+      ? "G"
+      : (color === THREE_BAND_ADJUST_BLUE ? "B" : "R");
+    els.btnHistChannel.title = label;
+    els.btnHistChannel.ariaLabel = label;
+  }
+
+  function cycleDisplayAdjustColor(ds) {
+    if (!ds || !isThreeBandColorMode(ds)) return;
+    ds.displayAdjustColor = cycleThreeBandAdjustColor(getThreeBandAdjustColor(ds));
+    const band = resolveDisplayControlBand(ds);
+    if (band != null && !ds.bandStatsWhole.has(band)) onNeedWholeStats(ds, band);
+    updateDisplayUI(true);
+  }
+
   function cycleDatasetDisplayMode(ds) {
     if (!isThreeBandDataset(ds)) return;
-    ds.displayMode = cycleThreeBandDisplayMode(getThreeBandDisplayMode(ds));
+    const prevMode = getThreeBandDisplayMode(ds);
+    const nextMode = cycleThreeBandDisplayMode(prevMode);
+    ds.displayMode = nextMode;
+    if (nextMode !== THREE_BAND_DISPLAY_MODE_GRAY && prevMode === THREE_BAND_DISPLAY_MODE_GRAY) {
+      ds.displayAdjustColor = resolveThreeBandAdjustColorForBand(nextMode, ds.activeBand);
+    }
     ds.lastRaster = null;
     ds.lastCompositeRaster = null;
     if (ds.thumb) {
@@ -79,16 +128,23 @@ export function createUIPanels(deps) {
   }
 
   function syncRangeInputsFromSettings(ds, { force = false } = {}) {
-    const b = ds.activeBand;
+    const b = resolveDisplayControlBand(ds);
     if (b == null) return;
     const s = getBandSettings(ds, b);
     const stats = resolveStats(ds);
+    const compositeRaster = ds.lastCompositeRaster && ds.lastCompositeRaster.rasterByBand
+      ? ds.lastCompositeRaster.rasterByBand.get(b)
+      : null;
 
     let domMin;
     let domMax;
     if (stats) {
       domMin = stats.min;
       domMax = stats.max;
+    } else if (compositeRaster && compositeRaster.dataF32?.length) {
+      const est = quickStatsFromArray(compositeRaster.dataF32);
+      domMin = est.min;
+      domMax = est.max;
     } else if (ds.lastRaster && ds.lastRaster.band === b) {
       const est = quickStatsFromArray(ds.lastRaster.dataF32);
       domMin = est.min;
@@ -115,8 +171,10 @@ export function createUIPanels(deps) {
 
   function updateDisplayUI(force = false) {
     const ds = getActive();
-    if (!ds || ds.activeBand == null) return;
-    const b = ds.activeBand;
+    syncDisplayAdjustButton(ds);
+    if (!ds) return;
+    const b = resolveDisplayControlBand(ds);
+    if (b == null) return;
 
     const s = getBandSettings(ds, b);
     els.slContrast.value = String(s.contrast ?? 1);
@@ -259,7 +317,7 @@ export function createUIPanels(deps) {
   }
 
   function applyRangeFromNumbers(ds) {
-    const b = ds.activeBand;
+    const b = resolveDisplayControlBand(ds);
     if (b == null) return;
     const s = getBandSettings(ds, b);
     const stats = resolveStats(ds);
@@ -286,7 +344,7 @@ export function createUIPanels(deps) {
   }
 
   function resetDisplay(ds) {
-    const b = ds.activeBand;
+    const b = resolveDisplayControlBand(ds);
     if (b == null) return;
     const s = getBandSettings(ds, b);
     s.min = null;
@@ -299,7 +357,7 @@ export function createUIPanels(deps) {
   }
 
   function autoDisplay(ds) {
-    const b = ds.activeBand;
+    const b = resolveDisplayControlBand(ds);
     if (b == null) return;
     const s = getBandSettings(ds, b);
     const stats = ds.bandStatsWhole.get(b) || ds.bandStatsView;
@@ -631,12 +689,14 @@ export function createUIPanels(deps) {
     updatePerf,
     rebuildBandTree,
     getBandSettings,
+    resolveDisplayControlBand,
     resolveStats,
     setActiveBand,
     updateDisplayUI,
     syncRangeInputsFromSettings,
     applyRangeFromNumbers,
     resetDisplay,
-    autoDisplay
+    autoDisplay,
+    cycleDisplayAdjustColor
   };
 }

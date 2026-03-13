@@ -37,6 +37,8 @@ export function wireApp(deps) {
     rebuildBandTree,
     resetDisplay,
     autoDisplay,
+    resolveDisplayControlBand,
+    cycleDisplayAdjustColor,
     getBandSettings,
     drawHistogram,
     applyRangeFromNumbers,
@@ -169,6 +171,13 @@ export function wireApp(deps) {
     if (els.main && els.main.style) els.main.style.cursor = value;
     if (els.cpuCanvas && els.cpuCanvas.style) els.cpuCanvas.style.cursor = value;
     if (els.gpuCanvas && els.gpuCanvas.style) els.gpuCanvas.style.cursor = value;
+  }
+
+  function resolveCurrentDisplayBand(ds) {
+    if (!ds) return null;
+    return (typeof resolveDisplayControlBand === "function")
+      ? resolveDisplayControlBand(ds)
+      : ds.activeBand;
   }
 
   function syncDrawToolUI() {
@@ -325,6 +334,14 @@ export function wireApp(deps) {
   }
   if (els.btnToolExport) {
     els.btnToolExport.onclick = () => triggerSaveExport();
+  }
+  if (els.btnHistChannel) {
+    els.btnHistChannel.onclick = (ev) => {
+      ev.stopPropagation();
+      const ds = getActive();
+      if (!ds || !cycleDisplayAdjustColor) return;
+      cycleDisplayAdjustColor(ds);
+    };
   }
   setDrawColorFlyoutOpen(false);
   syncDrawToolUI();
@@ -654,7 +671,9 @@ export function wireApp(deps) {
   els.slContrast.oninput = () => {
     const ds = getActive();
     if (!ds) return;
-    const s = getBandSettings(ds, ds.activeBand);
+    const band = resolveCurrentDisplayBand(ds);
+    if (band == null) return;
+    const s = getBandSettings(ds, band);
     s.contrast = Number(els.slContrast.value);
     els.numContrast.value = Number(s.contrast).toFixed(2);
     drawHistogram(ds);
@@ -663,7 +682,9 @@ export function wireApp(deps) {
   els.slBrightness.oninput = () => {
     const ds = getActive();
     if (!ds) return;
-    const s = getBandSettings(ds, ds.activeBand);
+    const band = resolveCurrentDisplayBand(ds);
+    if (band == null) return;
+    const s = getBandSettings(ds, band);
     s.brightness = Number(els.slBrightness.value);
     els.numBrightness.value = Number(s.brightness).toFixed(2);
     drawHistogram(ds);
@@ -672,7 +693,9 @@ export function wireApp(deps) {
   els.slGain.oninput = () => {
     const ds = getActive();
     if (!ds) return;
-    const s = getBandSettings(ds, ds.activeBand);
+    const band = resolveCurrentDisplayBand(ds);
+    if (band == null) return;
+    const s = getBandSettings(ds, band);
     s.gain = Number(els.slGain.value);
     els.numGain.value = Number(s.gain).toFixed(2);
     drawHistogram(ds);
@@ -682,7 +705,9 @@ export function wireApp(deps) {
   els.numContrast.onchange = () => {
     const ds = getActive();
     if (!ds) return;
-    const s = getBandSettings(ds, ds.activeBand);
+    const band = resolveCurrentDisplayBand(ds);
+    if (band == null) return;
+    const s = getBandSettings(ds, band);
     const v = clamp(Number(els.numContrast.value), 0.1, 3);
     s.contrast = v;
     els.slContrast.value = String(v);
@@ -693,7 +718,9 @@ export function wireApp(deps) {
   els.numBrightness.onchange = () => {
     const ds = getActive();
     if (!ds) return;
-    const s = getBandSettings(ds, ds.activeBand);
+    const band = resolveCurrentDisplayBand(ds);
+    if (band == null) return;
+    const s = getBandSettings(ds, band);
     const v = clamp(Number(els.numBrightness.value), -1, 1);
     s.brightness = v;
     els.slBrightness.value = String(v);
@@ -704,7 +731,9 @@ export function wireApp(deps) {
   els.numGain.onchange = () => {
     const ds = getActive();
     if (!ds) return;
-    const s = getBandSettings(ds, ds.activeBand);
+    const band = resolveCurrentDisplayBand(ds);
+    if (band == null) return;
+    const s = getBandSettings(ds, band);
     const v = clamp(Number(els.numGain.value), 0, 4);
     s.gain = v;
     els.slGain.value = String(v);

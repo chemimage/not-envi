@@ -18,10 +18,25 @@ export function createHistogramController(deps) {
     computeHistogram,
     tone01,
     getBandSettings,
+    getDisplayBand,
+    getDisplayColor,
     resolveStats,
     syncRangeInputsFromSettings,
     render
   } = deps;
+
+  function resolveDisplayBand(ds) {
+    if (!ds) return null;
+    return (typeof getDisplayBand === "function") ? getDisplayBand(ds) : ds.activeBand;
+  }
+
+  function resolveBarFillStyle(ds) {
+    const color = (typeof getDisplayColor === "function") ? getDisplayColor(ds) : null;
+    if (color === "red") return "rgb(252 165 165 / 0.96)";
+    if (color === "green") return "rgb(134 239 172 / 0.96)";
+    if (color === "blue") return "rgb(147 197 253 / 0.96)";
+    return "rgba(156,163,175,0.35)";
+  }
 
   function pointInPolygon(x, y, points) {
     let inside = false;
@@ -255,7 +270,7 @@ export function createHistogramController(deps) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const b = ds?.activeBand;
+    const b = resolveDisplayBand(ds);
     const s = (ds && b != null) ? getBandSettings(ds, b) : null;
     const stats = (ds && b != null) ? resolveStats(ds) : null;
 
@@ -264,7 +279,7 @@ export function createHistogramController(deps) {
     if (!ds || !s || !stats || !stats.bins) {
       ctx.fillStyle = "rgba(209,213,219,0.9)";
       ctx.font = `${12 * dpr}px ${getComputedStyle(document.body).fontFamily}`;
-      ctx.fillText("Histogram not ready (select a band)", 10 * dpr, 20 * dpr);
+      ctx.fillText("Histogram not ready", 10 * dpr, 20 * dpr);
       ctx.restore();
       return;
     }
@@ -274,7 +289,7 @@ export function createHistogramController(deps) {
     const plot = histogramPlotRect(w, h, dpr);
     const { plotX0, plotY0, plotW, plotH } = plot;
 
-    ctx.fillStyle = "rgba(156,163,175,0.35)";
+    ctx.fillStyle = resolveBarFillStyle(ds);
     for (let i = 0; i < bins.length; i++) {
       const t = i / (bins.length - 1);
       const x = plotX0 + t * plotW;
@@ -337,7 +352,9 @@ export function createHistogramController(deps) {
     if (!stats) return null;
 
     const plot = histogramPlotRect(canvas.width, canvas.height, dpr);
-    const s = getBandSettings(ds, ds.activeBand);
+    const band = resolveDisplayBand(ds);
+    if (band == null) return null;
+    const s = getBandSettings(ds, band);
     const { domMin, domMax, minVal, maxVal } = resolveHistogramDisplay(stats, s);
     const { xMin, xMax } = histogramHandleXs(plot, domMin, domMax, minVal, maxVal);
     return pickHistogramHandle(plot, x, y, xMin, xMax, dpr);
@@ -358,7 +375,9 @@ export function createHistogramController(deps) {
     const raw = histXToRaw(ds, clientX);
     if (raw == null) return;
 
-    const s = getBandSettings(ds, ds.activeBand);
+    const band = resolveDisplayBand(ds);
+    if (band == null) return;
+    const s = getBandSettings(ds, band);
     const patch = applyHistogramDragSetting(stats, s, kind, raw);
     if (patch.min != null) s.min = patch.min;
     if (patch.max != null) s.max = patch.max;

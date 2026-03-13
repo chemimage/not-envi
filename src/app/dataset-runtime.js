@@ -71,6 +71,7 @@ export function createDatasetRuntime(deps) {
       treeExpanded: true,
       displaySlot: 0,
       displayMode: "gray",
+      displayAdjustColor: "red",
       pyramid: null,
       lastRaster: null,
       lastCompositeRaster: null
