@@ -21,6 +21,8 @@ html = html.replace(/<script\s+[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/g, (
   return `<script type="module">${js}</script>`;
 });
 
+html = compactHtml(html);
+
 const assetsDir = path.join(distDir, "assets");
 if (statSafe(assetsDir)?.isDirectory()) {
   for (const f of readdirSync(assetsDir)) {
@@ -36,4 +38,59 @@ function statSafe(p) {
   } catch {
     return null;
   }
+}
+
+function compactHtml(source) {
+  const rawTags = new Set(["script", "style", "textarea", "pre"]);
+  let output = "";
+  let index = 0;
+  let rawTag = null;
+
+  while (index < source.length) {
+    if (!rawTag && source.startsWith("<!--", index)) {
+      const end = source.indexOf("-->", index + 4);
+      index = end === -1 ? source.length : end + 3;
+      continue;
+    }
+
+    if (source[index] === "<") {
+      const close = source.indexOf(">", index + 1);
+      if (close === -1) {
+        output += source.slice(index);
+        break;
+      }
+
+      const tag = source.slice(index, close + 1);
+      output += tag;
+
+      const closingMatch = tag.match(/^<\s*\/\s*([a-z0-9:-]+)/i);
+      if (closingMatch && rawTag === closingMatch[1].toLowerCase()) {
+        rawTag = null;
+      } else if (!rawTag) {
+        const openingMatch = tag.match(/^<\s*([a-z0-9:-]+)/i);
+        const isSelfClosing = /\/\s*>$/.test(tag);
+        const tagName = openingMatch ? openingMatch[1].toLowerCase() : null;
+        if (tagName && rawTags.has(tagName) && !isSelfClosing) {
+          rawTag = tagName;
+        }
+      }
+
+      index = close + 1;
+      continue;
+    }
+
+    const nextTag = source.indexOf("<", index);
+    const end = nextTag === -1 ? source.length : nextTag;
+    const text = source.slice(index, end);
+    if (rawTag) {
+      output += text;
+    } else {
+      output += text.replace(/\s+/g, " ");
+    }
+    index = end;
+  }
+
+  return output
+    .replace(/>\s+</g, "><")
+    .trim();
 }
