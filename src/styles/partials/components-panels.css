@@ -251,22 +251,12 @@
       @apply h-[130px] w-[180px];
     }
 
-    #overlayHUD {
-      right: calc(var(--canvas-edge-pad) + var(--thumb-wrap-w) + var(--thumb-hud-gap));
-    }
-
-    #hudControls {
-      right: calc(var(--canvas-edge-pad) + var(--thumb-wrap-w) + var(--thumb-hud-gap));
-    }
-
     #rightDock {
-      top: 178px;
+      --bands-panel-open-h: clamp(220px, 42vh, 420px);
+      --display-panel-open-h: clamp(190px, 28vh, 260px);
+      top: 7px;
       bottom: 7px;
       width: min(360px, calc(100% - 14px));
-    }
-
-    #displayPanel {
-      flex-basis: clamp(210px, 34%, 280px);
     }
 
     #datasetDock {

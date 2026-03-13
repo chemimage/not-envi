@@ -167,10 +167,10 @@ export function createRenderer(deps) {
 
       state.lastRenderMs = now() - t0;
       setStatus("ready", "ok");
-      drawOverlays(ds);
-      updatePerf();
       renderThumbnail();
       updateHud();
+      drawOverlays(ds);
+      updatePerf();
 
       if (state.histMode === "view") {
         if (state.histViewDebounce) clearTimeout(state.histViewDebounce);

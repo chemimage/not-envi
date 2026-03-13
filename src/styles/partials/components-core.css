@@ -28,9 +28,13 @@
   }
 
   #rightDock {
-    @apply pointer-events-none absolute right-2.5 z-20 flex flex-col gap-2.5;
-    top: 206px;
+    --right-dock-gap: 10px;
+    --bands-panel-open-h: clamp(260px, 46vh, 520px);
+    --display-panel-open-h: clamp(220px, 30vh, 300px);
+    @apply pointer-events-none absolute right-2.5 z-20 flex flex-col justify-center;
+    top: 10px;
     bottom: 10px;
+    gap: var(--right-dock-gap);
     width: min(390px, calc(100% - 20px));
   }
 
@@ -40,32 +44,43 @@
 
   #right {
     --flyout-visible-header: 42px;
+    --flyout-title-size: 58px;
     @apply relative w-full;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
+    height: var(--bands-panel-open-h);
+    max-height: max(170px, calc(100% - var(--display-panel-open-h) - var(--right-dock-gap)));
     transform: translateX(0);
-    transition: transform 220ms ease, box-shadow 180ms ease, opacity 180ms ease;
+    transition: transform 220ms ease, box-shadow 180ms ease, opacity 180ms ease, height 220ms ease, max-height 220ms ease, min-height 220ms ease;
     min-height: 170px;
     opacity: 1;
   }
 
   #right[data-open="false"] {
     transform: translateX(calc(100% - var(--flyout-visible-header)));
+    height: var(--flyout-title-size);
+    min-height: 0;
+    max-height: var(--flyout-title-size);
   }
 
   #right[data-open="false"] .panel-body {
+    max-height: 0;
     opacity: 0;
     pointer-events: none;
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   #right[data-open="false"] #rightHeader {
     @apply relative cursor-pointer justify-center p-0;
-    flex: 1 1 auto;
+    flex: 0 0 var(--flyout-title-size);
     border-bottom: 0;
+    height: var(--flyout-title-size);
     overflow: visible;
   }
 
   #right .panel-body {
-    transition: opacity 140ms ease;
+    @apply flex-1;
+    transition: opacity 140ms ease, max-height 220ms ease, padding 220ms ease;
   }
 
   #right .panel-header {
@@ -110,14 +125,20 @@
 
   #displayPanel {
     --display-visible-header: 42px;
+    --flyout-title-size: 58px;
     @apply flex min-h-0 w-full overflow-hidden rounded-sm border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
-    flex: 0 0 clamp(220px, 36%, 300px);
+    flex: 0 1 auto;
+    height: var(--display-panel-open-h);
+    max-height: var(--display-panel-open-h);
     transform: translateX(0);
-    transition: transform 220ms ease, box-shadow 180ms ease, opacity 180ms ease;
+    transition: transform 220ms ease, box-shadow 180ms ease, opacity 180ms ease, height 220ms ease, max-height 220ms ease, min-height 220ms ease;
   }
 
   #displayPanel[data-open="false"] {
     transform: translateX(calc(100% - var(--display-visible-header)));
+    height: var(--flyout-title-size);
+    min-height: 0;
+    max-height: var(--flyout-title-size);
   }
 
   #displayPanel .display-header {
@@ -126,8 +147,9 @@
 
   #displayPanel[data-open="false"] .display-header {
     @apply relative cursor-pointer justify-center p-0;
-    flex: 1 1 auto;
+    flex: 0 0 var(--flyout-title-size);
     border-bottom: 0;
+    height: var(--flyout-title-size);
     overflow: visible;
   }
 
@@ -150,13 +172,16 @@
   }
 
   #displayPanel[data-open="false"] .display-body {
+    max-height: 0;
     opacity: 0;
     pointer-events: none;
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   #displayPanel .display-body {
     @apply min-h-0 flex-1 overflow-auto p-3;
-    transition: opacity 140ms ease;
+    transition: opacity 140ms ease, max-height 220ms ease, padding 220ms ease;
   }
 
   #displayPanel[data-pinned="false"] #btnDisplayPin {

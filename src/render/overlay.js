@@ -402,7 +402,34 @@ export function createOverlayRenderer(deps) {
     return !!(els.chkGrid && els.chkGrid.checked);
   }
 
-  function resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH) {
+  function resolveHudTextBounds(hostRect) {
+    if (
+      !hostRect
+      || !els.hudPos || !els.hudPos.getBoundingClientRect
+      || !window.getComputedStyle
+    ) return null;
+
+    const hudRect = els.hudPos.getBoundingClientRect();
+    if (!hudRect || hudRect.width <= 0 || hudRect.height <= 0) return null;
+
+    const hudStyle = window.getComputedStyle(els.hudPos);
+    const padTopCss = Number.parseFloat(hudStyle.paddingTop || "0") || 0;
+    const padBottomCss = Number.parseFloat(hudStyle.paddingBottom || "0") || 0;
+    const fontSizeCss = Number.parseFloat(hudStyle.fontSize || "0") || 12;
+    const lineHeightCssRaw = Number.parseFloat(hudStyle.lineHeight || "");
+    const lineHeightCss = Number.isFinite(lineHeightCssRaw) ? lineHeightCssRaw : (fontSizeCss * 1.3333);
+    const extraLeadingCss = Math.max(0, lineHeightCss - fontSizeCss);
+    const leadHalfCss = extraLeadingCss * 0.5;
+
+    return {
+      topCss: (hudRect.top - hostRect.top) + padTopCss + leadHalfCss,
+      bottomCss: (hudRect.bottom - hostRect.top) - padBottomCss - leadHalfCss,
+      padTopCss,
+      padBottomCss
+    };
+  }
+
+  function resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH, lineOffset = 0) {
     const edgePad = SCALEBAR_EDGE_PAD_CSS * dpr;
     let right = canvasW - edgePad;
     let top = edgePad;
@@ -420,6 +447,23 @@ export function createOverlayRenderer(deps) {
       const hostRect = host.getBoundingClientRect();
       if (Number.isFinite(hostRect.left) && Number.isFinite(anchorRect.right)) {
         right = (anchorRect.right - hostRect.left) * dpr;
+      }
+      if (
+        els.thumbWrap && els.thumbWrap.getBoundingClientRect
+        && els.hudPos && els.hudPos.getBoundingClientRect
+      ) {
+        const thumbRect = els.thumbWrap.getBoundingClientRect();
+        const hudTextBounds = resolveHudTextBounds(hostRect);
+        const hudTextTopCss = hudTextBounds
+          ? hudTextBounds.topCss
+          : (els.hudPos.getBoundingClientRect().top - hostRect.top);
+        const hudTextBottomCss = hudTextBounds
+          ? hudTextBounds.bottomCss
+          : (els.hudPos.getBoundingClientRect().bottom - hostRect.top);
+        const desiredGapCss = Math.max(0, hudTextTopCss - (thumbRect.bottom - hostRect.top));
+        const lineYCss = hudTextBottomCss + desiredGapCss;
+        top = (lineYCss * dpr) - lineOffset;
+      } else if (Number.isFinite(anchorRect.bottom)) {
         top = (anchorRect.bottom - hostRect.top) * dpr + (SCALEBAR_HUD_GAP_CSS * dpr);
       }
     }
@@ -449,8 +493,13 @@ export function createOverlayRenderer(deps) {
     const innerPad = 10 * dpr;
     const tickLen = 6 * dpr;
     const labelGap = 4 * dpr;
-    const linePadTop = 2 * dpr;
+    const linePadTop = 1.25 * dpr;
     const fontPx = 12 * dpr;
+    const hostRect = els.main && els.main.getBoundingClientRect ? els.main.getBoundingClientRect() : null;
+    const hudTextBounds = hostRect ? resolveHudTextBounds(hostRect) : null;
+    const hudBottomPad = hudTextBounds ? (hudTextBounds.padBottomCss * dpr) : (4 * dpr);
+    const boxTopPad = Math.max(1.5 * dpr, Math.min(3 * dpr, hudBottomPad * 0.5));
+    const boxBottomPad = Math.max(4 * dpr, hudBottomPad);
 
     overlayCtx.save();
     overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -460,9 +509,9 @@ export function createOverlayRenderer(deps) {
 
     const textW = overlayCtx.measureText(label).width;
     const boxW = Math.max(barDevPx, textW) + innerPad * 2;
-    const boxH = (innerPad + linePadTop + tickLen + labelGap + fontPx + innerPad);
+    const boxH = boxTopPad + linePadTop + tickLen + labelGap + fontPx + boxBottomPad;
 
-    const anchor = resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH);
+    const anchor = resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH, boxTopPad + linePadTop);
     const anchoredX1 = anchor.right;
     const anchoredY0 = anchor.top;
     const anchoredX0 = anchoredX1 - boxW;
@@ -473,7 +522,7 @@ export function createOverlayRenderer(deps) {
 
     const barX1 = anchoredX1 - innerPad;
     const barX0 = barX1 - barDevPx;
-    const barY = anchoredY0 + innerPad + linePadTop;
+    const barY = anchoredY0 + boxTopPad + linePadTop;
 
     overlayCtx.strokeStyle = "rgba(255,255,255,0.92)";
     overlayCtx.lineWidth = 1 * dpr;

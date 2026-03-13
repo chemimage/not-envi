@@ -41,21 +41,25 @@
     --tool-btn-size: 46px;
     --tool-boundary-gap: 7px;
     --tool-rail-w: calc(var(--tool-btn-size) + 14px);
-    @apply absolute left-2.5 top-2.5 z-20 flex flex-col items-stretch;
-    gap: var(--canvas-edge-pad);
+    @apply absolute left-2.5 top-2.5 bottom-2.5 z-20;
     width: var(--tool-rail-w);
   }
 
   #brandLogo {
     display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: auto;
   }
 
   #drawTools {
-    @apply relative flex flex-col items-center gap-1.5 rounded-sm border border-gray-700 bg-gray-900/80 p-1.5;
+    @apply absolute left-0 top-1/2 flex flex-col items-center gap-1.5 rounded-sm border border-gray-700 bg-gray-900/80 p-1.5;
+    transform: translateY(-50%);
     width: 100%;
     padding-bottom: 10px;
+    max-height: 100%;
     backdrop-filter: blur(4px);
   }
 
@@ -200,18 +204,12 @@
   }
 
   #overlayHUD {
-    @apply pointer-events-none absolute z-20 flex flex-col items-end gap-1.5;
-    top: var(--canvas-edge-pad);
-    left: auto;
-    right: calc(var(--canvas-edge-pad) + var(--thumb-wrap-w) + var(--thumb-hud-gap));
+    @apply pointer-events-none flex w-full justify-end;
   }
 
   #hudControls {
-    @apply absolute z-20 flex flex-col items-end gap-1.5;
+    @apply flex w-full justify-end;
     pointer-events: auto;
-    left: auto;
-    right: calc(var(--canvas-edge-pad) + var(--thumb-wrap-w) + var(--thumb-hud-gap));
-    top: calc(var(--canvas-edge-pad) + 30px);
   }
 
   #hudToggleRow {
@@ -224,7 +222,9 @@
   }
 
   #zoomDock {
-    @apply items-center gap-2;
+    @apply items-center justify-end gap-2 rounded-sm border border-gray-700 bg-gray-900/80 px-2 py-1.5;
+    width: 100%;
+    backdrop-filter: blur(4px);
   }
 
   .hud {
@@ -236,13 +236,13 @@
   }
 
   #thumbDock {
-    @apply absolute z-10 flex flex-col items-end gap-[5px];
+    @apply absolute z-10 flex flex-col items-end gap-[6px];
     top: var(--canvas-edge-pad);
     right: var(--canvas-edge-pad);
   }
 
   #thumbWrap {
-    @apply h-40 overflow-hidden rounded-sm border border-gray-600 bg-gray-950/70 shadow-xl shadow-black/40;
+    @apply relative h-40 overflow-hidden rounded-sm border border-gray-600 bg-gray-950/70 shadow-xl shadow-black/40;
     width: var(--thumb-wrap-w);
   }
 
@@ -251,15 +251,21 @@
   }
 
   #thumbControls {
-    @apply flex items-center gap-1;
+    @apply absolute right-2 top-2 z-10 flex items-center gap-1.5;
   }
 
-  #thumbControls .btn.tiny {
-    @apply rounded-sm border-gray-600 bg-gray-800/90 px-2 py-1 text-xs;
+  #thumbControls .btn.tiny.icon-btn {
+    @apply h-8 w-8 rounded-sm border-gray-500 bg-gray-900/80 p-0 text-gray-100;
+    backdrop-filter: blur(4px);
   }
 
-  #thumbControls .btn.tiny.active,
-  #thumbControls .btn.tiny[aria-pressed="true"] {
+  #thumbControls .btn.tiny.icon-btn i {
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  #thumbControls .btn.tiny.icon-btn.active,
+  #thumbControls .btn.tiny.icon-btn[aria-pressed="true"] {
     @apply border-gray-200 bg-gray-100 text-gray-900;
   }
 

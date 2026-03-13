@@ -6,6 +6,7 @@ describe("flyout panel wiring", () => {
     document.body.innerHTML = `
       <aside id="panel" data-open="true" data-pinned="true">
         <div id="header">
+          <h2>Bands</h2>
           <button id="pin" type="button">
             <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
           </button>
@@ -21,6 +22,7 @@ describe("flyout panel wiring", () => {
 
     expect(panel.dataset.pinned).toBe("true");
     expect(panel.dataset.open).toBe("true");
+    expect(panel.style.getPropertyValue("--flyout-title-size")).toMatch(/px$/);
     expect(btnPin.getAttribute("aria-pressed")).toBe("true");
     expect(btnPin.dataset.pinned).toBe("true");
     expect(btnPin.querySelector("i")?.classList.contains("fa-thumbtack")).toBe(true);

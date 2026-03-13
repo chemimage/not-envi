@@ -61,27 +61,30 @@
 
     <div id="selRect"></div>
 
-    <div id="overlayHUD">
-      <div class="hud" id="hudPos"><b>x</b>: —  <b>y</b>: —  <b>ν</b>: —</div>
-    </div>
-    <div id="hudControls" aria-label="View controls">
-      <input type="checkbox" id="chkGrid" hidden />
-      <input type="checkbox" id="chkScale" checked hidden />
-      <div id="zoomDock" style="display:none;">
-        <button class="btn" id="btnZoomOut">−</button>
-        <input id="zoom" type="range" min="0" max="100" value="40" />
-        <button class="btn" id="btnZoomIn">+</button>
-        <span class="badge" id="zoomLabel">—</span>
-      </div>
-    </div>
-
     <div id="thumbDock">
       <div id="thumbWrap">
+        <div id="thumbControls">
+          <button class="btn tiny icon-btn" id="btnFit" type="button" title="Fit view" aria-label="Fit view">
+            <i class="fa-solid fa-maximize" aria-hidden="true"></i>
+          </button>
+          <button class="btn tiny icon-btn" id="btnGrid" type="button" title="Toggle grid" aria-label="Toggle grid" aria-pressed="false">
+            <i class="fa-solid fa-border-all" aria-hidden="true"></i>
+          </button>
+        </div>
         <canvas id="thumb"></canvas>
       </div>
-      <div id="thumbControls">
-        <button class="btn tiny" id="btnFit">Fit</button>
-        <button class="btn tiny" id="btnGrid" type="button" aria-pressed="false">Grid</button>
+      <div id="overlayHUD">
+        <div class="hud" id="hudPos"><b>x</b>: —  <b>y</b>: —  <b>ν</b>: —</div>
+      </div>
+      <div id="hudControls" aria-label="View controls">
+        <input type="checkbox" id="chkGrid" hidden />
+        <input type="checkbox" id="chkScale" checked hidden />
+        <div id="zoomDock" style="display:none;">
+          <button class="btn" id="btnZoomOut">−</button>
+          <input id="zoom" type="range" min="0" max="100" value="40" />
+          <button class="btn" id="btnZoomIn">+</button>
+          <span class="badge" id="zoomLabel">—</span>
+        </div>
       </div>
     </div>
 
