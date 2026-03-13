@@ -151,8 +151,52 @@
     cursor: crosshair;
   }
 
-  .hist-range-row {
-    @apply mt-2 gap-3 pr-2;
+  .display-range-layout {
+    @apply mt-2 grid items-center gap-2;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  .display-range-box {
+    @apply flex items-center gap-1.5;
+    min-width: 0;
+  }
+
+  .display-range-box-min {
+    justify-content: flex-start;
+  }
+
+  .display-range-box-max {
+    justify-content: flex-end;
+  }
+
+  .display-range-box input[type="number"] {
+    @apply w-full;
+    min-width: 0;
+    max-width: 5.5rem;
+    text-align: center;
+  }
+
+  .display-range-label {
+    @apply inline-flex select-none items-center justify-center text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500;
+    width: 18px;
+    flex: 0 0 18px;
+    line-height: 1;
+  }
+
+  .display-range-label-min {
+    transform: rotate(-90deg);
+  }
+
+  .display-range-label-max {
+    transform: rotate(90deg);
+  }
+
+  .display-range-actions {
+    @apply flex items-center justify-center gap-1.5;
+  }
+
+  .display-range-actions .btn {
+    @apply min-w-[64px] px-2;
   }
 
   .range-wrap {
@@ -261,6 +305,17 @@
 
     #datasetDock {
       width: min(360px, calc(100% - 14px));
+    }
+
+    .display-range-layout {
+      grid-template-columns: minmax(0, 1fr);
+      justify-items: center;
+    }
+
+    .display-range-box,
+    .display-range-box-min,
+    .display-range-box-max {
+      justify-content: center;
     }
 
     .dataset-viewport {

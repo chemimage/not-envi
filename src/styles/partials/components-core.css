@@ -128,8 +128,8 @@
     --flyout-title-size: 58px;
     @apply flex min-h-0 w-full overflow-hidden rounded-sm border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
     flex: 0 1 auto;
-    height: var(--display-panel-open-h);
-    max-height: var(--display-panel-open-h);
+    height: auto;
+    max-height: none;
     transform: translateX(0);
     transition: transform 220ms ease, box-shadow 180ms ease, opacity 180ms ease, height 220ms ease, max-height 220ms ease, min-height 220ms ease;
   }
@@ -180,7 +180,8 @@
   }
 
   #displayPanel .display-body {
-    @apply min-h-0 flex-1 overflow-auto p-3;
+    @apply min-h-0 overflow-visible p-3;
+    flex: 0 0 auto;
     transition: opacity 140ms ease, max-height 220ms ease, padding 220ms ease;
   }
 

@@ -151,11 +151,19 @@
         </div>
         <div class="display-body">
           <canvas id="hist"></canvas>
-          <div class="row hist-range-row">
-            <label class="small">Min</label>
-            <input type="number" id="numMin" step="any" />
-            <label class="small">Max</label>
-            <input type="number" id="numMax" step="any" />
+          <div class="display-range-layout">
+            <div class="display-range-box display-range-box-min">
+              <label class="display-range-label display-range-label-min" for="numMin">Min</label>
+              <input type="number" id="numMin" step="any" />
+            </div>
+            <div class="display-range-actions">
+              <button class="btn ghost" id="btnAuto" title="Auto contrast: set min/max from percentiles, reset contrast/brightness/gain">Auto</button>
+              <button class="btn" id="btnReset" title="Reset display controls for this band">Reset</button>
+            </div>
+            <div class="display-range-box display-range-box-max">
+              <input type="number" id="numMax" step="any" />
+              <label class="display-range-label display-range-label-max" for="numMax">Max</label>
+            </div>
           </div>
 
           <div class="divider"></div>
@@ -176,11 +184,6 @@
             <label class="small">Gain</label>
             <input type="range" id="slGain" min="0" max="4" value="1" step="0.01" />
             <input type="number" id="numGain" min="0" max="4" value="1" step="0.01" />
-          </div>
-
-          <div class="row" style="margin-top:6px;">
-            <button class="btn ghost" id="btnAuto" title="Auto contrast: set min/max from percentiles, reset contrast/brightness/gain">Auto</button>
-            <button class="btn" id="btnReset" title="Reset display controls for this band">Reset</button>
           </div>
         </div>
       </aside>

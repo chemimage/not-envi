@@ -36,6 +36,16 @@ export function createUIPanels(deps) {
     return ds.bandStatsWhole.get(band) || null;
   }
 
+  function formatDisplayRangeInput(v) {
+    if (!Number.isFinite(v)) return "";
+    if (v === 0) return "0";
+    const compact = Number(v).toPrecision(3);
+    return compact
+      .replace(/(\.\d*?[1-9])0+(e.*)?$/i, "$1$2")
+      .replace(/\.0+(e.*)?$/i, "$1")
+      .replace(/e\+?/i, "e");
+  }
+
   function syncRangeInputsFromSettings(ds, { force = false } = {}) {
     const b = ds.activeBand;
     if (b == null) return;
@@ -66,8 +76,8 @@ export function createUIPanels(deps) {
     const minVal = clamp(curMin, domMin, domMax);
     const maxVal = clamp(curMax, domMin, domMax);
 
-    if (force || document.activeElement !== els.numMin) els.numMin.value = fmt(minVal);
-    if (force || document.activeElement !== els.numMax) els.numMax.value = fmt(maxVal);
+    if (force || document.activeElement !== els.numMin) els.numMin.value = formatDisplayRangeInput(minVal);
+    if (force || document.activeElement !== els.numMax) els.numMax.value = formatDisplayRangeInput(maxVal);
 
   }
 
@@ -223,7 +233,7 @@ export function createUIPanels(deps) {
     s.min = minVal;
     s.max = maxVal;
 
-    syncRangeInputsFromSettings(ds);
+    syncRangeInputsFromSettings(ds, { force: true });
   }
 
   function resetDisplay(ds) {
