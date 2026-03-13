@@ -171,6 +171,9 @@
 
   .display-range-box input[type="number"] {
     @apply w-full;
+    box-sizing: border-box;
+    height: 30px;
+    min-height: 30px;
     min-width: 0;
     max-width: 5.5rem;
     text-align: center;
@@ -196,7 +199,10 @@
   }
 
   .display-range-actions .btn {
-    @apply min-w-[64px] px-2;
+    @apply min-w-[64px] px-2 py-1.5 text-xs;
+    box-sizing: border-box;
+    height: 30px;
+    min-height: 30px;
   }
 
   .range-wrap {

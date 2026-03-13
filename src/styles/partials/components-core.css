@@ -93,12 +93,20 @@
 
   .panel-pin-btn,
   .panel-pin-btn.tiny {
-    @apply inline-flex h-7 w-7 items-center justify-center p-0 text-gray-100;
+    @apply inline-flex h-7 w-7 items-center justify-center border-transparent bg-transparent p-0 text-gray-100 shadow-none;
   }
 
   .panel-pin-btn i {
     font-size: 1.58rem;
     line-height: 1;
+  }
+
+  .panel-pin-btn:hover,
+  .panel-pin-btn:focus-visible,
+  .panel-pin-btn:active {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
   }
 
   #right[data-pinned="false"] #btnRightPin {
