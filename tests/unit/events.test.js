@@ -110,4 +110,49 @@ describe("interaction controller", () => {
     controller.onPointerDown(down2);
     expect(down2.preventDefault).toHaveBeenCalledTimes(1);
   });
+
+  test("pointerdown on a UI target does not start canvas dragging", () => {
+    const render = vi.fn();
+    const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 1000 } };
+    const state = {
+      selection: { enabled: false, drawing: false, imgRect: null },
+      mouse: { dragging: false }
+    };
+    const els = {
+      selRect: { style: { display: "none" } },
+      main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      zoom: { value: "0" }
+    };
+
+    const controller = createInteractionController({
+      els,
+      state,
+      getActive: () => ds,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      setStatus: () => {},
+      updateHud: () => {},
+      screenToImage: (sx, sy) => ({ x: sx, y: sy }),
+      clampView: () => {},
+      render,
+      minScaleFor: () => 1,
+      scaleToSlider: (s) => s,
+      updateZoomLabel: () => {}
+    });
+
+    controller.onPointerDown({
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 20,
+      target: { closest: () => ({ id: "rightDock" }) }
+    });
+    controller.onPointerMove({
+      pointerType: "mouse",
+      clientX: 40,
+      clientY: 60,
+      target: { closest: () => ({ id: "rightDock" }) }
+    });
+
+    expect(state.mouse.dragging).toBe(false);
+    expect(render).not.toHaveBeenCalled();
+  });
 });

@@ -36,6 +36,11 @@ export function createInteractionController(deps) {
   const touchGesture = {
     pinch: null
   };
+  const isUiTarget = (target) => !!(
+    target
+    && target.closest
+    && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#overlayHUD,#hudControls,#analysisHistPanel,#specPanel,dialog")
+  );
 
   function updateSelectionRect() {
     const x0 = Math.min(state.selection.x0, state.selection.x1);
@@ -85,6 +90,7 @@ export function createInteractionController(deps) {
   function onPointerDown(ev) {
     const ds = getActive();
     if (!ds) return;
+    if (isUiTarget(ev.target)) return;
     if (ev.pointerType === "touch") ev.preventDefault();
     const rect = els.main.getBoundingClientRect();
     state.mouse.dragging = true;
@@ -218,6 +224,7 @@ export function createInteractionController(deps) {
   function onWheel(ev) {
     const ds = getActive();
     if (!ds) return;
+    if (isUiTarget(ev.target)) return;
     ev.preventDefault();
     const rect = els.main.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;

@@ -36,6 +36,7 @@ function makeDeps(overrides = {}) {
     gpuSupported: false,
     gpuRender: vi.fn(),
     cpuRenderGray: vi.fn(),
+    cpuRenderColor: vi.fn(),
     tryRasterFromPyramid: async () => null,
     readBandWindow: async () => new Float32Array(0),
     readBandWindowBIP: async () => new Float32Array(0),
@@ -112,5 +113,42 @@ describe("render-main", () => {
     expect(deps.cpuRenderGray.mock.calls[0][1]).toBe(200);
     expect(deps.cpuRenderGray.mock.calls[0][2]).toBe(113);
     expect(readBandWindow).toHaveBeenCalledTimes(1);
+  });
+
+  test("render uses color composite path for three-band color mode", async () => {
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 8, lines: 4, bands: 3, interleave: "bsq" },
+      ds: {},
+      lastRaster: null,
+      lastCompositeRaster: null,
+      bandStatsWhole: new Map()
+    };
+    const readBandWindow = vi.fn(async (_meta, _src, band, _x0, _y0, outW, outH) => {
+      const arr = new Float32Array(outW * outH);
+      arr.fill(band + 1);
+      return arr;
+    });
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      initWebGPU: vi.fn(async () => true),
+      gpuSupported: true,
+      readBandWindow,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(deps.initWebGPU).not.toHaveBeenCalled();
+    expect(deps.cpuRenderColor).toHaveBeenCalledTimes(1);
+    expect(deps.cpuRenderGray).not.toHaveBeenCalled();
+    expect(deps.gpuRender).not.toHaveBeenCalled();
+    expect(readBandWindow).toHaveBeenCalledTimes(3);
+    expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
   });
 });
