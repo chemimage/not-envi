@@ -85,6 +85,54 @@ describe("spectrum-area-controller", () => {
     expect(opts.yVals[0]).toBeCloseTo(9);
   });
 
+  test("new area request aborts older long-running average before all bands finish", async () => {
+    const selection = { id: 21, tool: "rect", points: [{ x: 0, y: 0 }, { x: 0, y: 0 }] };
+    const ds = {
+      id: 22,
+      meta: { bands: 4, interleave: "bsq", samples: 1, lines: 1 },
+      ds: {}
+    };
+    const openSpy = vi.fn(async () => {});
+    let readCount = 0;
+    let releaseFirstBand = null;
+    const firstBand = new Promise((resolve) => { releaseFirstBand = resolve; });
+
+    const ctrl = createSpectrumAreaController({
+      getActive: () => ds,
+      spectrum: { openSpectrumAt: openSpy },
+      isHistogramSelectionTool: (item) => item?.tool === "rect" || item?.tool === "shape",
+      getHistogramSelectionItems: () => [selection],
+      resolveSelectionBoundsForSpectrum: () => ({ x0: 0, y0: 0, x1: 0, y1: 0, width: 1, height: 1 }),
+      resolveEffectiveSelectionBounds: () => ({ x0: 0, y0: 0, x1: 0, y1: 0 }),
+      resolveSelectionBoundsList: () => [{ id: 21, x0: 0, y0: 0, x1: 0, y1: 0 }],
+      listHistogramSelectionItems: () => [selection],
+      readBandWindow: async () => {
+        readCount += 1;
+        if (readCount === 1) {
+          await firstBand;
+          return new Float32Array([1]);
+        }
+        return new Float32Array([9]);
+      },
+      readBandWindowBIP: async () => new Float32Array([9]),
+      toFloat32: (arr) => arr,
+      pointInPolygon: () => true,
+      wavelengthArrayOrNull: () => null,
+      fmtNoGroup: (n) => String(n)
+    });
+
+    const p1 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
+    await Promise.resolve();
+    const p2 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
+    releaseFirstBand();
+    await Promise.all([p1, p2]);
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(readCount).toBe(5);
+    const opts = openSpy.mock.calls[0][3];
+    expect(Array.from(opts.yVals)).toEqual([9, 9, 9, 9]);
+  });
+
   test("shape selection membership is computed once and reused across bands", async () => {
     const selection = {
       id: 3,

@@ -148,4 +148,73 @@ describe("spectrum controller", () => {
     await ctrl.openSpectrumAt(ds, 1, 1);
     expect(els.specSub.textContent).toContain("px 1, 1");
   });
+
+  test("pending spectrum state renders placeholder without reading data", async () => {
+    globalThis.requestAnimationFrame = (cb) => {
+      cb();
+      return 1;
+    };
+
+    const readSpectrumAtPixel = vi.fn(async () => new Float32Array([1, 2, 3]));
+    const specCtx = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      setLineDash: vi.fn(),
+      fillText: vi.fn(),
+      textAlign: "",
+      textBaseline: "",
+      lineWidth: 1,
+      strokeStyle: "",
+      fillStyle: "",
+      font: ""
+    };
+    const els = {
+      specPanel: { style: { display: "none" } },
+      specCanvas: {
+        width: 0,
+        height: 0,
+        getBoundingClientRect: () => ({ width: 300, height: 180 })
+      },
+      specSub: { textContent: "" },
+      specFoot: { textContent: "" }
+    };
+    const ds = {
+      id: 12,
+      name: "pending-demo",
+      activeBand: 0,
+      meta: { bands: 3, wlUnits: "nm", scale: null, bandNames: ["a", "b", "c"] }
+    };
+
+    const ctrl = createSpectrumController({
+      els,
+      specCtx,
+      getActive: () => ds,
+      bandLabel: (_ds, b) => `B${b}`,
+      updatePerf: vi.fn(),
+      sanitizeFilePart: (s) => s,
+      downloadBlob: vi.fn(),
+      readSpectrumAtPixel,
+      wavelengthArrayOrNull: () => [500, 600, 700]
+    });
+
+    await ctrl.showPendingSpectrum(ds, 0, 0, {
+      subLabel: "Area average (computing...)",
+      footLabel: "Computing 0/3 bands",
+      placeholderText: "Computing area average..."
+    });
+
+    expect(readSpectrumAtPixel).not.toHaveBeenCalled();
+    expect(els.specPanel.style.display).toBe("block");
+    expect(els.specSub.textContent).toBe("Area average (computing...)");
+    expect(els.specFoot.textContent).toBe("Computing 0/3 bands");
+    expect(specCtx.fillText).toHaveBeenCalledWith("Computing area average...", 150, 90);
+  });
 });

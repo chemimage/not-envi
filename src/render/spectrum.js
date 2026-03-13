@@ -91,6 +91,16 @@ export function createSpectrumController(deps) {
     source: { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 }
   };
 
+  function nextFrame() {
+    return new Promise((resolve) => {
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => resolve());
+        return;
+      }
+      setTimeout(resolve, 0);
+    });
+  }
+
   function showSpectrumPanel(show) {
     if (!els.specPanel) return;
     els.specPanel.style.display = show ? "block" : "none";
@@ -103,6 +113,57 @@ export function createSpectrumController(deps) {
 
   function setSpecFoot(text) {
     if (els.specFoot) els.specFoot.textContent = text;
+  }
+
+  function resetSpectrumData() {
+    specState.xVals = null;
+    specState.yVals = null;
+    specState.stdVals = null;
+    specState.plot = null;
+    specState.activeBandX = null;
+  }
+
+  function applySpectrumSource(opts = {}) {
+    specState.source = {
+      type: opts.sourceType === "area" ? "area" : "pixel",
+      sampleCount: Number.isFinite(opts?.sourceMeta?.sampleCount) ? opts.sourceMeta.sampleCount : 0,
+      selectionCount: Number.isFinite(opts?.sourceMeta?.selectionCount) ? opts.sourceMeta.selectionCount : 0,
+      sampleStep: Number.isFinite(opts?.sourceMeta?.sampleStep) ? opts.sourceMeta.sampleStep : 1
+    };
+  }
+
+  function applySpectrumSubLabel(ds, ix, iy, opts = {}) {
+    if (opts.subLabel && String(opts.subLabel).trim()) {
+      setSpecSub(String(opts.subLabel));
+      return;
+    }
+    const sc = ds.meta.scale;
+    if (sc && Number.isFinite(sc.umPerPixelX) && Number.isFinite(sc.umPerPixelY)) {
+      const xUm = ix * Number(sc.umPerPixelX);
+      const yUm = iy * Number(sc.umPerPixelY);
+      setSpecSub(`x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`);
+      return;
+    }
+    setSpecSub(`px ${ix}, ${iy}`);
+  }
+
+  function drawSpectrumPlaceholder(message = "Computing spectrum...") {
+    resizeSpecCanvas();
+    const c = els.specCanvas;
+    const ctx = specCtx;
+    if (!c || !ctx) return;
+    const W = c.width;
+    const H = c.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "rgb(17, 24, 39)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(229,231,235,0.92)";
+    ctx.font = `${Math.round(12 * dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(message), W / 2, H / 2);
   }
 
   function summarizeSpectrum(yVals) {
@@ -252,6 +313,22 @@ export function createSpectrumController(deps) {
     els.specPanel.style.right = "auto";
     els.specPanel.style.bottom = "auto";
     return true;
+  }
+
+  function positionSpectrumFromOptions(ds, opts = {}) {
+    if (opts.noReposition) return;
+    const pointerType = opts.pointerType === "touch" ? "touch" : "mouse";
+    const hasAreaPlacement = (specState.source.type === "area" && opts.selectionBounds);
+    const didAreaPlace = hasAreaPlacement
+      ? positionSpectrumPanelNearSelection(ds, opts.selectionBounds, opts.selectionOccluders || [], pointerType)
+      : false;
+    if (!didAreaPlace) {
+      positionSpectrumPanel({
+        clientX: Number(opts.clientX),
+        clientY: Number(opts.clientY),
+        pointerType
+      });
+    }
   }
 
   function drawSpectrumPlot(ds, xVals, yVals, stdVals = null, sampleCount = 0) {
@@ -483,44 +560,14 @@ export function createSpectrumController(deps) {
     specState.dsId = ds.id;
     specState.x = ix;
     specState.y = iy;
-    specState.source = {
-      type: opts.sourceType === "area" ? "area" : "pixel",
-      sampleCount: Number.isFinite(opts?.sourceMeta?.sampleCount) ? opts.sourceMeta.sampleCount : 0,
-      selectionCount: Number.isFinite(opts?.sourceMeta?.selectionCount) ? opts.sourceMeta.selectionCount : 0,
-      sampleStep: Number.isFinite(opts?.sourceMeta?.sampleStep) ? opts.sourceMeta.sampleStep : 1
-    };
+    applySpectrumSource(opts);
     const mySeq = ++specSeq;
 
     showSpectrumPanel(true);
-    if (opts.subLabel && String(opts.subLabel).trim()) {
-      setSpecSub(String(opts.subLabel));
-    } else {
-      const sc = ds.meta.scale;
-      if (sc && Number.isFinite(sc.umPerPixelX) && Number.isFinite(sc.umPerPixelY)) {
-        const xUm = ix * Number(sc.umPerPixelX);
-        const yUm = iy * Number(sc.umPerPixelY);
-        setSpecSub(`x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`);
-      } else {
-        setSpecSub(`px ${ix}, ${iy}`);
-      }
-    }
-
-    await new Promise((r) => requestAnimationFrame(r));
+    applySpectrumSubLabel(ds, ix, iy, opts);
+    await nextFrame();
     if (mySeq !== specSeq) return;
-    if (!opts.noReposition) {
-      const pointerType = opts.pointerType === "touch" ? "touch" : "mouse";
-      const hasAreaPlacement = (specState.source.type === "area" && opts.selectionBounds);
-      const didAreaPlace = hasAreaPlacement
-        ? positionSpectrumPanelNearSelection(ds, opts.selectionBounds, opts.selectionOccluders || [], pointerType)
-        : false;
-      if (!didAreaPlace) {
-        positionSpectrumPanel({
-          clientX: Number(opts.clientX),
-          clientY: Number(opts.clientY),
-          pointerType
-        });
-      }
-    }
+    positionSpectrumFromOptions(ds, opts);
 
     try {
       let yVals = opts.yVals || null;
@@ -546,6 +593,34 @@ export function createSpectrumController(deps) {
       setSpecSub("Failed to read spectrum.");
       setSpecFoot("Failed to compute spectrum.");
     }
+  }
+
+  async function showPendingSpectrum(ds, ix, iy, opts = {}) {
+    if (!ds) return;
+    specState.dsId = ds.id;
+    specState.x = ix;
+    specState.y = iy;
+    applySpectrumSource(opts);
+    resetSpectrumData();
+    const mySeq = ++specSeq;
+
+    showSpectrumPanel(true);
+    applySpectrumSubLabel(ds, ix, iy, opts);
+    setSpecFoot(opts.footLabel && String(opts.footLabel).trim()
+      ? String(opts.footLabel)
+      : "Computing spectrum...");
+
+    await nextFrame();
+    if (mySeq !== specSeq) return;
+    positionSpectrumFromOptions(ds, opts);
+    drawSpectrumPlaceholder(opts.placeholderText || "Computing spectrum...");
+  }
+
+  function updateSpectrumStatus(opts = {}) {
+    if (!specState.open) return;
+    if (opts.subLabel && String(opts.subLabel).trim()) setSpecSub(String(opts.subLabel));
+    if (opts.footLabel && String(opts.footLabel).trim()) setSpecFoot(String(opts.footLabel));
+    if (opts.placeholderText && String(opts.placeholderText).trim()) drawSpectrumPlaceholder(String(opts.placeholderText));
   }
 
   function bandFromClientX(clientX) {
@@ -596,9 +671,7 @@ export function createSpectrumController(deps) {
 
   function closeSpectrum() {
     specSeq++;
-    specState.xVals = null;
-    specState.yVals = null;
-    specState.stdVals = null;
+    resetSpectrumData();
     specState.source = { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 };
     showSpectrumPanel(false);
   }
@@ -708,6 +781,8 @@ export function createSpectrumController(deps) {
 
   return {
     openSpectrumAt,
+    showPendingSpectrum,
+    updateSpectrumStatus,
     redrawSpectrum,
     closeSpectrum,
     exportSpectrumCSV,
