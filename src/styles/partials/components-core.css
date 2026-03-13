@@ -76,8 +76,9 @@
     @apply flex items-center gap-1;
   }
 
-  .panel-pin-btn {
-    @apply inline-flex h-7 w-7 items-center justify-center p-0;
+  .panel-pin-btn,
+  .panel-pin-btn.tiny {
+    @apply inline-flex h-7 w-7 items-center justify-center p-0 text-gray-100;
   }
 
   .panel-pin-btn i {
@@ -86,7 +87,7 @@
   }
 
   #right[data-pinned="false"] #btnRightPin {
-    @apply border-gray-500 text-gray-100;
+    @apply border-gray-500 text-gray-400;
   }
 
   #right[data-open="false"] #rightHeader h2 {
@@ -159,7 +160,7 @@
   }
 
   #displayPanel[data-pinned="false"] #btnDisplayPin {
-    @apply border-gray-500 text-gray-100;
+    @apply border-gray-500 text-gray-400;
   }
 
   .panel-header {

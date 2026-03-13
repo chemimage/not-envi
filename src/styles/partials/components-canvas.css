@@ -36,11 +36,25 @@
     -webkit-user-select: text;
   }
 
-  #drawTools {
+  #leftToolRail {
     --draw-color-preview: #ff2d2d;
     --tool-btn-size: 46px;
     --tool-boundary-gap: 7px;
-    @apply absolute left-2.5 top-2.5 z-20 flex flex-col items-center gap-1.5 rounded-sm border border-gray-700 bg-gray-900/80 p-1.5;
+    --tool-rail-w: calc(var(--tool-btn-size) + 14px);
+    @apply absolute left-2.5 top-2.5 z-20 flex flex-col items-stretch;
+    gap: var(--canvas-edge-pad);
+    width: var(--tool-rail-w);
+  }
+
+  #brandLogo {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  #drawTools {
+    @apply relative flex flex-col items-center gap-1.5 rounded-sm border border-gray-700 bg-gray-900/80 p-1.5;
+    width: 100%;
     padding-bottom: 10px;
     backdrop-filter: blur(4px);
   }
@@ -50,10 +64,6 @@
     height: 1px;
     margin: 2px 0;
     background: rgb(75 85 99 / 0.8);
-  }
-
-  .draw-tool-gap-before {
-    margin-top: 8px;
   }
 
   .draw-tool-btn {
