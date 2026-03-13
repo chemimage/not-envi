@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>not ENVI</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css" />
   <link rel="stylesheet" href="/src/styles/app.css" />
 </head>
 <body>
@@ -43,7 +43,8 @@
       <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing (double-click to clear all)" aria-label="Eraser (double-click to clear all)">
         <i class="fa-solid fa-eraser" aria-hidden="true"></i>
       </button>
-      <button class="draw-tool-btn draw-tool-gap-before" id="btnToolSpectral" type="button" title="Spectral" aria-label="Spectral">
+      <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
+      <button class="draw-tool-btn" id="btnToolSpectral" type="button" title="Spectral" aria-label="Spectral">
         <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
       </button>
       <button class="draw-tool-btn" id="btnToolHistogram" type="button" title="Spatial" aria-label="Spatial">
@@ -117,10 +118,7 @@
           <h2>Bands</h2>
           <div class="panel-header-actions">
             <button class="btn tiny ghost panel-pin-btn" id="btnRightPin" type="button" aria-pressed="true" title="Pinned: panel stays open" aria-label="Pinned: panel stays open">
-              <span class="panel-pin-icon" aria-hidden="true">
-                <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
-                <span class="panel-pin-slash"></span>
-              </span>
+              <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
             </button>
           </div>
         </div>
@@ -141,10 +139,7 @@
           <h2>Display</h2>
           <div class="panel-header-actions">
             <button class="btn tiny ghost panel-pin-btn" id="btnDisplayPin" type="button" aria-pressed="true" title="Pinned: panel stays open" aria-label="Pinned: panel stays open">
-              <span class="panel-pin-icon" aria-hidden="true">
-                <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
-                <span class="panel-pin-slash"></span>
-              </span>
+              <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
             </button>
           </div>
         </div>

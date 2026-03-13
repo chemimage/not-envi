@@ -24,8 +24,8 @@ export function wireFlyoutPanel({
 
     const icon = btnPin.querySelector ? btnPin.querySelector("i") : null;
     if (icon && icon.classList) {
-      icon.classList.remove("fa-thumbtack");
-      icon.classList.add("fa-thumbtack");
+      icon.classList.remove("fa-thumbtack", "fa-thumbtack-slash");
+      icon.classList.add(nextPinned ? "fa-thumbtack" : "fa-thumbtack-slash");
     }
   };
 

@@ -7,10 +7,7 @@ describe("flyout panel wiring", () => {
       <aside id="panel" data-open="true" data-pinned="true">
         <div id="header">
           <button id="pin" type="button">
-            <span class="panel-pin-icon" aria-hidden="true">
-              <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
-              <span class="panel-pin-slash"></span>
-            </span>
+            <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
           </button>
         </div>
       </aside>
@@ -33,6 +30,7 @@ describe("flyout panel wiring", () => {
     expect(panel.dataset.open).toBe("true");
     expect(btnPin.getAttribute("aria-pressed")).toBe("false");
     expect(btnPin.dataset.pinned).toBe("false");
+    expect(btnPin.querySelector("i")?.classList.contains("fa-thumbtack-slash")).toBe(true);
 
     panel.dispatchEvent(new Event("pointerleave"));
     expect(panel.dataset.open).toBe("false");
