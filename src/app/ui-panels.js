@@ -53,9 +53,9 @@ export function createUIPanels(deps) {
   }
 
   function describeThreeBandDisplayMode(mode) {
-    if (mode === THREE_BAND_DISPLAY_MODE_RGB) return "Color image: red, green, blue";
-    if (mode === THREE_BAND_DISPLAY_MODE_BGR) return "Color image: blue, green, red";
-    return "Band list: black and white";
+    if (mode === THREE_BAND_DISPLAY_MODE_RGB) return "RGB image";
+    if (mode === THREE_BAND_DISPLAY_MODE_BGR) return "BGR image";
+    return "Multi-bands";
   }
 
   function describeAdjustColor(color) {
