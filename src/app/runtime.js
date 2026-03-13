@@ -36,6 +36,7 @@ import { createAnnotationController } from "./annotation-controller.js";
 import { createSpectrumAreaController } from "./spectrum-area-controller.js";
 import { createAreaReductionWorkerClient } from "./area-reduction-worker-client.js";
 import { createSelectionSyncController } from "./selection-sync-controller.js";
+import { isThreeBandColorMode } from "./three-band-display.js";
 import {
   resolveSelectionBoundsForSpectrum,
   resolveSelectionBoundsList as resolveSelectionBoundsListCore,
@@ -454,6 +455,45 @@ import { pointInPolygon } from "./draw-geometry.js";
     cpuCtx.restore();
   }
 
+  function cpuRenderColor(rasters, paramsByChannel){
+    if (!Array.isArray(rasters) || rasters.length < 3) return;
+    const [rRaster, gRaster, bRaster] = rasters;
+    if (!rRaster || !gRaster || !bRaster) return;
+    const w = rRaster.w;
+    const h = rRaster.h;
+    const img = cpuCtx.createImageData(w, h);
+    const dst = img.data;
+    const rData = rRaster.dataF32;
+    const gData = gRaster.dataF32;
+    const bData = bRaster.dataF32;
+    const rParams = paramsByChannel[0];
+    const gParams = paramsByChannel[1];
+    const bParams = paramsByChannel[2];
+
+    for (let i = 0, j = 0; i < rData.length; i += 1, j += 4) {
+      const r = Math.round(tone01(rData[i], rParams.minVal, rParams.maxVal, rParams.brightness, rParams.gain, rParams.contrast) * 255);
+      const g = Math.round(tone01(gData[i], gParams.minVal, gParams.maxVal, gParams.brightness, gParams.gain, gParams.contrast) * 255);
+      const b = Math.round(tone01(bData[i], bParams.minVal, bParams.maxVal, bParams.brightness, bParams.gain, bParams.contrast) * 255);
+      dst[j] = r;
+      dst[j + 1] = g;
+      dst[j + 2] = b;
+      dst[j + 3] = 255;
+    }
+
+    cpuCtx.save();
+    cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cpuCtx.imageSmoothingEnabled = false;
+    cpuCtx.clearRect(0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
+
+    const off = document.createElement("canvas");
+    off.width = w;
+    off.height = h;
+    off.getContext("2d", { alpha: false }).putImageData(img, 0, 0);
+    cpuCtx.drawImage(off, 0, 0, w, h, 0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
+
+    cpuCtx.restore();
+  }
+
   const overlayRenderer = createOverlayRenderer({
     els,
     overlayCtx,
@@ -500,6 +540,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     gpuSupported,
     gpuRender,
     cpuRenderGray,
+    cpuRenderColor,
     tryRasterFromPyramid,
     readBandWindow,
     readBandWindowBIP,
@@ -528,6 +569,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     getActive,
     render,
     getDevicePixelRatio: () => window.devicePixelRatio || 1,
+    isThreeBandColorMode,
   });
 
   async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step){

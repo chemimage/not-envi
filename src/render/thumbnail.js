@@ -1,4 +1,5 @@
 import { clamp } from "../core/utils.js";
+import { resolveThreeBandChannelOrder } from "../app/three-band-display.js";
 
 export function createThumbnailController(deps) {
   const {
@@ -12,7 +13,8 @@ export function createThumbnailController(deps) {
     readBandWindowBIP,
     getActive,
     render,
-    getDevicePixelRatio
+    getDevicePixelRatio,
+    isThreeBandColorMode
   } = deps;
 
   function syncThumbWrapSize() {
@@ -67,17 +69,19 @@ export function createThumbnailController(deps) {
   }
 
   function thumbBuildKey(ds, tw, th) {
-    return `${ds.id || "ds"}:${ds.activeBand}:${tw}x${th}`;
+    const mode = isThreeBandColorMode && isThreeBandColorMode(ds) ? (ds.displayMode || "rgb") : "gray";
+    return `${ds.id || "ds"}:${mode}:${ds.activeBand}:${tw}x${th}`;
+  }
+
+  async function readWindowF32(ds, band, x0, y0, outW, outH, step) {
+    if (ds.meta.interleave === "bip") {
+      return toFloat32(await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step));
+    }
+    return toFloat32(await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step));
   }
 
   async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step) {
-    let raw;
-    if (ds.meta.interleave === "bip") {
-      raw = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step);
-    } else {
-      raw = await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step);
-    }
-    const f32 = toFloat32(raw);
+    const f32 = await readWindowF32(ds, band, x0, y0, outW, outH, step);
     const settings = getBandSettings(ds, band);
     const range = resolveDisplayRange(ds, band, f32);
     const params = {
@@ -101,6 +105,33 @@ export function createThumbnailController(deps) {
     return img;
   }
 
+  async function renderCompositeWindowToImageData(ds, x0, y0, outW, outH, step) {
+    const channelBands = resolveThreeBandChannelOrder(ds.displayMode || "rgb");
+    const channelData = await Promise.all(channelBands.map((band) => readWindowF32(ds, band, x0, y0, outW, outH, step)));
+    const channelParams = channelBands.map((band, idx) => {
+      const f32 = channelData[idx];
+      const settings = getBandSettings(ds, band);
+      const range = resolveDisplayRange(ds, band, f32);
+      return {
+        minVal: range.minVal,
+        maxVal: range.maxVal,
+        brightness: clamp(settings.brightness ?? 0, -1, 1),
+        gain: clamp(settings.gain ?? 1, 0.0, 4.0),
+        contrast: clamp(settings.contrast ?? 1, 0.1, 3.0)
+      };
+    });
+
+    const img = createImageDataCompat(outW, outH);
+    const dst = img.data;
+    for (let i = 0, j = 0; i < channelData[0].length; i += 1, j += 4) {
+      dst[j] = Math.round(tone01(channelData[0][i], channelParams[0].minVal, channelParams[0].maxVal, channelParams[0].brightness, channelParams[0].gain, channelParams[0].contrast) * 255);
+      dst[j + 1] = Math.round(tone01(channelData[1][i], channelParams[1].minVal, channelParams[1].maxVal, channelParams[1].brightness, channelParams[1].gain, channelParams[1].contrast) * 255);
+      dst[j + 2] = Math.round(tone01(channelData[2][i], channelParams[2].minVal, channelParams[2].maxVal, channelParams[2].brightness, channelParams[2].gain, channelParams[2].contrast) * 255);
+      dst[j + 3] = 255;
+    }
+    return img;
+  }
+
   async function buildThumbnail(ds, buildKey, tw, th) {
     if (!ds) return;
     if (isJsdomRuntime()) return;
@@ -117,7 +148,9 @@ export function createThumbnailController(deps) {
     const outH = Math.min(th, Math.ceil(ds.meta.lines / step));
 
     try {
-      const img = await renderWindowToImageData(ds, ds.activeBand, 0, 0, outW, outH, step);
+      const img = (isThreeBandColorMode && isThreeBandColorMode(ds))
+        ? await renderCompositeWindowToImageData(ds, 0, 0, outW, outH, step)
+        : await renderWindowToImageData(ds, ds.activeBand, 0, 0, outW, outH, step);
       if (ds.thumb.buildSeq !== seq) return;
       thumbCtx.save();
       thumbCtx.imageSmoothingEnabled = false;

@@ -70,8 +70,10 @@ export function createDatasetRuntime(deps) {
       thumb: { ready: false, _t: 0, scale: 1, x0: 0, y0: 0, w: 0, h: 0 },
       treeExpanded: true,
       displaySlot: 0,
+      displayMode: "gray",
       pyramid: null,
-      lastRaster: null
+      lastRaster: null,
+      lastCompositeRaster: null
     };
     ds.bandSettings.set(ds.activeBand, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 });
     return ds;

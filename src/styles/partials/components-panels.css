@@ -120,6 +120,38 @@
     @apply whitespace-nowrap font-mono text-xs text-gray-400;
   }
 
+  .display-mode-btn {
+    @apply inline-flex h-6 w-6 shrink-0 rounded-sm border border-gray-600 bg-gray-900 p-0;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+  }
+
+  .display-mode-btn.mode-rgb {
+    background-image: linear-gradient(
+      90deg,
+      rgb(239 68 68) 0 33.333%,
+      rgb(34 197 94) 33.333% 66.666%,
+      rgb(59 130 246) 66.666% 100%
+    );
+  }
+
+  .display-mode-btn.mode-bgr {
+    background-image: linear-gradient(
+      90deg,
+      rgb(59 130 246) 0 33.333%,
+      rgb(34 197 94) 33.333% 66.666%,
+      rgb(239 68 68) 66.666% 100%
+    );
+  }
+
+  .display-mode-btn.mode-gray {
+    background-image: linear-gradient(
+      90deg,
+      rgb(15 23 42) 0 50%,
+      rgb(226 232 240) 50% 100%
+    );
+  }
+
 
   .tree-bands {
     @apply max-h-64 overflow-auto border-t border-gray-700;

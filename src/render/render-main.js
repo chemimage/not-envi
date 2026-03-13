@@ -1,5 +1,10 @@
 import { clamp } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
+import {
+  getThreeBandDisplayMode,
+  isThreeBandColorMode,
+  resolveThreeBandChannelOrder
+} from "../app/three-band-display.js";
 
 export function createRenderer(deps) {
   const {
@@ -14,6 +19,7 @@ export function createRenderer(deps) {
     gpuSupported,
     gpuRender,
     cpuRenderGray,
+    cpuRenderColor,
     tryRasterFromPyramid,
     readBandWindow,
     readBandWindowBIP,
@@ -74,6 +80,28 @@ export function createRenderer(deps) {
     );
   }
 
+  async function readRasterForBand(ds, band, eff) {
+    let raster = null;
+    if (eff < 1 && !viewExtendsOutside(ds, eff)) raster = await tryRasterFromPyramid(ds, band, eff);
+    if (!raster) {
+      setStatus("reading…", "warn");
+      raster = await readRasterDirect(ds, band, eff);
+    }
+    return raster;
+  }
+
+  async function readCompositeRaster(ds, eff) {
+    const mode = getThreeBandDisplayMode(ds);
+    const sourceBands = [0, 1, 2];
+    const rasters = await Promise.all(sourceBands.map((band) => readRasterForBand(ds, band, eff)));
+    const rasterByBand = new Map(rasters.map((raster) => [raster.band, raster]));
+    return {
+      mode,
+      channelBands: resolveThreeBandChannelOrder(mode),
+      rasterByBand
+    };
+  }
+
   function resizeCanvases() {
     const dpr = window.devicePixelRatio || 1;
     const rect = els.main.getBoundingClientRect();
@@ -122,9 +150,10 @@ export function createRenderer(deps) {
     resizeCanvases();
     const dpr = window.devicePixelRatio || 1;
     const eff = ds.view.scale * dpr;
+    const colorMode = isThreeBandColorMode(ds);
 
     let useGPU = false;
-    if (gpuSupported) {
+    if (!colorMode && gpuSupported) {
       const ok = await initWebGPU();
       if (ok) useGPU = true;
     }
@@ -138,13 +167,21 @@ export function createRenderer(deps) {
 
     const reuse = !!opts.reuseRaster;
     let raster = null;
-    if (reuse && ds.lastRaster && ds.lastRaster.band === band) {
-      raster = ds.lastRaster;
+    let compositeRaster = null;
+    if (colorMode) {
+      if (reuse && ds.lastCompositeRaster && ds.lastCompositeRaster.mode === getThreeBandDisplayMode(ds)) {
+        compositeRaster = ds.lastCompositeRaster;
+      } else {
+        compositeRaster = await readCompositeRaster(ds, eff);
+        ds.lastCompositeRaster = compositeRaster;
+      }
+      raster = compositeRaster.rasterByBand.get(band) || compositeRaster.rasterByBand.get(0) || null;
+      ds.lastRaster = raster;
     } else {
-      if (eff < 1 && !viewExtendsOutside(ds, eff)) raster = await tryRasterFromPyramid(ds, band, eff);
-      if (!raster) {
-        setStatus("reading…", "warn");
-        raster = await readRasterDirect(ds, band, eff);
+      if (reuse && ds.lastRaster && ds.lastRaster.band === band) {
+        raster = ds.lastRaster;
+      } else {
+        raster = await readRasterForBand(ds, band, eff);
       }
       ds.lastRaster = raster;
     }
@@ -162,7 +199,21 @@ export function createRenderer(deps) {
 
     try {
       const t0 = now();
-      if (useGPU) gpuRender(raster.dataF32, raster.w, raster.h, params);
+      if (colorMode) {
+        const channelRasters = compositeRaster.channelBands.map((channelBand) => compositeRaster.rasterByBand.get(channelBand));
+        const channelParams = compositeRaster.channelBands.map((channelBand) => {
+          const channelSettings = getBandSettings(ds, channelBand);
+          const channelRange = resolveDisplayRange(ds, channelBand, compositeRaster.rasterByBand.get(channelBand).dataF32);
+          return {
+            minVal: channelRange.minVal,
+            maxVal: channelRange.maxVal,
+            brightness: clamp(channelSettings.brightness ?? 0, -1, 1),
+            gain: clamp(channelSettings.gain ?? 1, 0.0, 4.0),
+            contrast: clamp(channelSettings.contrast ?? 1, 0.1, 3.0)
+          };
+        });
+        cpuRenderColor(channelRasters, channelParams);
+      } else if (useGPU) gpuRender(raster.dataF32, raster.w, raster.h, params);
       else cpuRenderGray(raster.dataF32, raster.w, raster.h, params);
 
       state.lastRenderMs = now() - t0;

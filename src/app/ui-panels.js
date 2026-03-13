@@ -1,4 +1,13 @@
 import { formatExperimentSettingsInline, parseExperimentSettings } from "./experiment-meta.js";
+import {
+  THREE_BAND_DISPLAY_MODE_BGR,
+  THREE_BAND_DISPLAY_MODE_GRAY,
+  THREE_BAND_DISPLAY_MODE_RGB,
+  cycleThreeBandDisplayMode,
+  getThreeBandDisplayMode,
+  isThreeBandColorMode,
+  isThreeBandDataset
+} from "./three-band-display.js";
 
 export function createUIPanels(deps) {
   const {
@@ -34,6 +43,29 @@ export function createUIPanels(deps) {
     if (band == null) return null;
     // Display panel histogram is always whole-image for the active band.
     return ds.bandStatsWhole.get(band) || null;
+  }
+
+  function describeThreeBandDisplayMode(mode) {
+    if (mode === THREE_BAND_DISPLAY_MODE_RGB) return "Color image: red, green, blue";
+    if (mode === THREE_BAND_DISPLAY_MODE_BGR) return "Color image: blue, green, red";
+    return "Band list: black and white";
+  }
+
+  function cycleDatasetDisplayMode(ds) {
+    if (!isThreeBandDataset(ds)) return;
+    ds.displayMode = cycleThreeBandDisplayMode(getThreeBandDisplayMode(ds));
+    ds.lastRaster = null;
+    ds.lastCompositeRaster = null;
+    if (ds.thumb) {
+      ds.thumb.ready = false;
+      ds.thumb.base = null;
+      ds.thumb.buildKey = null;
+      ds.thumb.buildPendingKey = null;
+    }
+    for (let b = 0; b < 3; b += 1) onNeedWholeStats(ds, b);
+    rebuildBandTree({ preserveScroll: true });
+    updateDisplayUI(true);
+    render();
   }
 
   function formatDisplayRangeInput(v) {
@@ -141,16 +173,33 @@ export function createUIPanels(deps) {
       const meta = document.createElement("div");
       meta.className = "tree-meta";
       meta.textContent = `${ds.meta.bands} bands`;
+      const displayMode = getThreeBandDisplayMode(ds);
+      const showBands = ds.treeExpanded && !isThreeBandColorMode(ds);
 
       head.appendChild(caret);
       head.appendChild(name);
       head.appendChild(meta);
+      if (isThreeBandDataset(ds)) {
+        const modeBtn = document.createElement("button");
+        modeBtn.type = "button";
+        modeBtn.className = `display-mode-btn mode-${displayMode}`;
+        const modeLabel = describeThreeBandDisplayMode(displayMode);
+        modeBtn.title = modeLabel;
+        modeBtn.ariaLabel = modeLabel;
+        modeBtn.setAttribute("aria-pressed", displayMode === THREE_BAND_DISPLAY_MODE_GRAY ? "false" : "true");
+        modeBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
+          cycleDatasetDisplayMode(ds);
+        };
+        head.appendChild(modeBtn);
+      }
       head.onclick = () => {
         if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
       };
       node.appendChild(head);
 
-      if (ds.treeExpanded) {
+      if (showBands) {
         const bandsWrap = document.createElement("div");
         bandsWrap.className = "tree-bands";
         bandsWrap.addEventListener("scroll", () => {
@@ -182,7 +231,7 @@ export function createUIPanels(deps) {
       }
 
       els.bandTree.appendChild(node);
-      if (ds.treeExpanded) {
+      if (showBands) {
         const bandsWrap = node.querySelector(".tree-bands");
         if (bandsWrap) {
           const target = Number(ds.treeScrollTop || 0);

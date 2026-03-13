@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createUIPanels } from "../../src/app/ui-panels.js";
 
 function makeDeps() {
@@ -44,5 +44,73 @@ describe("ui-panels", () => {
     expect(ui.resolveStats(ds)).toBe(whole);
     deps.state.histMode = "view";
     expect(ui.resolveStats(ds)).toBe(whole);
+  });
+
+  test("three-band datasets cycle list and color display modes from the tree button", () => {
+    document.body.innerHTML = `
+      <input id="bandSearch" value="" />
+      <div id="bandTree"></div>
+      <input id="slContrast" value="1" />
+      <input id="slBrightness" value="0" />
+      <input id="slGain" value="1" />
+      <input id="numContrast" value="1" />
+      <input id="numBrightness" value="0" />
+      <input id="numGain" value="1" />
+      <input id="numMin" value="0" />
+      <input id="numMax" value="1" />
+    `;
+
+    const deps = makeDeps();
+    const render = vi.fn();
+    const onNeedWholeStats = vi.fn();
+    const ds = {
+      id: "ds1",
+      meta: { bands: 3 },
+      activeBand: 0,
+      bandSettings: new Map([[0, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 }]]),
+      bandStatsWhole: new Map([[0, { min: 0, max: 10, p1: 1, p99: 9 }]]),
+      bandStatsView: null,
+      treeExpanded: true,
+      treeScrollTop: 0,
+      displayMode: "gray",
+      thumb: {}
+    };
+    deps.state.datasets = [ds];
+    deps.state.activeId = ds.id;
+    deps.getActive = () => ds;
+    deps.render = render;
+    deps.onNeedWholeStats = onNeedWholeStats;
+    deps.els = {
+      bandSearch: document.querySelector("#bandSearch"),
+      bandTree: document.querySelector("#bandTree"),
+      slContrast: document.querySelector("#slContrast"),
+      slBrightness: document.querySelector("#slBrightness"),
+      slGain: document.querySelector("#slGain"),
+      numContrast: document.querySelector("#numContrast"),
+      numBrightness: document.querySelector("#numBrightness"),
+      numGain: document.querySelector("#numGain"),
+      numMin: document.querySelector("#numMin"),
+      numMax: document.querySelector("#numMax")
+    };
+    const ui = createUIPanels(deps);
+
+    ui.rebuildBandTree();
+    expect(document.querySelectorAll(".band-row")).toHaveLength(3);
+    expect(document.querySelector(".display-mode-btn")?.classList.contains("mode-gray")).toBe(true);
+
+    document.querySelector(".display-mode-btn")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(ds.displayMode).toBe("rgb");
+    expect(document.querySelectorAll(".band-row")).toHaveLength(0);
+    expect(document.querySelector(".display-mode-btn")?.classList.contains("mode-rgb")).toBe(true);
+
+    document.querySelector(".display-mode-btn")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(ds.displayMode).toBe("bgr");
+    expect(document.querySelector(".display-mode-btn")?.classList.contains("mode-bgr")).toBe(true);
+
+    document.querySelector(".display-mode-btn")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(ds.displayMode).toBe("gray");
+    expect(document.querySelectorAll(".band-row")).toHaveLength(3);
+    expect(render).toHaveBeenCalledTimes(3);
+    expect(onNeedWholeStats).toHaveBeenCalledTimes(9);
   });
 });
