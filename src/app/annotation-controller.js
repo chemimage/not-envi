@@ -831,7 +831,13 @@ export function createAnnotationController(deps) {
     let bestIdx = -1;
     let bestDist = Number.POSITIVE_INFINITY;
     for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
-      const dist = distanceToDrawing(point, ds.drawings[i]);
+      const item = ds.drawings[i];
+      if (isHistogramSelectionTool(item) && pointInsideArea(item, point)) {
+        bestIdx = i;
+        bestDist = -1;
+        break;
+      }
+      const dist = distanceToDrawing(point, item);
       if (!Number.isFinite(dist)) continue;
       if (dist <= imgTolerance && dist <= bestDist) {
         bestIdx = i;

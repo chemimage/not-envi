@@ -159,6 +159,18 @@ describe("annotation-controller", () => {
     expect(ann.resolvePointerCursor({ pointerType: "mouse", clientX: 5, clientY: 5 })).toBe("move");
   });
 
+  test("touch eraser removes large rectangles when tapped inside", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings = [
+      { id: 1, tool: "rect", color: "#fff", points: [{ x: 2, y: 2 }, { x: 80, y: 70 }] }
+    ];
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("eraser");
+
+    expect(ann.eraseDrawingAtPointer({ pointerType: "touch", clientX: 40, clientY: 35 })).toBe(true);
+    expect(ds.drawings).toHaveLength(0);
+  });
+
   test("ruler profile hover/drag uses stretch cursor and updates scale", () => {
     const { ds, deps } = makeBase();
     ds.drawings = [{ id: 21, tool: "ruler", color: "#fff", points: [{ x: 10, y: 20 }, { x: 50, y: 20 }] }];
