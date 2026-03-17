@@ -13,7 +13,8 @@ export function isCmInverseUnit(unit) {
   const raw = String(unit || "").trim().toLowerCase();
   if (!raw) return false;
   const normalized = raw.replace(/[−–]/g, "-").replace(/\s+/g, "");
-  return normalized.includes("cm-1")
+  return normalized.includes("wavenumber")
+    || normalized.includes("cm-1")
     || normalized.includes("cm^-1")
     || normalized.includes("cm⁻1")
     || normalized.includes("1/cm");
@@ -36,14 +37,40 @@ export function medianBandInterval(xVals) {
   return (steps[mid - 1] + steps[mid]) * 0.5;
 }
 
-export function shouldUseBarSpectrumPlot(xVals, wlUnits, threshold = 8) {
-  if (!isCmInverseUnit(wlUnits)) return false;
+export function hasApproximatelyUniformBandIntervals(
+  xVals,
+  {
+    absoluteTolerance = 1,
+    relativeTolerance = 0.05,
+    minConsistentFraction = 0.85
+  } = {}
+) {
+  if (!xVals || xVals.length < 3) return false;
   const med = medianBandInterval(xVals);
-  if (!Number.isFinite(med)) return false;
-  return med > threshold;
+  if (!Number.isFinite(med) || med <= 0) return false;
+  const steps = [];
+  for (let i = 1; i < xVals.length; i += 1) {
+    const a = Number(xVals[i - 1]);
+    const b = Number(xVals[i]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    const d = Math.abs(b - a);
+    if (d > 0) steps.push(d);
+  }
+  if (steps.length < 2) return false;
+  const tolerance = Math.max(absoluteTolerance, med * relativeTolerance);
+  let consistent = 0;
+  for (const step of steps) {
+    if (Math.abs(step - med) <= tolerance) consistent += 1;
+  }
+  return (consistent / steps.length) >= minConsistentFraction;
 }
 
-function inferCmInverseUnitFromWavelengthEntries(entries) {
+export function shouldUseBarSpectrumPlot(xVals, wlUnits, options = undefined) {
+  if (!isCmInverseUnit(wlUnits)) return false;
+  return !hasApproximatelyUniformBandIntervals(xVals, options);
+}
+
+function inferCmInverseUnitFromEntries(entries) {
   if (!Array.isArray(entries)) return "";
   for (let i = 0; i < entries.length; i += 1) {
     const raw = entries[i];
@@ -58,7 +85,8 @@ function inferCmInverseUnitFromWavelengthEntries(entries) {
 function resolveSpectralUnit(ds) {
   const explicit = (ds?.meta?.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : "";
   if (explicit) return explicit;
-  return inferCmInverseUnitFromWavelengthEntries(ds?.meta?.wavelengths);
+  return inferCmInverseUnitFromEntries(ds?.meta?.wavelengths)
+    || inferCmInverseUnitFromEntries(ds?.meta?.bandNames);
 }
 
 export function createSpectrumController(deps) {
@@ -382,7 +410,7 @@ export function createSpectrumController(deps) {
     const ciScale = (Number.isFinite(sampleCount) && sampleCount > 1) ? (1.96 / Math.sqrt(sampleCount)) : 0;
     const useCI = !!(stdVals && stdVals.length && ciScale > 0);
     const unit = resolveSpectralUnit(ds);
-    const useBarPlot = !!(xVals && shouldUseBarSpectrumPlot(xVals, unit, 8));
+    const useBarPlot = !!(xVals && shouldUseBarSpectrumPlot(xVals, unit));
     for (let i = 0; i < yVals.length; i++) {
       const xv = xVals ? xVals[i] : i;
       const yv = yVals[i];

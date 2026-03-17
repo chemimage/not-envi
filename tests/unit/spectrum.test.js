@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createSpectrumController,
+  hasApproximatelyUniformBandIntervals,
   isCmInverseUnit,
   medianBandInterval,
   shouldUseBarSpectrumPlot
@@ -78,16 +79,22 @@ describe("spectrum controller", () => {
     expect(els.specPanel.style.display).toBe("none");
   });
 
-  test("bar-plot mode threshold uses median cm-1 interval", () => {
+  test("bar-plot mode keeps the cm-1 unit gate and treats irregular spacing as discrete", () => {
     expect(isCmInverseUnit("cm-1")).toBe(true);
     expect(isCmInverseUnit("cm^-1")).toBe(true);
+    expect(isCmInverseUnit("Wavenumber")).toBe(true);
     expect(isCmInverseUnit("nm")).toBe(false);
 
     expect(medianBandInterval([1000, 1010, 1020, 1030])).toBe(10);
     expect(medianBandInterval([1000, 1004, 1020])).toBe(10);
 
-    expect(shouldUseBarSpectrumPlot([1000, 1007, 1014], "cm-1")).toBe(false);
-    expect(shouldUseBarSpectrumPlot([1000, 1009, 1018], "cm-1")).toBe(true);
+    expect(hasApproximatelyUniformBandIntervals([4000, 3990, 3980, 3970], {})).toBe(true);
+    expect(hasApproximatelyUniformBandIntervals([4000, 3990.2, 3980.1, 3970.3], {})).toBe(true);
+    expect(hasApproximatelyUniformBandIntervals([4000, 3988, 3979, 3960], {})).toBe(false);
+
+    expect(shouldUseBarSpectrumPlot([4000, 3990, 3980, 3970], "cm-1")).toBe(false);
+    expect(shouldUseBarSpectrumPlot([4000, 3990.2, 3980.1, 3970.3], "cm^-1")).toBe(false);
+    expect(shouldUseBarSpectrumPlot([4000, 3988, 3979, 3960], "cm-1")).toBe(true);
     expect(shouldUseBarSpectrumPlot([500, 509, 518], "nm")).toBe(false);
   });
 
