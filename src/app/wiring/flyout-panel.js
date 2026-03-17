@@ -7,6 +7,10 @@ export function wireFlyoutPanel({
   const isOpen = () => panel.dataset.open !== "false";
   const isPinned = () => panel.dataset.pinned !== "false";
   const title = header && header.querySelector ? header.querySelector("h2") : null;
+  const supportsHover = () => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
+    return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  };
 
   const setOpen = (open) => {
     panel.dataset.open = open ? "true" : "false";
@@ -48,7 +52,11 @@ export function wireFlyoutPanel({
     const nextPinned = !!pinned;
     panel.dataset.pinned = nextPinned ? "true" : "false";
     syncPinButton();
-    if (nextPinned && forceOpen) setOpen(true);
+    if (nextPinned && forceOpen) {
+      setOpen(true);
+      return;
+    }
+    if (!nextPinned && !supportsHover()) setOpen(false);
   };
 
   syncCollapsedGeometry();
@@ -88,4 +96,11 @@ export function wireFlyoutPanel({
   panel.addEventListener("pointerleave", () => {
     if (!isPinned()) setOpen(false);
   });
+  if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("pointerdown", (ev) => {
+      if (supportsHover() || isPinned() || !isOpen()) return;
+      if (panel.contains && panel.contains(ev.target)) return;
+      setOpen(false);
+    }, true);
+  }
 }
