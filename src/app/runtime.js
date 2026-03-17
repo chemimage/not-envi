@@ -656,6 +656,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     updateHud,
     screenToImage,
     clampView,
+    scheduleRender,
     render,
     minScaleFor,
     scaleToSlider,
@@ -800,7 +801,6 @@ import { pointInPolygon } from "./draw-geometry.js";
     setGpuBadgeAvailable: () => {}
   });
 })();
-
 
 
 

@@ -67,6 +67,38 @@ describe("interaction controller", () => {
     expect(updateZoomLabel).toHaveBeenCalledTimes(1);
   });
 
+  test("zoomAt prefers scheduled renders when available", () => {
+    const render = vi.fn();
+    const scheduleRender = vi.fn();
+    const ds = { view: { scale: 2, x: 10, y: 20 }, meta: { samples: 1000, lines: 1000 } };
+    const els = {
+      selRect: { style: {} },
+      main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      zoom: { value: "0" }
+    };
+    const state = { selection: { drawing: false, imgRect: null }, mouse: {} };
+
+    const controller = createInteractionController({
+      els,
+      state,
+      getActive: () => ds,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      setStatus: () => {},
+      updateHud: () => {},
+      screenToImage: (sx, sy) => ({ x: ds.view.x + sx / ds.view.scale, y: ds.view.y + sy / ds.view.scale }),
+      clampView: () => {},
+      scheduleRender,
+      render,
+      minScaleFor: () => 1,
+      scaleToSlider: (s) => s,
+      updateZoomLabel: () => {}
+    });
+
+    controller.zoomAt(1.25, 100, 100);
+    expect(scheduleRender).toHaveBeenCalledTimes(1);
+    expect(render).not.toHaveBeenCalled();
+  });
+
   test("touch handlers prevent browser defaults and clear touch pointers on up", () => {
     const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 1000 } };
     const state = {

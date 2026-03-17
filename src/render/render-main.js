@@ -107,10 +107,74 @@ export function createRenderer(deps) {
     const rect = els.main.getBoundingClientRect();
     const w = Math.max(1, Math.floor(rect.width * dpr));
     const h = Math.max(1, Math.floor(rect.height * dpr));
-    els.cpuCanvas.width = w;
-    els.cpuCanvas.height = h;
-    els.overlayCanvas.width = w;
-    els.overlayCanvas.height = h;
+    if (els.cpuCanvas.width !== w) els.cpuCanvas.width = w;
+    if (els.cpuCanvas.height !== h) els.cpuCanvas.height = h;
+    if (els.overlayCanvas.width !== w) els.overlayCanvas.width = w;
+    if (els.overlayCanvas.height !== h) els.overlayCanvas.height = h;
+  }
+
+  function renderModeKey(ds, band, colorMode, colorRenderMode = null) {
+    if (colorMode) return `color:${colorRenderMode || getThreeBandDisplayMode(ds)}`;
+    return `gray:${band}`;
+  }
+
+  function cloneCanvasImage(sourceCanvas) {
+    if (!sourceCanvas) return null;
+    if (typeof document === "undefined" || typeof document.createElement !== "function") return sourceCanvas;
+    if (typeof navigator !== "undefined" && /jsdom/i.test(String(navigator.userAgent || ""))) {
+      return sourceCanvas;
+    }
+    try {
+      const copy = document.createElement("canvas");
+      copy.width = Math.max(1, sourceCanvas.width || 1);
+      copy.height = Math.max(1, sourceCanvas.height || 1);
+      const ctx = copy.getContext("2d", { alpha: false });
+      if (ctx && typeof ctx.drawImage === "function") ctx.drawImage(sourceCanvas, 0, 0);
+      return copy;
+    } catch (_err) {
+      return sourceCanvas;
+    }
+  }
+
+  function updateScreenPreviewCache(ds, modeKey, eff, sourceCanvas) {
+    if (!ds || !sourceCanvas) return;
+    ds.lastScreenFrame = {
+      modeKey,
+      eff,
+      viewX: ds.view.x,
+      viewY: ds.view.y,
+      canvas: cloneCanvasImage(sourceCanvas)
+    };
+  }
+
+  function drawCachedScreenPreview(ds, modeKey, eff) {
+    const frame = ds?.lastScreenFrame;
+    if (!frame || frame.modeKey !== modeKey || !frame.canvas) return false;
+    const prevEff = Math.max(1e-9, Number(frame.eff) || 0);
+    const scale = eff / prevEff;
+    if (!Number.isFinite(scale) || scale <= 0) return false;
+
+    const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
+    const dx = ((Number(frame.viewX) || 0) - ds.view.x) * eff;
+    const dy = ((Number(frame.viewY) || 0) - ds.view.y) * eff;
+
+    cpuCtx.save();
+    cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cpuCtx.imageSmoothingEnabled = false;
+    cpuCtx.fillStyle = "#000";
+    cpuCtx.fillRect(0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
+    cpuCtx.drawImage(
+      frame.canvas,
+      dx,
+      dy,
+      frame.canvas.width * scale,
+      frame.canvas.height * scale
+    );
+    cpuCtx.restore();
+
+    if (els.cpuCanvas?.style) els.cpuCanvas.style.display = "block";
+    if (els.gpuCanvas?.style) els.gpuCanvas.style.display = "none";
+    return true;
   }
 
   function scheduleRender() {
@@ -149,8 +213,10 @@ export function createRenderer(deps) {
     const seq = ++state.renderSeq;
     resizeCanvases();
     const dpr = window.devicePixelRatio || 1;
-    const eff = ds.view.scale * dpr;
     const colorMode = isThreeBandColorMode(ds);
+    const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
+    const band = ds.activeBand;
+    const modeKey = renderModeKey(ds, band, colorMode, colorRenderMode);
 
     let useGPU = false;
     if (!colorMode && gpuSupported) {
@@ -158,18 +224,22 @@ export function createRenderer(deps) {
       if (ok) useGPU = true;
     }
 
-    els.gpuCanvas.style.display = useGPU ? "block" : "none";
-    els.cpuCanvas.style.display = useGPU ? "none" : "block";
-
     clampView();
-    const band = ds.activeBand;
+    const eff = ds.view.scale * dpr;
     const settings = getBandSettings(ds, band);
 
     const reuse = !!opts.reuseRaster;
     let raster = null;
     let compositeRaster = null;
+    const reuseComposite = reuse && ds.lastCompositeRaster && ds.lastCompositeRaster.mode === colorRenderMode;
+    const reuseGray = reuse && ds.lastRaster && ds.lastRaster.band === band;
+    const needsFreshRaster = colorMode ? !reuseComposite : !reuseGray;
+    if (needsFreshRaster && drawCachedScreenPreview(ds, modeKey, eff)) {
+      drawOverlays(ds);
+      updateHud();
+    }
     if (colorMode) {
-      if (reuse && ds.lastCompositeRaster && ds.lastCompositeRaster.mode === getThreeBandDisplayMode(ds)) {
+      if (reuseComposite) {
         compositeRaster = ds.lastCompositeRaster;
       } else {
         compositeRaster = await readCompositeRaster(ds, eff);
@@ -199,6 +269,8 @@ export function createRenderer(deps) {
 
     try {
       const t0 = now();
+      if (els.gpuCanvas?.style) els.gpuCanvas.style.display = useGPU ? "block" : "none";
+      if (els.cpuCanvas?.style) els.cpuCanvas.style.display = useGPU ? "none" : "block";
       if (colorMode) {
         const channelRasters = compositeRaster.channelBands.map((channelBand) => compositeRaster.rasterByBand.get(channelBand));
         const channelParams = compositeRaster.channelBands.map((channelBand) => {
@@ -215,6 +287,7 @@ export function createRenderer(deps) {
         cpuRenderColor(channelRasters, channelParams);
       } else if (useGPU) gpuRender(raster.dataF32, raster.w, raster.h, params);
       else cpuRenderGray(raster.dataF32, raster.w, raster.h, params);
+      updateScreenPreviewCache(ds, modeKey, eff, useGPU ? els.gpuCanvas : els.cpuCanvas);
 
       state.lastRenderMs = now() - t0;
       setStatus("ready", "ok");

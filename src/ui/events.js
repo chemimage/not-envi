@@ -26,6 +26,7 @@ export function createInteractionController(deps) {
     updateHud,
     screenToImage,
     clampView,
+    scheduleRender,
     render,
     minScaleFor,
     scaleToSlider,
@@ -36,6 +37,7 @@ export function createInteractionController(deps) {
   const touchGesture = {
     pinch: null
   };
+  const requestRender = (typeof scheduleRender === "function") ? scheduleRender : render;
   const isUiTarget = (target) => !!(
     target
     && target.closest
@@ -154,7 +156,7 @@ export function createInteractionController(deps) {
       ds.view.x -= dx / ds.view.scale;
       ds.view.y -= dy / ds.view.scale;
       clampView();
-      render();
+      requestRender();
     }
 
     if (state.selection.drawing) {
@@ -212,7 +214,7 @@ export function createInteractionController(deps) {
     clampView();
     els.zoom.value = String(scaleToSlider(ds.view.scale));
     updateZoomLabel();
-    render();
+    requestRender();
   }
 
   function zoomAt(factor, sx, sy) {

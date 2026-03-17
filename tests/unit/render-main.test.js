@@ -151,4 +151,45 @@ describe("render-main", () => {
     expect(readBandWindow).toHaveBeenCalledTimes(3);
     expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
   });
+
+  test("render draws cached screen preview while a fresh raster is loading", async () => {
+    let releaseRead = null;
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: 8, y: 6, scale: 1.5 },
+      meta: { samples: 200, lines: 120, interleave: "bsq" },
+      ds: {},
+      lastRaster: null,
+      lastScreenFrame: {
+        modeKey: "gray:0",
+        eff: 1,
+        viewX: 0,
+        viewY: 0,
+        canvas: { width: 320, height: 180 }
+      }
+    };
+    const readBandWindow = vi.fn(async (_meta, _src, _band, _x0, _y0, outW, outH) => (
+      new Promise((resolve) => {
+        releaseRead = () => resolve(new Float32Array(outW * outH));
+      })
+    ));
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      readBandWindow,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    const renderPromise = renderer.render();
+
+    const cpuCtx = deps.els.cpuCanvas.getContext();
+    expect(cpuCtx.drawImage).toHaveBeenCalledTimes(1);
+    expect(deps.els.cpuCanvas.style.display).toBe("block");
+    expect(deps.els.gpuCanvas.style.display).toBe("none");
+
+    releaseRead();
+    await renderPromise;
+  });
 });
