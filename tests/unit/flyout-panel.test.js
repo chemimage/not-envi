@@ -6,6 +6,33 @@ describe("flyout panel wiring", () => {
     vi.restoreAllMocks();
   });
 
+  test("initial collapsed auto-hide state stays hidden until opened", () => {
+    document.body.innerHTML = `
+      <aside id="panel" data-open="false" data-pinned="false">
+        <div id="header">
+          <h2>Bands</h2>
+          <button id="pin" type="button">
+            <i class="fa-solid fa-thumbtack-slash" aria-hidden="true"></i>
+          </button>
+        </div>
+      </aside>
+    `;
+
+    const panel = document.querySelector("#panel");
+    const header = document.querySelector("#header");
+    const btnPin = document.querySelector("#pin");
+
+    wireFlyoutPanel({ panel, header, btnPin });
+
+    expect(panel.dataset.pinned).toBe("false");
+    expect(panel.dataset.open).toBe("false");
+    expect(btnPin.getAttribute("aria-pressed")).toBe("false");
+    expect(btnPin.dataset.pinned).toBe("false");
+
+    header.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(panel.dataset.open).toBe("true");
+  });
+
   test("single thumbtack button toggles pinned and auto-hide states", () => {
     document.body.innerHTML = `
       <aside id="panel" data-open="true" data-pinned="true">
