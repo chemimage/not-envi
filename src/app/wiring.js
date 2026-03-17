@@ -239,6 +239,20 @@ export function wireApp(deps) {
     setSpectrumPickEnabled(!!active);
   }
 
+  function reactivateDrawTool(tool) {
+    if (!setDrawTool) return;
+    setDrawTool("none");
+    setDrawTool(tool);
+  }
+
+  function clearAllAnnotationsFromEraser(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    if (clearAllAnnotations) clearAllAnnotations();
+    reactivateDrawTool("eraser");
+    syncDrawToolUI();
+  }
+
   function toggleSpatialMode() {
     const isOpen = getAnalysisHistogramOpen
       ? !!getAnalysisHistogramOpen()
@@ -263,7 +277,46 @@ export function wireApp(deps) {
   if (els.toolRuler && setDrawTool) els.toolRuler.onclick = () => { setDrawTool("ruler"); syncDrawToolUI(); };
   if (els.toolRect && setDrawTool) els.toolRect.onclick = () => { setDrawTool("rect"); syncDrawToolUI(); };
   if (els.toolShape && setDrawTool) els.toolShape.onclick = () => { setDrawTool("shape"); syncDrawToolUI(); };
-  if (els.toolEraser && setDrawTool) els.toolEraser.onclick = () => { setDrawTool("eraser"); syncDrawToolUI(); };
+  let eraserTouchLastTapAt = 0;
+  let eraserTouchResetTimer = null;
+  let eraserTouchSuppressClick = false;
+  function resetEraserTouchTapState() {
+    eraserTouchLastTapAt = 0;
+    if (!eraserTouchResetTimer) return;
+    clearTimeout(eraserTouchResetTimer);
+    eraserTouchResetTimer = null;
+  }
+
+  if (els.toolEraser && setDrawTool) {
+    if (els.toolEraser.addEventListener) {
+      els.toolEraser.addEventListener("pointerup", (ev) => {
+        if (ev.pointerType !== "touch") return;
+        const tapAt = Number.isFinite(ev.timeStamp) ? ev.timeStamp : Date.now();
+        const isDoubleTap = eraserTouchLastTapAt > 0 && (tapAt - eraserTouchLastTapAt) <= 360;
+        resetEraserTouchTapState();
+        if (!isDoubleTap) {
+          eraserTouchLastTapAt = tapAt;
+          eraserTouchResetTimer = setTimeout(() => {
+            eraserTouchResetTimer = null;
+            eraserTouchLastTapAt = 0;
+          }, 420);
+          return;
+        }
+        eraserTouchSuppressClick = true;
+        clearAllAnnotationsFromEraser(ev);
+      });
+    }
+    els.toolEraser.onclick = (ev) => {
+      if (eraserTouchSuppressClick) {
+        eraserTouchSuppressClick = false;
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        return;
+      }
+      setDrawTool("eraser");
+      syncDrawToolUI();
+    };
+  }
   if (els.btnToolAreaMode && setAreaSelectionMode) {
     els.btnToolAreaMode.onclick = () => {
       setAreaSelectionMode();
@@ -276,16 +329,7 @@ export function wireApp(deps) {
     };
   }
   if (els.toolEraser) {
-    els.toolEraser.ondblclick = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (clearAllAnnotations) clearAllAnnotations();
-      if (setDrawTool) {
-        setDrawTool("none");
-        setDrawTool("eraser");
-      }
-      syncDrawToolUI();
-    };
+    els.toolEraser.ondblclick = (ev) => clearAllAnnotationsFromEraser(ev);
   }
   if (Array.isArray(els.drawColorSwatches) && setDrawColor) {
     for (const swatch of els.drawColorSwatches) {

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { wireApp } from "../../src/app/wiring.js";
 
 function noop() {}
@@ -6,6 +6,198 @@ function noop() {}
 function makeButton() {
   return { onclick: null, classList: { add: noop, remove: noop }, addEventListener: noop };
 }
+
+function setupEraserHarness() {
+  const windowAdd = vi.spyOn(window, "addEventListener").mockImplementation(noop);
+
+  document.body.innerHTML = `
+    <div id="drawTools"></div>
+    <button id="toolEraser" type="button"></button>
+    <div id="main"></div>
+    <canvas id="thumb"></canvas>
+    <input id="zoom" />
+    <input id="chkGrid" type="checkbox" />
+    <button id="btnExpCancel" type="button"></button>
+    <button id="btnExpGo" type="button"></button>
+    <input id="bandSearch" />
+    <button id="btnExpandAll" type="button"></button>
+    <button id="btnCollapseAll" type="button"></button>
+    <button id="btnReset" type="button"></button>
+    <button id="btnAuto" type="button"></button>
+    <input id="slContrast" />
+    <input id="slBrightness" />
+    <input id="slGain" />
+    <input id="numContrast" />
+    <input id="numBrightness" />
+    <input id="numGain" />
+    <input id="numMin" />
+    <input id="numMax" />
+    <canvas id="hist"></canvas>
+    <div id="dropzone"></div>
+    <input id="filePicker" type="file" />
+    <input id="expFormatPng" type="radio" />
+    <input id="expFormatTiff" type="radio" />
+    <input id="expModeRaw" type="radio" />
+    <input id="expModeRendered" type="radio" />
+    <input id="expRawScopeSel" type="radio" />
+    <input id="expRawScopeWhole" type="radio" />
+    <input id="expRenScopeSel" type="radio" />
+    <input id="expRenScopeView" type="radio" />
+    <input id="expRenScopeWhole" type="radio" />
+    <dialog id="exportDlg"></dialog>
+    <canvas id="cpuCanvas"></canvas>
+  `;
+
+  const els = {
+    drawTools: document.querySelector("#drawTools"),
+    toolEraser: document.querySelector("#toolEraser"),
+    main: document.querySelector("#main"),
+    thumb: document.querySelector("#thumb"),
+    zoom: document.querySelector("#zoom"),
+    chkGrid: document.querySelector("#chkGrid"),
+    btnExpCancel: document.querySelector("#btnExpCancel"),
+    btnExpGo: document.querySelector("#btnExpGo"),
+    bandSearch: document.querySelector("#bandSearch"),
+    btnExpandAll: document.querySelector("#btnExpandAll"),
+    btnCollapseAll: document.querySelector("#btnCollapseAll"),
+    btnReset: document.querySelector("#btnReset"),
+    btnAuto: document.querySelector("#btnAuto"),
+    slContrast: document.querySelector("#slContrast"),
+    slBrightness: document.querySelector("#slBrightness"),
+    slGain: document.querySelector("#slGain"),
+    numContrast: document.querySelector("#numContrast"),
+    numBrightness: document.querySelector("#numBrightness"),
+    numGain: document.querySelector("#numGain"),
+    numMin: document.querySelector("#numMin"),
+    numMax: document.querySelector("#numMax"),
+    hist: document.querySelector("#hist"),
+    dropzone: document.querySelector("#dropzone"),
+    filePicker: document.querySelector("#filePicker"),
+    expFormatPng: document.querySelector("#expFormatPng"),
+    expFormatTiff: document.querySelector("#expFormatTiff"),
+    expModeRaw: document.querySelector("#expModeRaw"),
+    expModeRendered: document.querySelector("#expModeRendered"),
+    expRawScopeSel: document.querySelector("#expRawScopeSel"),
+    expRawScopeWhole: document.querySelector("#expRawScopeWhole"),
+    expRenScopeSel: document.querySelector("#expRenScopeSel"),
+    expRenScopeView: document.querySelector("#expRenScopeView"),
+    expRenScopeWhole: document.querySelector("#expRenScopeWhole"),
+    exportDlg: document.querySelector("#exportDlg"),
+    cpuCanvas: document.querySelector("#cpuCanvas")
+  };
+
+  els.hist.setPointerCapture = noop;
+  els.hist.releasePointerCapture = noop;
+
+  const state = {
+    datasets: [],
+    histDrag: { active: false, handle: null },
+    selection: { enabled: false },
+    ioParallel: true
+  };
+  let activeTool = "none";
+  const setDrawTool = vi.fn((tool) => {
+    const next = tool === "eraser" ? "eraser" : "none";
+    activeTool = activeTool === next ? "none" : next;
+  });
+  const clearAllAnnotations = vi.fn();
+
+  wireApp({
+    state,
+    els,
+    clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+    getActive: () => ({ drawings: [] }),
+    closeSpectrum: noop,
+    exportSpectrumCSV: noop,
+    screenToImage: () => ({ x: 0, y: 0 }),
+    openSpectrumAt: noop,
+    onPointerDown: noop,
+    onPointerMove: noop,
+    onPointerUp: noop,
+    onPointerCancel: noop,
+    onPointerLeave: noop,
+    onWheel: noop,
+    onThumbClick: noop,
+    fitToScreen: noop,
+    clampView: noop,
+    scaleToSlider: () => 50,
+    updateZoomLabel: noop,
+    render: noop,
+    zoomAt: noop,
+    sliderToScale: () => 1,
+    minScaleFor: () => 1,
+    setIOParallel: noop,
+    clearSelection: noop,
+    setStatus: noop,
+    openExportDialog: noop,
+    updateExportDialogUI: noop,
+    updateExportEstimate: noop,
+    runExportFromDialog: async () => {},
+    rebuildBandTree: noop,
+    resetDisplay: noop,
+    autoDisplay: noop,
+    resolveDisplayControlBand: () => 0,
+    getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+    drawHistogram: noop,
+    applyRangeFromNumbers: noop,
+    histPickHandle: () => null,
+    applyHistogramDrag: noop,
+    addDatasetsFromFileList: async () => {},
+    resizeCanvases: noop,
+    redrawSpectrum: noop,
+    disposePyramid: noop,
+    updateMetaUI: noop,
+    updatePerf: noop,
+    getDrawTool: () => activeTool,
+    getSpectrumPickEnabled: () => false,
+    getEffectiveAreaSelectionCount: () => 0,
+    getEffectiveAreaSelectionKey: () => "",
+    getAreaSelectionMode: () => "single",
+    getDrawColor: () => "#ff2d2d",
+    setDrawTool,
+    setSpectrumPickEnabled: noop,
+    setAreaSelectionMode: noop,
+    setDrawColor: noop,
+    selectAreaAtPointer: () => false,
+    isAreaMovePointer: () => false,
+    beginAreaMoveAtPointer: () => false,
+    updateAreaMoveAtPointer: noop,
+    finishAreaMoveAtPointer: noop,
+    cancelAreaMove: noop,
+    resolvePointerCursor: () => "",
+    isDrawingPointer: () => false,
+    beginDrawingAtPointer: () => false,
+    updateDrawingAtPointer: noop,
+    finishDrawingAtPointer: noop,
+    cancelDrawing: noop,
+    eraseDrawingAtPointer: noop,
+    clearAllAnnotations,
+    updateRulerHoverAtPointer: noop,
+    clearRulerHover: noop,
+    toggleAnalysisHistogramPanel: noop,
+    getAnalysisHistogramOpen: () => false,
+    setAnalysisHistogramOpen: noop,
+    closeAnalysisHistogramPanel: noop,
+    refreshAnalysisHistogram: async () => {},
+    positionAnalysisHistogramPanel: noop,
+    onAnalysisHistogramPointerMove: noop,
+    onAnalysisHistogramPointerLeave: noop,
+    openSpectrumForEffectiveArea: async () => {},
+    updateZoomLabelBoot: noop,
+    setGpuBadgeAvailable: noop
+  });
+
+  return {
+    els,
+    clearAllAnnotations,
+    getActiveTool: () => activeTool,
+    windowAdd
+  };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("app wiring", () => {
   test("boot wiring initializes status/meta/perf and gpu badge", () => {
@@ -122,6 +314,46 @@ describe("app wiring", () => {
     expect(updateZoomLabelBoot).toHaveBeenCalled();
     expect(setIOParallel).toHaveBeenCalledWith(true);
     expect(els.gpuBadge.textContent).toBe("ok");
+    windowAdd.mockRestore();
+  });
+
+  test("touch double-tap on eraser clears all annotations and keeps eraser active", () => {
+    vi.useFakeTimers();
+    const { els, clearAllAnnotations, getActiveTool, windowAdd } = setupEraserHarness();
+
+    const dispatchTouchPointerUp = (timeStamp) => {
+      const ev = new Event("pointerup", { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, "pointerType", { value: "touch" });
+      Object.defineProperty(ev, "timeStamp", { value: timeStamp });
+      els.toolEraser.dispatchEvent(ev);
+    };
+
+    dispatchTouchPointerUp(100);
+    els.toolEraser.click();
+    expect(getActiveTool()).toBe("eraser");
+    expect(clearAllAnnotations).not.toHaveBeenCalled();
+
+    dispatchTouchPointerUp(320);
+    els.toolEraser.click();
+    expect(clearAllAnnotations).toHaveBeenCalledTimes(1);
+    expect(getActiveTool()).toBe("eraser");
+
+    windowAdd.mockRestore();
+  });
+
+  test("desktop double-click on eraser clears all annotations and keeps eraser active", () => {
+    const { els, clearAllAnnotations, getActiveTool, windowAdd } = setupEraserHarness();
+
+    els.toolEraser.click();
+    expect(getActiveTool()).toBe("eraser");
+
+    els.toolEraser.click();
+    expect(getActiveTool()).toBe("none");
+
+    els.toolEraser.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    expect(clearAllAnnotations).toHaveBeenCalledTimes(1);
+    expect(getActiveTool()).toBe("eraser");
+
     windowAdd.mockRestore();
   });
 });
