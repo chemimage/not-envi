@@ -85,8 +85,7 @@ function inferCmInverseUnitFromEntries(entries) {
 function resolveSpectralUnit(ds) {
   const explicit = (ds?.meta?.wlUnits && String(ds.meta.wlUnits).trim()) ? String(ds.meta.wlUnits).trim() : "";
   if (explicit) return explicit;
-  return inferCmInverseUnitFromEntries(ds?.meta?.wavelengths)
-    || inferCmInverseUnitFromEntries(ds?.meta?.bandNames);
+  return inferCmInverseUnitFromEntries(ds?.meta?.wavelengths);
 }
 
 export function createSpectrumController(deps) {

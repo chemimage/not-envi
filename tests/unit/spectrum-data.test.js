@@ -98,27 +98,4 @@ describe("spectrum-data", () => {
     const withUnits = makeDs({ ...makeMeta("bsq"), wavelengths: ["4000 cm-1", "3990 cm^-1", "3980 cm⁻1"] });
     expect(wavelengthArrayOrNull(withUnits)).toEqual([4000, 3990, 3980]);
   });
-
-  test("wavelengthArrayOrNull falls back to spectral band names but rejects generic labels", () => {
-    const fromBandNames = makeDs({
-      ...makeMeta("bsq"),
-      wavelengths: null,
-      bandNames: [1081, 1140, 1237]
-    });
-    expect(wavelengthArrayOrNull(fromBandNames)).toEqual([1081, 1140, 1237]);
-
-    const fromBandNamesWithUnits = makeDs({
-      ...makeMeta("bsq"),
-      wavelengths: null,
-      bandNames: ["4000 cm-1", "3990 cm^-1", "3980 cm⁻1"]
-    });
-    expect(wavelengthArrayOrNull(fromBandNamesWithUnits)).toEqual([4000, 3990, 3980]);
-
-    const genericLabels = makeDs({
-      ...makeMeta("bsq"),
-      wavelengths: null,
-      bandNames: ["Band 1", "Band 2", "Band 3"]
-    });
-    expect(wavelengthArrayOrNull(genericLabels)).toBeNull();
-  });
 });

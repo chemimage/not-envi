@@ -27,20 +27,6 @@ wavelength = {0.45,
     expect(parsed.wavelength).toEqual([0.45, 0.55]);
   });
 
-  test("normalizeMeta accepts plural wavelengths alias", () => {
-    const norm = normalizeMeta({
-      samples: 4,
-      lines: 3,
-      bands: 2,
-      interleave: "bsq",
-      "data type": 4,
-      wavelengths: [1081, 1140],
-      "wavelength units": "cm-1"
-    });
-    expect(norm.wavelengths).toEqual([1081, 1140]);
-    expect(norm.wlUnits).toBe("cm-1");
-  });
-
   test("normalizeMeta validates required fields and maps types", () => {
     const norm = normalizeMeta({
       samples: 64,

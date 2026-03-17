@@ -79,7 +79,7 @@ export function normalizeMeta(raw) {
   const byteOrder = Number(get("byte order", 0)) || 0;
   const littleEndian = byteOrder === 0;
 
-  let wavelengths = get("wavelength", get("wavelengths", null));
+  let wavelengths = get("wavelength", null);
   if (Array.isArray(wavelengths)) {
     wavelengths = wavelengths.map((w) => {
       const n = Number(w);

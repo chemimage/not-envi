@@ -53,43 +53,15 @@ export async function readSpectrumAtPixel(ds, ix, iy, concurrency = 2) {
 }
 
 export function wavelengthArrayOrNull(ds) {
-  const axisEntries = resolveSpectralAxisEntries(ds?.meta);
-  if (!axisEntries) return null;
-  const out = new Array(axisEntries.length);
-  for (let i = 0; i < axisEntries.length; i += 1) {
-    const n = parseSpectralNumber(axisEntries[i]);
+  const wl = ds.meta.wavelengths;
+  if (!Array.isArray(wl) || wl.length !== ds.meta.bands) return null;
+  const out = new Array(wl.length);
+  for (let i = 0; i < wl.length; i += 1) {
+    const n = parseSpectralNumber(wl[i]);
     if (!Number.isFinite(n)) return null;
     out[i] = n;
   }
   return out;
-}
-
-function resolveSpectralAxisEntries(meta) {
-  if (!meta) return null;
-  const wl = meta.wavelengths;
-  if (Array.isArray(wl) && wl.length === meta.bands) return wl;
-  const names = meta.bandNames;
-  if (!Array.isArray(names) || names.length !== meta.bands) return null;
-  if (!bandNamesLookLikeSpectralAxis(names)) return null;
-  return names;
-}
-
-function bandNamesLookLikeSpectralAxis(entries) {
-  if (!Array.isArray(entries) || !entries.length) return false;
-  for (let i = 0; i < entries.length; i += 1) {
-    const entry = entries[i];
-    if (typeof entry === "number") {
-      if (!Number.isFinite(entry)) return false;
-      continue;
-    }
-    if (typeof entry !== "string") return false;
-    const text = entry.trim().replace(/,/g, "");
-    if (!text) return false;
-    if (!/^[+-]?\d*\.?\d+(?:[eE][+-]?\d+)?(?:\s*(?:cm-1|cm\^-1|cm⁻1|1\/cm|nm|um|µm|μm))?$/i.test(text)) {
-      return false;
-    }
-  }
-  return true;
 }
 
 function parseSpectralNumber(v) {
