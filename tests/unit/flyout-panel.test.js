@@ -76,7 +76,10 @@ describe("flyout panel wiring", () => {
     expect(panel.dataset.pinned).toBe("false");
     expect(panel.dataset.open).toBe("false");
 
-    header.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    header.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true }));
+    expect(panel.dataset.open).toBe("true");
+
+    panel.dispatchEvent(new Event("pointerleave"));
     expect(panel.dataset.open).toBe("true");
 
     outside.dispatchEvent(new Event("pointerdown", { bubbles: true }));

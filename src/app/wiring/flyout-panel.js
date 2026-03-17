@@ -35,7 +35,9 @@ export function wireFlyoutPanel({
     const nextPinned = isPinned();
     const stateLabel = nextPinned
       ? "Pinned: panel stays open"
-      : "Auto-hide: panel hides after cursor leaves";
+      : (supportsHover()
+          ? "Auto-hide: panel hides after cursor leaves"
+          : "Auto-hide: panel hides after tapping outside");
     btnPin.dataset.pinned = nextPinned ? "true" : "false";
     btnPin.title = stateLabel;
     btnPin.setAttribute("aria-label", stateLabel);
@@ -82,7 +84,22 @@ export function wireFlyoutPanel({
   }
 
   if (header) {
+    let suppressClick = false;
+    header.addEventListener("pointerdown", (ev) => {
+      if (supportsHover() || !ev.target) return;
+      const target = ev.target;
+      if (target.closest && target.closest("button")) return;
+      if (!isOpen()) {
+        suppressClick = true;
+        setOpen(true);
+        if (ev.preventDefault) ev.preventDefault();
+      }
+    });
     header.addEventListener("click", (ev) => {
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
       if (!ev.target) return;
       const target = ev.target;
       if (target.closest && target.closest("button")) return;
@@ -91,9 +108,11 @@ export function wireFlyoutPanel({
   }
 
   panel.addEventListener("pointerenter", () => {
+    if (!supportsHover()) return;
     if (!isPinned() && !isOpen()) setOpen(true);
   });
   panel.addEventListener("pointerleave", () => {
+    if (!supportsHover()) return;
     if (!isPinned()) setOpen(false);
   });
   if (typeof document !== "undefined" && document.addEventListener) {
