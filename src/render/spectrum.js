@@ -88,6 +88,22 @@ function resolveSpectralUnit(ds) {
   return inferCmInverseUnitFromEntries(ds?.meta?.wavelengths);
 }
 
+function resolveUniformBarWidthPx(bandCenters, plotW) {
+  if (!bandCenters || !bandCenters.length) return Math.max(1, plotW * 0.72);
+  const finiteCenters = Array.from(bandCenters)
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (!finiteCenters.length) return Math.max(1, plotW * 0.72);
+  const fallbackGap = plotW / Math.max(1, finiteCenters.length);
+  let minGap = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < finiteCenters.length; i += 1) {
+    const gap = finiteCenters[i] - finiteCenters[i - 1];
+    if (gap > 0 && gap < minGap) minGap = gap;
+  }
+  const slotWidth = Number.isFinite(minGap) ? minGap : fallbackGap;
+  return Math.max(0.5, slotWidth * 0.78);
+}
+
 export function createSpectrumController(deps) {
   const {
     els,
@@ -496,7 +512,7 @@ export function createSpectrumController(deps) {
     }
 
     if (useBarPlot) {
-      const xRange = Math.max(1e-9, xmax - xmin);
+      const barW = resolveUniformBarWidthPx(bandCenters, plotW);
       ctx.fillStyle = "rgba(229,231,235,0.78)";
       ctx.strokeStyle = "rgba(148,163,184,0.95)";
       ctx.lineWidth = 1 * dpr;
@@ -506,16 +522,6 @@ export function createSpectrumController(deps) {
         if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
         const px = xToPx(xv);
         const py = yToPx(yv);
-        const prevX = (i > 0) ? Number(xVals ? xVals[i - 1] : (i - 1)) : Number.NaN;
-        const nextX = (i + 1 < N) ? Number(xVals ? xVals[i + 1] : (i + 1)) : Number.NaN;
-        const leftGap = Number.isFinite(prevX) ? Math.abs(xv - prevX) : Number.NaN;
-        const rightGap = Number.isFinite(nextX) ? Math.abs(nextX - xv) : Number.NaN;
-        let spanX = Number.NaN;
-        if (Number.isFinite(leftGap) && Number.isFinite(rightGap)) spanX = Math.min(leftGap, rightGap);
-        else if (Number.isFinite(leftGap)) spanX = leftGap;
-        else if (Number.isFinite(rightGap)) spanX = rightGap;
-        if (!Number.isFinite(spanX) || spanX <= 0) spanX = xRange / Math.max(1, N);
-        const barW = Math.max(1 * dpr, ((spanX / xRange) * plotW) * 0.72);
         const left = px - (barW * 0.5);
         const h = Math.max(1 * dpr, y1 - py);
         ctx.fillRect(left, py, barW, h);

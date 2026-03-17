@@ -158,6 +158,80 @@ describe("spectrum controller", () => {
     expect(els.specSub.textContent).toContain("px 1, 1");
   });
 
+  test("discrete bar plots use a uniform non-overlapping bar width", async () => {
+    globalThis.requestAnimationFrame = (cb) => {
+      cb();
+      return 1;
+    };
+
+    const specCtx = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      setLineDash: vi.fn(),
+      fillText: vi.fn(),
+      textAlign: "",
+      textBaseline: "",
+      lineWidth: 1,
+      strokeStyle: "",
+      fillStyle: "",
+      font: ""
+    };
+    const els = {
+      specPanel: { style: { display: "none" } },
+      specCanvas: {
+        width: 0,
+        height: 0,
+        getBoundingClientRect: () => ({ width: 300, height: 180 })
+      },
+      specSub: { textContent: "" },
+      specWarn: { textContent: "", style: { display: "none" } },
+      specFoot: { textContent: "" }
+    };
+    const ds = {
+      id: 18,
+      name: "discrete-demo",
+      activeBand: 1,
+      meta: { bands: 4, wlUnits: "Wavenumber", scale: null, bandNames: ["a", "b", "c", "d"] }
+    };
+
+    const ctrl = createSpectrumController({
+      els,
+      specCtx,
+      getActive: () => ds,
+      bandLabel: (_ds, b) => `B${b}`,
+      updatePerf: vi.fn(),
+      sanitizeFilePart: (s) => s,
+      downloadBlob: vi.fn(),
+      readSpectrumAtPixel: async () => new Float32Array([2, 3, 1.5, 2.5]),
+      wavelengthArrayOrNull: () => [1081, 1140, 1237, 1275]
+    });
+
+    await ctrl.openSpectrumAt(ds, 0, 0);
+
+    const barCalls = specCtx.fillRect.mock.calls.filter(([, , w]) => w < 300);
+    expect(barCalls).toHaveLength(4);
+
+    const widths = barCalls.map(([, , w]) => w);
+    for (let i = 1; i < widths.length; i += 1) {
+      expect(widths[i]).toBeCloseTo(widths[0], 6);
+    }
+
+    const slots = barCalls
+      .map(([x, , w]) => ({ left: x, right: x + w }))
+      .sort((a, b) => a.left - b.left);
+    for (let i = 1; i < slots.length; i += 1) {
+      expect(slots[i - 1].right).toBeLessThanOrEqual(slots[i].left);
+    }
+  });
+
   test("pending spectrum state renders placeholder without reading data", async () => {
     globalThis.requestAnimationFrame = (cb) => {
       cb();
