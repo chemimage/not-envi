@@ -19,14 +19,16 @@ export function wireFlyoutPanel({
   const syncCollapsedGeometry = () => {
     if (!header || !title || !window.getComputedStyle) return;
     const headerStyle = window.getComputedStyle(header);
+    const titleStyle = window.getComputedStyle(title);
     const padTop = Number.parseFloat(headerStyle.paddingTop || "0") || 0;
     const padBottom = Number.parseFloat(headerStyle.paddingBottom || "0") || 0;
+    const titlePadLeft = Number.parseFloat(titleStyle.paddingLeft || "0") || 0;
+    const titlePadRight = Number.parseFloat(titleStyle.paddingRight || "0") || 0;
     const measuredWidth = Math.max(
       title.scrollWidth || 0,
-      title.getBoundingClientRect ? title.getBoundingClientRect().width : 0,
-      String(title.textContent || "").trim().length * 8
+      String(title.textContent || "").trim().length * 8 + titlePadLeft + titlePadRight
     );
-    const collapsedSize = Math.max(42, Math.ceil(measuredWidth + padTop + padBottom + 6));
+    const collapsedSize = Math.max(42, Math.ceil(measuredWidth + padTop + padBottom + 4));
     panel.style.setProperty("--flyout-title-size", `${collapsedSize}px`);
   };
 

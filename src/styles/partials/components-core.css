@@ -118,11 +118,21 @@
     left: calc(var(--flyout-visible-header) / 2);
     top: 50%;
     margin: 0;
+    padding-top: 2px;
+    padding-right: 8px;
+    padding-bottom: 2px;
+    padding-left: 8px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transform: translate(-50%, -50%) rotate(-90deg);
     transform-origin: center center;
     white-space: nowrap;
     color: rgb(229 231 235);
     font-size: 12px;
+    line-height: 1;
+    text-align: center;
     z-index: 2;
     pointer-events: none;
   }
@@ -166,11 +176,21 @@
     left: calc(var(--display-visible-header) / 2);
     top: 50%;
     margin: 0;
+    padding-top: 2px;
+    padding-right: 8px;
+    padding-bottom: 2px;
+    padding-left: 8px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transform: translate(-50%, -50%) rotate(-90deg);
     transform-origin: center center;
     white-space: nowrap;
     color: rgb(229 231 235);
     font-size: 12px;
+    line-height: 1;
+    text-align: center;
     z-index: 2;
     pointer-events: none;
   }
@@ -363,4 +383,3 @@
     @apply text-gray-100;
   }
 }
-
