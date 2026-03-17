@@ -529,6 +529,7 @@ import { pointInPolygon } from "./draw-geometry.js";
 
   let renderer = null;
   function resizeCanvases(){ if (renderer) renderer.resizeCanvases(); }
+  function schedulePreviewRender(){ if (renderer) renderer.schedulePreview(); }
   function scheduleRender(){ if (renderer) renderer.scheduleRender(); }
   async function render(opts = {}){ if (renderer) await renderer.render(opts); }
 
@@ -656,6 +657,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     updateHud,
     screenToImage,
     clampView,
+    schedulePreviewRender,
     scheduleRender,
     render,
     minScaleFor,
@@ -801,7 +803,6 @@ import { pointInPolygon } from "./draw-geometry.js";
     setGpuBadgeAvailable: () => {}
   });
 })();
-
 
 
 

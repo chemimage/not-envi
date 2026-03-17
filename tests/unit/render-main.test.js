@@ -87,6 +87,42 @@ describe("render-main", () => {
     raf.mockRestore();
   });
 
+  test("schedulePreview coalesces preview draws into one frame", async () => {
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: 6, y: 4, scale: 1.25 },
+      meta: { samples: 200, lines: 120, interleave: "bsq" },
+      lastScreenFrame: {
+        modeKey: "gray:0",
+        eff: 1,
+        viewX: 0,
+        viewY: 0,
+        canvas: { width: 320, height: 180 }
+      }
+    };
+    const deps = makeDeps({
+      getActive: () => ds
+    });
+    const renderer = createRenderer(deps);
+
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      setTimeout(() => cb(0), 0);
+      return 1;
+    });
+
+    renderer.schedulePreview();
+    renderer.schedulePreview();
+    renderer.schedulePreview();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const cpuCtx = deps.els.cpuCanvas.getContext();
+    expect(raf).toHaveBeenCalledTimes(1);
+    expect(cpuCtx.drawImage).toHaveBeenCalledTimes(1);
+    expect(deps.drawOverlays).toHaveBeenCalledTimes(1);
+    raf.mockRestore();
+  });
+
   test("render keeps zoomed-out direct raster sizing consistent", async () => {
     const ds = {
       id: 1,

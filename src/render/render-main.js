@@ -186,6 +186,34 @@ export function createRenderer(deps) {
     });
   }
 
+  let previewRafPending = false;
+
+  function renderPreview() {
+    const ds = getActive();
+    if (!ds || ds.activeBand == null) return false;
+    resizeCanvases();
+    clampView();
+    const dpr = window.devicePixelRatio || 1;
+    const eff = ds.view.scale * dpr;
+    const colorMode = isThreeBandColorMode(ds);
+    const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
+    const modeKey = renderModeKey(ds, ds.activeBand, colorMode, colorRenderMode);
+    const drew = drawCachedScreenPreview(ds, modeKey, eff);
+    renderThumbnail();
+    updateHud();
+    drawOverlays(ds);
+    return drew;
+  }
+
+  function schedulePreview() {
+    if (previewRafPending) return;
+    previewRafPending = true;
+    requestAnimationFrame(() => {
+      previewRafPending = false;
+      renderPreview();
+    });
+  }
+
   async function render(opts = {}) {
     const ds = getActive();
     if (!ds || ds.activeBand == null) {
@@ -313,6 +341,8 @@ export function createRenderer(deps) {
 
   return {
     resizeCanvases,
+    renderPreview,
+    schedulePreview,
     scheduleRender,
     render
   };

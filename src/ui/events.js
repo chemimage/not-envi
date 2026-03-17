@@ -26,6 +26,7 @@ export function createInteractionController(deps) {
     updateHud,
     screenToImage,
     clampView,
+    schedulePreviewRender,
     scheduleRender,
     render,
     minScaleFor,
@@ -38,11 +39,32 @@ export function createInteractionController(deps) {
     pinch: null
   };
   const requestRender = (typeof scheduleRender === "function") ? scheduleRender : render;
+  const requestPreview = (typeof schedulePreviewRender === "function") ? schedulePreviewRender : requestRender;
+  let settleRenderTimer = null;
   const isUiTarget = (target) => !!(
     target
     && target.closest
     && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#overlayHUD,#hudControls,#analysisHistPanel,#specPanel,dialog")
   );
+
+  function clearSettledRender() {
+    if (!settleRenderTimer) return;
+    clearTimeout(settleRenderTimer);
+    settleRenderTimer = null;
+  }
+
+  function deferSettledRender() {
+    clearSettledRender();
+    settleRenderTimer = setTimeout(() => {
+      settleRenderTimer = null;
+      requestRender();
+    }, 90);
+  }
+
+  function flushSettledRender() {
+    clearSettledRender();
+    requestRender();
+  }
 
   function updateSelectionRect() {
     const x0 = Math.min(state.selection.x0, state.selection.x1);
@@ -94,6 +116,7 @@ export function createInteractionController(deps) {
     if (!ds) return;
     if (isUiTarget(ev.target)) return;
     if (ev.pointerType === "touch") ev.preventDefault();
+    if (ev.pointerType === "touch") clearSettledRender();
     const rect = els.main.getBoundingClientRect();
     state.mouse.dragging = true;
     state.mouse.lastX = ev.clientX - rect.left;
@@ -140,7 +163,7 @@ export function createInteractionController(deps) {
           const midX = (pts[0].x + pts[1].x) * 0.5;
           const midY = (pts[0].y + pts[1].y) * 0.5;
           const dpr = window.devicePixelRatio || 1;
-          applyScaleAt(touchGesture.pinch.startScale * factor, (midX - rect.left) * dpr, (midY - rect.top) * dpr);
+          applyScaleAt(touchGesture.pinch.startScale * factor, (midX - rect.left) * dpr, (midY - rect.top) * dpr, { interactive: true });
         }
         updateHud();
         return;
@@ -156,7 +179,12 @@ export function createInteractionController(deps) {
       ds.view.x -= dx / ds.view.scale;
       ds.view.y -= dy / ds.view.scale;
       clampView();
-      requestRender();
+      if (ev.pointerType === "touch") {
+        requestPreview();
+        deferSettledRender();
+      } else {
+        requestRender();
+      }
     }
 
     if (state.selection.drawing) {
@@ -173,6 +201,8 @@ export function createInteractionController(deps) {
       ev.preventDefault();
       touchPoints.delete(ev.pointerId);
       if (touchPoints.size < 2) touchGesture.pinch = null;
+      if (touchPoints.size === 0) flushSettledRender();
+      else deferSettledRender();
     }
     state.mouse.dragging = false;
     if (state.selection.drawing) {
@@ -187,9 +217,12 @@ export function createInteractionController(deps) {
       if (ev.pointerType === "touch") ev.preventDefault();
       touchPoints.delete(ev.pointerId);
       if (touchPoints.size < 2) touchGesture.pinch = null;
+      if (touchPoints.size === 0) flushSettledRender();
+      else deferSettledRender();
     } else {
       touchPoints.clear();
       touchGesture.pinch = null;
+      flushSettledRender();
     }
     state.mouse.dragging = false;
   }
@@ -199,7 +232,7 @@ export function createInteractionController(deps) {
     state.mouse.dragging = false;
   }
 
-  function applyScaleAt(targetScale, sx, sy) {
+  function applyScaleAt(targetScale, sx, sy, { interactive = false } = {}) {
     const ds = getActive();
     if (!ds) return;
 
@@ -214,7 +247,12 @@ export function createInteractionController(deps) {
     clampView();
     els.zoom.value = String(scaleToSlider(ds.view.scale));
     updateZoomLabel();
-    requestRender();
+    if (interactive) {
+      requestPreview();
+      deferSettledRender();
+    } else {
+      requestRender();
+    }
   }
 
   function zoomAt(factor, sx, sy) {
