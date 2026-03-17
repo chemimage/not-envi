@@ -30,6 +30,16 @@ export function createHistogramController(deps) {
     return (typeof getDisplayBand === "function") ? getDisplayBand(ds) : ds.activeBand;
   }
 
+  function decorateHistogramStats(stats, metadata = {}) {
+    if (!stats) return null;
+    return {
+      ...stats,
+      sampleStep: Number.isFinite(metadata.sampleStep) ? metadata.sampleStep : 1,
+      trueRawSamples: metadata.trueRawSamples !== false,
+      samplingMode: metadata.samplingMode || "raw"
+    };
+  }
+
   function resolveBarFillStyle(ds) {
     const color = (typeof getDisplayColor === "function") ? getDisplayColor(ds) : null;
     if (color === "red") return "rgb(252 165 165 / 0.96)";
@@ -162,7 +172,14 @@ export function createHistogramController(deps) {
     }
 
     if (!values.length) return null;
-    return computeHistogram(new Float32Array(values), 256);
+    return decorateHistogramStats(
+      computeHistogram(new Float32Array(values), 256),
+      {
+        sampleStep: step,
+        trueRawSamples: step === 1,
+        samplingMode: step === 1 ? "selection-raw" : "selection-subsampled"
+      }
+    );
   }
 
   async function buildBandStatsWhole(ds, band) {
@@ -185,7 +202,14 @@ export function createHistogramController(deps) {
         raw = await readBandWindow(ds.meta, ds.ds, band, 0, 0, outW, outH, step);
       }
       const f32 = toFloat32(raw);
-      const stats = computeHistogram(f32, 256);
+      const stats = decorateHistogramStats(
+        computeHistogram(f32, 256),
+        {
+          sampleStep: step,
+          trueRawSamples: step === 1,
+          samplingMode: step === 1 ? "whole-raw" : "whole-subsampled"
+        }
+      );
       ds.bandStatsWhole.set(band, stats);
 
       if (ds.id === state.activeId && ds.activeBand === band && state.histMode === "whole") {
@@ -203,7 +227,14 @@ export function createHistogramController(deps) {
     if (!ds || !ds.lastRaster) return;
     const b = ds.activeBand;
     if (b == null || ds.lastRaster.band !== b) return;
-    const stats = computeHistogram(ds.lastRaster.dataF32, 256);
+    const stats = decorateHistogramStats(
+      computeHistogram(ds.lastRaster.dataF32, 256),
+      {
+        sampleStep: Number.isFinite(ds.lastRaster.step) ? ds.lastRaster.step : 1,
+        trueRawSamples: false,
+        samplingMode: "view-raster"
+      }
+    );
     ds.bandStatsView = stats;
     syncRangeInputsFromSettings(ds, { force: true });
     drawHistogram(ds);

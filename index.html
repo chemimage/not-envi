@@ -195,6 +195,7 @@
     <div id="analysisHistPanel" class="analysis-hist-panel" style="display:none;" aria-hidden="true">
       <canvas id="analysisHistCanvas"></canvas>
       <div class="analysis-hist-hover" id="analysisHistHover">Hover a bin to inspect value/count.</div>
+      <div class="analysis-hist-warning tiny" id="analysisHistWarning" style="display:none;"></div>
       <div class="analysis-hist-stats">
         <div class="k">N</div><div class="v" id="analysisStatN">—</div>
         <div class="k">Min/Max</div><div class="v" id="analysisStatRange">—</div>
@@ -210,6 +211,7 @@
       <div class="spec-head">
         <div class="spec-head-left">
           <div class="spec-sub" id="specSub">—</div>
+          <div class="spec-warning tiny" id="specWarn" style="display:none;"></div>
         </div>
         <div class="spec-head-right">
           <button class="btn tiny" id="btnSpecCSV" title="Export spectrum as CSV">CSV</button>

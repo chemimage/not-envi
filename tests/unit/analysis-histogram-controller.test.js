@@ -55,4 +55,101 @@ describe("analysis-histogram-controller", () => {
     expect(btn.classList.contains("active")).toBe(false);
     expect(btn.getAttribute("aria-pressed")).toBe("false");
   });
+
+  test("refresh shows an approximation warning for subsampled stats", async () => {
+    const panel = document.createElement("div");
+    panel.style.display = "block";
+    panel.setAttribute("aria-hidden", "false");
+    panel.getBoundingClientRect = () => ({ width: 380, height: 260 });
+
+    const canvasCtx = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      setTransform: vi.fn(),
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      strokeRect: vi.fn(),
+      fillStyle: "",
+      strokeStyle: "",
+      lineWidth: 1,
+      font: ""
+    };
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () => ({ width: 320, height: 180, left: 0, top: 0 });
+    canvas.getContext = () => canvasCtx;
+
+    const warning = document.createElement("div");
+    warning.style.display = "none";
+    const hover = document.createElement("div");
+    const statN = document.createElement("div");
+    const statRange = document.createElement("div");
+    const statMeanStd = document.createElement("div");
+    const statMode = document.createElement("div");
+    const statBins = document.createElement("div");
+    const statBinWidth = document.createElement("div");
+    const btn = makeButton();
+    btn.getBoundingClientRect = () => ({ right: 120, top: 60 });
+
+    const stats = {
+      bins: [1, 2, 3],
+      count: 6,
+      min: 0,
+      max: 3,
+      mean: 1.5,
+      stdDev: 0.5,
+      mode: 2,
+      binWidth: 1,
+      sampleStep: 3,
+      trueRawSamples: false,
+      samplingMode: "selection-subsampled"
+    };
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      bandStatsWhole: new Map(),
+      bandStatsSelection: { band: 0, selectionKey: "1", stats }
+    };
+    const state = { analysisHist: { open: true, hoverBin: -1, stats: null } };
+    const ctrl = createAnalysisHistogramController({
+      state,
+      els: {
+        analysisHistPanel: panel,
+        analysisHistCanvas: canvas,
+        analysisHistHover: hover,
+        analysisHistWarning: warning,
+        analysisStatN: statN,
+        analysisStatRange: statRange,
+        analysisStatMeanStd: statMeanStd,
+        analysisStatMode: statMode,
+        analysisStatBins: statBins,
+        analysisStatBinWidth: statBinWidth,
+        btnToolHistogram: btn,
+        main: { getBoundingClientRect: () => ({ width: 800, height: 600 }) }
+      },
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      fmtNoGroup: (n) => String(n),
+      formatNumber: (n) => String(n),
+      getActive: () => ds,
+      getHistogramSelectionItems: () => [{ id: 1 }],
+      histogramSelectionKeyFromItems: () => "1",
+      updateSelectionHistogram: async () => {},
+      buildBandStatsWhole: async () => {},
+      computeHistogram: () => null,
+      resolveEffectiveSelectionBounds: () => null,
+      resolveSelectionBoundsList: () => [],
+      listHistogramSelectionItems: () => [],
+      setStatus: vi.fn()
+    });
+
+    await ctrl.refresh();
+
+    expect(warning.style.display).toBe("block");
+    expect(warning.textContent).toContain("Approximate:");
+    expect(warning.textContent).toContain("3");
+  });
 });

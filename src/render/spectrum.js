@@ -111,6 +111,13 @@ export function createSpectrumController(deps) {
     if (els.specSub) els.specSub.textContent = text;
   }
 
+  function setSpecWarn(text) {
+    if (!els.specWarn) return;
+    const next = String(text || "").trim();
+    els.specWarn.textContent = next;
+    els.specWarn.style.display = next ? "block" : "none";
+  }
+
   function setSpecFoot(text) {
     if (els.specFoot) els.specFoot.textContent = text;
   }
@@ -130,6 +137,19 @@ export function createSpectrumController(deps) {
       selectionCount: Number.isFinite(opts?.sourceMeta?.selectionCount) ? opts.sourceMeta.selectionCount : 0,
       sampleStep: Number.isFinite(opts?.sourceMeta?.sampleStep) ? opts.sourceMeta.sampleStep : 1
     };
+  }
+
+  function syncSpectrumSamplingWarning() {
+    if (specState.source.type !== "area") {
+      setSpecWarn("");
+      return;
+    }
+    const step = Number.isFinite(specState.source.sampleStep) ? specState.source.sampleStep : 1;
+    if (step <= 1) {
+      setSpecWarn("");
+      return;
+    }
+    setSpecWarn(`Approximate: area average is sampled every ${fmtNoGroup(step)} pixels, not every raw pixel.`);
   }
 
   function applySpectrumSubLabel(ds, ix, iy, opts = {}) {
@@ -565,6 +585,7 @@ export function createSpectrumController(deps) {
 
     showSpectrumPanel(true);
     applySpectrumSubLabel(ds, ix, iy, opts);
+    syncSpectrumSamplingWarning();
     await nextFrame();
     if (mySeq !== specSeq) return;
     positionSpectrumFromOptions(ds, opts);
@@ -606,6 +627,7 @@ export function createSpectrumController(deps) {
 
     showSpectrumPanel(true);
     applySpectrumSubLabel(ds, ix, iy, opts);
+    syncSpectrumSamplingWarning();
     setSpecFoot(opts.footLabel && String(opts.footLabel).trim()
       ? String(opts.footLabel)
       : "Computing spectrum...");
@@ -673,6 +695,7 @@ export function createSpectrumController(deps) {
     specSeq++;
     resetSpectrumData();
     specState.source = { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 };
+    setSpecWarn("");
     showSpectrumPanel(false);
   }
 

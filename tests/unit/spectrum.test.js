@@ -47,6 +47,7 @@ describe("spectrum controller", () => {
         getBoundingClientRect: () => ({ width: 300, height: 180 })
       },
       specSub: { textContent: "" },
+      specWarn: { textContent: "", style: { display: "none" } },
       specFoot: { textContent: "" }
     };
     const ds = {
@@ -124,6 +125,7 @@ describe("spectrum controller", () => {
         getBoundingClientRect: () => ({ width: 300, height: 180 })
       },
       specSub: { textContent: "" },
+      specWarn: { textContent: "", style: { display: "none" } },
       specFoot: { textContent: "" }
     };
     const ds = {
@@ -184,6 +186,7 @@ describe("spectrum controller", () => {
         getBoundingClientRect: () => ({ width: 300, height: 180 })
       },
       specSub: { textContent: "" },
+      specWarn: { textContent: "", style: { display: "none" } },
       specFoot: { textContent: "" }
     };
     const ds = {
@@ -216,5 +219,73 @@ describe("spectrum controller", () => {
     expect(els.specSub.textContent).toBe("Area average (computing...)");
     expect(els.specFoot.textContent).toBe("Computing 0/3 bands");
     expect(specCtx.fillText).toHaveBeenCalledWith("Computing area average...", 150, 90);
+  });
+
+  test("subsampled area average shows a warning", async () => {
+    globalThis.requestAnimationFrame = (cb) => {
+      cb();
+      return 1;
+    };
+
+    const specCtx = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      setLineDash: vi.fn(),
+      fillText: vi.fn(),
+      textAlign: "",
+      textBaseline: "",
+      lineWidth: 1,
+      strokeStyle: "",
+      fillStyle: "",
+      font: ""
+    };
+    const els = {
+      specPanel: { style: { display: "none" } },
+      specCanvas: {
+        width: 0,
+        height: 0,
+        getBoundingClientRect: () => ({ width: 300, height: 180 })
+      },
+      specSub: { textContent: "" },
+      specWarn: { textContent: "", style: { display: "none" } },
+      specFoot: { textContent: "" }
+    };
+    const ds = {
+      id: 13,
+      name: "area-demo",
+      activeBand: 0,
+      meta: { bands: 3, wlUnits: "nm", scale: null, bandNames: ["a", "b", "c"] }
+    };
+
+    const ctrl = createSpectrumController({
+      els,
+      specCtx,
+      getActive: () => ds,
+      bandLabel: (_ds, b) => `B${b}`,
+      updatePerf: vi.fn(),
+      sanitizeFilePart: (s) => s,
+      downloadBlob: vi.fn(),
+      readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
+      wavelengthArrayOrNull: () => [500, 600, 700]
+    });
+
+    await ctrl.openSpectrumAt(ds, 0, 0, {
+      sourceType: "area",
+      sourceMeta: { sampleCount: 1000, selectionCount: 2, sampleStep: 4 },
+      yVals: new Float32Array([1, 2, 3]),
+      xVals: [500, 600, 700]
+    });
+
+    expect(els.specWarn.style.display).toBe("block");
+    expect(els.specWarn.textContent).toContain("Approximate:");
+    expect(els.specWarn.textContent).toContain("4");
   });
 });

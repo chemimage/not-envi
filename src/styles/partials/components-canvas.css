@@ -190,6 +190,10 @@
     @apply mt-1 rounded-sm border border-gray-700 bg-gray-950 px-2 py-1 font-mono text-xs text-gray-300;
   }
 
+  .analysis-hist-warning {
+    @apply mt-1 rounded-sm border border-amber-500/30 bg-amber-950/30 px-2 py-1 text-[11px] leading-4 text-amber-200;
+  }
+
   .analysis-hist-stats {
     @apply mt-1 grid gap-x-2 gap-y-1 text-xs;
     grid-template-columns: 96px 1fr;
@@ -394,4 +398,3 @@
     to { background-position: -8px 0, 8px 100%, 0 8px, 100% -8px; }
   }
 }
-

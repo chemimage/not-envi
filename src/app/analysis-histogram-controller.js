@@ -76,6 +76,28 @@ export function createAnalysisHistogramController(deps) {
     els.analysisHistHover.textContent = `Bin ${binIndex}: ${formatNumber(lo)} .. ${formatNumber(hi)}  |  Count ${fmtNoGroup(count)}`;
   }
 
+  function resolveSamplingWarning(stats) {
+    if (!stats || stats.trueRawSamples !== false) return "";
+    const step = Number.isFinite(stats.sampleStep) ? stats.sampleStep : 1;
+    if (stats.samplingMode === "view-raster") {
+      return "Approximate: using the current view raster, not full raw-resolution samples.";
+    }
+    if (stats.samplingMode === "whole-subsampled") {
+      return `Approximate: whole-image histogram is sampled every ${fmtNoGroup(step)} pixel${step === 1 ? "" : "s"}.`;
+    }
+    if (stats.samplingMode === "selection-subsampled") {
+      return `Approximate: selection histogram is sampled every ${fmtNoGroup(step)} pixel${step === 1 ? "" : "s"}.`;
+    }
+    return "Approximate: not using full raw-resolution samples.";
+  }
+
+  function updateSamplingWarning(stats) {
+    if (!els.analysisHistWarning) return;
+    const text = resolveSamplingWarning(stats);
+    els.analysisHistWarning.textContent = text;
+    els.analysisHistWarning.style.display = text ? "block" : "none";
+  }
+
   function drawCanvas(stats) {
     if (!els.analysisHistCanvas) return;
     const canvas = els.analysisHistCanvas;
@@ -158,7 +180,12 @@ export function createAnalysisHistogramController(deps) {
     const wholeStats = ds.bandStatsWhole.get(ds.activeBand) || null;
     if (wholeStats && wholeStats.bins && wholeStats.count > 0) return wholeStats;
     if (ds.lastRaster && ds.lastRaster.band === ds.activeBand && ds.lastRaster.dataF32?.length) {
-      return computeHistogram(ds.lastRaster.dataF32, 256);
+      return {
+        ...computeHistogram(ds.lastRaster.dataF32, 256),
+        sampleStep: Number.isFinite(ds.lastRaster.step) ? ds.lastRaster.step : 1,
+        trueRawSamples: false,
+        samplingMode: "view-raster"
+      };
     }
     return null;
   }
@@ -221,6 +248,7 @@ export function createAnalysisHistogramController(deps) {
     if (!ds) {
       state.analysisHist.stats = null;
       updateStatsPanel(null);
+      updateSamplingWarning(null);
       updateHoverText(null, -1);
       drawCanvas(null);
       return;
@@ -232,6 +260,7 @@ export function createAnalysisHistogramController(deps) {
       const stats = await ensureStatsForPanel(ds);
       state.analysisHist.stats = stats;
       updateStatsPanel(stats);
+      updateSamplingWarning(stats);
       updateHoverText(stats, -1);
       drawCanvas(stats);
       setStatus("ready", "ok");
@@ -239,6 +268,7 @@ export function createAnalysisHistogramController(deps) {
       console.warn("Analysis histogram failed", err);
       state.analysisHist.stats = null;
       updateStatsPanel(null);
+      updateSamplingWarning(null);
       updateHoverText(null, -1);
       drawCanvas(null);
       setStatus("ready", "ok");
@@ -261,6 +291,7 @@ export function createAnalysisHistogramController(deps) {
     state.analysisHist.open = false;
     state.analysisHist.hoverBin = -1;
     syncButtonState();
+    updateSamplingWarning(null);
     if (els.analysisHistPanel) {
       els.analysisHistPanel.style.display = "none";
       els.analysisHistPanel.setAttribute("aria-hidden", "true");

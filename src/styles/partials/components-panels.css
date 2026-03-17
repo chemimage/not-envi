@@ -299,6 +299,10 @@
     @apply text-xs text-gray-300;
   }
 
+  .spec-warning {
+    @apply mt-0.5 text-[11px] leading-4 text-amber-300;
+  }
+
   .spec-canvas {
     @apply block h-[250px] w-full bg-gray-900;
     position: static;
@@ -397,4 +401,3 @@
     }
   }
 }
-
