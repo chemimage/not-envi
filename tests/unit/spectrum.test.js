@@ -369,4 +369,76 @@ describe("spectrum controller", () => {
     expect(els.specWarn.textContent).toContain("Approximate:");
     expect(els.specWarn.textContent).toContain("4");
   });
+
+  test("area spectrum waits for the canvas layout to become non-zero before drawing", async () => {
+    globalThis.requestAnimationFrame = (cb) => {
+      cb();
+      return 1;
+    };
+
+    const specCtx = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      setLineDash: vi.fn(),
+      fillText: vi.fn(),
+      textAlign: "",
+      textBaseline: "",
+      lineWidth: 1,
+      strokeStyle: "",
+      fillStyle: "",
+      font: ""
+    };
+    let rectReadCount = 0;
+    const els = {
+      specPanel: { style: { display: "none" } },
+      specCanvas: {
+        width: 0,
+        height: 0,
+        getBoundingClientRect: () => {
+          rectReadCount += 1;
+          if (rectReadCount === 1) return { width: 0, height: 0 };
+          return { width: 300, height: 180 };
+        }
+      },
+      specSub: { textContent: "" },
+      specWarn: { textContent: "", style: { display: "none" } },
+      specFoot: { textContent: "" }
+    };
+    const ds = {
+      id: 14,
+      name: "area-layout-demo",
+      activeBand: 0,
+      meta: { bands: 3, wlUnits: "nm", scale: null, bandNames: ["a", "b", "c"] }
+    };
+
+    const ctrl = createSpectrumController({
+      els,
+      specCtx,
+      getActive: () => ds,
+      bandLabel: (_ds, b) => `B${b}`,
+      updatePerf: vi.fn(),
+      sanitizeFilePart: (s) => s,
+      downloadBlob: vi.fn(),
+      readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
+      wavelengthArrayOrNull: () => [500, 600, 700]
+    });
+
+    await ctrl.openSpectrumAt(ds, 0, 0, {
+      sourceType: "area",
+      sourceMeta: { sampleCount: 4, selectionCount: 1, sampleStep: 1 },
+      yVals: new Float32Array([1, 2, 3]),
+      xVals: [500, 600, 700]
+    });
+
+    expect(els.specCanvas.width).toBe(300);
+    expect(els.specCanvas.height).toBe(180);
+  });
 });

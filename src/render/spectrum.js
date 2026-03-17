@@ -144,6 +144,26 @@ export function createSpectrumController(deps) {
     });
   }
 
+  function getSpectrumCanvasRect() {
+    if (!els.specCanvas || typeof els.specCanvas.getBoundingClientRect !== "function") return null;
+    return els.specCanvas.getBoundingClientRect();
+  }
+
+  function isUsableSpectrumCanvasRect(rect) {
+    return !!(rect
+      && Number.isFinite(rect.width)
+      && Number.isFinite(rect.height)
+      && rect.width >= 32
+      && rect.height >= 32);
+  }
+
+  async function ensureSpectrumCanvasLayout(maxFrames = 2) {
+    for (let i = 0; i <= maxFrames; i += 1) {
+      if (isUsableSpectrumCanvasRect(getSpectrumCanvasRect())) return;
+      if (i < maxFrames) await nextFrame();
+    }
+  }
+
   function showSpectrumPanel(show) {
     if (!els.specPanel) return;
     els.specPanel.style.display = show ? "block" : "none";
@@ -256,7 +276,7 @@ export function createSpectrumController(deps) {
   function resizeSpecCanvas() {
     if (!els.specCanvas) return;
     const dpr = window.devicePixelRatio || 1;
-    const r = els.specCanvas.getBoundingClientRect();
+    const r = getSpectrumCanvasRect() || { width: 0, height: 0 };
     const w = Math.max(10, Math.floor(r.width * dpr));
     const h = Math.max(10, Math.floor(r.height * dpr));
     if (els.specCanvas.width !== w || els.specCanvas.height !== h) {
@@ -622,6 +642,8 @@ export function createSpectrumController(deps) {
     await nextFrame();
     if (mySeq !== specSeq) return;
     positionSpectrumFromOptions(ds, opts);
+    await ensureSpectrumCanvasLayout();
+    if (mySeq !== specSeq) return;
 
     try {
       let yVals = opts.yVals || null;
@@ -668,6 +690,8 @@ export function createSpectrumController(deps) {
     await nextFrame();
     if (mySeq !== specSeq) return;
     positionSpectrumFromOptions(ds, opts);
+    await ensureSpectrumCanvasLayout();
+    if (mySeq !== specSeq) return;
     drawSpectrumPlaceholder(opts.placeholderText || "Computing spectrum...");
   }
 

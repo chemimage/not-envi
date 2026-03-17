@@ -31,6 +31,20 @@ export function createSpectrumAreaController(deps) {
     return !!(typeof shouldAbort === "function" && shouldAbort());
   }
 
+  function reduceBandValuesLocal(values, sampleIndices) {
+    let sum = 0;
+    let sumSq = 0;
+    let count = 0;
+    for (let i = 0; i < sampleIndices.length; i += 1) {
+      const v = values[sampleIndices[i]];
+      if (!Number.isFinite(v)) continue;
+      sum += v;
+      sumSq += (v * v);
+      count += 1;
+    }
+    return { sum, sumSq, count };
+  }
+
   function nextFrame() {
     return new Promise((resolve) => {
       if (typeof requestAnimationFrame === "function") {
@@ -103,26 +117,25 @@ export function createSpectrumAreaController(deps) {
       try {
         const out = await areaReducer.reduce(values, sampleIndices);
         if (isAborted(shouldAbort)) return ABORTED;
-        return {
+        const reduced = {
           sum: Number(out?.sum) || 0,
           sumSq: Number(out?.sumSq) || 0,
           count: Number(out?.count) || 0
         };
+        const looksValid = Number.isFinite(reduced.sum)
+          && Number.isFinite(reduced.sumSq)
+          && Number.isFinite(reduced.count)
+          && reduced.count >= 0
+          && reduced.count <= sampleIndices.length;
+        if (looksValid && reduced.count > 0) return reduced;
+        const local = reduceBandValuesLocal(values, sampleIndices);
+        if (local.count > 0 || !looksValid || reduced.count === 0) return local;
+        return reduced;
       } catch (_err) {
         // Fallback to local reduction if worker/client path fails.
       }
     }
-    let sum = 0;
-    let sumSq = 0;
-    let count = 0;
-    for (let i = 0; i < sampleIndices.length; i += 1) {
-      const v = values[sampleIndices[i]];
-      if (!Number.isFinite(v)) continue;
-      sum += v;
-      sumSq += (v * v);
-      count += 1;
-    }
-    return { sum, sumSq, count };
+    return reduceBandValuesLocal(values, sampleIndices);
   }
 
   async function buildAreaAverageSpectrum(ds, selections, options = {}) {
