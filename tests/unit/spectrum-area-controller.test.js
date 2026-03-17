@@ -215,4 +215,79 @@ describe("spectrum-area-controller", () => {
     expect(opts.yVals[0]).toBeCloseTo(3);
     expect(opts.yVals[1]).toBeCloseTo(5);
   });
+
+  test("area average ignores non-finite sampled values instead of blanking the spectrum", async () => {
+    const selection = { id: 5, tool: "rect", points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] };
+    const ds = {
+      id: 11,
+      meta: { bands: 1, interleave: "bsq", samples: 2, lines: 2 },
+      ds: {}
+    };
+    const openSpy = vi.fn(async () => {});
+
+    const ctrl = createSpectrumAreaController({
+      getActive: () => ds,
+      spectrum: { openSpectrumAt: openSpy },
+      isHistogramSelectionTool: (item) => item?.tool === "rect" || item?.tool === "shape",
+      getHistogramSelectionItems: () => [selection],
+      resolveSelectionBoundsForSpectrum: () => ({ x0: 0, y0: 0, x1: 1, y1: 1, width: 2, height: 2 }),
+      resolveEffectiveSelectionBounds: () => ({ x0: 0, y0: 0, x1: 1, y1: 1 }),
+      resolveSelectionBoundsList: () => [{ id: 5, x0: 0, y0: 0, x1: 1, y1: 1 }],
+      listHistogramSelectionItems: () => [selection],
+      readBandWindow: async () => new Float32Array([1, Number.NaN, 3, 5]),
+      readBandWindowBIP: async () => new Float32Array([1, Number.NaN, 3, 5]),
+      toFloat32: (arr) => arr,
+      pointInPolygon: () => true,
+      wavelengthArrayOrNull: () => null,
+      fmtNoGroup: (n) => String(n)
+    });
+
+    await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const opts = openSpy.mock.calls[0][3];
+    expect(opts.sourceMeta.sampleCount).toBe(4);
+    expect(opts.yVals[0]).toBeCloseTo(3);
+    expect(Number.isFinite(opts.stdVals[0])).toBe(true);
+  });
+
+  test("area average uses reducer-returned finite counts for normalization", async () => {
+    const selection = { id: 6, tool: "rect", points: [{ x: 0, y: 0 }, { x: 1, y: 0 }] };
+    const ds = {
+      id: 12,
+      meta: { bands: 1, interleave: "bsq", samples: 2, lines: 1 },
+      ds: {}
+    };
+    const openSpy = vi.fn(async () => {});
+    const areaReducer = {
+      reduce: vi.fn(async () => ({ sum: 5, sumSq: 25, count: 1 }))
+    };
+
+    const ctrl = createSpectrumAreaController({
+      getActive: () => ds,
+      spectrum: { openSpectrumAt: openSpy },
+      isHistogramSelectionTool: (item) => item?.tool === "rect" || item?.tool === "shape",
+      getHistogramSelectionItems: () => [selection],
+      resolveSelectionBoundsForSpectrum: () => ({ x0: 0, y0: 0, x1: 1, y1: 0, width: 2, height: 1 }),
+      resolveEffectiveSelectionBounds: () => ({ x0: 0, y0: 0, x1: 1, y1: 0 }),
+      resolveSelectionBoundsList: () => [{ id: 6, x0: 0, y0: 0, x1: 1, y1: 0 }],
+      listHistogramSelectionItems: () => [selection],
+      readBandWindow: async () => new Float32Array([5, Number.NaN]),
+      readBandWindowBIP: async () => new Float32Array([5, Number.NaN]),
+      toFloat32: (arr) => arr,
+      areaReducer,
+      pointInPolygon: () => true,
+      wavelengthArrayOrNull: () => null,
+      fmtNoGroup: (n) => String(n)
+    });
+
+    await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
+
+    expect(areaReducer.reduce).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const opts = openSpy.mock.calls[0][3];
+    expect(opts.sourceMeta.sampleCount).toBe(2);
+    expect(opts.yVals[0]).toBeCloseTo(5);
+    expect(opts.stdVals[0]).toBeCloseTo(0);
+  });
 });

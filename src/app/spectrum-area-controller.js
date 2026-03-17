@@ -114,11 +114,13 @@ export function createSpectrumAreaController(deps) {
     }
     let sum = 0;
     let sumSq = 0;
-    const count = sampleIndices.length;
-    for (let i = 0; i < count; i += 1) {
+    let count = 0;
+    for (let i = 0; i < sampleIndices.length; i += 1) {
       const v = values[sampleIndices[i]];
+      if (!Number.isFinite(v)) continue;
       sum += v;
       sumSq += (v * v);
+      count += 1;
     }
     return { sum, sumSq, count };
   }
@@ -156,6 +158,7 @@ export function createSpectrumAreaController(deps) {
       if (isAborted(shouldAbort)) return ABORTED;
       let sum = 0;
       let sumSq = 0;
+      let finiteCount = 0;
 
       for (const item of sampleItems) {
         if (isAborted(shouldAbort)) return ABORTED;
@@ -172,11 +175,12 @@ export function createSpectrumAreaController(deps) {
         if (reduced === ABORTED) return ABORTED;
         sum += reduced.sum;
         sumSq += reduced.sumSq;
+        finiteCount += reduced.count;
       }
 
-      if (sampleCount > 0) {
-        const mean = sum / sampleCount;
-        const variance = Math.max(0, (sumSq / sampleCount) - (mean * mean));
+      if (finiteCount > 0) {
+        const mean = sum / finiteCount;
+        const variance = Math.max(0, (sumSq / finiteCount) - (mean * mean));
         spectrumMean[band] = mean;
         spectrumStd[band] = Math.sqrt(variance);
       } else {

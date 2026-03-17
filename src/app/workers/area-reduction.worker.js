@@ -15,11 +15,13 @@ self.onmessage = (ev) => {
 
     let sum = 0;
     let sumSq = 0;
-    const count = indices.length;
-    for (let i = 0; i < count; i += 1) {
+    let count = 0;
+    for (let i = 0; i < indices.length; i += 1) {
       const v = values[indices[i]];
+      if (!Number.isFinite(v)) continue;
       sum += v;
       sumSq += (v * v);
+      count += 1;
     }
     self.postMessage({ id, sum, sumSq, count });
   } catch (err) {
@@ -29,4 +31,3 @@ self.onmessage = (ev) => {
     });
   }
 };
-
