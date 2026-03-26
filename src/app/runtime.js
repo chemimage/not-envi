@@ -85,6 +85,11 @@ import { pointInPolygon } from "./draw-geometry.js";
   // ========= Elements =========
 
   const els = collectElements();
+  function resetFilePicker() {
+    if (!els.filePicker) return;
+    try { els.filePicker.value = ""; } catch (_err) {}
+  }
+  resetFilePicker();
 
   const thumbCtx = els.thumb.getContext('2d', {alpha:false});
   const overlayCtx = els.overlayCanvas.getContext('2d', {alpha:true});
@@ -162,7 +167,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     spectrumPickEnabled: false,
     areaSelectionMode: "single",
     analysisHist: { open: false, hoverBin: -1, stats: null },
-    draw: { tool: "none", color: "#ff2d2d", activePointerId: null, draft: null, rulerDrag: null, rulerMove: null, rulerProfileDrag: null, rulerProfileHover: null, rulerHover: null, areaMove: null, nextItemId: 1 },
+    draw: { tool: "none", color: "#ff2d2d", shapeMode: "rect", activePointerId: null, draft: null, rulerDrag: null, rulerMove: null, rulerProfileDrag: null, rulerProfileHover: null, rulerHover: null, areaMove: null, nextItemId: 1 },
 
     exportKind: null,
   };
@@ -212,6 +217,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   function bandLabel(ds, b){ return datasetRuntime ? datasetRuntime.bandLabel(ds, b) : `Band ${b}`; }
   async function addDatasetsFromFileList(files){ if (datasetRuntime) await datasetRuntime.addDatasetsFromFileList(files); }
   async function addDatasetFromFiles(hdrFile, dataFile){ if (datasetRuntime) await datasetRuntime.addDatasetFromFiles(hdrFile, dataFile); }
+  function closeAllDatasets(){ if (datasetRuntime) datasetRuntime.closeAllDatasets(); }
   function closeDataset(id){
     if (spectrum && spectrum.isOpenForDatasetId(id)) closeSpectrum();
     if (datasetRuntime) datasetRuntime.closeDataset(id);
@@ -235,10 +241,12 @@ import { pointInPolygon } from "./draw-geometry.js";
   });
 
   function getDrawTool() { return annotation.getDrawTool(); }
+  function getDrawShapeMode() { return annotation.getDrawShapeMode(); }
   function getSpectrumPickEnabled() { return annotation.getSpectrumPickEnabled(); }
   function setSpectrumPickEnabled(next = null) { return annotation.setSpectrumPickEnabled(next); }
   function getDrawColor() { return annotation.getDrawColor(); }
   function setDrawTool(tool) { annotation.setDrawTool(tool); }
+  function setDrawShapeMode(mode) { return annotation.setDrawShapeMode(mode); }
   function setDrawColor(color) { annotation.setDrawColor(color); }
   function getAreaSelectionMode() { return annotation.getAreaSelectionMode(); }
   function isHistogramSelectionTool(item) { return annotation.isHistogramSelectionTool(item); }
@@ -617,9 +625,30 @@ import { pointInPolygon } from "./draw-geometry.js";
   });
 
   const areaReducer = createAreaReductionWorkerClient();
+  function resetDatasetSession() {
+    closeAllDatasets();
+    resetFilePicker();
+  }
   window.addEventListener("beforeunload", () => {
+    resetDatasetSession();
     if (areaReducer && typeof areaReducer.dispose === "function") areaReducer.dispose();
   }, { once: true });
+  window.addEventListener("pagehide", (ev) => {
+    if (!ev.persisted) return;
+    resetDatasetSession();
+    if (areaReducer && typeof areaReducer.dispose === "function") areaReducer.dispose();
+  });
+  window.addEventListener("pageshow", (ev) => {
+    resetFilePicker();
+    const nav = (typeof performance !== "undefined" && typeof performance.getEntriesByType === "function")
+      ? performance.getEntriesByType("navigation")[0]
+      : null;
+    const isReload = !!nav && nav.type === "reload";
+    if ((ev.persisted || isReload) && state.datasets.length) {
+      closeAllDatasets();
+      setStatus("idle", "");
+    }
+  });
 
   const spectrumArea = createSpectrumAreaController({
     getActive,
@@ -765,12 +794,14 @@ import { pointInPolygon } from "./draw-geometry.js";
     updateMetaUI,
     updatePerf,
     getDrawTool,
+    getDrawShapeMode,
     getSpectrumPickEnabled,
     getEffectiveAreaSelectionCount,
     getEffectiveAreaSelectionKey,
     getAreaSelectionMode,
     getDrawColor,
     setDrawTool,
+    setDrawShapeMode,
     setSpectrumPickEnabled,
     setAreaSelectionMode,
     setDrawColor,

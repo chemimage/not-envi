@@ -104,6 +104,12 @@
     height: var(--tool-btn-size);
   }
 
+  .draw-mode-anchor {
+    position: relative;
+    width: var(--tool-btn-size);
+    min-height: var(--tool-btn-size);
+  }
+
   .draw-color-wrap {
     @apply inline-flex items-center justify-center rounded-sm border border-gray-500 bg-gray-800;
     width: var(--tool-btn-size);
@@ -132,6 +138,51 @@
 
   #drawTools.draw-color-open .draw-color-flyout {
     display: grid;
+  }
+
+  .draw-mode-trigger {
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .draw-mode-trigger span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0 4px;
+    line-height: 1.1;
+  }
+
+  .draw-mode-flyout {
+    position: absolute;
+    left: calc(100% + var(--tool-boundary-gap));
+    top: 0;
+    z-index: 30;
+    min-width: 72px;
+    padding: 6px;
+    border: 1px solid rgb(75 85 99 / 0.92);
+    border-radius: 4px;
+    background: rgb(17 24 39 / 0.96);
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    backdrop-filter: blur(4px);
+  }
+
+  #drawTools.shape-mode-open .draw-mode-flyout {
+    display: flex;
+  }
+
+  .draw-mode-option {
+    @apply rounded-sm border border-gray-600 bg-gray-800 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.05em] text-gray-200 transition-colors hover:border-gray-400;
+    white-space: nowrap;
+  }
+
+  .draw-mode-option.active,
+  .draw-mode-option[aria-pressed="true"] {
+    @apply border-gray-200 bg-gray-100 text-gray-900;
   }
 
   .draw-color-swatch {

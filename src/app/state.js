@@ -15,6 +15,20 @@ export function createAppState() {
     histDrag: { active: false, handle: null },
     histMode: "whole",
     histViewDebounce: null,
+    draw: {
+      tool: "none",
+      color: "#ff2d2d",
+      shapeMode: "rect",
+      activePointerId: null,
+      draft: null,
+      rulerDrag: null,
+      rulerMove: null,
+      rulerProfileDrag: null,
+      rulerProfileHover: null,
+      rulerHover: null,
+      areaMove: null,
+      nextItemId: 1
+    },
     exportKind: null
   };
 }

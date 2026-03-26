@@ -18,6 +18,20 @@ export function createAnnotationController(deps) {
     isDatasetActive
   } = deps;
 
+  function normalizeShapeMode(mode) {
+    return (mode === "1:1" || mode === "3:4" || mode === "9:16" || mode === "polygon")
+      ? mode
+      : "rect";
+  }
+
+  function resolveShapeModeTool(mode) {
+    return normalizeShapeMode(mode) === "polygon" ? "shape" : "rect";
+  }
+
+  function currentShapeMode() {
+    return normalizeShapeMode(state.draw?.shapeMode);
+  }
+
   function pointerToImagePoint(ev, ds) {
     const rect = els.main.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -32,6 +46,10 @@ export function createAnnotationController(deps) {
 
   function getDrawTool() {
     return state.draw.tool;
+  }
+
+  function getDrawShapeMode() {
+    return currentShapeMode();
   }
 
   function getSpectrumPickEnabled() {
@@ -70,7 +88,7 @@ export function createAnnotationController(deps) {
     return state.draw.color;
   }
 
-  function setDrawTool(tool) {
+  function applyDrawTool(tool, { toggleIfSame = true } = {}) {
     const hadDraft = !!state.draw.draft;
     const hadRulerDrag = !!state.draw.rulerDrag;
     const hadRulerMove = !!state.draw.rulerMove;
@@ -81,7 +99,7 @@ export function createAnnotationController(deps) {
     const prevTool = state.draw.tool;
     const next = (tool === "ruler" || tool === "rect" || tool === "shape" || tool === "eraser") ? tool : "none";
     if (next !== "none") state.spectrumPickEnabled = false;
-    state.draw.tool = (prevTool === next) ? "none" : next;
+    state.draw.tool = (toggleIfSame && prevTool === next) ? "none" : next;
     const isCreateTool = state.draw.tool === "ruler" || state.draw.tool === "rect" || state.draw.tool === "shape";
     if (state.draw.tool !== prevTool || !isCreateTool) {
       state.draw.activePointerId = null;
@@ -94,6 +112,26 @@ export function createAnnotationController(deps) {
       state.draw.areaMove = null;
       if (hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerProfileHover || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
     }
+    return state.draw.tool;
+  }
+
+  function setDrawTool(tool) {
+    return applyDrawTool(tool, { toggleIfSame: true });
+  }
+
+  function setDrawShapeMode(mode) {
+    const nextMode = normalizeShapeMode(mode);
+    const prevMode = currentShapeMode();
+    if (nextMode === prevMode) return nextMode;
+    state.draw.shapeMode = nextMode;
+    const activeTool = state.draw.tool;
+    if (activeTool === "rect" || activeTool === "shape") {
+      const nextTool = resolveShapeModeTool(nextMode);
+      if (nextTool !== activeTool) {
+        applyDrawTool(nextTool, { toggleIfSame: false });
+      }
+    }
+    return nextMode;
   }
 
   function setDrawColor(color) {
@@ -401,6 +439,28 @@ export function createAnnotationController(deps) {
     const maxX = Math.max(0, ds.meta.samples - 1);
     const maxY = Math.max(0, ds.meta.lines - 1);
     const minSpan = Math.max(1e-6, 1 / Math.max(1e-6, ds.view.scale));
+    const lockedRatio = resolveLockedRectRatio(item, start, p, handle);
+
+    if (lockedRatio) {
+      const box = resizeAspectLockedRect(start, handle, p, ds, lockedRatio, minSpan);
+      if (!box) return false;
+      const x0 = clamp(Math.min(box.x0, box.x1), 0, maxX);
+      const y0 = clamp(Math.min(box.y0, box.y1), 0, maxY);
+      const x1 = clamp(Math.max(box.x0, box.x1), 0, maxX);
+      const y1 = clamp(Math.max(box.y0, box.y1), 0, maxY);
+      const p0 = item.points[0];
+      const p1 = item.points[item.points.length - 1];
+      if (Math.abs(p0.x - x0) < 1e-9 && Math.abs(p0.y - y0) < 1e-9 && Math.abs(p1.x - x1) < 1e-9 && Math.abs(p1.y - y1) < 1e-9) {
+        return true;
+      }
+      item.points[0] = { x: x0, y: y0 };
+      item.points[item.points.length - 1] = { x: x1, y: y1 };
+      move.lastPoint = p;
+      move.moved = true;
+      refreshSelectionProductsForManipulation(ds, ev, move);
+      render({ reuseRaster: true });
+      return true;
+    }
 
     let x0 = start.x0;
     let y0 = start.y0;
@@ -631,6 +691,141 @@ export function createAnnotationController(deps) {
       x: (pt.x - ds.view.x) * eff,
       y: (pt.y - ds.view.y) * eff
     };
+  }
+
+  function resolveAspectRatio(mode, dx, dy) {
+    const normalized = normalizeShapeMode(mode);
+    if (normalized === "1:1") return { w: 1, h: 1 };
+    if (normalized !== "3:4" && normalized !== "9:16") return null;
+    const [a, b] = normalized.split(":").map((value) => Number(value) || 1);
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    return absX >= absY
+      ? { w: Math.max(a, b), h: Math.min(a, b) }
+      : { w: Math.min(a, b), h: Math.max(a, b) };
+  }
+
+  function constrainRectPointToRatio(anchor, point, ds, ratio, minScale = 0) {
+    if (!ratio) return point;
+
+    const dx = point.x - anchor.x;
+    const dy = point.y - anchor.y;
+    if (!dx && !dy) return point;
+
+    const signX = dx >= 0 ? 1 : -1;
+    const signY = dy >= 0 ? 1 : -1;
+    const maxX = Math.max(0, ds.meta.samples - 1);
+    const maxY = Math.max(0, ds.meta.lines - 1);
+    const maxW = signX >= 0 ? Math.max(0, maxX - anchor.x) : Math.max(0, anchor.x);
+    const maxH = signY >= 0 ? Math.max(0, maxY - anchor.y) : Math.max(0, anchor.y);
+    const idealScale = Math.max(Math.abs(dx) / ratio.w, Math.abs(dy) / ratio.h);
+    const maxScale = Math.max(0, Math.min(maxW / ratio.w, maxH / ratio.h));
+    const boundedScale = Math.min(maxScale, Math.max(minScale, idealScale));
+
+    return {
+      x: anchor.x + (signX * ratio.w * boundedScale),
+      y: anchor.y + (signY * ratio.h * boundedScale)
+    };
+  }
+
+  function constrainRectPoint(anchor, point, ds, mode) {
+    const ratio = resolveAspectRatio(mode, point.x - anchor.x, point.y - anchor.y);
+    return constrainRectPointToRatio(anchor, point, ds, ratio, 0);
+  }
+
+  function resolveLockedRectRatio(item, start, point = null, handle = "") {
+    if (!item) return null;
+    const mode = normalizeShapeMode(item.shapeMode);
+    if (mode === "rect") return null;
+    if (mode === "1:1") return { w: 1, h: 1 };
+    const [a, b] = mode.split(":").map((value) => Number(value) || 1);
+    const wide = { w: Math.max(a, b), h: Math.min(a, b) };
+    const tall = { w: Math.min(a, b), h: Math.max(a, b) };
+
+    if (handle === "e" || handle === "w") return wide;
+    if (handle === "n" || handle === "s") return tall;
+
+    if (point && start && (handle === "nw" || handle === "ne" || handle === "sw" || handle === "se")) {
+      const anchor = {
+        x: handle.includes("w") ? start.x1 : start.x0,
+        y: handle.includes("n") ? start.y1 : start.y0
+      };
+      const dx = point.x - anchor.x;
+      const dy = point.y - anchor.y;
+      return resolveAspectRatio(mode, dx, dy) || wide;
+    }
+
+    if (!start) return wide;
+    const width = Math.abs(start.x1 - start.x0);
+    const height = Math.abs(start.y1 - start.y0);
+    return width >= height ? wide : tall;
+  }
+
+  function resizeAspectLockedRect(start, handle, point, ds, ratio, minSpan) {
+    if (!start || !handle || !ratio) return null;
+    const maxX = Math.max(0, ds.meta.samples - 1);
+    const maxY = Math.max(0, ds.meta.lines - 1);
+    const centerX = (start.x0 + start.x1) * 0.5;
+    const centerY = (start.y0 + start.y1) * 0.5;
+    const minScale = Math.max(0, minSpan / Math.min(ratio.w, ratio.h));
+
+    if (handle === "nw" || handle === "ne" || handle === "sw" || handle === "se") {
+      const anchor = {
+        x: handle.includes("w") ? start.x1 : start.x0,
+        y: handle.includes("n") ? start.y1 : start.y0
+      };
+      const constrained = constrainRectPointToRatio(anchor, point, ds, ratio, minScale);
+      return {
+        x0: Math.min(anchor.x, constrained.x),
+        y0: Math.min(anchor.y, constrained.y),
+        x1: Math.max(anchor.x, constrained.x),
+        y1: Math.max(anchor.y, constrained.y)
+      };
+    }
+
+    if (handle === "e" || handle === "w") {
+      const fixedX = handle === "e" ? start.x0 : start.x1;
+      const maxScaleFromCenter = Math.max(0, 2 * Math.min(centerY, maxY - centerY) / ratio.h);
+      const maxWidthFromSide = handle === "e"
+        ? Math.max(0, maxX - fixedX)
+        : Math.max(0, fixedX);
+      const maxScaleFromSide = Math.max(0, maxWidthFromSide / ratio.w);
+      const scale = Math.min(
+        Math.max(minScale, Math.abs(point.x - fixedX) / ratio.w),
+        maxScaleFromCenter,
+        maxScaleFromSide
+      );
+      const width = ratio.w * scale;
+      const height = ratio.h * scale;
+      const y0 = clamp(centerY - (height * 0.5), 0, maxY);
+      const y1 = clamp(centerY + (height * 0.5), 0, maxY);
+      return handle === "e"
+        ? { x0: fixedX, y0, x1: fixedX + width, y1 }
+        : { x0: fixedX - width, y0, x1: fixedX, y1 };
+    }
+
+    if (handle === "n" || handle === "s") {
+      const fixedY = handle === "n" ? start.y1 : start.y0;
+      const maxScaleFromCenter = Math.max(0, 2 * Math.min(centerX, maxX - centerX) / ratio.w);
+      const maxHeightFromSide = handle === "n"
+        ? Math.max(0, fixedY)
+        : Math.max(0, maxY - fixedY);
+      const maxScaleFromSide = Math.max(0, maxHeightFromSide / ratio.h);
+      const scale = Math.min(
+        Math.max(minScale, Math.abs(point.y - fixedY) / ratio.h),
+        maxScaleFromCenter,
+        maxScaleFromSide
+      );
+      const height = ratio.h * scale;
+      const width = ratio.w * scale;
+      const x0 = clamp(centerX - (width * 0.5), 0, maxX);
+      const x1 = clamp(centerX + (width * 0.5), 0, maxX);
+      return handle === "n"
+        ? { x0, y0: fixedY - height, x1, y1: fixedY }
+        : { x0, y0: fixedY, x1, y1: fixedY + height };
+    }
+
+    return null;
   }
 
   function rulerScreenNormal(ds, item, dpr) {
@@ -960,6 +1155,7 @@ export function createAnnotationController(deps) {
     state.draw.draft = {
       dsId: ds.id,
       tool: state.draw.tool,
+      shapeMode: currentShapeMode(),
       color: state.draw.color,
       points: [p]
     };
@@ -1056,8 +1252,11 @@ export function createAnnotationController(deps) {
     if (!ds || !draft || draft.dsId !== ds.id) return;
     const p = pointerToImagePoint(ev, ds);
     if (draft.tool === "ruler" || draft.tool === "rect") {
-      if (draft.points.length === 1) draft.points.push(p);
-      else draft.points[draft.points.length - 1] = p;
+      const nextPoint = (draft.tool === "rect")
+        ? constrainRectPoint(draft.points[0], p, ds, draft.shapeMode)
+        : p;
+      if (draft.points.length === 1) draft.points.push(nextPoint);
+      else draft.points[draft.points.length - 1] = nextPoint;
     } else if (draft.tool === "shape") {
       const last = draft.points[draft.points.length - 1];
       const minStep = 0.7 / Math.max(1e-6, ds.view.scale);
@@ -1142,6 +1341,7 @@ export function createAnnotationController(deps) {
       const newItem = {
         id: state.draw.nextItemId++,
         tool: draft.tool,
+        shapeMode: draft.tool === "rect" ? normalizeShapeMode(draft.shapeMode) : undefined,
         color: draft.color,
         points: points.slice()
       };
@@ -1175,10 +1375,12 @@ export function createAnnotationController(deps) {
 
   return {
     getDrawTool,
+    getDrawShapeMode,
     getSpectrumPickEnabled,
     setSpectrumPickEnabled,
     getDrawColor,
     setDrawTool,
+    setDrawShapeMode,
     setDrawColor,
     getAreaSelectionMode,
     isHistogramSelectionTool,

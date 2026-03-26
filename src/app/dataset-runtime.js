@@ -80,6 +80,35 @@ export function createDatasetRuntime(deps) {
     return ds;
   }
 
+  function invalidateAsyncState() {
+    if (state.histViewDebounce) {
+      clearTimeout(state.histViewDebounce);
+      state.histViewDebounce = null;
+    }
+    state.renderSeq = (Number.isFinite(state.renderSeq) ? state.renderSeq : 0) + 1;
+  }
+
+  function releaseDatasetResources(ds) {
+    if (!ds) return;
+    if (ds.pyramid) {
+      try { disposePyramid(ds.pyramid); } catch (_err) {}
+      ds.pyramid = null;
+    }
+    if (ds.ds) {
+      if (typeof ds.ds.close === "function") {
+        try { ds.ds.close(); } catch (_err) {}
+      } else if (typeof ds.ds.clear === "function") {
+        try { ds.ds.clear(); } catch (_err) {}
+      }
+    }
+    if (ds.baseDs && typeof ds.baseDs.close === "function") {
+      try { ds.baseDs.close(); } catch (_err) {}
+    }
+    ds.lastRaster = null;
+    ds.lastCompositeRaster = null;
+    ds.lastScreenFrame = null;
+  }
+
   function attachDataset(ds) {
     const occupied = new Set(state.datasets.map((item) => Number(item.displaySlot || 0)));
     if (!occupied.has(1)) ds.displaySlot = 1;
@@ -143,15 +172,33 @@ export function createDatasetRuntime(deps) {
     if (idx === -1) return;
     const ds = state.datasets[idx];
 
-    if (ds.pyramid) {
-      try { disposePyramid(ds.pyramid); } catch (_err) {}
-    }
-    try { ds.ds.close(); } catch (_err) {}
+    invalidateAsyncState();
+    releaseDatasetResources(ds);
 
     state.datasets.splice(idx, 1);
     if (state.activeId === id) {
       state.activeId = state.datasets[0]?.id || null;
     }
+
+    recomputeCacheBudgets();
+    onAfterDatasetUIUpdate();
+    clearSelection();
+    render();
+  }
+
+  function closeAllDatasets() {
+    if (!state.datasets.length) {
+      invalidateAsyncState();
+      clearSelection();
+      render();
+      return;
+    }
+
+    invalidateAsyncState();
+    closeSpectrum();
+    const datasets = state.datasets.splice(0, state.datasets.length);
+    for (const ds of datasets) releaseDatasetResources(ds);
+    state.activeId = null;
 
     recomputeCacheBudgets();
     onAfterDatasetUIUpdate();
@@ -165,6 +212,7 @@ export function createDatasetRuntime(deps) {
     bandLabel,
     addDatasetsFromFileList,
     addDatasetFromFiles,
-    closeDataset
+    closeDataset,
+    closeAllDatasets
   };
 }

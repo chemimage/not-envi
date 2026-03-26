@@ -51,12 +51,14 @@ export function wireApp(deps) {
     updateMetaUI,
     updatePerf,
     getDrawTool,
+    getDrawShapeMode,
     getSpectrumPickEnabled,
     getEffectiveAreaSelectionCount,
     getEffectiveAreaSelectionKey,
     getAreaSelectionMode,
     getDrawColor,
     setDrawTool,
+    setDrawShapeMode,
     setSpectrumPickEnabled,
     setAreaSelectionMode,
     setDrawColor,
@@ -88,6 +90,23 @@ export function wireApp(deps) {
     updateZoomLabelBoot,
     setGpuBadgeAvailable
   } = deps;
+
+  const SHAPE_MODE_META = {
+    rect: { label: "Rect", title: "Free rectangle" },
+    "1:1": { label: "1:1", title: "Square 1:1" },
+    "3:4": { label: "3:4", title: "Aspect ratio 3:4 or 4:3" },
+    "9:16": { label: "9:16", title: "Aspect ratio 9:16 or 16:9" },
+    polygon: { label: "Poly", title: "Polygon" }
+  };
+
+  function resolveShapeModeMeta(mode) {
+    return SHAPE_MODE_META[mode] || SHAPE_MODE_META.rect;
+  }
+
+  function resolveShapeToolFromMode() {
+    const mode = getDrawShapeMode ? getDrawShapeMode() : "rect";
+    return mode === "polygon" ? "shape" : "rect";
+  }
 
   function runExportWithErrorHandling() {
     return runExportFromDialog().catch((err) => {
@@ -147,6 +166,7 @@ export function wireApp(deps) {
   });
 
   let drawColorFlyoutOpen = false;
+  let shapeModeFlyoutOpen = false;
   function setDrawColorFlyoutOpen(nextOpen) {
     drawColorFlyoutOpen = !!nextOpen;
     if (els.drawTools && els.drawTools.classList) {
@@ -166,6 +186,25 @@ export function wireApp(deps) {
     }
   }
 
+  function setShapeModeFlyoutOpen(nextOpen) {
+    shapeModeFlyoutOpen = !!nextOpen;
+    if (els.drawTools && els.drawTools.classList) {
+      if (typeof els.drawTools.classList.toggle === "function") {
+        els.drawTools.classList.toggle("shape-mode-open", shapeModeFlyoutOpen);
+      } else if (shapeModeFlyoutOpen && typeof els.drawTools.classList.add === "function") {
+        els.drawTools.classList.add("shape-mode-open");
+      } else if (!shapeModeFlyoutOpen && typeof els.drawTools.classList.remove === "function") {
+        els.drawTools.classList.remove("shape-mode-open");
+      }
+    }
+    if (els.toolShape && els.toolShape.setAttribute) {
+      els.toolShape.setAttribute("aria-expanded", shapeModeFlyoutOpen ? "true" : "false");
+    }
+    if (els.shapeModeFlyout && els.shapeModeFlyout.setAttribute) {
+      els.shapeModeFlyout.setAttribute("aria-hidden", shapeModeFlyoutOpen ? "false" : "true");
+    }
+  }
+
   function setCanvasCursor(cursor) {
     const value = cursor || "";
     if (els.main && els.main.style) els.main.style.cursor = value;
@@ -182,13 +221,34 @@ export function wireApp(deps) {
 
   function syncDrawToolUI() {
     const active = getDrawTool ? getDrawTool() : "none";
+    const shapeToolActive = active === "rect" || active === "shape";
     const spectral = getSpectrumPickEnabled ? !!getSpectrumPickEnabled() : false;
     if (!spectral && els.specPanel && els.specPanel.style.display !== "none") closeSpectrum();
     const areaMode = getAreaSelectionMode ? getAreaSelectionMode() : "group";
     const singleArea = areaMode === "single";
     if (els.toolRuler) els.toolRuler.classList.toggle("active", active === "ruler");
-    if (els.toolRect) els.toolRect.classList.toggle("active", active === "rect");
-    if (els.toolShape) els.toolShape.classList.toggle("active", active === "shape");
+    if (els.toolRect) els.toolRect.classList.toggle("active", shapeToolActive);
+    if (els.shapeModeAnchor && els.shapeModeAnchor.style) {
+      els.shapeModeAnchor.style.display = shapeToolActive ? "" : "none";
+    }
+    if (!shapeToolActive && shapeModeFlyoutOpen) setShapeModeFlyoutOpen(false);
+    const shapeMode = getDrawShapeMode ? getDrawShapeMode() : (active === "shape" ? "polygon" : "rect");
+    const shapeModeMeta = resolveShapeModeMeta(shapeMode);
+    if (els.toolShapeLabel) els.toolShapeLabel.textContent = shapeModeMeta.label;
+    if (els.toolShape) {
+      els.toolShape.classList.toggle("active", shapeModeFlyoutOpen);
+      if (els.toolShape.setAttribute) {
+        els.toolShape.setAttribute("aria-label", `Shape mode: ${shapeModeMeta.title}`);
+      }
+      els.toolShape.title = `Shape mode: ${shapeModeMeta.title}`;
+    }
+    if (Array.isArray(els.shapeModeButtons)) {
+      for (const btn of els.shapeModeButtons) {
+        const on = String(btn?.dataset?.shapeMode || "") === shapeMode;
+        if (btn && btn.classList) btn.classList.toggle("active", on);
+        if (btn && btn.setAttribute) btn.setAttribute("aria-pressed", on ? "true" : "false");
+      }
+    }
     if (els.toolEraser) els.toolEraser.classList.toggle("active", active === "eraser");
     if (els.btnToolAreaMode) {
       els.btnToolAreaMode.classList.remove("active");
@@ -275,8 +335,36 @@ export function wireApp(deps) {
   }
 
   if (els.toolRuler && setDrawTool) els.toolRuler.onclick = () => { setDrawTool("ruler"); syncDrawToolUI(); };
-  if (els.toolRect && setDrawTool) els.toolRect.onclick = () => { setDrawTool("rect"); syncDrawToolUI(); };
-  if (els.toolShape && setDrawTool) els.toolShape.onclick = () => { setDrawTool("shape"); syncDrawToolUI(); };
+  if (els.toolRect && setDrawTool) {
+    els.toolRect.onclick = () => {
+      setDrawTool(resolveShapeToolFromMode());
+      syncDrawToolUI();
+    };
+  }
+  if (els.toolShape && els.toolShape.addEventListener) {
+    els.toolShape.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const active = getDrawTool ? getDrawTool() : "none";
+      const shapeToolActive = active === "rect" || active === "shape";
+      if (!shapeToolActive) return;
+      setShapeModeFlyoutOpen(!shapeModeFlyoutOpen);
+      syncDrawToolUI();
+    });
+  }
+  if (Array.isArray(els.shapeModeButtons) && setDrawShapeMode) {
+    for (const btn of els.shapeModeButtons) {
+      if (!btn || !btn.addEventListener) continue;
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const mode = String(btn.dataset ? btn.dataset.shapeMode : "");
+        setDrawShapeMode(mode);
+        setShapeModeFlyoutOpen(false);
+        syncDrawToolUI();
+      });
+    }
+  }
   let eraserTouchLastTapAt = 0;
   let eraserTouchResetTimer = null;
   let eraserTouchSuppressClick = false;
@@ -351,14 +439,26 @@ export function wireApp(deps) {
     });
   }
   window.addEventListener("pointerdown", (ev) => {
-    if (!drawColorFlyoutOpen) return;
     const target = ev.target;
-    if (target && target.closest && target.closest("#drawColorPreview,#drawColorSwatches")) return;
-    setDrawColorFlyoutOpen(false);
+    if (drawColorFlyoutOpen) {
+      if (!(target && target.closest && target.closest("#drawColorPreview,#drawColorSwatches"))) {
+        setDrawColorFlyoutOpen(false);
+      }
+    }
+    if (shapeModeFlyoutOpen) {
+      if (!(target && target.closest && target.closest("#toolShape,#shapeModeFlyout"))) {
+        setShapeModeFlyoutOpen(false);
+        syncDrawToolUI();
+      }
+    }
   }, true);
   window.addEventListener("keydown", (ev) => {
-    if (!drawColorFlyoutOpen || ev.key !== "Escape") return;
-    setDrawColorFlyoutOpen(false);
+    if (ev.key !== "Escape") return;
+    if (drawColorFlyoutOpen) setDrawColorFlyoutOpen(false);
+    if (shapeModeFlyoutOpen) {
+      setShapeModeFlyoutOpen(false);
+      syncDrawToolUI();
+    }
   });
   if (els.btnToolHistogram) {
     els.btnToolHistogram.onclick = () => {
@@ -388,6 +488,7 @@ export function wireApp(deps) {
     };
   }
   setDrawColorFlyoutOpen(false);
+  setShapeModeFlyoutOpen(false);
   syncDrawToolUI();
 
   const isDrawCreateEnabled = () => !!(getDrawTool && getActive() && (getDrawTool() === "ruler" || getDrawTool() === "rect" || getDrawTool() === "shape"));
@@ -867,6 +968,7 @@ export function wireApp(deps) {
   els.dropzone.addEventListener("dragleave", () => setDropzoneActive(false));
   els.dropzone.addEventListener("drop", async (ev) => {
     ev.preventDefault();
+    if (ev.stopPropagation) ev.stopPropagation();
     setDropzoneActive(false);
     await handleDroppedFiles(ev.dataTransfer?.files);
   });

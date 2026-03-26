@@ -10,6 +10,7 @@ function makeBase() {
     draw: {
       tool: "none",
       color: "#22c55e",
+      shapeMode: "rect",
       activePointerId: null,
       draft: null,
       rulerDrag: null,
@@ -84,6 +85,108 @@ describe("annotation-controller", () => {
 
     ann.setDrawTool("rect");
     expect(ann.getDrawTool()).toBe("none");
+  });
+
+  test("changing shape mode updates active shape tool between rect and polygon", () => {
+    const { deps } = makeBase();
+    const ann = createAnnotationController(deps);
+
+    ann.setDrawTool("rect");
+    expect(ann.getDrawTool()).toBe("rect");
+    expect(ann.getDrawShapeMode()).toBe("rect");
+
+    ann.setDrawShapeMode("polygon");
+    expect(ann.getDrawShapeMode()).toBe("polygon");
+    expect(ann.getDrawTool()).toBe("shape");
+
+    ann.setDrawShapeMode("3:4");
+    expect(ann.getDrawShapeMode()).toBe("3:4");
+    expect(ann.getDrawTool()).toBe("rect");
+  });
+
+  test("shape mode constrains rectangle drafts to the selected ratio", () => {
+    const { ds, deps } = makeBase();
+    const ann = createAnnotationController(deps);
+
+    ann.setDrawShapeMode("3:4");
+    ann.setDrawTool("rect");
+    expect(ann.beginDrawingAtPointer({ pointerId: 19, pointerType: "mouse", clientX: 10, clientY: 10 })).toBe(true);
+    ann.updateDrawingAtPointer({ pointerId: 19, pointerType: "mouse", clientX: 40, clientY: 20 });
+    ann.finishDrawingAtPointer({ pointerId: 19, pointerType: "mouse", clientX: 40, clientY: 20 });
+
+    const created = ds.drawings[ds.drawings.length - 1];
+    expect(created.tool).toBe("rect");
+    expect(created.shapeMode).toBe("3:4");
+    const w = Math.abs(created.points[1].x - created.points[0].x);
+    const h = Math.abs(created.points[1].y - created.points[0].y);
+    expect(w / h).toBeCloseTo(4 / 3, 3);
+  });
+
+  test("ratio-locked rectangle corner resize preserves aspect ratio", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings = [
+      { id: 50, tool: "rect", shapeMode: "3:4", color: "#fff", points: [{ x: 10, y: 10 }, { x: 50, y: 40 }] }
+    ];
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("rect");
+
+    expect(ann.beginAreaMoveAtPointer({ pointerId: 60, pointerType: "mouse", clientX: 50, clientY: 40 })).toBe(true);
+    ann.updateAreaMoveAtPointer({ pointerId: 60, pointerType: "mouse", clientX: 70, clientY: 55 });
+
+    const resized = ds.drawings[0];
+    const w = Math.abs(resized.points[1].x - resized.points[0].x);
+    const h = Math.abs(resized.points[1].y - resized.points[0].y);
+    expect(w / h).toBeCloseTo(4 / 3, 3);
+  });
+
+  test("ratio-locked rectangle edge resize preserves aspect ratio", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings = [
+      { id: 51, tool: "rect", shapeMode: "1:1", color: "#fff", points: [{ x: 20, y: 20 }, { x: 50, y: 50 }] }
+    ];
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("rect");
+
+    expect(ann.beginAreaMoveAtPointer({ pointerId: 61, pointerType: "mouse", clientX: 50, clientY: 35 })).toBe(true);
+    ann.updateAreaMoveAtPointer({ pointerId: 61, pointerType: "mouse", clientX: 70, clientY: 35 });
+
+    const resized = ds.drawings[0];
+    const w = Math.abs(resized.points[1].x - resized.points[0].x);
+    const h = Math.abs(resized.points[1].y - resized.points[0].y);
+    expect(w / h).toBeCloseTo(1, 3);
+  });
+
+  test("bidirectional ratio resize allows 3:4 rectangles to become 4:3 on horizontal drag", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings = [
+      { id: 52, tool: "rect", shapeMode: "3:4", color: "#fff", points: [{ x: 30, y: 20 }, { x: 60, y: 60 }] }
+    ];
+    const ann = createAnnotationController(deps);
+    ann.setDrawTool("rect");
+
+    expect(ann.beginAreaMoveAtPointer({ pointerId: 62, pointerType: "mouse", clientX: 60, clientY: 40 })).toBe(true);
+    ann.updateAreaMoveAtPointer({ pointerId: 62, pointerType: "mouse", clientX: 90, clientY: 40 });
+
+    const resized = ds.drawings[0];
+    const w = Math.abs(resized.points[1].x - resized.points[0].x);
+    const h = Math.abs(resized.points[1].y - resized.points[0].y);
+    expect(w / h).toBeCloseTo(4 / 3, 3);
+  });
+
+  test("polygon shape mode creates polygon selections", () => {
+    const { ds, deps } = makeBase();
+    const ann = createAnnotationController(deps);
+
+    ann.setDrawShapeMode("polygon");
+    ann.setDrawTool("shape");
+    expect(ann.beginDrawingAtPointer({ pointerId: 20, pointerType: "mouse", clientX: 10, clientY: 10 })).toBe(true);
+    ann.updateDrawingAtPointer({ pointerId: 20, pointerType: "mouse", clientX: 20, clientY: 10 });
+    ann.updateDrawingAtPointer({ pointerId: 20, pointerType: "mouse", clientX: 20, clientY: 20 });
+    ann.finishDrawingAtPointer({ pointerId: 20, pointerType: "mouse", clientX: 20, clientY: 20 });
+
+    const created = ds.drawings[ds.drawings.length - 1];
+    expect(created.tool).toBe("shape");
+    expect(created.points.length).toBeGreaterThanOrEqual(3);
   });
 
   test("rect tool allows dragging an area from interior", () => {

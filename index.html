@@ -36,12 +36,21 @@
         <button class="draw-tool-btn" id="toolRuler" type="button" title="Ruler" aria-label="Ruler">
           <i class="fa-solid fa-ruler" aria-hidden="true"></i>
         </button>
-        <button class="draw-tool-btn" id="toolRect" type="button" title="Rectangle" aria-label="Rectangle">
+        <button class="draw-tool-btn" id="toolRect" type="button" title="Shape" aria-label="Shape">
           <i class="fa-regular fa-square" aria-hidden="true"></i>
         </button>
-        <button class="draw-tool-btn" id="toolShape" type="button" title="Shape" aria-label="Shape">
-          <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>
-        </button>
+        <div class="draw-mode-anchor" id="shapeModeAnchor" style="display:none;">
+          <button class="draw-tool-btn draw-mode-trigger" id="toolShape" type="button" title="Shape mode" aria-label="Shape mode" aria-expanded="false" aria-haspopup="true">
+            <span id="toolShapeLabel">Rect</span>
+          </button>
+          <div id="shapeModeFlyout" class="draw-mode-flyout" role="group" aria-label="Shape mode options" aria-hidden="true">
+            <button class="draw-mode-option active" type="button" data-shape-mode="rect" aria-pressed="true" title="Free rectangle">Rect</button>
+            <button class="draw-mode-option" type="button" data-shape-mode="1:1" aria-pressed="false" title="Square 1:1">1:1</button>
+            <button class="draw-mode-option" type="button" data-shape-mode="3:4" aria-pressed="false" title="Aspect ratio 3:4 or 4:3">3:4</button>
+            <button class="draw-mode-option" type="button" data-shape-mode="9:16" aria-pressed="false" title="Aspect ratio 9:16 or 16:9">9:16</button>
+            <button class="draw-mode-option" type="button" data-shape-mode="polygon" aria-pressed="false" title="Polygon">Poly</button>
+          </div>
+        </div>
         <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing (double-click or double-tap to clear all)" aria-label="Eraser (double-click or double-tap to clear all)">
           <i class="fa-solid fa-eraser" aria-hidden="true"></i>
         </button>

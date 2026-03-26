@@ -5,9 +5,11 @@ export class BlobDataSource {
     this.file = file;
     this.size = file.size;
     this.bytesRead = 0;
+    this.closed = false;
   }
 
   async read(offset, length) {
+    if (this.closed || !this.file) throw new Error("Data source closed");
     const safeOffset = Math.max(0, Number(offset) || 0);
     const safeLength = Math.max(0, Number(length) || 0);
     const end = Math.min(this.size, safeOffset + safeLength);
@@ -16,6 +18,12 @@ export class BlobDataSource {
     const u8 = new Uint8Array(ab);
     this.bytesRead += u8.byteLength;
     return u8;
+  }
+
+  close() {
+    this.closed = true;
+    this.file = null;
+    this.size = 0;
   }
 }
 
@@ -33,6 +41,7 @@ export class ChunkCacheDataSource {
     this.inflight = new Map();
     this.cacheSizeBytes = 0;
     this.bytesRead = 0;
+    this.closed = false;
   }
 
   setMaxBytes(bytes) {
@@ -77,6 +86,7 @@ export class ChunkCacheDataSource {
   }
 
   async #loadChunk(chunkIndex) {
+    if (this.closed || !this.source) throw new Error("Data source closed");
     const offset = chunkIndex * this.chunkSize;
     const len = Math.min(this.chunkSize, this.size - offset);
     const u8 = await this.source.read(offset, len);
@@ -96,6 +106,10 @@ export class ChunkCacheDataSource {
     if (inflight) return inflight;
 
     const p = this.#loadChunk(chunkIndex).then((u8) => {
+      if (this.closed) {
+        this.inflight.delete(key);
+        return u8;
+      }
       const again = this.cache.get(key);
       if (!again) {
         this.cache.set(key, { u8, bytes: u8.byteLength });
@@ -115,6 +129,7 @@ export class ChunkCacheDataSource {
   }
 
   async read(offset, length) {
+    if (this.closed || !this.source) throw new Error("Data source closed");
     const safeOffset = Math.max(0, Number(offset) || 0);
     const safeLength = Math.max(0, Number(length) || 0);
     if (safeLength <= 0) return new Uint8Array(0);
@@ -163,6 +178,17 @@ export class ChunkCacheDataSource {
     }
 
     return out;
+  }
+
+  close() {
+    this.closed = true;
+    this.clear();
+    this.size = 0;
+    const base = this.source;
+    this.source = null;
+    if (base && typeof base.close === "function") {
+      try { base.close(); } catch (_err) {}
+    }
   }
 }
 

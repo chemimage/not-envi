@@ -33,4 +33,22 @@ describe("data sources", () => {
     expect(ds.cacheBytes()).toBeLessThanOrEqual(2 * 64 * 1024);
     expect(ds.bytesRead).toBeGreaterThan(0);
   });
+
+  test("ChunkCacheDataSource close clears cache and closes the base source", async () => {
+    const base = new BlobDataSource(makeFile([0, 1, 2, 3, 4, 5, 6, 7]));
+    const ds = new ChunkCacheDataSource(base, {
+      chunkSize: 4,
+      maxBytes: 8,
+      concurrency: 1
+    });
+
+    await ds.read(0, 4);
+    expect(ds.cacheBytes()).toBeGreaterThan(0);
+
+    ds.close();
+
+    expect(ds.cacheBytes()).toBe(0);
+    expect(base.closed).toBe(true);
+    await expect(ds.read(0, 1)).rejects.toThrow("Data source closed");
+  });
 });

@@ -356,4 +356,181 @@ describe("app wiring", () => {
 
     windowAdd.mockRestore();
   });
+
+  test("dropping files on dropzone imports once instead of bubbling to main", async () => {
+    const windowAdd = vi.spyOn(window, "addEventListener").mockImplementation(noop);
+
+    document.body.innerHTML = `
+      <div id="drawTools"></div>
+      <div id="main">
+        <div id="dropzone"></div>
+      </div>
+      <canvas id="thumb"></canvas>
+      <input id="zoom" />
+      <input id="chkGrid" type="checkbox" />
+      <button id="btnExpCancel" type="button"></button>
+      <button id="btnExpGo" type="button"></button>
+      <input id="bandSearch" />
+      <button id="btnExpandAll" type="button"></button>
+      <button id="btnCollapseAll" type="button"></button>
+      <button id="btnReset" type="button"></button>
+      <button id="btnAuto" type="button"></button>
+      <input id="slContrast" />
+      <input id="slBrightness" />
+      <input id="slGain" />
+      <input id="numContrast" />
+      <input id="numBrightness" />
+      <input id="numGain" />
+      <input id="numMin" />
+      <input id="numMax" />
+      <canvas id="hist"></canvas>
+      <input id="filePicker" type="file" />
+      <input id="expFormatPng" type="radio" />
+      <input id="expFormatTiff" type="radio" />
+      <input id="expModeRaw" type="radio" />
+      <input id="expModeRendered" type="radio" />
+      <input id="expRawScopeSel" type="radio" />
+      <input id="expRawScopeWhole" type="radio" />
+      <input id="expRenScopeSel" type="radio" />
+      <input id="expRenScopeView" type="radio" />
+      <input id="expRenScopeWhole" type="radio" />
+      <dialog id="exportDlg"></dialog>
+      <canvas id="cpuCanvas"></canvas>
+    `;
+
+    const addDatasetsFromFileList = vi.fn(async () => {});
+    const els = {
+      drawTools: document.querySelector("#drawTools"),
+      main: document.querySelector("#main"),
+      thumb: document.querySelector("#thumb"),
+      zoom: document.querySelector("#zoom"),
+      chkGrid: document.querySelector("#chkGrid"),
+      btnExpCancel: document.querySelector("#btnExpCancel"),
+      btnExpGo: document.querySelector("#btnExpGo"),
+      bandSearch: document.querySelector("#bandSearch"),
+      btnExpandAll: document.querySelector("#btnExpandAll"),
+      btnCollapseAll: document.querySelector("#btnCollapseAll"),
+      btnReset: document.querySelector("#btnReset"),
+      btnAuto: document.querySelector("#btnAuto"),
+      slContrast: document.querySelector("#slContrast"),
+      slBrightness: document.querySelector("#slBrightness"),
+      slGain: document.querySelector("#slGain"),
+      numContrast: document.querySelector("#numContrast"),
+      numBrightness: document.querySelector("#numBrightness"),
+      numGain: document.querySelector("#numGain"),
+      numMin: document.querySelector("#numMin"),
+      numMax: document.querySelector("#numMax"),
+      hist: document.querySelector("#hist"),
+      dropzone: document.querySelector("#dropzone"),
+      filePicker: document.querySelector("#filePicker"),
+      expFormatPng: document.querySelector("#expFormatPng"),
+      expFormatTiff: document.querySelector("#expFormatTiff"),
+      expModeRaw: document.querySelector("#expModeRaw"),
+      expModeRendered: document.querySelector("#expModeRendered"),
+      expRawScopeSel: document.querySelector("#expRawScopeSel"),
+      expRawScopeWhole: document.querySelector("#expRawScopeWhole"),
+      expRenScopeSel: document.querySelector("#expRenScopeSel"),
+      expRenScopeView: document.querySelector("#expRenScopeView"),
+      expRenScopeWhole: document.querySelector("#expRenScopeWhole"),
+      exportDlg: document.querySelector("#exportDlg"),
+      cpuCanvas: document.querySelector("#cpuCanvas")
+    };
+
+    els.hist.setPointerCapture = noop;
+    els.hist.releasePointerCapture = noop;
+
+    wireApp({
+      state: { datasets: [], histDrag: { active: false, handle: null }, selection: { enabled: false }, ioParallel: true },
+      els,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      getActive: () => null,
+      closeSpectrum: noop,
+      exportSpectrumCSV: noop,
+      screenToImage: () => ({ x: 0, y: 0 }),
+      openSpectrumAt: noop,
+      onPointerDown: noop,
+      onPointerMove: noop,
+      onPointerUp: noop,
+      onPointerCancel: noop,
+      onPointerLeave: noop,
+      onWheel: noop,
+      onThumbClick: noop,
+      fitToScreen: noop,
+      clampView: noop,
+      scaleToSlider: () => 50,
+      updateZoomLabel: noop,
+      render: noop,
+      zoomAt: noop,
+      sliderToScale: () => 1,
+      minScaleFor: () => 1,
+      setIOParallel: noop,
+      clearSelection: noop,
+      setStatus: noop,
+      openExportDialog: noop,
+      updateExportDialogUI: noop,
+      updateExportEstimate: noop,
+      runExportFromDialog: async () => {},
+      rebuildBandTree: noop,
+      resetDisplay: noop,
+      autoDisplay: noop,
+      resolveDisplayControlBand: () => 0,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      drawHistogram: noop,
+      applyRangeFromNumbers: noop,
+      histPickHandle: () => null,
+      applyHistogramDrag: noop,
+      addDatasetsFromFileList,
+      resizeCanvases: noop,
+      redrawSpectrum: noop,
+      disposePyramid: noop,
+      updateMetaUI: noop,
+      updatePerf: noop,
+      getDrawTool: () => "none",
+      getSpectrumPickEnabled: () => false,
+      getEffectiveAreaSelectionCount: () => 0,
+      getEffectiveAreaSelectionKey: () => "",
+      getAreaSelectionMode: () => "single",
+      getDrawColor: () => "#ff2d2d",
+      setDrawTool: noop,
+      setSpectrumPickEnabled: noop,
+      setAreaSelectionMode: noop,
+      setDrawColor: noop,
+      selectAreaAtPointer: () => false,
+      isAreaMovePointer: () => false,
+      beginAreaMoveAtPointer: () => false,
+      updateAreaMoveAtPointer: noop,
+      finishAreaMoveAtPointer: noop,
+      cancelAreaMove: noop,
+      resolvePointerCursor: () => "",
+      isDrawingPointer: () => false,
+      beginDrawingAtPointer: () => false,
+      updateDrawingAtPointer: noop,
+      finishDrawingAtPointer: noop,
+      cancelDrawing: noop,
+      eraseDrawingAtPointer: noop,
+      clearAllAnnotations: noop,
+      updateRulerHoverAtPointer: noop,
+      clearRulerHover: noop,
+      toggleAnalysisHistogramPanel: noop,
+      getAnalysisHistogramOpen: () => false,
+      setAnalysisHistogramOpen: noop,
+      closeAnalysisHistogramPanel: noop,
+      refreshAnalysisHistogram: async () => {},
+      positionAnalysisHistogramPanel: noop,
+      onAnalysisHistogramPointerMove: noop,
+      onAnalysisHistogramPointerLeave: noop,
+      openSpectrumForEffectiveArea: async () => {},
+      updateZoomLabelBoot: noop,
+      setGpuBadgeAvailable: noop
+    });
+
+    const files = [{ name: "demo.hdr" }, { name: "demo.dat" }];
+    const ev = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, "dataTransfer", { value: { files } });
+    els.dropzone.dispatchEvent(ev);
+
+    expect(addDatasetsFromFileList).toHaveBeenCalledTimes(1);
+    expect(addDatasetsFromFileList).toHaveBeenCalledWith(files);
+    windowAdd.mockRestore();
+  });
 });
