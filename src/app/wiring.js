@@ -92,7 +92,7 @@ export function wireApp(deps) {
   } = deps;
 
   const SHAPE_MODE_META = {
-    rect: { label: "Rect", title: "Free rectangle" },
+    rect: { label: "", title: "Free rectangle" },
     "1:1": { label: "1:1", title: "Square 1:1" },
     "3:4": { label: "3:4", title: "Aspect ratio 3:4 or 4:3" },
     "9:16": { label: "9:16", title: "Aspect ratio 9:16 or 16:9" },
@@ -235,6 +235,17 @@ export function wireApp(deps) {
     const shapeMode = getDrawShapeMode ? getDrawShapeMode() : (active === "shape" ? "polygon" : "rect");
     const shapeModeMeta = resolveShapeModeMeta(shapeMode);
     if (els.toolShapeLabel) els.toolShapeLabel.textContent = shapeModeMeta.label;
+    if (els.toolShapeIcon && els.toolShapeIcon.classList) {
+      els.toolShapeIcon.classList.remove("fa-square", "fa-draw-polygon", "fa-regular", "fa-solid");
+      if (shapeMode === "polygon") {
+        els.toolShapeIcon.classList.add("fa-solid", "fa-draw-polygon");
+      } else {
+        els.toolShapeIcon.classList.add("fa-regular", "fa-square");
+      }
+    }
+    if (els.toolShape && els.toolShape.classList) {
+      els.toolShape.classList.toggle("draw-mode-trigger-polygon", shapeMode === "polygon");
+    }
     if (els.toolShape) {
       els.toolShape.classList.toggle("active", shapeModeFlyoutOpen);
       if (els.toolShape.setAttribute) {

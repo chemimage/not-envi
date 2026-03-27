@@ -107,7 +107,7 @@
   .draw-mode-anchor {
     position: relative;
     width: var(--tool-btn-size);
-    min-height: var(--tool-btn-size);
+    height: var(--tool-btn-size);
   }
 
   .draw-color-wrap {
@@ -142,47 +142,108 @@
 
   .draw-mode-trigger {
     font-size: 12px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
   }
 
-  .draw-mode-trigger span {
+  .draw-mode-art {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    padding: 0 4px;
-    line-height: 1.1;
+    height: 100%;
+  }
+
+  .draw-mode-art i {
+    width: 86%;
+    height: 86%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .draw-mode-ratio {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  #toolShape .draw-mode-ratio:empty {
+    display: none;
+  }
+
+  #toolShape.draw-mode-trigger-polygon .draw-mode-art i {
+    display: inline-flex;
+  }
+
+  #toolShape.draw-mode-trigger-polygon .draw-mode-ratio {
+    display: none;
   }
 
   .draw-mode-flyout {
+    --mode-size: var(--tool-btn-size);
     position: absolute;
     left: calc(100% + var(--tool-boundary-gap));
     top: 0;
     z-index: 30;
-    min-width: 72px;
-    padding: 6px;
-    border: 1px solid rgb(75 85 99 / 0.92);
-    border-radius: 4px;
-    background: rgb(17 24 39 / 0.96);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     display: none;
-    flex-direction: column;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--mode-size);
     gap: 6px;
-    backdrop-filter: blur(4px);
+    align-items: start;
   }
 
   #drawTools.shape-mode-open .draw-mode-flyout {
-    display: flex;
+    display: grid;
   }
 
   .draw-mode-option {
-    @apply rounded-sm border border-gray-600 bg-gray-800 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.05em] text-gray-200 transition-colors hover:border-gray-400;
-    white-space: nowrap;
+    @apply inline-flex items-center justify-center rounded-sm border border-gray-600 bg-gray-800 text-[11px] font-semibold uppercase tracking-[0.05em] text-gray-200 transition-colors hover:border-gray-400;
+    width: var(--mode-size);
+    height: var(--mode-size);
+    aspect-ratio: 1 / 1;
+    padding: 4px;
+    line-height: 1.05;
+    text-align: center;
+  }
+
+  .draw-mode-option .draw-mode-ratio:empty {
+    display: none;
   }
 
   .draw-mode-option.active,
   .draw-mode-option[aria-pressed="true"] {
     @apply border-gray-200 bg-gray-100 text-gray-900;
+  }
+
+  .draw-mode-option-polygon {
+    font-size: 10px;
+  }
+
+  .draw-mode-option-polygon i {
+    width: 86%;
+    height: 86%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    line-height: 1;
+    pointer-events: none;
   }
 
   .draw-color-swatch {

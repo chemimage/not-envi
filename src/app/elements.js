@@ -42,6 +42,7 @@ export function collectElements() {
     toolRect: $("#toolRect"),
     shapeModeAnchor: $("#shapeModeAnchor"),
     toolShape: $("#toolShape"),
+    toolShapeIcon: $("#toolShapeIcon"),
     toolShapeLabel: $("#toolShapeLabel"),
     shapeModeFlyout: $("#shapeModeFlyout"),
     shapeModeButtons: Array.from(document.querySelectorAll("[data-shape-mode]")),
