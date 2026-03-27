@@ -10,6 +10,8 @@ import {
   createDisplayPanels,
   ensureDisplayPanels,
   getActiveDisplayPanel,
+  getLinkedDisplayPanels,
+  resolveDisplayPanelBand,
   getDisplayPanel,
   getDisplayPanelRect,
   getVisibleDisplayPanels,
@@ -211,14 +213,25 @@ import { pointInPolygon } from "./draw-geometry.js";
   function syncActiveDatasetView() {
     const panel = getActiveDisplayPanel(state);
     if (!panel?.datasetId) {
-      const fallback = state.datasets[0] || null;
-      state.activeId = fallback ? fallback.id : null;
+      state.activeId = null;
       return;
     }
     state.activePanelSlot = Number(panel.slot) || 1;
     state.activeId = panel.datasetId;
     const ds = getPanelDataset(panel);
-    if (ds) ds.view = panel.view;
+    if (ds) {
+      panel.activeBand = resolveDisplayPanelBand(panel, ds);
+      ds.view = panel.view;
+      ds.activeBand = panel.activeBand;
+      ds.drawings = Array.isArray(panel.annotations?.drawings) ? panel.annotations.drawings : [];
+      ds.selectedAreaId = Number.isFinite(Number(panel.annotations?.selectedAreaId)) ? Number(panel.annotations.selectedAreaId) : null;
+      if (ds.lastRastersByPanel && typeof ds.lastRastersByPanel.get === "function") {
+        ds.lastRaster = ds.lastRastersByPanel.get(Number(panel.slot)) || null;
+      }
+      if (ds.lastCompositeRastersByPanel && typeof ds.lastCompositeRastersByPanel.get === "function") {
+        ds.lastCompositeRaster = ds.lastCompositeRastersByPanel.get(Number(panel.slot)) || null;
+      }
+    }
   }
 
   function getMainRect() {
@@ -253,6 +266,69 @@ import { pointInPolygon } from "./draw-geometry.js";
     const panel = slot == null ? getActiveDisplayPanel(state) : getDisplayPanel(state, slot);
     if (!panel?.datasetId) return null;
     return getDisplayPanelRect(getDisplayPanelLayoutDevice(), panel.slot);
+  }
+
+  function withPanelDatasetView(panel, ds, fn) {
+    if (!panel || !ds || typeof fn !== "function") return undefined;
+    const prevView = ds.view;
+    ds.view = panel.view || prevView;
+    try {
+      return fn();
+    } finally {
+      ds.view = prevView;
+    }
+  }
+
+  function captureDisplayViewState() {
+    const layout = getDisplayPanelLayoutCss();
+    const snapshot = new Map();
+    for (const entry of getVisibleDatasetPanels()) {
+      const { panel, dataset: ds } = entry;
+      if (!panel?.view || !ds?.meta) continue;
+      const viewport = getDisplayPanelRect(layout, panel.slot);
+      if (!viewport) continue;
+      snapshot.set(Number(panel.slot) || 1, {
+        datasetId: ds.id,
+        x: Number(panel.view.x) || 0,
+        y: Number(panel.view.y) || 0,
+        scale: Number(panel.view.scale) || 1,
+        viewportW: Math.max(1, Number(viewport.w) || 1),
+        viewportH: Math.max(1, Number(viewport.h) || 1)
+      });
+    }
+    return snapshot;
+  }
+
+  function reflowDisplayViews(snapshot) {
+    if (!(snapshot instanceof Map) || !snapshot.size) return;
+    const layout = getDisplayPanelLayoutCss();
+    for (const entry of getVisibleDatasetPanels()) {
+      const { panel, dataset: ds } = entry;
+      if (!panel?.view || !ds?.meta) continue;
+      const prev = snapshot.get(Number(panel.slot) || 1);
+      if (!prev) continue;
+      const viewport = getDisplayPanelRect(layout, panel.slot);
+      if (!viewport) continue;
+      const oldFit = Math.min(prev.viewportW / ds.meta.samples, prev.viewportH / ds.meta.lines);
+      const newFit = Math.min(Math.max(1, Number(viewport.w) || 1) / ds.meta.samples, Math.max(1, Number(viewport.h) || 1) / ds.meta.lines);
+      if (!Number.isFinite(oldFit) || !Number.isFinite(newFit) || oldFit <= 0 || newFit <= 0) continue;
+
+      const prevScale = Number.isFinite(prev.scale) && prev.scale > 0 ? prev.scale : oldFit;
+      const nextScale = Math.max(1e-9, prevScale * (newFit / oldFit));
+      const oldViewW = prev.viewportW / prevScale;
+      const oldViewH = prev.viewportH / prevScale;
+      const centerX = prev.x + (oldViewW * 0.5);
+      const centerY = prev.y + (oldViewH * 0.5);
+      const newViewW = Math.max(1, Number(viewport.w) || 1) / nextScale;
+      const newViewH = Math.max(1, Number(viewport.h) || 1) / nextScale;
+
+      panel.view.scale = nextScale;
+      panel.view.x = centerX - (newViewW * 0.5);
+      panel.view.y = centerY - (newViewH * 0.5);
+      withPanelDatasetView(panel, ds, () => {
+        clampView(panel.slot, ds);
+      });
+    }
   }
 
   function getActiveViewportCss() {
@@ -314,8 +390,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     getPanelRectDevice,
     onRender: () => render(),
   });
-  function computeFitScale(ds){ return viewControls.computeFitScale(ds); }
-  function minScaleFor(ds){ return viewControls.minScaleFor(ds); }
+  function computeFitScale(ds, slot = null){ return viewControls.computeFitScale(ds, slot); }
+  function minScaleFor(ds, slot = null){ return viewControls.minScaleFor(ds, slot); }
   function updateZoomRange(ds){ viewControls.updateZoomRange(ds); }
   function sliderToScale(v){ return viewControls.sliderToScale(v); }
   function scaleToSlider(s){ return viewControls.scaleToSlider(s); }
@@ -342,6 +418,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     els,
     clamp,
     getActive,
+    getActivePanel,
     screenToImage,
     render,
     getSpectrumOpenForDatasetId: (dsId) => !!(spectrum && spectrum.isOpenForDatasetId(dsId)),
@@ -391,7 +468,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     return resolveSelectionBoundsListCore(ds, list);
   }
 
-  function getDrawData(ds) { return annotation.getDrawData(ds); }
+  function getDrawData(ds, annotations = null) { return annotation.getDrawData(ds, annotations); }
   function updateRulerHoverAtPointer(ev) { return annotation.updateRulerHoverAtPointer(ev); }
   function clearRulerHover() { return annotation.clearRulerHover(); }
   function eraseDrawingAtPointer(ev) { return annotation.eraseDrawingAtPointer(ev); }
@@ -408,6 +485,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     state,
     els,
     getActive,
+    getActivePanel,
     clamp,
     fmt,
     fmtNoGroup,
@@ -467,6 +545,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     clearSelection,
     onNeedWholeStats: (ds, band) => buildBandStatsWhole(ds, band).catch(() => {}),
     syncActiveDatasetView,
+    captureDisplayViewState,
+    reflowDisplayViews,
   });
   // ========= Histogram computation & drawing =========
 
@@ -544,9 +624,120 @@ import { pointInPolygon } from "./draw-geometry.js";
   }
   // ========= Rendering (direct read or pyramid) =========
 
-  function clampView(){ viewControls.clampView(); }
-  function fitToScreen(){ viewControls.fitToScreen(); }
-  function screenToImage(sx, sy){ return viewControls.screenToImage(sx, sy); }
+  function clampView(slot = null, ds = null){ viewControls.clampView(slot, ds); }
+  function screenToImage(sx, sy, slot = null, ds = null){ return viewControls.screenToImage(sx, sy, slot, ds); }
+
+  function listLinkedViewEntries(slot = null) {
+    const basePanel = slot == null ? getActiveDisplayPanel(state) : getDisplayPanel(state, slot);
+    if (!basePanel?.datasetId) return [];
+    return getLinkedDisplayPanels(state, basePanel.slot)
+      .map((panel) => ({ panel, dataset: getPanelDataset(panel) }))
+      .filter((entry) => !!entry.dataset);
+  }
+
+  function resolveLinkedViewportAnchor(sx, sy, sourceSlot, targetSlot) {
+    const sourceViewport = getPanelRectDevice(sourceSlot);
+    const targetViewport = getPanelRectDevice(targetSlot);
+    if (!sourceViewport || !targetViewport) {
+      return { x: Number(sx) || 0, y: Number(sy) || 0 };
+    }
+    const sourceW = Math.max(1, Number(sourceViewport.w) || 1);
+    const sourceH = Math.max(1, Number(sourceViewport.h) || 1);
+    const ratioX = clamp((((Number(sx) || 0) - (Number(sourceViewport.x) || 0)) / sourceW), 0, 1);
+    const ratioY = clamp((((Number(sy) || 0) - (Number(sourceViewport.y) || 0)) / sourceH), 0, 1);
+    return {
+      x: (Number(targetViewport.x) || 0) + (ratioX * Math.max(1, Number(targetViewport.w) || 1)),
+      y: (Number(targetViewport.y) || 0) + (ratioY * Math.max(1, Number(targetViewport.h) || 1))
+    };
+  }
+
+  function panLinkedPanelsByPixels(dx, dy, slot = null) {
+    const entries = listLinkedViewEntries(slot);
+    if (!entries.length) return false;
+    for (const entry of entries) {
+      const { panel, dataset: ds } = entry;
+      const scale = Math.max(1e-9, Number(panel.view?.scale) || 1);
+      panel.view.x -= (Number(dx) || 0) / scale;
+      panel.view.y -= (Number(dy) || 0) / scale;
+      withPanelDatasetView(panel, ds, () => {
+        clampView(panel.slot, ds);
+      });
+    }
+    return true;
+  }
+
+  function scaleLinkedPanelsAt(targetScale, sx, sy, slot = null) {
+    const sourcePanel = slot == null ? getActiveDisplayPanel(state) : getDisplayPanel(state, slot);
+    const entries = sourcePanel?.datasetId ? listLinkedViewEntries(sourcePanel.slot) : [];
+    if (!sourcePanel?.datasetId || !entries.length) return null;
+    let activeScale = null;
+    for (const entry of entries) {
+      const { panel, dataset: ds } = entry;
+      const anchor = resolveLinkedViewportAnchor(sx, sy, sourcePanel.slot, panel.slot);
+      withPanelDatasetView(panel, ds, () => {
+        const before = screenToImage(anchor.x, anchor.y, panel.slot, ds);
+        const minS = minScaleFor(ds, panel.slot);
+        panel.view.scale = clamp(targetScale, minS, 128);
+        const after = screenToImage(anchor.x, anchor.y, panel.slot, ds);
+        panel.view.x += before.x - after.x;
+        panel.view.y += before.y - after.y;
+        clampView(panel.slot, ds);
+      });
+      if (Number(panel.slot) === Number(sourcePanel.slot)) activeScale = panel.view.scale;
+    }
+    return activeScale;
+  }
+
+  function recenterLinkedPanelsAtFraction(nx, ny, slot = null) {
+    const entries = listLinkedViewEntries(slot);
+    if (!entries.length) return false;
+    const centerX = clamp(Number(nx) || 0, 0, 1);
+    const centerY = clamp(Number(ny) || 0, 0, 1);
+    const dpr = window.devicePixelRatio || 1;
+    for (const entry of entries) {
+      const { panel, dataset: ds } = entry;
+      const viewport = getPanelRectDevice(panel.slot) || {
+        w: Math.max(1, Number(els.cpuCanvas.width) || 1),
+        h: Math.max(1, Number(els.cpuCanvas.height) || 1)
+      };
+      const eff = Math.max(1e-9, (Number(panel.view?.scale) || 1) * dpr);
+      const viewW = Math.max(1, Number(viewport.w || viewport.width || 1)) / eff;
+      const viewH = Math.max(1, Number(viewport.h || viewport.height || 1)) / eff;
+      panel.view.x = clamp(centerX * ds.meta.samples - (viewW * 0.5), 0, Math.max(0, ds.meta.samples - viewW));
+      panel.view.y = clamp(centerY * ds.meta.lines - (viewH * 0.5), 0, Math.max(0, ds.meta.lines - viewH));
+      withPanelDatasetView(panel, ds, () => {
+        clampView(panel.slot, ds);
+      });
+    }
+    return true;
+  }
+
+  function fitToScreen(ds = null, slot = null) {
+    const targetPanel = slot == null ? getActiveDisplayPanel(state) : getDisplayPanel(state, slot);
+    if (!targetPanel?.datasetId) {
+      viewControls.fitToScreen(ds, slot);
+      return;
+    }
+    const entries = listLinkedViewEntries(targetPanel.slot);
+    if (!entries.length) {
+      viewControls.fitToScreen(ds, slot);
+      return;
+    }
+    const activeEntry = entries.find((entry) => Number(entry.panel.slot) === Number(targetPanel.slot)) || entries[0];
+    updateZoomRange(activeEntry.dataset);
+    for (const entry of entries) {
+      const { panel, dataset: panelDs } = entry;
+      panel.view.scale = computeFitScale(panelDs, panel.slot);
+      panel.view.x = 0;
+      panel.view.y = 0;
+      withPanelDatasetView(panel, panelDs, () => {
+        clampView(panel.slot, panelDs);
+      });
+    }
+    els.zoom.value = String(scaleToSlider(activeEntry.panel.view.scale));
+    updateZoomLabel();
+    render();
+  }
 
   function resolveDisplayRange(ds, band, fallbackArray){ return resolveDisplayRangeCore(ds, band, fallbackArray, getBandSettings); }
 
@@ -662,6 +853,11 @@ import { pointInPolygon } from "./draw-geometry.js";
       ds.view = panel.view || prevView;
       try {
         overlayRenderer.drawOverlaysForPanel(ds, viewport, {
+          annotations: panel.annotations || null,
+          activeBand: resolveDisplayPanelBand(panel, ds),
+          raster: ds.lastRastersByPanel && typeof ds.lastRastersByPanel.get === "function"
+            ? (ds.lastRastersByPanel.get(Number(panel.slot)) || null)
+            : null,
           active: Number(panel.slot) === activeSlot,
           showScaleBar: Number(panel.slot) === activeSlot,
           borderColor: ({
@@ -752,6 +948,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     getActiveViewportDevice: () => getActiveViewportDevice(),
     getDevicePixelRatio: () => window.devicePixelRatio || 1,
     isThreeBandColorMode,
+    recenterViewAtFraction: (nx, ny) => recenterLinkedPanelsAtFraction(nx, ny)
   });
 
   async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step){
@@ -862,6 +1059,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     minScaleFor,
     scaleToSlider,
     updateZoomLabel,
+    panByPixels: (dx, dy) => panLinkedPanelsByPixels(dx, dy),
+    setScaleAt: (targetScale, sx, sy) => scaleLinkedPanelsAt(targetScale, sx, sy),
   });
 
   function clearSelection(){ interactions.clearSelection(); }
@@ -941,6 +1140,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     updateZoomLabel,
     render,
     zoomAt,
+    setScaleAt: (targetScale, sx, sy) => scaleLinkedPanelsAt(targetScale, sx, sy),
     sliderToScale,
     minScaleFor,
     setIOParallel,

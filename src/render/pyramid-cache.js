@@ -331,7 +331,7 @@ export function createPyramidController(deps) {
     schedulePyramidWork(ds);
     pumpBackgroundTasks(ds, band, Math.max(lvl, 2));
 
-    if (!prefer) return null;
+    if (!prefer || cached < total) return null;
 
     const tileSize = pyr.tileSize;
     const winX0 = b.lx0;
@@ -340,14 +340,11 @@ export function createPyramidController(deps) {
     const winH = Math.max(1, b.ly1 - b.ly0);
 
     const out = new Float32Array(winW * winH);
-    out.fill(Number.NaN);
-
-    let any = false;
     for (let ty = b.ty0; ty <= b.ty1; ty++) {
       for (let tx = b.tx0; tx <= b.tx1; tx++) {
         const key = bandTileKey(band, lvl, tx, ty);
         const tile = pyr.tiles.get(key);
-        if (!tile) continue;
+        if (!tile) return null;
 
         touchTile(pyr, key);
         const tileDx0 = tx * tileSize;
@@ -367,12 +364,8 @@ export function createPyramidController(deps) {
           const dstStart = (dy - winY0) * winW + (ovX0 - winX0);
           out.set(tile.data.subarray(srcStart, srcEnd), dstStart);
         }
-
-        any = true;
       }
     }
-
-    if (!any) return null;
     return { band, dataF32: out, w: winW, h: winH, source: "pyramid", level: lvl, step: (1 << lvl), x0: ds.view.x, y0: ds.view.y };
   }
 

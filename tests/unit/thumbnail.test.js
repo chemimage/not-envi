@@ -81,4 +81,38 @@ describe("thumbnail controller", () => {
     expect(ds.view.y).toBeGreaterThan(0);
     expect(render).toHaveBeenCalledTimes(1);
   });
+
+  test("onThumbClick delegates to linked recenter helper when provided", () => {
+    const render = vi.fn();
+    const recenterViewAtFraction = vi.fn(() => true);
+    const ds = {
+      meta: { samples: 1000, lines: 500 },
+      view: { x: 0, y: 0, scale: 1 },
+      thumb: { ready: true, x0: 0, y0: 0, w: 200, h: 100 }
+    };
+    const els = {
+      thumbWrap: { style: { display: "none" } },
+      main: { getBoundingClientRect: () => ({ width: 800, height: 400 }) },
+      thumb: { width: 200, height: 100, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      cpuCanvas: { width: 100, height: 50 }
+    };
+    const ctrl = createThumbnailController({
+      els,
+      thumbCtx: makeThumbCtx(),
+      toFloat32: (x) => x,
+      tone01: () => 0,
+      resolveDisplayRange: () => ({ minVal: 0, maxVal: 1 }),
+      getBandSettings: () => ({ gamma: 1, gain: 1, contrast: 1 }),
+      readBandWindow: async () => new Float32Array(0),
+      readBandWindowBIP: async () => new Float32Array(0),
+      getActive: () => ds,
+      render,
+      getDevicePixelRatio: () => 1,
+      recenterViewAtFraction
+    });
+
+    ctrl.onThumbClick({ clientX: 150, clientY: 25 });
+    expect(recenterViewAtFraction).toHaveBeenCalledWith(0.75, 0.25);
+    expect(render).toHaveBeenCalledTimes(1);
+  });
 });

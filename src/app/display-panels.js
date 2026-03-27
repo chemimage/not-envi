@@ -6,7 +6,30 @@ export function createDisplayPanel(slot) {
     slot,
     datasetId: null,
     linkGroupId: null,
+    activeBand: null,
+    annotations: createDisplayAnnotationState(),
     view: cloneDisplayView()
+  };
+}
+
+function cloneDisplayAnnotationPoint(point) {
+  return {
+    x: Number.isFinite(Number(point?.x)) ? Number(point.x) : 0,
+    y: Number.isFinite(Number(point?.y)) ? Number(point.y) : 0
+  };
+}
+
+function cloneDisplayAnnotationItem(item) {
+  return {
+    ...item,
+    points: Array.isArray(item?.points) ? item.points.map(cloneDisplayAnnotationPoint) : []
+  };
+}
+
+export function createDisplayAnnotationState(source = null) {
+  return {
+    drawings: Array.isArray(source?.drawings) ? source.drawings.map(cloneDisplayAnnotationItem) : [],
+    selectedAreaId: Number.isFinite(Number(source?.selectedAreaId)) ? Number(source.selectedAreaId) : null
   };
 }
 
@@ -37,6 +60,8 @@ export function ensureDisplayPanels(state) {
         slot,
         datasetId: panel?.datasetId || null,
         linkGroupId: Number.isFinite(Number(panel?.linkGroupId)) ? Number(panel.linkGroupId) : null,
+        activeBand: Number.isFinite(Number(panel?.activeBand)) ? Number(panel.activeBand) : null,
+        annotations: createDisplayAnnotationState(panel?.annotations),
         view: cloneDisplayView(panel?.view)
       };
     }
@@ -89,7 +114,22 @@ export function clearDisplayPanel(panel) {
   if (!panel) return;
   panel.datasetId = null;
   panel.linkGroupId = null;
+  panel.activeBand = null;
+  panel.annotations = createDisplayAnnotationState();
   panel.view = cloneDisplayView();
+}
+
+export function resolveDisplayPanelBand(panel, dataset) {
+  const bands = Number(dataset?.meta?.bands);
+  if (!Number.isFinite(bands) || bands < 1) return null;
+  const maxBand = Math.max(0, Math.floor(bands) - 1);
+  const candidates = [panel?.activeBand, dataset?.activeBand, 0];
+  for (const candidate of candidates) {
+    const band = Number(candidate);
+    if (!Number.isFinite(band)) continue;
+    return Math.min(maxBand, Math.max(0, Math.floor(band)));
+  }
+  return 0;
 }
 
 export function datasetsShareDisplaySize(a, b) {
@@ -99,16 +139,23 @@ export function datasetsShareDisplaySize(a, b) {
 }
 
 export function panelHasLinkedPeers(state, slot) {
+  return getLinkedDisplayPanels(state, slot).some((other) => Number(other.slot) !== Number(slot));
+}
+
+export function getLinkedDisplayPanels(state, slot) {
   const panel = getDisplayPanel(state, slot);
-  if (!panel?.datasetId || !Number.isFinite(Number(panel.linkGroupId))) return false;
-  return getVisibleDisplayPanels(state).some((other) => (
-    Number(other.slot) !== Number(panel.slot) && Number(other.linkGroupId) === Number(panel.linkGroupId)
-  ));
+  if (!panel?.datasetId) return [];
+  const groupId = Number(panel.linkGroupId);
+  if (!Number.isFinite(groupId)) return [panel];
+  const linked = getVisibleDisplayPanels(state).filter((other) => Number(other.linkGroupId) === groupId);
+  return linked.length ? linked : [panel];
 }
 
 export function resolveDisplayLinkColorName(state, slot) {
   const panel = getDisplayPanel(state, slot);
   if (!panel?.datasetId || !Number.isFinite(Number(panel.linkGroupId))) return "";
+  const peers = getVisibleDisplayPanels(state).filter((item) => Number(item.linkGroupId) === Number(panel.linkGroupId));
+  if (peers.length < 2) return "";
   const seen = [];
   for (const item of getVisibleDisplayPanels(state)) {
     const groupId = Number(item.linkGroupId);
@@ -129,30 +176,52 @@ export function computeDisplayPanelLayout(panels, width, height) {
 
   const w = Math.max(1, Number(width) || 1);
   const h = Math.max(1, Number(height) || 1);
-  if (list.length === 1) {
-    return [{ slot: list[0].slot, x: 0, y: 0, w, h }];
-  }
-  if (list.length === 2) {
-    const halfW = w * 0.5;
-    return [
-      { slot: list[0].slot, x: 0, y: 0, w: halfW, h },
-      { slot: list[1].slot, x: halfW, y: 0, w: w - halfW, h }
-    ];
-  }
+  const shape = chooseDisplayPanelShape(list.length, w, h);
+  return buildDisplayGridLayout(list, w, h, shape.rows, shape.cols);
+}
 
-  const halfW = w * 0.5;
-  const halfH = h * 0.5;
-  return list.slice(0, DISPLAY_PANEL_COUNT).map((panel, index) => {
-    const col = index % 2;
-    const row = Math.floor(index / 2);
-    const x = col === 0 ? 0 : halfW;
-    const y = row === 0 ? 0 : halfH;
+function chooseDisplayPanelShape(count, width, height) {
+  const aspect = Math.max(1e-9, Number(width) || 1) / Math.max(1e-9, Number(height) || 1);
+  const candidates = {
+    1: [{ rows: 1, cols: 1 }],
+    2: [{ rows: 1, cols: 2 }, { rows: 2, cols: 1 }],
+    3: [{ rows: 1, cols: 3 }, { rows: 2, cols: 2 }, { rows: 3, cols: 1 }],
+    4: [{ rows: 2, cols: 2 }]
+  }[Math.max(1, Math.min(DISPLAY_PANEL_COUNT, count))] || [{ rows: 1, cols: 1 }];
+
+  let best = candidates[0];
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const gridAspect = candidate.cols / candidate.rows;
+    const score = Math.abs(Math.log(gridAspect) - Math.log(aspect));
+    if (score < bestScore - 1e-9) {
+      best = candidate;
+      bestScore = score;
+      continue;
+    }
+    if (Math.abs(score - bestScore) <= 1e-9) {
+      const preferWider = aspect >= 1;
+      if (preferWider && candidate.cols > best.cols) best = candidate;
+      else if (!preferWider && candidate.rows > best.rows) best = candidate;
+    }
+  }
+  return best;
+}
+
+function buildDisplayGridLayout(list, width, height, rows, cols) {
+  const xStops = [0];
+  const yStops = [0];
+  for (let col = 1; col <= cols; col += 1) xStops.push((width * col) / cols);
+  for (let row = 1; row <= rows; row += 1) yStops.push((height * row) / rows);
+  return list.map((panel, index) => {
+    const row = Math.floor(index / cols);
+    const col = index % cols;
     return {
       slot: panel.slot,
-      x,
-      y,
-      w: col === 0 ? halfW : (w - halfW),
-      h: row === 0 ? halfH : (h - halfH)
+      x: xStops[col],
+      y: yStops[row],
+      w: xStops[col + 1] - xStops[col],
+      h: yStops[row + 1] - yStops[row]
     };
   });
 }

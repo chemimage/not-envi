@@ -6,6 +6,7 @@ export function createAnnotationController(deps) {
     els,
     clamp,
     getActive,
+    getActivePanel,
     screenToImage,
     render,
     getSpectrumOpenForDatasetId,
@@ -30,6 +31,31 @@ export function createAnnotationController(deps) {
 
   function currentShapeMode() {
     return normalizeShapeMode(state.draw?.shapeMode);
+  }
+
+  function resolveAnnotationState(ds, explicitState = null) {
+    if (explicitState && typeof explicitState === "object") {
+      if (!Array.isArray(explicitState.drawings)) explicitState.drawings = [];
+      explicitState.selectedAreaId = Number.isFinite(Number(explicitState.selectedAreaId)) ? Number(explicitState.selectedAreaId) : null;
+      return explicitState;
+    }
+    if (!ds) return { drawings: [], selectedAreaId: null };
+    const activePanel = (typeof getActivePanel === "function") ? getActivePanel() : null;
+    if (activePanel && String(activePanel.datasetId || "") === String(ds.id || "")) {
+      if (!activePanel.annotations || typeof activePanel.annotations !== "object") {
+        activePanel.annotations = { drawings: [], selectedAreaId: null };
+      }
+      if (!Array.isArray(activePanel.annotations.drawings)) activePanel.annotations.drawings = [];
+      activePanel.annotations.selectedAreaId = Number.isFinite(Number(activePanel.annotations.selectedAreaId))
+        ? Number(activePanel.annotations.selectedAreaId)
+        : null;
+      ds.drawings = activePanel.annotations.drawings;
+      ds.selectedAreaId = activePanel.annotations.selectedAreaId;
+      return activePanel.annotations;
+    }
+    if (!Array.isArray(ds.drawings)) ds.drawings = [];
+    ds.selectedAreaId = Number.isFinite(Number(ds.selectedAreaId)) ? Number(ds.selectedAreaId) : null;
+    return ds;
   }
 
   function pointerToImagePoint(ev, ds) {
@@ -151,41 +177,45 @@ export function createAnnotationController(deps) {
     return !!(item && (item.tool === "rect" || item.tool === "shape"));
   }
 
-  function listHistogramSelectionItems(ds) {
-    if (!ds || !Array.isArray(ds.drawings)) return [];
-    return ds.drawings.filter((item) => isHistogramSelectionTool(item));
+  function listHistogramSelectionItems(ds, explicitState = null) {
+    const annotationState = resolveAnnotationState(ds, explicitState);
+    return annotationState.drawings.filter((item) => isHistogramSelectionTool(item));
   }
 
-  function latestHistogramSelectionItem(ds) {
-    if (!ds || !Array.isArray(ds.drawings)) return null;
-    for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
-      const item = ds.drawings[i];
+  function latestHistogramSelectionItem(ds, explicitState = null) {
+    const annotationState = resolveAnnotationState(ds, explicitState);
+    for (let i = annotationState.drawings.length - 1; i >= 0; i -= 1) {
+      const item = annotationState.drawings[i];
       if (isHistogramSelectionTool(item) && Number.isFinite(item.id)) return item;
     }
     return null;
   }
 
-  function ensureSelectedAreaId(ds, { preferLatest = true } = {}) {
+  function ensureSelectedAreaId(ds, { preferLatest = true, annotationState: explicitState = null } = {}) {
     if (!ds) return null;
-    const items = listHistogramSelectionItems(ds);
+    const annotationState = resolveAnnotationState(ds, explicitState);
+    const items = listHistogramSelectionItems(ds, annotationState);
     if (!items.length) {
+      annotationState.selectedAreaId = null;
       ds.selectedAreaId = null;
       return null;
     }
-    const current = ds.selectedAreaId;
+    const current = annotationState.selectedAreaId;
     const hasCurrent = Number.isFinite(current) && items.some((item) => item.id === current);
     if (hasCurrent) return current;
     if (!preferLatest) return null;
-    const latest = latestHistogramSelectionItem(ds);
-    ds.selectedAreaId = latest ? latest.id : null;
-    return ds.selectedAreaId;
+    const latest = latestHistogramSelectionItem(ds, annotationState);
+    annotationState.selectedAreaId = latest ? latest.id : null;
+    ds.selectedAreaId = annotationState.selectedAreaId;
+    return annotationState.selectedAreaId;
   }
 
-  function getHistogramSelectionItems(ds) {
-    const items = listHistogramSelectionItems(ds);
+  function getHistogramSelectionItems(ds, explicitState = null) {
+    const annotationState = resolveAnnotationState(ds, explicitState);
+    const items = listHistogramSelectionItems(ds, annotationState);
     if (!items.length) return [];
     if (isAreaSelectionGrouped()) return items;
-    const selectedId = ensureSelectedAreaId(ds, { preferLatest: true });
+    const selectedId = ensureSelectedAreaId(ds, { preferLatest: true, annotationState });
     if (!Number.isFinite(selectedId)) return [];
     return items.filter((item) => item.id === selectedId);
   }
@@ -213,17 +243,20 @@ export function createAnnotationController(deps) {
 
   function setSelectedAreaId(ds, nextId) {
     if (!ds) return false;
-    const items = listHistogramSelectionItems(ds);
+    const annotationState = resolveAnnotationState(ds);
+    const items = listHistogramSelectionItems(ds, annotationState);
     if (!items.length) {
-      if (ds.selectedAreaId == null) return false;
+      if (annotationState.selectedAreaId == null) return false;
+      annotationState.selectedAreaId = null;
       ds.selectedAreaId = null;
       return true;
     }
     const resolved = Number.isFinite(nextId) && items.some((item) => item.id === nextId)
       ? nextId
       : null;
-    const fallback = (resolved == null) ? ensureSelectedAreaId(ds, { preferLatest: true }) : resolved;
-    if (ds.selectedAreaId === fallback) return false;
+    const fallback = (resolved == null) ? ensureSelectedAreaId(ds, { preferLatest: true, annotationState }) : resolved;
+    if (annotationState.selectedAreaId === fallback) return false;
+    annotationState.selectedAreaId = fallback;
     ds.selectedAreaId = fallback;
     return true;
   }
@@ -612,13 +645,14 @@ export function createAnnotationController(deps) {
     return "";
   }
 
-  function getDrawData(ds) {
+  function getDrawData(ds, explicitState = null) {
     if (!ds) return null;
-    const items = Array.isArray(ds.drawings) ? ds.drawings : [];
+    const annotationState = resolveAnnotationState(ds, explicitState);
+    const items = Array.isArray(annotationState.drawings) ? annotationState.drawings : [];
     const draft = (state.draw.draft && state.draw.draft.dsId === ds.id) ? state.draw.draft : null;
     const rulerHover = (state.draw.rulerHover && state.draw.rulerHover.dsId === ds.id) ? state.draw.rulerHover : null;
     const rulerProfileHover = (state.draw.rulerProfileHover && state.draw.rulerProfileHover.dsId === ds.id) ? state.draw.rulerProfileHover : null;
-    const selectionItems = getHistogramSelectionItems(ds);
+    const selectionItems = getHistogramSelectionItems(ds, annotationState);
     const selectionIds = selectionItems
       .map((item) => item.id)
       .filter((id) => Number.isFinite(id));
@@ -1057,9 +1091,10 @@ export function createAnnotationController(deps) {
   function clearAllAnnotations() {
     const ds = getActive();
     if (!ds) return false;
-    if (!Array.isArray(ds.drawings)) ds.drawings = [];
+    const annotationState = resolveAnnotationState(ds);
     if (!ds.drawings.length) return false;
     ds.drawings.length = 0;
+    annotationState.selectedAreaId = null;
     ds.selectedAreaId = null;
     state.draw.activePointerId = null;
     state.draw.draft = null;
@@ -1082,7 +1117,7 @@ export function createAnnotationController(deps) {
   function beginDrawingAtPointer(ev) {
     const ds = getActive();
     if (!ds) return false;
-    if (!Array.isArray(ds.drawings)) ds.drawings = [];
+    resolveAnnotationState(ds);
     if (state.draw.tool === "ruler") {
       const profileHit = findRulerProfileHit(ds, ev);
       if (profileHit) {
@@ -1347,6 +1382,8 @@ export function createAnnotationController(deps) {
       };
       ds.drawings.push(newItem);
       if (draft.tool === "rect" || draft.tool === "shape") {
+        const annotationState = resolveAnnotationState(ds);
+        annotationState.selectedAreaId = newItem.id;
         ds.selectedAreaId = newItem.id;
         updateSelectionHistogramForDataset(ds);
       }

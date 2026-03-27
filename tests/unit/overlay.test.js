@@ -15,6 +15,8 @@ function makeCtx() {
     strokeRect: vi.fn(),
     stroke: vi.fn(),
     fill: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
     arcTo: vi.fn(),
     closePath: vi.fn(),
     fillText: vi.fn(),
@@ -106,5 +108,46 @@ describe("overlay renderer", () => {
 
     overlay.drawOverlays(ds);
     expect(ctx.strokeRect).toHaveBeenCalledWith(1, 1, 4, 4);
+  });
+
+  test("drawOverlaysForPanel uses the provided panel raster and band for ruler profiles", () => {
+    const ctx = makeCtx();
+    const els = {
+      chkScale: { checked: false },
+      chkGrid: { checked: false },
+      overlayCanvas: { width: 200, height: 120 }
+    };
+    const overlay = createOverlayRenderer({
+      els,
+      overlayCtx: ctx,
+      getDevicePixelRatio: () => 1,
+      getDrawData: () => ({
+        items: [
+          { id: 9, tool: "ruler", color: "#fff", points: [{ x: 10, y: 20 }, { x: 50, y: 20 }] }
+        ],
+        draft: null,
+        rulerHover: null,
+        rulerProfileHover: null,
+        selectionIds: [],
+        marqueeOffset: 0
+      })
+    });
+    const ds = {
+      activeBand: 0,
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 100, lines: 80 }
+    };
+    const panelRaster = {
+      band: 2,
+      dataF32: new Float32Array(ds.meta.samples * ds.meta.lines).fill(5),
+      w: ds.meta.samples,
+      h: ds.meta.lines,
+      step: 1,
+      x0: 0,
+      y0: 0
+    };
+
+    overlay.drawOverlaysForPanel(ds, { x: 0, y: 0, w: 100, h: 80 }, { raster: panelRaster, activeBand: 2 });
+    expect(ctx.stroke).toHaveBeenCalledTimes(3);
   });
 });

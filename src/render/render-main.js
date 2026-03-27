@@ -1,5 +1,6 @@
 import { clamp } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
+import { resolveDisplayPanelBand } from "../app/display-panels.js";
 import {
   getThreeBandDisplayMode,
   isThreeBandColorMode,
@@ -61,6 +62,10 @@ export function createRenderer(deps) {
       if (Array.isArray(layout)) return layout;
     }
     return [{ slot: 1, x: 0, y: 0, w: els.cpuCanvas.width || 1, h: els.cpuCanvas.height || 1 }];
+  }
+
+  function resolvePanelBand(panel, ds) {
+    return resolveDisplayPanelBand(panel, ds);
   }
 
   async function readRasterDirect(ds, band, eff, viewportW, viewportH) {
@@ -176,6 +181,31 @@ export function createRenderer(deps) {
     return ds.lastScreenFrames;
   }
 
+  function getRasterMap(ds) {
+    if (!ds.lastRastersByPanel || typeof ds.lastRastersByPanel.get !== "function") {
+      ds.lastRastersByPanel = new Map();
+    }
+    return ds.lastRastersByPanel;
+  }
+
+  function getCompositeRasterMap(ds) {
+    if (!ds.lastCompositeRastersByPanel || typeof ds.lastCompositeRastersByPanel.get !== "function") {
+      ds.lastCompositeRastersByPanel = new Map();
+    }
+    return ds.lastCompositeRastersByPanel;
+  }
+
+  function updatePanelRasterCache(ds, panelSlot, raster = null, compositeRaster = null) {
+    if (!ds) return;
+    const slot = Number(panelSlot) || 1;
+    const rasterMap = getRasterMap(ds);
+    const compositeMap = getCompositeRasterMap(ds);
+    if (raster) rasterMap.set(slot, raster);
+    else rasterMap.delete(slot);
+    if (compositeRaster) compositeMap.set(slot, compositeRaster);
+    else compositeMap.delete(slot);
+  }
+
   function updateScreenPreviewCache(ds, panelSlot, modeKey, eff, sourceCanvas) {
     if (!ds || !sourceCanvas) return;
     const frame = {
@@ -277,15 +307,16 @@ export function createRenderer(deps) {
     for (const entry of visible) {
       const { panel, dataset: ds } = entry;
       const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
-      if (!viewport || !ds || ds.activeBand == null) continue;
+      const band = resolvePanelBand(panel, ds);
+      if (!viewport || !ds || band == null) continue;
       const prevView = ds.view;
       ds.view = panel.view || prevView;
       try {
-        clampView(panel.slot);
+        clampView(panel.slot, ds);
         const eff = ds.view.scale * dpr;
         const colorMode = isThreeBandColorMode(ds);
         const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
-        const modeKey = renderModeKey(ds, ds.activeBand, colorMode, colorRenderMode);
+        const modeKey = renderModeKey(ds, band, colorMode, colorRenderMode);
         if (drawCachedScreenPreview(ds, panel.slot, modeKey, eff, viewport)) drewAny = true;
       } finally {
         ds.view = prevView;
@@ -312,7 +343,8 @@ export function createRenderer(deps) {
     const dpr = window.devicePixelRatio || 1;
     const colorMode = isThreeBandColorMode(ds);
     const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
-    const band = ds.activeBand;
+    const band = resolvePanelBand(panel, ds);
+    if (band == null) return;
     const modeKey = renderModeKey(ds, band, colorMode, colorRenderMode);
 
     let useGPU = false;
@@ -321,7 +353,7 @@ export function createRenderer(deps) {
       if (ok) useGPU = true;
     }
 
-    clampView(panel?.slot);
+    clampView(panel?.slot, ds);
     const eff = ds.view.scale * dpr;
     const settings = getBandSettings(ds, band);
 
@@ -390,6 +422,7 @@ export function createRenderer(deps) {
         renderedCanvas = cpuRenderGray(raster.dataF32, raster.w, raster.h, params);
       }
       updateScreenPreviewCache(ds, panel?.slot || 1, modeKey, eff, renderedCanvas || (useGPU ? els.gpuCanvas : els.cpuCanvas));
+      updatePanelRasterCache(ds, panel?.slot || 1, raster, compositeRaster);
 
       state.lastRenderMs = now() - t0;
       setStatus("ready", "ok");
@@ -433,13 +466,13 @@ export function createRenderer(deps) {
         if (seq !== state.renderSeq) return;
         const { panel, dataset: ds } = entry;
         const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
-        if (!viewport || !ds || ds.activeBand == null) continue;
+        const band = resolvePanelBand(panel, ds);
+        if (!viewport || !ds || band == null) continue;
         await withPanelView(ds, panel, async () => {
-          clampView(panel.slot);
+          clampView(panel.slot, ds);
           const eff = ds.view.scale * dpr;
           const colorMode = isThreeBandColorMode(ds);
           const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
-          const band = ds.activeBand;
           const modeKey = renderModeKey(ds, band, colorMode, colorRenderMode);
 
           let raster = null;
@@ -482,6 +515,7 @@ export function createRenderer(deps) {
           }
           drawCanvasToViewport(cpuCtx, renderedCanvas, viewport, false);
           updateScreenPreviewCache(ds, panel.slot, modeKey, eff, renderedCanvas);
+          updatePanelRasterCache(ds, panel.slot, raster, compositeRaster);
 
           if (Number(panel.slot) === activeSlot) {
             ds.lastRaster = raster;
@@ -526,7 +560,7 @@ export function createRenderer(deps) {
     const activePanel = activePanelInfo();
     const activeEntry = visible.find((entry) => Number(entry.panel.slot) === Number(activePanel?.slot)) || visible[0];
     const activeDs = activeEntry?.dataset || getActive();
-    if (!activeDs || activeDs.activeBand == null) {
+    if (!activeDs || resolvePanelBand(activeEntry?.panel || null, activeDs) == null) {
       resizeCanvases();
       clearBaseCanvases();
       return;

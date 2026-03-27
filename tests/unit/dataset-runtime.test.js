@@ -76,8 +76,8 @@ describe("dataset runtime", () => {
     expect(deps.render).toHaveBeenCalled();
   });
 
-  test("cycleDatasetPanel toggles compatible panel linkage without removing the panel assignment", () => {
-    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32 }, view: { x: 0, y: 0, scale: 1 } };
+  test("cycleDatasetPanel cycles linked, independent, and hidden states", () => {
+    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32 }, view: { x: 0, y: 0, scale: 1 }, drawings: [{ id: 1, tool: "rect", points: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }], selectedAreaId: 1 };
     const ds2 = { id: "ds2", meta: { samples: 64, lines: 32 }, view: { x: 0, y: 0, scale: 1 } };
     const state = { datasets: [ds1, ds2], activeId: null, activePanelSlot: 1, nextLinkGroupId: 1 };
     const deps = makeDeps(state);
@@ -91,13 +91,25 @@ describe("dataset runtime", () => {
     expect(panel1?.datasetId).toBe("ds1");
     expect(panel2?.datasetId).toBe("ds2");
     expect(panel2?.linkGroupId).toBe(panel1?.linkGroupId);
+    expect(panel2?.annotations).toBe(panel1?.annotations);
+    expect(panel2?.view).not.toBe(panel1?.view);
+    expect(panel2?.view).toEqual(panel1?.view);
 
     rt.cycleDatasetPanel("ds2", 2);
     expect(panel2?.datasetId).toBe("ds2");
     expect(panel2?.linkGroupId).not.toBe(panel1?.linkGroupId);
+    expect(panel2?.annotations).not.toBe(panel1?.annotations);
+    expect(panel2?.annotations?.drawings).toEqual(panel1?.annotations?.drawings);
+
+    rt.cycleDatasetPanel("ds2", 2);
+    expect(panel2?.datasetId).toBe(null);
+    expect(panel2?.linkGroupId).toBe(null);
 
     rt.cycleDatasetPanel("ds2", 2);
     expect(panel2?.datasetId).toBe("ds2");
     expect(panel2?.linkGroupId).toBe(panel1?.linkGroupId);
+    expect(panel2?.annotations).toBe(panel1?.annotations);
+    expect(panel2?.view).not.toBe(panel1?.view);
+    expect(panel2?.view).toEqual(panel1?.view);
   });
 });

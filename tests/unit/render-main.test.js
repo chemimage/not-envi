@@ -92,7 +92,7 @@ describe("render-main", () => {
       id: "ds1",
       activeBand: 0,
       view: { x: 6, y: 4, scale: 1.25 },
-      meta: { samples: 200, lines: 120, interleave: "bsq" },
+      meta: { samples: 200, lines: 120, bands: 1, interleave: "bsq" },
       lastScreenFrame: {
         modeKey: "gray:0",
         eff: 1,
@@ -128,7 +128,7 @@ describe("render-main", () => {
       id: 1,
       activeBand: 0,
       view: { x: -150, y: -62.5, scale: 0.8 },
-      meta: { samples: 100, lines: 100, interleave: "bsq" },
+      meta: { samples: 100, lines: 100, bands: 1, interleave: "bsq" },
       ds: {},
       lastRaster: null
     };
@@ -194,7 +194,7 @@ describe("render-main", () => {
       id: "ds1",
       activeBand: 0,
       view: { x: 8, y: 6, scale: 1.5 },
-      meta: { samples: 200, lines: 120, interleave: "bsq" },
+      meta: { samples: 200, lines: 120, bands: 1, interleave: "bsq" },
       ds: {},
       lastRaster: null,
       lastScreenFrame: {
@@ -227,5 +227,53 @@ describe("render-main", () => {
 
     releaseRead();
     await renderPromise;
+  });
+
+  test("render uses each panel active band for the same dataset in multi-panel mode", async () => {
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 8, lines: 4, bands: 3, interleave: "bsq" },
+      ds: {},
+      lastRaster: null,
+      lastCompositeRaster: null
+    };
+    const panel1 = { slot: 1, datasetId: "ds1", activeBand: 0, view: ds.view };
+    const panel2 = { slot: 2, datasetId: "ds1", activeBand: 2, view: ds.view };
+    const readBandWindow = vi.fn(async (_meta, _src, band, _x0, _y0, outW, outH) => {
+      const data = new Float32Array(outW * outH);
+      data.fill(band + 1);
+      return data;
+    });
+    const buildGrayCanvas = vi.fn(() => ({ width: 8, height: 4 }));
+    const drawCanvasToViewport = vi.fn();
+    const clampView = vi.fn();
+    const deps = makeDeps({
+      getActive: () => ds,
+      getActivePanel: () => panel2,
+      getVisibleDatasetPanels: () => [
+        { panel: panel1, dataset: ds },
+        { panel: panel2, dataset: ds }
+      ],
+      getPanelLayoutDevice: () => [
+        { slot: 1, x: 0, y: 0, w: 160, h: 180 },
+        { slot: 2, x: 160, y: 0, w: 160, h: 180 }
+      ],
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      readBandWindow,
+      buildGrayCanvas,
+      drawCanvasToViewport,
+      clampView
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(clampView).toHaveBeenNthCalledWith(1, 1, ds);
+    expect(clampView).toHaveBeenNthCalledWith(2, 2, ds);
+    expect(readBandWindow.mock.calls.map((call) => call[2])).toEqual([0, 2]);
+    expect(buildGrayCanvas).toHaveBeenCalledTimes(2);
+    expect(drawCanvasToViewport).toHaveBeenCalledTimes(2);
   });
 });

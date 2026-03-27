@@ -8,6 +8,7 @@ function makeDeps() {
     state,
     els,
     getActive: () => null,
+    getActivePanel: () => null,
     clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
     fmt: (n) => String(n),
     fmtNoGroup: (n) => String(n),
@@ -180,5 +181,93 @@ describe("ui-panels", () => {
     expect(deps.els.btnHistChannel.className).toContain("channel-blue");
     expect(deps.els.slContrast.value).toBe("1.4");
     expect(deps.els.numMin.value).toBe("3");
+  });
+
+  test("band tree and band changes follow the selected panel band", () => {
+    document.body.innerHTML = `
+      <input id="bandSearch" value="" />
+      <div id="bandTree"></div>
+      <input id="slContrast" value="1" />
+      <input id="slBrightness" value="0" />
+      <input id="slGain" value="1" />
+      <input id="numContrast" value="1" />
+      <input id="numBrightness" value="0" />
+      <input id="numGain" value="1" />
+      <input id="numMin" value="0" />
+      <input id="numMax" value="1" />
+    `;
+
+    const deps = makeDeps();
+    const activePanel = { slot: 2, datasetId: "ds1", activeBand: 1 };
+    const otherPanel = { slot: 1, datasetId: "ds1", activeBand: 0 };
+    const ds = {
+      id: "ds1",
+      meta: { bands: 3 },
+      activeBand: 0,
+      bandSettings: new Map([[0, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 }]]),
+      bandStatsWhole: new Map([[1, { min: 0, max: 10, p1: 1, p99: 9 }]]),
+      bandStatsView: null,
+      treeExpanded: true,
+      treeScrollTop: 0
+    };
+    deps.state.datasets = [ds];
+    deps.state.activeId = ds.id;
+    deps.getActive = () => ds;
+    deps.getActivePanel = () => activePanel;
+    deps.els = {
+      bandSearch: document.querySelector("#bandSearch"),
+      bandTree: document.querySelector("#bandTree"),
+      slContrast: document.querySelector("#slContrast"),
+      slBrightness: document.querySelector("#slBrightness"),
+      slGain: document.querySelector("#slGain"),
+      numContrast: document.querySelector("#numContrast"),
+      numBrightness: document.querySelector("#numBrightness"),
+      numGain: document.querySelector("#numGain"),
+      numMin: document.querySelector("#numMin"),
+      numMax: document.querySelector("#numMax")
+    };
+
+    const ui = createUIPanels(deps);
+    ui.rebuildBandTree();
+    expect(document.querySelectorAll(".band-row.active")).toHaveLength(1);
+    expect(document.querySelectorAll(".band-row")[1]?.classList.contains("active")).toBe(true);
+
+    ui.setActiveBand(ds, 2);
+    expect(activePanel.activeBand).toBe(2);
+    expect(otherPanel.activeBand).toBe(0);
+    expect(ds.activeBand).toBe(2);
+  });
+
+  test("dataset panel buttons distinguish linked, independent, and hidden states", () => {
+    document.body.innerHTML = `
+      <div id="datasetList"></div>
+      <div id="datasetCount"></div>
+    `;
+
+    const deps = makeDeps();
+    const ds1 = { id: "ds1", name: "A", meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq", dataType: 4, dataTypeInfo: { name: "f32" }, littleEndian: true }, treeExpanded: true };
+    const ds2 = { id: "ds2", name: "B", meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq", dataType: 4, dataTypeInfo: { name: "f32" }, littleEndian: true }, treeExpanded: true };
+    deps.state.datasets = [ds1, ds2];
+    deps.state.activeId = "ds1";
+    deps.state.activePanelSlot = 1;
+    deps.state.displayPanels = [
+      { slot: 1, datasetId: "ds1", linkGroupId: 1, activeBand: 0, view: {} },
+      { slot: 2, datasetId: "ds2", linkGroupId: 1, activeBand: 0, view: {} },
+      { slot: 3, datasetId: "ds1", linkGroupId: 2, activeBand: 1, view: {} },
+      { slot: 4, datasetId: null, linkGroupId: null, activeBand: null, view: {} }
+    ];
+    deps.els = {
+      datasetList: document.querySelector("#datasetList"),
+      datasetCount: document.querySelector("#datasetCount")
+    };
+
+    const ui = createUIPanels(deps);
+    ui.rebuildDatasetList();
+
+    const ds1Row = document.querySelector('.ds-item[data-dsid="ds1"]');
+    const buttons = ds1Row?.querySelectorAll(".slot-btn");
+    expect(buttons?.[0]?.className).toContain("slot-link-amber");
+    expect(buttons?.[2]?.className).toContain("independent");
+    expect(buttons?.[3]?.className).not.toContain("active");
   });
 });

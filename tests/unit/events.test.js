@@ -238,4 +238,78 @@ describe("interaction controller", () => {
     expect(state.mouse.dragging).toBe(false);
     expect(render).not.toHaveBeenCalled();
   });
+
+  test("zoomAt delegates linked scaling when a scale helper is provided", () => {
+    const render = vi.fn();
+    const clampView = vi.fn();
+    const screenToImage = vi.fn(() => ({ x: 0, y: 0 }));
+    const setScaleAt = vi.fn(() => 3);
+    const ds = { view: { scale: 2, x: 10, y: 20 }, meta: { samples: 1000, lines: 1000 } };
+    const els = {
+      selRect: { style: {} },
+      main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      zoom: { value: "0" }
+    };
+    const state = { selection: { drawing: false, imgRect: null }, mouse: {} };
+
+    const controller = createInteractionController({
+      els,
+      state,
+      getActive: () => ds,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      setStatus: () => {},
+      updateHud: () => {},
+      screenToImage,
+      clampView,
+      render,
+      minScaleFor: () => 1,
+      scaleToSlider: (s) => s,
+      updateZoomLabel: () => {},
+      setScaleAt
+    });
+
+    controller.zoomAt(1.25, 100, 100);
+    expect(setScaleAt).toHaveBeenCalledWith(2.5, 100, 100);
+    expect(screenToImage).not.toHaveBeenCalled();
+    expect(clampView).not.toHaveBeenCalled();
+    expect(els.zoom.value).toBe("3");
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  test("pointer drag delegates linked panning when a pan helper is provided", () => {
+    const render = vi.fn();
+    const clampView = vi.fn();
+    const panByPixels = vi.fn(() => true);
+    const ds = { view: { scale: 2, x: 10, y: 20 }, meta: { samples: 1000, lines: 1000 } };
+    const state = {
+      selection: { enabled: false, drawing: false, imgRect: null },
+      mouse: { dragging: true, lastX: 10, lastY: 20 }
+    };
+    const els = {
+      selRect: { style: { display: "none" } },
+      main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      zoom: { value: "0" }
+    };
+
+    const controller = createInteractionController({
+      els,
+      state,
+      getActive: () => ds,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      setStatus: () => {},
+      updateHud: () => {},
+      screenToImage: (sx, sy) => ({ x: sx, y: sy }),
+      clampView,
+      render,
+      minScaleFor: () => 1,
+      scaleToSlider: (s) => s,
+      updateZoomLabel: () => {},
+      panByPixels
+    });
+
+    controller.onPointerMove({ pointerType: "mouse", clientX: 40, clientY: 65 });
+    expect(panByPixels).toHaveBeenCalledWith(30, 45);
+    expect(clampView).not.toHaveBeenCalled();
+    expect(render).toHaveBeenCalledTimes(1);
+  });
 });

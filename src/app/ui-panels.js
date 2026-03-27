@@ -1,5 +1,5 @@
 import { formatExperimentSettingsInline, parseExperimentSettings } from "./experiment-meta.js";
-import { resolveDisplayLinkColorName } from "./display-panels.js";
+import { resolveDisplayLinkColorName, resolveDisplayPanelBand } from "./display-panels.js";
 import {
   THREE_BAND_ADJUST_BLUE,
   THREE_BAND_ADJUST_GREEN,
@@ -22,6 +22,7 @@ export function createUIPanels(deps) {
     state,
     els,
     getActive,
+    getActivePanel,
     clamp,
     fmt,
     fmtNoGroup,
@@ -68,6 +69,15 @@ export function createUIPanels(deps) {
 
   function resolveDisplayControlBand(ds) {
     return resolveThreeBandAdjustBand(ds);
+  }
+
+  function resolveActiveBandForDataset(ds) {
+    if (!ds) return null;
+    const panel = (typeof getActivePanel === "function") ? getActivePanel() : null;
+    if (panel && String(panel.datasetId || "") === String(ds.id || "")) {
+      return resolveDisplayPanelBand(panel, ds);
+    }
+    return resolveDisplayPanelBand(null, ds);
   }
 
   function syncDisplayAdjustButton(ds) {
@@ -274,7 +284,7 @@ export function createUIPanels(deps) {
           }
 
           const row = document.createElement("div");
-          row.className = `band-row${(ds.id === state.activeId && b === ds.activeBand) ? " active" : ""}`;
+          row.className = `band-row${(ds.id === state.activeId && b === resolveActiveBandForDataset(ds)) ? " active" : ""}`;
           row.onclick = () => {
             if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
             setActiveBand(ds, b);
@@ -309,6 +319,10 @@ export function createUIPanels(deps) {
   function setActiveBand(ds, band) {
     if (!ds) return;
     const b = clamp(band | 0, 0, ds.meta.bands - 1);
+    const activePanel = (typeof getActivePanel === "function") ? getActivePanel() : null;
+    if (activePanel && String(activePanel.datasetId || "") === String(ds.id || "")) {
+      activePanel.activeBand = b;
+    }
     ds.activeBand = b;
     getBandSettings(ds, b);
     rebuildBandTree({ preserveScroll: true });
@@ -460,16 +474,20 @@ export function createUIPanels(deps) {
           : null;
         const active = !!panel && String(panel.datasetId || "") === String(ds.id);
         const colorName = active ? resolveDisplayLinkColorName(state, slot) : "";
+        const independent = active && !colorName;
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = [
           "slot-btn",
           active ? "active" : "",
+          independent ? "independent" : "",
           active && colorName ? `slot-link-${colorName}` : "",
           active && Number(state.activePanelSlot) === slot ? "selected" : ""
         ].filter(Boolean).join(" ");
-        btn.title = active ? `Panel ${slot}` : `Show in panel ${slot}`;
-        btn.ariaLabel = active ? `Panel ${slot}` : `Show in panel ${slot}`;
+        btn.title = active
+          ? (independent ? `Panel ${slot} (independent)` : `Panel ${slot} (linked)`)
+          : `Show in panel ${slot}`;
+        btn.ariaLabel = btn.title;
         btn.textContent = String(slot);
         btn.onclick = (ev) => {
           ev.stopPropagation();

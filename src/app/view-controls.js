@@ -9,8 +9,8 @@ export function createViewControls(deps) {
     onRender
   } = deps;
 
-  function resolveViewportCssRect() {
-    const rect = (typeof getPanelRectCss === "function") ? getPanelRectCss() : null;
+  function resolveViewportCssRect(slot = null) {
+    const rect = (typeof getPanelRectCss === "function") ? getPanelRectCss(slot) : null;
     if (rect) return rect;
     const main = els.main?.getBoundingClientRect ? els.main.getBoundingClientRect() : null;
     return {
@@ -32,13 +32,13 @@ export function createViewControls(deps) {
     };
   }
 
-  function computeFitScale(ds) {
-    const rect = resolveViewportCssRect();
+  function computeFitScale(ds, slot = null) {
+    const rect = resolveViewportCssRect(slot);
     return Math.min(rect.w / ds.meta.samples, rect.h / ds.meta.lines);
   }
 
-  function minScaleFor(ds) {
-    const fit = computeFitScale(ds);
+  function minScaleFor(ds, slot = null) {
+    const fit = computeFitScale(ds, slot);
     return Math.min(1, fit);
   }
 
@@ -75,10 +75,10 @@ export function createViewControls(deps) {
     els.zoomLabel.textContent = `${(ds.view.scale * 100).toFixed(1)}%`;
   }
 
-  function clampView(slot = null) {
-    const ds = getActive();
+  function clampView(slot = null, targetDs = null) {
+    const ds = targetDs || getActive();
     if (!ds) return;
-    const minS = minScaleFor(ds);
+    const minS = minScaleFor(ds, slot);
     ds.view.minScale = minS;
     ds.view.scale = clamp(ds.view.scale, minS, 128);
 
@@ -99,23 +99,23 @@ export function createViewControls(deps) {
     }
   }
 
-  function fitToScreen() {
-    const ds = getActive();
+  function fitToScreen(targetDs = null, slot = null) {
+    const ds = targetDs || getActive();
     if (!ds) return;
-    const rect = resolveViewportCssRect();
+    const rect = resolveViewportCssRect(slot);
     const s = Math.min(rect.w / ds.meta.samples, rect.h / ds.meta.lines);
     updateZoomRange(ds);
     ds.view.scale = s;
     ds.view.x = 0;
     ds.view.y = 0;
-    clampView();
+    clampView(slot, ds);
     els.zoom.value = String(scaleToSlider(ds.view.scale));
     updateZoomLabel();
     onRender();
   }
 
-  function screenToImage(sx, sy, slot = null) {
-    const ds = getActive();
+  function screenToImage(sx, sy, slot = null, targetDs = null) {
+    const ds = targetDs || getActive();
     if (!ds) return { x: 0, y: 0 };
     const viewport = resolveViewportDeviceRect(slot);
     const dpr = window.devicePixelRatio || 1;

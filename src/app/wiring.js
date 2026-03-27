@@ -27,6 +27,7 @@ export function wireApp(deps) {
     updateZoomLabel,
     render,
     zoomAt,
+    setScaleAt,
     sliderToScale,
     minScaleFor,
     setIOParallel,
@@ -767,15 +768,21 @@ export function wireApp(deps) {
       const center = resolveActiveViewportCenter();
       const centerX = center.x;
       const centerY = center.y;
-      const before = screenToImage(centerX, centerY);
-      ds.view.scale = s;
-      const minS = minScaleFor(ds);
-      ds.view.scale = clamp(ds.view.scale, minS, 128);
-      const after = screenToImage(centerX, centerY);
-      ds.view.x += (before.x - after.x);
-      ds.view.y += (before.y - after.y);
-      clampView();
-      els.zoom.value = String(scaleToSlider(ds.view.scale));
+      let nextScale = (typeof setScaleAt === "function")
+        ? setScaleAt(s, centerX, centerY)
+        : null;
+      if (nextScale == null) {
+        const before = screenToImage(centerX, centerY);
+        ds.view.scale = s;
+        const minS = minScaleFor(ds);
+        ds.view.scale = clamp(ds.view.scale, minS, 128);
+        const after = screenToImage(centerX, centerY);
+        ds.view.x += (before.x - after.x);
+        ds.view.y += (before.y - after.y);
+        clampView();
+        nextScale = ds.view.scale;
+      }
+      els.zoom.value = String(scaleToSlider(nextScale || ds.view.scale));
       updateZoomLabel();
       render();
     };

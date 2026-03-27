@@ -533,4 +533,162 @@ describe("app wiring", () => {
     expect(addDatasetsFromFileList).toHaveBeenCalledWith(files);
     windowAdd.mockRestore();
   });
+
+  test("zoom slider delegates linked scaling when provided", () => {
+    const addEventListener = vi.fn();
+    const windowAdd = vi.spyOn(window, "addEventListener").mockImplementation(noop);
+    const screenToImage = vi.fn(() => ({ x: 0, y: 0 }));
+    const clampView = vi.fn();
+    const render = vi.fn();
+    const updateZoomLabel = vi.fn();
+    const setScaleAt = vi.fn(() => 2.5);
+    const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 500 } };
+    const els = {
+      main: { addEventListener, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      specPanel: null,
+      btnSpecClose: null,
+      btnSpecCSV: null,
+      thumb: { addEventListener, width: 100, height: 100 },
+      btnFit: makeButton(),
+      btn100: makeButton(),
+      btnZoomIn: makeButton(),
+      btnZoomOut: makeButton(),
+      zoom: { oninput: null, value: "50" },
+      chkGrid: { oninput: null },
+      chkScale: { oninput: null },
+      btnSelect: makeButton(),
+      btnExport: makeButton(),
+      expFormatPng: { oninput: null, checked: false },
+      expFormatTiff: { oninput: null, checked: true },
+      expModeRaw: { oninput: null },
+      expModeRendered: { oninput: null },
+      expRawScopeSel: { oninput: null },
+      expRawScopeWhole: { oninput: null },
+      expRenScopeSel: { oninput: null },
+      expRenScopeView: { oninput: null },
+      expRenScopeWhole: { oninput: null },
+      btnExpCancel: makeButton(),
+      btnExpGo: makeButton(),
+      exportDlg: { close: noop, open: false },
+      bandSearch: { oninput: null, value: "" },
+      btnExpandAll: makeButton(),
+      btnCollapseAll: makeButton(),
+      btnReset: makeButton(),
+      btnAuto: makeButton(),
+      slContrast: { oninput: null, value: "1" },
+      slBrightness: { oninput: null, value: "0" },
+      slGain: { oninput: null, value: "1" },
+      numContrast: { onchange: null, value: "1" },
+      numBrightness: { onchange: null, value: "0" },
+      numGain: { onchange: null, value: "1" },
+      numMin: { onchange: null, value: "0" },
+      numMax: { onchange: null, value: "1" },
+      chkHistView: { oninput: null, checked: false },
+      hist: { addEventListener, setPointerCapture: noop, releasePointerCapture: noop },
+      dropzone: { addEventListener, classList: { add: noop, remove: noop } },
+      filePicker: { onchange: null, click: noop, value: "" },
+      cpuCanvas: { width: 100, height: 80 },
+      gpuBadge: { textContent: "" }
+    };
+
+    wireApp({
+      state: { datasets: [], histDrag: { active: false, handle: null }, selection: { enabled: false }, ioParallel: true },
+      els,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      getActive: () => ds,
+      getActiveViewportDevice: () => ({ x: 10, y: 20, width: 100, height: 80 }),
+      closeSpectrum: noop,
+      exportSpectrumCSV: noop,
+      screenToImage,
+      openSpectrumAt: noop,
+      onPointerDown: noop,
+      onPointerMove: noop,
+      onPointerUp: noop,
+      onPointerCancel: noop,
+      onPointerLeave: noop,
+      onWheel: noop,
+      onThumbClick: noop,
+      fitToScreen: noop,
+      clampView,
+      scaleToSlider: (s) => s * 10,
+      updateZoomLabel,
+      render,
+      zoomAt: noop,
+      setScaleAt,
+      sliderToScale: () => 1.5,
+      minScaleFor: () => 1,
+      setIOParallel: noop,
+      clearSelection: noop,
+      setStatus: noop,
+      openExportDialog: noop,
+      updateExportDialogUI: noop,
+      updateExportEstimate: noop,
+      runExportFromDialog: async () => {},
+      rebuildBandTree: noop,
+      resetDisplay: noop,
+      autoDisplay: noop,
+      resolveDisplayControlBand: () => 0,
+      cycleDisplayAdjustColor: noop,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      drawHistogram: noop,
+      applyRangeFromNumbers: noop,
+      histPickHandle: () => null,
+      applyHistogramDrag: noop,
+      addDatasetsFromFileList: async () => {},
+      resizeCanvases: noop,
+      redrawSpectrum: noop,
+      disposePyramid: noop,
+      updateMetaUI: noop,
+      updatePerf: noop,
+      getDrawTool: () => "none",
+      getDrawShapeMode: () => "rect",
+      getSpectrumPickEnabled: () => false,
+      getEffectiveAreaSelectionCount: () => 0,
+      getEffectiveAreaSelectionKey: () => "",
+      getAreaSelectionMode: () => "single",
+      getDrawColor: () => "#ff2d2d",
+      setDrawTool: noop,
+      setDrawShapeMode: noop,
+      setSpectrumPickEnabled: noop,
+      setAreaSelectionMode: noop,
+      setDrawColor: noop,
+      selectAreaAtPointer: () => false,
+      isAreaMovePointer: () => false,
+      beginAreaMoveAtPointer: () => false,
+      updateAreaMoveAtPointer: noop,
+      finishAreaMoveAtPointer: noop,
+      cancelAreaMove: noop,
+      resolvePointerCursor: () => "",
+      isDrawingPointer: () => false,
+      beginDrawingAtPointer: () => false,
+      updateDrawingAtPointer: noop,
+      finishDrawingAtPointer: noop,
+      cancelDrawing: noop,
+      eraseDrawingAtPointer: noop,
+      clearAllAnnotations: noop,
+      updateRulerHoverAtPointer: noop,
+      clearRulerHover: noop,
+      toggleAnalysisHistogramPanel: noop,
+      getAnalysisHistogramOpen: () => false,
+      setAnalysisHistogramOpen: noop,
+      closeAnalysisHistogramPanel: noop,
+      refreshAnalysisHistogram: async () => {},
+      positionAnalysisHistogramPanel: noop,
+      onAnalysisHistogramPointerMove: noop,
+      onAnalysisHistogramPointerLeave: noop,
+      openSpectrumForEffectiveArea: async () => {},
+      updateZoomLabelBoot: noop,
+      setGpuBadgeAvailable: noop
+    });
+
+    els.zoom.oninput();
+
+    expect(setScaleAt).toHaveBeenCalledWith(1.5, 60, 60);
+    expect(screenToImage).not.toHaveBeenCalled();
+    expect(clampView).not.toHaveBeenCalled();
+    expect(els.zoom.value).toBe("25");
+    expect(updateZoomLabel).toHaveBeenCalledTimes(1);
+    expect(render).toHaveBeenCalledTimes(1);
+    windowAdd.mockRestore();
+  });
 });

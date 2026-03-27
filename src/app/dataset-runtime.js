@@ -1,12 +1,14 @@
 import {
   allocateDisplayLinkGroupId,
   clearDisplayPanel,
+  createDisplayAnnotationState,
   cloneDisplayView,
   datasetsShareDisplaySize,
   ensureDisplayPanels,
   getActiveDisplayPanel,
   getDatasetDisplayPanels,
   getDisplayPanel,
+  resolveDisplayPanelBand,
   getVisibleDisplayPanels,
   panelHasLinkedPeers
 } from "./display-panels.js";
@@ -30,7 +32,9 @@ export function createDatasetRuntime(deps) {
     disposePyramid,
     clearSelection,
     onNeedWholeStats,
-    syncActiveDatasetView
+    syncActiveDatasetView,
+    captureDisplayViewState,
+    reflowDisplayViews
   } = deps;
 
   let nextDatasetId = 1;
@@ -80,6 +84,17 @@ export function createDatasetRuntime(deps) {
     else render();
   }
 
+  function hideDatasetFromPanel(id, slot, opts = {}) {
+    ensureDisplayPanels(state);
+    const panel = getDisplayPanel(state, slot);
+    if (!panel || String(panel.datasetId || "") !== String(id || "")) return false;
+    const viewSnapshot = (typeof captureDisplayViewState === "function") ? captureDisplayViewState() : null;
+    clearDisplayPanel(panel);
+    if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
+    updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+    return true;
+  }
+
   function setActivePanel(slot, opts = {}) {
     ensureDisplayPanels(state);
     const panel = getDisplayPanel(state, slot);
@@ -121,12 +136,14 @@ export function createDatasetRuntime(deps) {
   function setPanelLinkToSource(panel, sourcePanel) {
     if (!panel || !sourcePanel) return;
     panel.linkGroupId = Number(sourcePanel.linkGroupId) || allocateDisplayLinkGroupId(state);
-    panel.view = sourcePanel.view || cloneDisplayView();
+    panel.annotations = sourcePanel.annotations || createDisplayAnnotationState();
+    panel.view = cloneDisplayView(sourcePanel.view);
   }
 
-  function makePanelUnique(panel, sourceView = null) {
+  function makePanelUnique(panel, sourceView = null, sourceAnnotations = null) {
     if (!panel) return;
     panel.linkGroupId = allocateDisplayLinkGroupId(state);
+    panel.annotations = createDisplayAnnotationState(sourceAnnotations || panel.annotations);
     panel.view = cloneDisplayView(sourceView || panel.view);
   }
 
@@ -134,16 +151,34 @@ export function createDatasetRuntime(deps) {
     ensureDisplayPanels(state);
     const panel = getDisplayPanel(state, slot);
     if (!dataset || !panel) return false;
+    const viewSnapshot = (typeof captureDisplayViewState === "function") ? captureDisplayViewState() : null;
+    let linkedViewSourceSlot = null;
 
     const sameDatasetPanels = getDatasetDisplayPanels(state, dataset.id)
       .filter((item) => Number(item.slot) !== Number(panel.slot));
+    const bandSourcePanel = sameDatasetPanels.find((item) => Number(item.slot) === Number(state.activePanelSlot)) || sameDatasetPanels[0] || null;
     panel.datasetId = dataset.id;
     if (sameDatasetPanels.length) {
       setPanelLinkToSource(panel, sameDatasetPanels[0]);
+      linkedViewSourceSlot = Number(sameDatasetPanels[0].slot) || null;
     } else {
       const compatible = findCompatibleLinkedPanel(dataset, panel.slot);
-      if (compatible) setPanelLinkToSource(panel, compatible);
-      else makePanelUnique(panel, dataset.view);
+      if (compatible) {
+        setPanelLinkToSource(panel, compatible);
+        linkedViewSourceSlot = Number(compatible.slot) || null;
+      }
+      else makePanelUnique(panel, dataset.view, {
+        drawings: dataset.drawings,
+        selectedAreaId: dataset.selectedAreaId
+      });
+    }
+    panel.activeBand = resolveDisplayPanelBand(bandSourcePanel, dataset);
+    if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
+    if (linkedViewSourceSlot != null) {
+      const sourcePanel = getDisplayPanel(state, linkedViewSourceSlot);
+      if (sourcePanel?.view && Number(sourcePanel.slot) !== Number(panel.slot)) {
+        panel.view = cloneDisplayView(sourcePanel.view);
+      }
     }
 
     state.activePanelSlot = Number(panel.slot) || 1;
@@ -166,13 +201,7 @@ export function createDatasetRuntime(deps) {
     if (panelHasLinkedPeers(state, slot)) {
       makePanelUnique(panel, panel.view);
     } else {
-      const compatible = findCompatibleLinkedPanel(ds, slot);
-      if (!compatible) {
-        state.activePanelSlot = Number(panel.slot) || state.activePanelSlot;
-        updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
-        return false;
-      }
-      setPanelLinkToSource(panel, compatible);
+      return hideDatasetFromPanel(id, slot, opts);
     }
 
     state.activePanelSlot = Number(panel.slot) || 1;
@@ -231,6 +260,8 @@ export function createDatasetRuntime(deps) {
       pyramid: null,
       lastRaster: null,
       lastCompositeRaster: null,
+      lastRastersByPanel: new Map(),
+      lastCompositeRastersByPanel: new Map(),
       lastScreenFrame: null,
       lastScreenFrames: new Map()
     };
@@ -264,6 +295,8 @@ export function createDatasetRuntime(deps) {
     }
     ds.lastRaster = null;
     ds.lastCompositeRaster = null;
+    if (ds.lastRastersByPanel && typeof ds.lastRastersByPanel.clear === "function") ds.lastRastersByPanel.clear();
+    if (ds.lastCompositeRastersByPanel && typeof ds.lastCompositeRastersByPanel.clear === "function") ds.lastCompositeRastersByPanel.clear();
     ds.lastScreenFrame = null;
     if (ds.lastScreenFrames && typeof ds.lastScreenFrames.clear === "function") ds.lastScreenFrames.clear();
   }
@@ -333,12 +366,14 @@ export function createDatasetRuntime(deps) {
     const idx = state.datasets.findIndex((dataset) => String(dataset?.id || "") === String(id || ""));
     if (idx === -1) return;
     const ds = state.datasets[idx];
+    const viewSnapshot = (typeof captureDisplayViewState === "function") ? captureDisplayViewState() : null;
 
     invalidateAsyncState();
     releaseDatasetResources(ds);
 
     for (const panel of getDatasetDisplayPanels(state, id)) clearDisplayPanel(panel);
     state.datasets.splice(idx, 1);
+    if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
 
     const nextPanel = getActiveDisplayPanel(state);
     if (nextPanel?.datasetId) {

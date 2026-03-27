@@ -148,10 +148,11 @@ export function createOverlayRenderer(deps) {
     return Number(v).toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
   }
 
-  function drawRulerProfile(ds, item, a, b, dpr, viewport, profileHover = null) {
+  function drawRulerProfile(ds, item, a, b, dpr, viewport, profileHover = null, raster = null, activeBand = null) {
     if (!ds || !item || !Array.isArray(item.points) || item.points.length < 2) return;
-    const raster = ds.lastRaster;
-    if (!raster || raster.band !== ds.activeBand || !raster.dataF32) return;
+    const targetRaster = raster || ds.lastRaster;
+    const band = Number.isFinite(Number(activeBand)) ? Number(activeBand) : ds.activeBand;
+    if (!targetRaster || targetRaster.band !== band || !targetRaster.dataF32) return;
     const ai = item.points[0];
     const bi = item.points[item.points.length - 1];
     const lenImg = Math.hypot(bi.x - ai.x, bi.y - ai.y);
@@ -166,7 +167,7 @@ export function createOverlayRenderer(deps) {
       const t = i / Math.max(1, samples - 1);
       const ix = ai.x + (bi.x - ai.x) * t;
       const iy = ai.y + (bi.y - ai.y) * t;
-      const v = sampleRasterValue(raster, ix, iy);
+      const v = sampleRasterValue(targetRaster, ix, iy);
       values[i] = v;
       if (Number.isFinite(v)) {
         if (v < minV) minV = v;
@@ -230,7 +231,7 @@ export function createOverlayRenderer(deps) {
     const t = Math.max(0, Math.min(1, rawT));
     const ix = ai.x + (bi.x - ai.x) * t;
     const iy = ai.y + (bi.y - ai.y) * t;
-    const v = sampleRasterValue(raster, ix, iy);
+    const v = sampleRasterValue(targetRaster, ix, iy);
     if (!Number.isFinite(v)) return;
     const u = (v - minV) / range;
     const d = offset + (u * amp);
@@ -262,7 +263,7 @@ export function createOverlayRenderer(deps) {
     drawOrientedLabel(text, cx, cy, ang, dpr);
   }
 
-  function drawLine(ds, item, eff, dpr, viewport, profileHover = null) {
+  function drawLine(ds, item, eff, dpr, viewport, profileHover = null, opts = {}) {
     if (!item.points || item.points.length < 2) return;
     const a = toScreen(ds, item.points[0], eff, viewport);
     const b = toScreen(ds, item.points[item.points.length - 1], eff, viewport);
@@ -273,7 +274,7 @@ export function createOverlayRenderer(deps) {
     overlayCtx.lineTo(b.x, b.y);
     overlayCtx.stroke();
     if (item.tool === "ruler") {
-      drawRulerProfile(ds, item, a, b, dpr, viewport, profileHover);
+      drawRulerProfile(ds, item, a, b, dpr, viewport, profileHover, opts.raster || null, opts.activeBand);
       drawRulerLabel(ds, item, a, b, dpr);
     }
   }
@@ -343,20 +344,20 @@ export function createOverlayRenderer(deps) {
     }
   }
 
-  function drawOneAnnotation(ds, item, eff, dpr, viewport, itemIndex = -1, rulerProfileHover = null, selectionIds = null, marqueeOffset = 0) {
+  function drawOneAnnotation(ds, item, eff, dpr, viewport, itemIndex = -1, rulerProfileHover = null, selectionIds = null, marqueeOffset = 0, opts = {}) {
     if (!item || !item.tool) return;
     const isSelection = !!(selectionIds && selectionIds.has(item.id));
     if (item.tool === "ruler" || item.tool === "line") {
       const hover = (rulerProfileHover && rulerProfileHover.drawingIndex === itemIndex) ? rulerProfileHover : null;
-      drawLine(ds, item, eff, dpr, viewport, hover);
+      drawLine(ds, item, eff, dpr, viewport, hover, opts);
     }
     else if (item.tool === "rect") drawRect(ds, item, eff, dpr, viewport, isSelection, marqueeOffset);
     else if (item.tool === "shape") drawShape(ds, item, eff, dpr, viewport, isSelection, marqueeOffset);
   }
 
-  function drawAnnotations(ds, viewport) {
+  function drawAnnotations(ds, viewport, opts = {}) {
     if (!getDrawData) return;
-    const drawData = getDrawData(ds);
+    const drawData = getDrawData(ds, opts.annotations || null);
     if (!drawData) return;
     const dpr = getDevicePixelRatio();
     const eff = ds.view.scale * dpr;
@@ -369,9 +370,9 @@ export function createOverlayRenderer(deps) {
     );
     const marqueeOffset = Number.isFinite(drawData.marqueeOffset) ? drawData.marqueeOffset : 0;
     for (let i = 0; i < items.length; i += 1) {
-      drawOneAnnotation(ds, items[i], eff, dpr, viewport, i, rulerProfileHover, selectionIds, marqueeOffset);
+      drawOneAnnotation(ds, items[i], eff, dpr, viewport, i, rulerProfileHover, selectionIds, marqueeOffset, opts);
     }
-    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, viewport, -1, null, null, 0);
+    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, viewport, -1, null, null, 0, opts);
   }
 
   function snapToDecimal125Step(value) {
@@ -535,7 +536,7 @@ export function createOverlayRenderer(deps) {
       overlayCtx.restore();
     }
 
-    drawAnnotations(ds, viewport);
+    drawAnnotations(ds, viewport, opts);
     if (opts.showScaleBar) drawScaleBar(ds, viewport);
     overlayCtx.restore();
     drawPanelBorder(viewport, dpr, !!opts.active, opts.borderColor, opts.label);

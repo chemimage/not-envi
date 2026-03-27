@@ -107,4 +107,47 @@ describe("pyramid-cache", () => {
     expect(out.dataF32[0]).toBe(0);
     expect(out.dataF32[100]).toBe(100);
   });
+
+  test("tryRasterFromPyramid waits for full tile coverage before returning a raster", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async () => new Float32Array(0),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getDevicePixelRatio: () => 1,
+      getViewportSize: () => ({ width: 512, height: 128 }),
+      getIOConcurrency: () => 2
+    });
+
+    const ds = {
+      id: 1,
+      meta: { samples: 1024, lines: 256, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 0.5 },
+      activeBand: null,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+    const level = 1;
+    const tileData = new Float32Array(256 * 128);
+    tileData.fill(1);
+    ds.pyramid.tiles.set(bandTileKey(0, level, 0, 0), {
+      band: 0,
+      level,
+      tx: 0,
+      ty: 0,
+      data: tileData,
+      w: 256,
+      h: 128,
+      bytes: tileData.byteLength,
+      t: 0
+    });
+
+    const out = await controller.tryRasterFromPyramid(ds, 0, 0.5);
+    expect(out).toBeNull();
+  });
 });

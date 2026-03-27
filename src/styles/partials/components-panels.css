@@ -66,6 +66,12 @@
     color: rgb(17 24 39);
   }
 
+  .slot-btn.independent.active {
+    background: rgb(148 163 184 / 0.28);
+    border-color: rgb(148 163 184 / 0.75);
+    color: rgb(226 232 240);
+  }
+
   .slot-btn.selected {
     box-shadow: 0 0 0 2px rgb(241 245 249 / 0.92);
   }

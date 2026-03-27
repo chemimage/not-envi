@@ -32,7 +32,9 @@ export function createInteractionController(deps) {
     render,
     minScaleFor,
     scaleToSlider,
-    updateZoomLabel
+    updateZoomLabel,
+    panByPixels,
+    setScaleAt
   } = deps;
 
   const touchPoints = new Map();
@@ -178,9 +180,12 @@ export function createInteractionController(deps) {
       state.mouse.lastX = state.mouse.x;
       state.mouse.lastY = state.mouse.y;
 
-      ds.view.x -= dx / ds.view.scale;
-      ds.view.y -= dy / ds.view.scale;
-      clampView();
+      const handledPan = (typeof panByPixels === "function") ? panByPixels(dx, dy) : false;
+      if (!handledPan) {
+        ds.view.x -= dx / ds.view.scale;
+        ds.view.y -= dy / ds.view.scale;
+        clampView();
+      }
       if (ev.pointerType === "touch") {
         requestPreview();
         deferSettledRender();
@@ -238,16 +243,23 @@ export function createInteractionController(deps) {
     const ds = getActive();
     if (!ds) return;
 
-    const before = screenToImage(sx, sy);
-    const minS = minScaleFor(ds);
-    ds.view.scale = clamp(targetScale, minS, 128);
-    const after = screenToImage(sx, sy);
+    let appliedScale = null;
+    if (typeof setScaleAt === "function") {
+      appliedScale = setScaleAt(targetScale, sx, sy);
+    }
+    if (appliedScale == null) {
+      const before = screenToImage(sx, sy);
+      const minS = minScaleFor(ds);
+      ds.view.scale = clamp(targetScale, minS, 128);
+      const after = screenToImage(sx, sy);
 
-    ds.view.x += (before.x - after.x);
-    ds.view.y += (before.y - after.y);
+      ds.view.x += (before.x - after.x);
+      ds.view.y += (before.y - after.y);
 
-    clampView();
-    els.zoom.value = String(scaleToSlider(ds.view.scale));
+      clampView();
+      appliedScale = ds.view.scale;
+    }
+    els.zoom.value = String(scaleToSlider(appliedScale || ds.view.scale));
     updateZoomLabel();
     if (interactive) {
       requestPreview();

@@ -16,7 +16,8 @@ export function createThumbnailController(deps) {
     getActiveViewportCss,
     getActiveViewportDevice,
     getDevicePixelRatio,
-    isThreeBandColorMode
+    isThreeBandColorMode,
+    recenterViewAtFraction
   } = deps;
 
   function syncThumbWrapSize() {
@@ -259,6 +260,13 @@ export function createThumbnailController(deps) {
     const nx = (sx - ds.thumb.x0) / ds.thumb.w;
     const ny = (sy - ds.thumb.y0) / ds.thumb.h;
     if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
+
+    if (typeof recenterViewAtFraction === "function") {
+      if (recenterViewAtFraction(nx, ny) !== false) {
+        render();
+        return;
+      }
+    }
 
     const eff = ds.view.scale * dpr;
     const viewport = (typeof getActiveViewportDevice === "function")
