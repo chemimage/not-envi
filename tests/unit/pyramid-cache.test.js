@@ -196,4 +196,39 @@ describe("pyramid-cache", () => {
     expect(out.approximate).toBe(true);
     expect(out.dataF32[0]).toBe(9);
   });
+
+  test("tryRasterFromPyramid keeps zoomed-in preview geometry aligned with direct sampling", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => {
+        const data = new Float32Array(outW * outH);
+        data.fill(5);
+        return data;
+      },
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getDevicePixelRatio: () => 1,
+      getViewportSize: () => ({ width: 256, height: 128 }),
+      getIOConcurrency: () => 2
+    });
+
+    const ds = {
+      id: 1,
+      meta: { samples: 1024, lines: 256, interleave: "bsq" },
+      ds: {},
+      view: { x: 0.9, y: 0.1, scale: 2 },
+      activeBand: null,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+
+    const out = await controller.tryRasterFromPyramid(ds, 0, 2);
+    expect(out).toBeTruthy();
+    expect(out.w).toBe(128);
+    expect(out.h).toBe(64);
+  });
 });

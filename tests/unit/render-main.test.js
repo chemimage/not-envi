@@ -277,6 +277,59 @@ describe("render-main", () => {
     expect(drawCanvasToViewport).toHaveBeenCalledTimes(2);
   });
 
+  test("render passes panel viewport size into pyramid reads", async () => {
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: 0, y: 0, scale: 2 },
+      meta: { samples: 1280, lines: 720, bands: 1, interleave: "bsq" },
+      ds: {},
+      lastRaster: null,
+      lastScreenFrame: null,
+      lastRastersByPanel: new Map()
+    };
+    const panel1 = { slot: 1, datasetId: "ds1", activeBand: 0, view: ds.view };
+    const panel2 = { slot: 2, datasetId: "ds1", activeBand: 0, view: ds.view };
+    const tryRasterFromPyramid = vi
+      .fn()
+      .mockResolvedValue({
+        band: 0,
+        w: 100,
+        h: 50,
+        dataF32: new Float32Array(100 * 50),
+        partial: false,
+        approximate: true
+      });
+    const buildGrayCanvas = vi.fn(() => ({ width: 100, height: 50 }));
+    const drawCanvasToViewport = vi.fn();
+    const deps = makeDeps({
+      getActive: () => ds,
+      getActivePanel: () => panel2,
+      getVisibleDatasetPanels: () => [
+        { panel: panel1, dataset: ds },
+        { panel: panel2, dataset: ds }
+      ],
+      getPanelLayoutDevice: () => [
+        { slot: 1, x: 0, y: 0, w: 140, h: 180 },
+        { slot: 2, x: 140, y: 0, w: 180, h: 180 }
+      ],
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      tryRasterFromPyramid,
+      buildGrayCanvas,
+      drawCanvasToViewport,
+      readBandWindow: vi.fn(async () => {
+        throw new Error("direct read should not run for this preview render");
+      }),
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(1, ds, 0, 2, 140, 180);
+    expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(2, ds, 0, 2, 180, 180);
+  });
+
   test("render does not cache partial pyramid rasters as stable panel state", async () => {
     const partialRaster = {
       band: 0,

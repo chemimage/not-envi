@@ -741,9 +741,9 @@ import { pointInPolygon } from "./draw-geometry.js";
 
   function resolveDisplayRange(ds, band, fallbackArray){ return resolveDisplayRangeCore(ds, band, fallbackArray, getBandSettings); }
 
-  async function tryRasterFromPyramid(ds, band, eff){
+  async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null){
     ds.__pyrPreferImmediate = !!state.mouse.dragging;
-    return pyramid.tryRasterFromPyramid(ds, band, eff);
+    return pyramid.tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
   }
 
   function buildGrayCanvas(rasterF32, w, h, params){

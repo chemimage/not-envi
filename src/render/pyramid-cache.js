@@ -1,4 +1,5 @@
 import { clamp } from "../core/utils.js";
+import { resolveRasterSampling } from "./raster-geometry.js";
 
 export function computeMaxPyramidLevel(meta, tileSize) {
   const maxDim = Math.max(meta.samples, meta.lines);
@@ -211,10 +212,13 @@ export function createPyramidController(deps) {
     const ideal = collectViewportLevel(ds, pyr, band, idealLevel, eff, viewportW, viewportH);
     if (!ideal) return null;
 
-    const winX0 = ideal.bounds.lx0;
-    const winY0 = ideal.bounds.ly0;
-    const winW = Math.max(1, ideal.bounds.lx1 - ideal.bounds.lx0);
-    const winH = Math.max(1, ideal.bounds.ly1 - ideal.bounds.ly0);
+    const sampling = (idealLevel === 0)
+      ? resolveRasterSampling(ds, viewportW, viewportH, eff)
+      : null;
+    const winX0 = sampling ? Math.floor(sampling.srcX0) : ideal.bounds.lx0;
+    const winY0 = sampling ? Math.floor(sampling.srcY0) : ideal.bounds.ly0;
+    const winW = sampling ? Math.max(1, sampling.rasterW) : Math.max(1, ideal.bounds.lx1 - ideal.bounds.lx0);
+    const winH = sampling ? Math.max(1, sampling.rasterH) : Math.max(1, ideal.bounds.ly1 - ideal.bounds.ly0);
     const out = new Float32Array(winW * winH);
     out.fill(Number.NaN);
     const filled = new Uint8Array(winW * winH);
@@ -423,14 +427,18 @@ export function createPyramidController(deps) {
     }, { timeout: pyr.qHi.length ? 24 : 120 });
   }
 
-  async function tryRasterFromPyramid(ds, band, eff) {
+  async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null) {
     ensurePyramid(ds);
     const pyr = ds.pyramid;
     if (!pyr || pyr.cancelled) return null;
 
     const lvl = pyramidLevelForEff(ds, eff);
-    const viewport = getViewportSize();
-    const levels = enqueueViewportTasks(ds, band, lvl, eff, viewport.width, viewport.height);
+    const fallbackViewport = ((viewportW == null || viewportH == null) && typeof getViewportSize === "function")
+      ? getViewportSize()
+      : null;
+    const width = Math.max(1, Number(viewportW ?? fallbackViewport?.width) || 1);
+    const height = Math.max(1, Number(viewportH ?? fallbackViewport?.height) || 1);
+    const levels = enqueueViewportTasks(ds, band, lvl, eff, width, height);
     const visible = levels.find((info) => info.level === lvl) || null;
     const visibleCached = levels.reduce((sum, info) => sum + info.cached, 0);
     const prefer = ds.__pyrPreferImmediate || visibleCached > 0;
@@ -439,19 +447,19 @@ export function createPyramidController(deps) {
     schedulePyramidWork(ds);
     pumpBackgroundTasks(ds, band, Math.max(lvl, 2));
 
-    let raster = prefer ? composePyramidRaster(ds, band, lvl, eff, viewport.width, viewport.height) : null;
+    let raster = prefer ? composePyramidRaster(ds, band, lvl, eff, width, height) : null;
     const needImmediateCoarse = !raster || raster.partial;
     if (needImmediateCoarse && pyr.maxLevel > lvl) {
-      const loaded = await ensureViewportLevelCached(ds, band, pyr.maxLevel, eff, viewport.width, viewport.height, 16);
+      const loaded = await ensureViewportLevelCached(ds, band, pyr.maxLevel, eff, width, height, 16);
       if (loaded) {
-        raster = composePyramidRaster(ds, band, lvl, eff, viewport.width, viewport.height);
+        raster = composePyramidRaster(ds, band, lvl, eff, width, height);
       }
     }
 
     if (!raster && visible && visible.total <= 16) {
-      const loaded = await ensureViewportLevelCached(ds, band, lvl, eff, viewport.width, viewport.height, 16);
+      const loaded = await ensureViewportLevelCached(ds, band, lvl, eff, width, height, 16);
       if (loaded) {
-        raster = composePyramidRaster(ds, band, lvl, eff, viewport.width, viewport.height);
+        raster = composePyramidRaster(ds, band, lvl, eff, width, height);
       }
     }
 

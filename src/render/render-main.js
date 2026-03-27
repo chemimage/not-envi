@@ -116,7 +116,7 @@ export function createRenderer(deps) {
   async function readRasterForBand(ds, band, eff, viewportW, viewportH) {
     let raster = null;
     if (!viewExtendsOutside(ds, eff, viewportW, viewportH)) {
-      raster = await tryRasterFromPyramid(ds, band, eff);
+      raster = await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
     }
     if (!raster) {
       setStatus("reading…", "warn");
