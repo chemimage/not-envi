@@ -1,4 +1,5 @@
 import { formatExperimentSettingsInline, parseExperimentSettings } from "./experiment-meta.js";
+import { resolveDisplayLinkColorName } from "./display-panels.js";
 import {
   THREE_BAND_ADJUST_BLUE,
   THREE_BAND_ADJUST_GREEN,
@@ -27,6 +28,7 @@ export function createUIPanels(deps) {
     humanBytes,
     bandLabel,
     setActiveDataset,
+    cycleDatasetPanel,
     closeDataset,
     drawHistogram,
     render,
@@ -380,15 +382,6 @@ export function createUIPanels(deps) {
     els.app.dataset.empty = state.datasets.length ? "false" : "true";
   }
 
-  function setDatasetDisplaySlot(target, slot) {
-    const wanted = (target.displaySlot === slot) ? 0 : slot;
-    for (const ds of state.datasets) {
-      if (ds !== target && ds.displaySlot === wanted) ds.displaySlot = 0;
-    }
-    target.displaySlot = wanted;
-    rebuildDatasetList();
-  }
-
   function isDatasetRowExpanded(dsId) {
     return !!(dsId && (metaHoverDatasetId === dsId || metaPinnedDatasetId === dsId));
   }
@@ -461,26 +454,29 @@ export function createUIPanels(deps) {
 
       const actions = document.createElement("div");
       actions.className = "actions";
-      const slotA = document.createElement("button");
-      slotA.type = "button";
-      slotA.className = `slot-btn slot-a${ds.displaySlot === 1 ? " active" : ""}`;
-      slotA.title = "Display slot 1";
-      slotA.ariaLabel = "Display slot 1";
-      slotA.textContent = "1";
-      slotA.onclick = (ev) => {
-        ev.stopPropagation();
-        setDatasetDisplaySlot(ds, 1);
-      };
-      const slotB = document.createElement("button");
-      slotB.type = "button";
-      slotB.className = `slot-btn slot-b${ds.displaySlot === 2 ? " active" : ""}`;
-      slotB.title = "Display slot 2";
-      slotB.ariaLabel = "Display slot 2";
-      slotB.textContent = "2";
-      slotB.onclick = (ev) => {
-        ev.stopPropagation();
-        setDatasetDisplaySlot(ds, 2);
-      };
+      for (let slot = 1; slot <= 4; slot += 1) {
+        const panel = Array.isArray(state.displayPanels)
+          ? state.displayPanels.find((item) => Number(item?.slot) === slot)
+          : null;
+        const active = !!panel && String(panel.datasetId || "") === String(ds.id);
+        const colorName = active ? resolveDisplayLinkColorName(state, slot) : "";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = [
+          "slot-btn",
+          active ? "active" : "",
+          active && colorName ? `slot-link-${colorName}` : "",
+          active && Number(state.activePanelSlot) === slot ? "selected" : ""
+        ].filter(Boolean).join(" ");
+        btn.title = active ? `Panel ${slot}` : `Show in panel ${slot}`;
+        btn.ariaLabel = active ? `Panel ${slot}` : `Show in panel ${slot}`;
+        btn.textContent = String(slot);
+        btn.onclick = (ev) => {
+          ev.stopPropagation();
+          if (cycleDatasetPanel) cycleDatasetPanel(ds.id, slot, { preserveBandTreeScroll: true });
+        };
+        actions.appendChild(btn);
+      }
       const slotClose = document.createElement("button");
       slotClose.type = "button";
       slotClose.className = "slot-btn slot-close";
@@ -491,8 +487,6 @@ export function createUIPanels(deps) {
         ev.stopPropagation();
         closeDataset(ds.id);
       };
-      actions.appendChild(slotA);
-      actions.appendChild(slotB);
       actions.appendChild(slotClose);
 
       div.appendChild(left);

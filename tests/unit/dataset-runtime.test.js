@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createDatasetRuntime } from "../../src/app/dataset-runtime.js";
+import { getDisplayPanel } from "../../src/app/display-panels.js";
 
 function makeDeps(state) {
   return {
@@ -73,5 +74,30 @@ describe("dataset runtime", () => {
     expect(deps.onAfterDatasetUIUpdate).toHaveBeenCalled();
     expect(deps.clearSelection).toHaveBeenCalled();
     expect(deps.render).toHaveBeenCalled();
+  });
+
+  test("cycleDatasetPanel toggles compatible panel linkage without removing the panel assignment", () => {
+    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32 }, view: { x: 0, y: 0, scale: 1 } };
+    const ds2 = { id: "ds2", meta: { samples: 64, lines: 32 }, view: { x: 0, y: 0, scale: 1 } };
+    const state = { datasets: [ds1, ds2], activeId: null, activePanelSlot: 1, nextLinkGroupId: 1 };
+    const deps = makeDeps(state);
+    const rt = createDatasetRuntime(deps);
+
+    rt.setActiveDataset("ds1", { panelSlot: 1 });
+    rt.setActiveDataset("ds2", { panelSlot: 2 });
+
+    const panel1 = getDisplayPanel(state, 1);
+    const panel2 = getDisplayPanel(state, 2);
+    expect(panel1?.datasetId).toBe("ds1");
+    expect(panel2?.datasetId).toBe("ds2");
+    expect(panel2?.linkGroupId).toBe(panel1?.linkGroupId);
+
+    rt.cycleDatasetPanel("ds2", 2);
+    expect(panel2?.datasetId).toBe("ds2");
+    expect(panel2?.linkGroupId).not.toBe(panel1?.linkGroupId);
+
+    rt.cycleDatasetPanel("ds2", 2);
+    expect(panel2?.datasetId).toBe("ds2");
+    expect(panel2?.linkGroupId).toBe(panel1?.linkGroupId);
   });
 });

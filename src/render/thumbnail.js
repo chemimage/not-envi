@@ -13,14 +13,19 @@ export function createThumbnailController(deps) {
     readBandWindowBIP,
     getActive,
     render,
+    getActiveViewportCss,
+    getActiveViewportDevice,
     getDevicePixelRatio,
     isThreeBandColorMode
   } = deps;
 
   function syncThumbWrapSize() {
-    const rect = els.main.getBoundingClientRect();
-    const viewW = Math.max(1, rect.width || 1);
-    const viewH = Math.max(1, rect.height || 1);
+    const viewport = (typeof getActiveViewportCss === "function")
+      ? getActiveViewportCss()
+      : null;
+    const rect = viewport || els.main.getBoundingClientRect();
+    const viewW = Math.max(1, rect.width || rect.w || 1);
+    const viewH = Math.max(1, rect.height || rect.h || 1);
     const aspect = viewW / viewH;
 
     const maxW = 220;
@@ -212,8 +217,11 @@ export function createThumbnailController(deps) {
     thumbCtx.restore();
 
     const eff = ds.view.scale * dpr;
-    const viewW = els.cpuCanvas.width / eff;
-    const viewH = els.cpuCanvas.height / eff;
+    const viewport = (typeof getActiveViewportDevice === "function")
+      ? getActiveViewportDevice()
+      : { width: els.cpuCanvas.width, height: els.cpuCanvas.height };
+    const viewW = Math.max(1, Number(viewport.width || viewport.w || 1)) / eff;
+    const viewH = Math.max(1, Number(viewport.height || viewport.h || 1)) / eff;
     const vx0 = ds.view.x / ds.meta.samples;
     const vy0 = ds.view.y / ds.meta.lines;
     const vx1 = (ds.view.x + viewW) / ds.meta.samples;
@@ -253,8 +261,11 @@ export function createThumbnailController(deps) {
     if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
 
     const eff = ds.view.scale * dpr;
-    const viewW = els.cpuCanvas.width / eff;
-    const viewH = els.cpuCanvas.height / eff;
+    const viewport = (typeof getActiveViewportDevice === "function")
+      ? getActiveViewportDevice()
+      : { width: els.cpuCanvas.width, height: els.cpuCanvas.height };
+    const viewW = Math.max(1, Number(viewport.width || viewport.w || 1)) / eff;
+    const viewH = Math.max(1, Number(viewport.height || viewport.h || 1)) / eff;
     ds.view.x = clamp(nx * ds.meta.samples - viewW / 2, 0, Math.max(0, ds.meta.samples - viewW));
     ds.view.y = clamp(ny * ds.meta.lines - viewH / 2, 0, Math.max(0, ds.meta.lines - viewH));
     render();

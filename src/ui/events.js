@@ -21,6 +21,7 @@ export function createInteractionController(deps) {
     els,
     state,
     getActive,
+    activatePanelAtClientPoint,
     clamp,
     setStatus,
     updateHud,
@@ -112,9 +113,10 @@ export function createInteractionController(deps) {
   }
 
   function onPointerDown(ev) {
+    if (isUiTarget(ev.target)) return;
+    if (activatePanelAtClientPoint) activatePanelAtClientPoint(ev.clientX, ev.clientY, { closeSpectrumOnChange: false });
     const ds = getActive();
     if (!ds) return;
-    if (isUiTarget(ev.target)) return;
     if (ev.pointerType === "touch") ev.preventDefault();
     if (ev.pointerType === "touch") clearSettledRender();
     const rect = els.main.getBoundingClientRect();
@@ -262,9 +264,10 @@ export function createInteractionController(deps) {
   }
 
   function onWheel(ev) {
+    if (isUiTarget(ev.target)) return;
+    if (activatePanelAtClientPoint) activatePanelAtClientPoint(ev.clientX, ev.clientY, { closeSpectrumOnChange: false });
     const ds = getActive();
     if (!ds) return;
-    if (isUiTarget(ev.target)) return;
     ev.preventDefault();
     const rect = els.main.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;

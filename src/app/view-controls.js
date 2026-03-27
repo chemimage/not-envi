@@ -4,12 +4,37 @@ export function createViewControls(deps) {
     els,
     clamp,
     getActive,
+    getPanelRectCss,
+    getPanelRectDevice,
     onRender
   } = deps;
 
+  function resolveViewportCssRect() {
+    const rect = (typeof getPanelRectCss === "function") ? getPanelRectCss() : null;
+    if (rect) return rect;
+    const main = els.main?.getBoundingClientRect ? els.main.getBoundingClientRect() : null;
+    return {
+      x: 0,
+      y: 0,
+      w: Math.max(1, Number(main?.width) || 1),
+      h: Math.max(1, Number(main?.height) || 1)
+    };
+  }
+
+  function resolveViewportDeviceRect(slot = null) {
+    const rect = (typeof getPanelRectDevice === "function") ? getPanelRectDevice(slot) : null;
+    if (rect) return rect;
+    return {
+      x: 0,
+      y: 0,
+      w: Math.max(1, Number(els.cpuCanvas?.width) || 1),
+      h: Math.max(1, Number(els.cpuCanvas?.height) || 1)
+    };
+  }
+
   function computeFitScale(ds) {
-    const rect = els.main.getBoundingClientRect();
-    return Math.min(rect.width / ds.meta.samples, rect.height / ds.meta.lines);
+    const rect = resolveViewportCssRect();
+    return Math.min(rect.w / ds.meta.samples, rect.h / ds.meta.lines);
   }
 
   function minScaleFor(ds) {
@@ -50,7 +75,7 @@ export function createViewControls(deps) {
     els.zoomLabel.textContent = `${(ds.view.scale * 100).toFixed(1)}%`;
   }
 
-  function clampView() {
+  function clampView(slot = null) {
     const ds = getActive();
     if (!ds) return;
     const minS = minScaleFor(ds);
@@ -58,9 +83,10 @@ export function createViewControls(deps) {
     ds.view.scale = clamp(ds.view.scale, minS, 128);
 
     const dpr = window.devicePixelRatio || 1;
+    const viewport = resolveViewportDeviceRect(slot);
     const eff = ds.view.scale * dpr;
-    const viewW = els.cpuCanvas.width / eff;
-    const viewH = els.cpuCanvas.height / eff;
+    const viewW = viewport.w / eff;
+    const viewH = viewport.h / eff;
     if (viewW >= ds.meta.samples) {
       ds.view.x = (ds.meta.samples - viewW) * 0.5;
     } else {
@@ -76,8 +102,8 @@ export function createViewControls(deps) {
   function fitToScreen() {
     const ds = getActive();
     if (!ds) return;
-    const rect = els.main.getBoundingClientRect();
-    const s = Math.min(rect.width / ds.meta.samples, rect.height / ds.meta.lines);
+    const rect = resolveViewportCssRect();
+    const s = Math.min(rect.w / ds.meta.samples, rect.h / ds.meta.lines);
     updateZoomRange(ds);
     ds.view.scale = s;
     ds.view.x = 0;
@@ -88,11 +114,15 @@ export function createViewControls(deps) {
     onRender();
   }
 
-  function screenToImage(sx, sy) {
+  function screenToImage(sx, sy, slot = null) {
     const ds = getActive();
+    if (!ds) return { x: 0, y: 0 };
+    const viewport = resolveViewportDeviceRect(slot);
     const dpr = window.devicePixelRatio || 1;
     const eff = ds.view.scale * dpr;
-    return { x: ds.view.x + sx / eff, y: ds.view.y + sy / eff };
+    const localX = (Number(sx) || 0) - (Number(viewport.x) || 0);
+    const localY = (Number(sy) || 0) - (Number(viewport.y) || 0);
+    return { x: ds.view.x + localX / eff, y: ds.view.y + localY / eff };
   }
 
   return {

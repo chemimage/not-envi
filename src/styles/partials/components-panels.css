@@ -62,16 +62,36 @@
     min-height: 30px;
   }
 
-  .slot-btn.slot-a.active {
+  .slot-btn.active {
+    color: rgb(17 24 39);
+  }
+
+  .slot-btn.selected {
+    box-shadow: 0 0 0 2px rgb(241 245 249 / 0.92);
+  }
+
+  .slot-btn.slot-link-amber.active {
     background: rgb(250 204 21);
     border-color: rgb(253 224 71);
     color: rgb(17 24 39);
   }
 
-  .slot-btn.slot-b.active {
+  .slot-btn.slot-link-cyan.active {
     background: rgb(34 211 238);
     border-color: rgb(103 232 249);
     color: rgb(8 47 73);
+  }
+
+  .slot-btn.slot-link-emerald.active {
+    background: rgb(74 222 128);
+    border-color: rgb(134 239 172);
+    color: rgb(20 83 45);
+  }
+
+  .slot-btn.slot-link-violet.active {
+    background: rgb(196 181 253);
+    border-color: rgb(221 214 254);
+    color: rgb(76 29 149);
   }
 
   .slot-btn.slot-close {

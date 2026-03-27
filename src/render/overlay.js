@@ -35,10 +35,12 @@ function formatDistanceUm(um) {
 }
 
 export function createOverlayRenderer(deps) {
-  const { els, overlayCtx, getDevicePixelRatio, getDrawData } = deps;
-  const SCALEBAR_EDGE_PAD_CSS = 10;
-  const SCALEBAR_HUD_GAP_CSS = 8;
-  const HUD_RADIUS_CSS = 2;
+  const {
+    els,
+    overlayCtx,
+    getDevicePixelRatio,
+    getDrawData
+  } = deps;
 
   function colorWithAlpha(color, alpha) {
     if (!color) return `rgba(255,45,45,${alpha})`;
@@ -46,19 +48,17 @@ export function createOverlayRenderer(deps) {
     const m = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i.exec(c);
     if (!m) return c;
     let hex = m[1];
-    if (hex.length === 3) {
-      hex = `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
-    }
+    if (hex.length === 3) hex = `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
     const r = parseInt(hex.slice(0, 2), 16);
     const g = parseInt(hex.slice(2, 4), 16);
     const b = parseInt(hex.slice(4, 6), 16);
     return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  function toScreen(ds, pt, eff) {
+  function toScreen(ds, pt, eff, viewport) {
     return {
-      x: (pt.x - ds.view.x) * eff,
-      y: (pt.y - ds.view.y) * eff
+      x: viewport.x + ((pt.x - ds.view.x) * eff),
+      y: viewport.y + ((pt.y - ds.view.y) * eff)
     };
   }
 
@@ -148,7 +148,7 @@ export function createOverlayRenderer(deps) {
     return Number(v).toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
   }
 
-  function drawRulerProfile(ds, item, a, b, dpr, profileHover = null) {
+  function drawRulerProfile(ds, item, a, b, dpr, viewport, profileHover = null) {
     if (!ds || !item || !Array.isArray(item.points) || item.points.length < 2) return;
     const raster = ds.lastRaster;
     if (!raster || raster.band !== ds.activeBand || !raster.dataF32) return;
@@ -262,10 +262,10 @@ export function createOverlayRenderer(deps) {
     drawOrientedLabel(text, cx, cy, ang, dpr);
   }
 
-  function drawLine(ds, item, eff, dpr, profileHover = null) {
+  function drawLine(ds, item, eff, dpr, viewport, profileHover = null) {
     if (!item.points || item.points.length < 2) return;
-    const a = toScreen(ds, item.points[0], eff);
-    const b = toScreen(ds, item.points[item.points.length - 1], eff);
+    const a = toScreen(ds, item.points[0], eff, viewport);
+    const b = toScreen(ds, item.points[item.points.length - 1], eff, viewport);
     overlayCtx.strokeStyle = colorWithAlpha(item.color, 0.95);
     overlayCtx.lineWidth = 2 * dpr;
     overlayCtx.beginPath();
@@ -273,7 +273,7 @@ export function createOverlayRenderer(deps) {
     overlayCtx.lineTo(b.x, b.y);
     overlayCtx.stroke();
     if (item.tool === "ruler") {
-      drawRulerProfile(ds, item, a, b, dpr, profileHover);
+      drawRulerProfile(ds, item, a, b, dpr, viewport, profileHover);
       drawRulerLabel(ds, item, a, b, dpr);
     }
   }
@@ -294,10 +294,10 @@ export function createOverlayRenderer(deps) {
     overlayCtx.restore();
   }
 
-  function drawRect(ds, item, eff, dpr, isSelection = false, marqueeOffset = 0) {
+  function drawRect(ds, item, eff, dpr, viewport, isSelection = false, marqueeOffset = 0) {
     if (!item.points || item.points.length < 2) return;
-    const a = toScreen(ds, item.points[0], eff);
-    const b = toScreen(ds, item.points[item.points.length - 1], eff);
+    const a = toScreen(ds, item.points[0], eff, viewport);
+    const b = toScreen(ds, item.points[item.points.length - 1], eff, viewport);
     const x = Math.min(a.x, b.x);
     const y = Math.min(a.y, b.y);
     const w = Math.abs(a.x - b.x);
@@ -319,17 +319,17 @@ export function createOverlayRenderer(deps) {
     }
   }
 
-  function drawShape(ds, item, eff, dpr, isSelection = false, marqueeOffset = 0) {
+  function drawShape(ds, item, eff, dpr, viewport, isSelection = false, marqueeOffset = 0) {
     if (!item.points || item.points.length < 2) return;
     overlayCtx.fillStyle = colorWithAlpha(item.color, 0.28);
     overlayCtx.strokeStyle = colorWithAlpha(item.color, 0.95);
     overlayCtx.lineWidth = 2 * dpr;
     const buildPath = () => {
       overlayCtx.beginPath();
-      const p0 = toScreen(ds, item.points[0], eff);
+      const p0 = toScreen(ds, item.points[0], eff, viewport);
       overlayCtx.moveTo(p0.x, p0.y);
       for (let i = 1; i < item.points.length; i += 1) {
-        const p = toScreen(ds, item.points[i], eff);
+        const p = toScreen(ds, item.points[i], eff, viewport);
         overlayCtx.lineTo(p.x, p.y);
       }
       overlayCtx.closePath();
@@ -343,18 +343,18 @@ export function createOverlayRenderer(deps) {
     }
   }
 
-  function drawOneAnnotation(ds, item, eff, dpr, itemIndex = -1, rulerProfileHover = null, selectionIds = null, marqueeOffset = 0) {
+  function drawOneAnnotation(ds, item, eff, dpr, viewport, itemIndex = -1, rulerProfileHover = null, selectionIds = null, marqueeOffset = 0) {
     if (!item || !item.tool) return;
     const isSelection = !!(selectionIds && selectionIds.has(item.id));
     if (item.tool === "ruler" || item.tool === "line") {
       const hover = (rulerProfileHover && rulerProfileHover.drawingIndex === itemIndex) ? rulerProfileHover : null;
-      drawLine(ds, item, eff, dpr, hover);
+      drawLine(ds, item, eff, dpr, viewport, hover);
     }
-    else if (item.tool === "rect") drawRect(ds, item, eff, dpr, isSelection, marqueeOffset);
-    else if (item.tool === "shape") drawShape(ds, item, eff, dpr, isSelection, marqueeOffset);
+    else if (item.tool === "rect") drawRect(ds, item, eff, dpr, viewport, isSelection, marqueeOffset);
+    else if (item.tool === "shape") drawShape(ds, item, eff, dpr, viewport, isSelection, marqueeOffset);
   }
 
-  function drawAnnotations(ds) {
+  function drawAnnotations(ds, viewport) {
     if (!getDrawData) return;
     const drawData = getDrawData(ds);
     if (!drawData) return;
@@ -369,9 +369,9 @@ export function createOverlayRenderer(deps) {
     );
     const marqueeOffset = Number.isFinite(drawData.marqueeOffset) ? drawData.marqueeOffset : 0;
     for (let i = 0; i < items.length; i += 1) {
-      drawOneAnnotation(ds, items[i], eff, dpr, i, rulerProfileHover, selectionIds, marqueeOffset);
+      drawOneAnnotation(ds, items[i], eff, dpr, viewport, i, rulerProfileHover, selectionIds, marqueeOffset);
     }
-    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, -1, null, null, 0);
+    if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, viewport, -1, null, null, 0);
   }
 
   function snapToDecimal125Step(value) {
@@ -402,84 +402,11 @@ export function createOverlayRenderer(deps) {
     return !!(els.chkGrid && els.chkGrid.checked);
   }
 
-  function resolveHudTextBounds(hostRect) {
-    if (
-      !hostRect
-      || !els.hudPos || !els.hudPos.getBoundingClientRect
-      || !window.getComputedStyle
-    ) return null;
-
-    const hudRect = els.hudPos.getBoundingClientRect();
-    if (!hudRect || hudRect.width <= 0 || hudRect.height <= 0) return null;
-
-    const hudStyle = window.getComputedStyle(els.hudPos);
-    const padTopCss = Number.parseFloat(hudStyle.paddingTop || "0") || 0;
-    const padBottomCss = Number.parseFloat(hudStyle.paddingBottom || "0") || 0;
-    const fontSizeCss = Number.parseFloat(hudStyle.fontSize || "0") || 12;
-    const lineHeightCssRaw = Number.parseFloat(hudStyle.lineHeight || "");
-    const lineHeightCss = Number.isFinite(lineHeightCssRaw) ? lineHeightCssRaw : (fontSizeCss * 1.3333);
-    const extraLeadingCss = Math.max(0, lineHeightCss - fontSizeCss);
-    const leadHalfCss = extraLeadingCss * 0.5;
-
-    return {
-      topCss: (hudRect.top - hostRect.top) + padTopCss + leadHalfCss,
-      bottomCss: (hudRect.bottom - hostRect.top) - padBottomCss - leadHalfCss,
-      padTopCss,
-      padBottomCss
-    };
-  }
-
-  function resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH, lineOffset = 0) {
-    const edgePad = SCALEBAR_EDGE_PAD_CSS * dpr;
-    let right = canvasW - edgePad;
-    let top = edgePad;
-    const host = els.main;
-    let anchorRect = null;
-    const anchors = [els.hudControls, els.overlayHUD];
-    for (const anchor of anchors) {
-      if (!anchor || !anchor.getBoundingClientRect) continue;
-      const rect = anchor.getBoundingClientRect();
-      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
-      anchorRect = rect;
-      break;
-    }
-    if (host && host.getBoundingClientRect && anchorRect) {
-      const hostRect = host.getBoundingClientRect();
-      if (Number.isFinite(hostRect.left) && Number.isFinite(anchorRect.right)) {
-        right = (anchorRect.right - hostRect.left) * dpr;
-      }
-      if (
-        els.thumbWrap && els.thumbWrap.getBoundingClientRect
-        && els.hudPos && els.hudPos.getBoundingClientRect
-      ) {
-        const thumbRect = els.thumbWrap.getBoundingClientRect();
-        const hudTextBounds = resolveHudTextBounds(hostRect);
-        const hudTextTopCss = hudTextBounds
-          ? hudTextBounds.topCss
-          : (els.hudPos.getBoundingClientRect().top - hostRect.top);
-        const hudTextBottomCss = hudTextBounds
-          ? hudTextBounds.bottomCss
-          : (els.hudPos.getBoundingClientRect().bottom - hostRect.top);
-        const desiredGapCss = Math.max(0, hudTextTopCss - (thumbRect.bottom - hostRect.top));
-        const lineYCss = hudTextBottomCss + desiredGapCss;
-        top = (lineYCss * dpr) - lineOffset;
-      } else if (Number.isFinite(anchorRect.bottom)) {
-        top = (anchorRect.bottom - hostRect.top) * dpr + (SCALEBAR_HUD_GAP_CSS * dpr);
-      }
-    }
-    const clampedRight = Math.min(canvasW - edgePad, Math.max(edgePad, right));
-    const maxTop = Math.max(edgePad, canvasH - edgePad - boxH);
-    const clampedTop = Math.min(maxTop, Math.max(edgePad, top));
-    return { right: clampedRight, top: clampedTop };
-  }
-
-  function drawScaleBar(ds) {
+  function drawScaleBar(ds, viewport) {
     const dpr = getDevicePixelRatio();
     const ref = computeReferenceSpacing(ds, dpr);
     const barImgPx = ref.stepImgPx;
     const barDevPx = ref.stepDevPx;
-    const canvasW = els.overlayCanvas.width;
-    const canvasH = els.overlayCanvas.height;
     let label = "";
     const sc = ds.meta.scale;
 
@@ -490,39 +417,26 @@ export function createOverlayRenderer(deps) {
       label = `${fmtNoGroup(barImgPx)} px`;
     }
 
-    const innerPad = 10 * dpr;
+    const inset = 10 * dpr;
     const tickLen = 6 * dpr;
-    const labelGap = 4 * dpr;
-    const linePadTop = 1.25 * dpr;
     const fontPx = 12 * dpr;
-    const hostRect = els.main && els.main.getBoundingClientRect ? els.main.getBoundingClientRect() : null;
-    const hudTextBounds = hostRect ? resolveHudTextBounds(hostRect) : null;
-    const hudBottomPad = hudTextBounds ? (hudTextBounds.padBottomCss * dpr) : (4 * dpr);
-    const boxTopPad = Math.max(1.5 * dpr, Math.min(3 * dpr, hudBottomPad * 0.5));
-    const boxBottomPad = Math.max(4 * dpr, hudBottomPad);
-
     overlayCtx.save();
-    overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
     overlayCtx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
     overlayCtx.textAlign = "right";
     overlayCtx.textBaseline = "top";
-
     const textW = overlayCtx.measureText(label).width;
-    const boxW = Math.max(barDevPx, textW) + innerPad * 2;
-    const boxH = boxTopPad + linePadTop + tickLen + labelGap + fontPx + boxBottomPad;
-
-    const anchor = resolveScaleBarAnchor(canvasW, canvasH, dpr, boxH, boxTopPad + linePadTop);
-    const anchoredX1 = anchor.right;
-    const anchoredY0 = anchor.top;
-    const anchoredX0 = anchoredX1 - boxW;
+    const boxW = Math.max(barDevPx, textW) + (inset * 2);
+    const boxH = (fontPx + tickLen + (inset * 1.8));
+    const x1 = viewport.x + viewport.w - inset;
+    const x0 = x1 - boxW;
+    const y0 = viewport.y + inset;
+    const barX1 = x1 - inset;
+    const barX0 = barX1 - barDevPx;
+    const barY = y0 + inset * 0.5;
 
     overlayCtx.fillStyle = "rgba(0,0,0,0.55)";
-    roundRect(overlayCtx, anchoredX0, anchoredY0, boxW, boxH, HUD_RADIUS_CSS * dpr);
+    roundRect(overlayCtx, x0, y0, boxW, boxH, 2 * dpr);
     overlayCtx.fill();
-
-    const barX1 = anchoredX1 - innerPad;
-    const barX0 = barX1 - barDevPx;
-    const barY = anchoredY0 + boxTopPad + linePadTop;
 
     overlayCtx.strokeStyle = "rgba(255,255,255,0.92)";
     overlayCtx.lineWidth = 1 * dpr;
@@ -534,40 +448,62 @@ export function createOverlayRenderer(deps) {
     overlayCtx.moveTo(barX1, barY);
     overlayCtx.lineTo(barX1, barY + tickLen);
     overlayCtx.stroke();
-
     overlayCtx.fillStyle = "rgba(255,255,255,0.92)";
-    overlayCtx.fillText(label, anchoredX1 - innerPad, barY + tickLen + labelGap);
+    overlayCtx.fillText(label, x1 - inset, barY + tickLen + (3 * dpr));
     overlayCtx.restore();
   }
 
-  function computeRenderedImageRect(ds) {
+  function computeRenderedImageRect(ds, viewport) {
     const dpr = getDevicePixelRatio();
     const eff = ds.view.scale * dpr;
-    const canvasW = els.overlayCanvas.width;
-    const canvasH = els.overlayCanvas.height;
-    const geom = resolveRasterSampling(ds, canvasW, canvasH, eff);
-    return geom.displayRect;
+    const geom = resolveRasterSampling(ds, viewport.w, viewport.h, eff);
+    return geom.displayRect
+      ? {
+        x: viewport.x + geom.displayRect.x,
+        y: viewport.y + geom.displayRect.y,
+        w: geom.displayRect.w,
+        h: geom.displayRect.h
+      }
+      : null;
   }
 
-  function drawOverlays(ds) {
+  function drawPanelBorder(viewport, dpr, active = false, color = "rgba(226,232,240,0.4)", label = "") {
     overlayCtx.save();
     overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
-    overlayCtx.clearRect(0, 0, els.overlayCanvas.width, els.overlayCanvas.height);
-    if (!ds) {
-      overlayCtx.restore();
-      return;
+    overlayCtx.strokeStyle = color;
+    overlayCtx.lineWidth = active ? (4 * dpr) : (2 * dpr);
+    overlayCtx.strokeRect(viewport.x, viewport.y, viewport.w, viewport.h);
+    if (label) {
+      const tagW = 18 * dpr;
+      const tagH = 18 * dpr;
+      overlayCtx.fillStyle = color;
+      roundRect(overlayCtx, viewport.x + (6 * dpr), viewport.y + (6 * dpr), tagW, tagH, 2 * dpr);
+      overlayCtx.fill();
+      overlayCtx.fillStyle = "rgba(15,23,42,0.92)";
+      overlayCtx.font = `${10 * dpr}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+      overlayCtx.textAlign = "center";
+      overlayCtx.textBaseline = "middle";
+      overlayCtx.fillText(String(label), viewport.x + (15 * dpr), viewport.y + (15 * dpr));
+    }
+    overlayCtx.restore();
+  }
+
+  function drawOverlaysForPanel(ds, viewport, opts = {}) {
+    if (!ds || !viewport) return;
+    const dpr = getDevicePixelRatio();
+    overlayCtx.save();
+    if (typeof overlayCtx.clip === "function") {
+      overlayCtx.beginPath();
+      overlayCtx.rect(viewport.x, viewport.y, viewport.w, viewport.h);
+      overlayCtx.clip();
     }
 
     if (isGridEnabled()) {
-      const dpr = getDevicePixelRatio();
       const eff = ds.view.scale * dpr;
-      const canvasW = els.overlayCanvas.width;
-      const canvasH = els.overlayCanvas.height;
-      const viewW = canvasW / eff;
-      const viewH = canvasH / eff;
+      const viewW = viewport.w / eff;
+      const viewH = viewport.h / eff;
       const ref = computeReferenceSpacing(ds, dpr);
       const step = ref.stepImgPx;
-
       const startX = Math.floor(ds.view.x / step) * step;
       const endX = ds.view.x + viewW;
       const startY = Math.floor(ds.view.y / step) * step;
@@ -577,38 +513,60 @@ export function createOverlayRenderer(deps) {
       overlayCtx.lineWidth = 1 * dpr;
       overlayCtx.beginPath();
       for (let x = startX; x <= endX; x += step) {
-        const sx = (x - ds.view.x) * eff;
-        overlayCtx.moveTo(sx, 0);
-        overlayCtx.lineTo(sx, canvasH);
+        const sx = viewport.x + ((x - ds.view.x) * eff);
+        overlayCtx.moveTo(sx, viewport.y);
+        overlayCtx.lineTo(sx, viewport.y + viewport.h);
       }
       for (let y = startY; y <= endY; y += step) {
-        const sy = (y - ds.view.y) * eff;
-        overlayCtx.moveTo(0, sy);
-        overlayCtx.lineTo(canvasW, sy);
+        const sy = viewport.y + ((y - ds.view.y) * eff);
+        overlayCtx.moveTo(viewport.x, sy);
+        overlayCtx.lineTo(viewport.x + viewport.w, sy);
       }
       overlayCtx.stroke();
     }
 
-    {
-      const dpr = getDevicePixelRatio();
-      const canvasW = els.overlayCanvas.width;
-      const canvasH = els.overlayCanvas.height;
-      const imgRect = computeRenderedImageRect(ds);
-      if (imgRect && (imgRect.w < (canvasW - 1) || imgRect.h < (canvasH - 1))) {
-        overlayCtx.save();
-        overlayCtx.setLineDash([4 * dpr, 4 * dpr]);
-        overlayCtx.lineDashOffset = 0;
-        overlayCtx.strokeStyle = "rgba(226,232,240,0.5)";
-        overlayCtx.lineWidth = 1.25 * dpr;
-        overlayCtx.strokeRect(imgRect.x, imgRect.y, imgRect.w, imgRect.h);
-        overlayCtx.restore();
-      }
+    const imgRect = computeRenderedImageRect(ds, viewport);
+    if (imgRect && (imgRect.w < (viewport.w - 1) || imgRect.h < (viewport.h - 1))) {
+      overlayCtx.save();
+      overlayCtx.setLineDash([4 * dpr, 4 * dpr]);
+      overlayCtx.strokeStyle = "rgba(226,232,240,0.5)";
+      overlayCtx.lineWidth = 1.25 * dpr;
+      overlayCtx.strokeRect(imgRect.x, imgRect.y, imgRect.w, imgRect.h);
+      overlayCtx.restore();
     }
 
-    drawAnnotations(ds);
-    drawScaleBar(ds);
+    drawAnnotations(ds, viewport);
+    if (opts.showScaleBar) drawScaleBar(ds, viewport);
+    overlayCtx.restore();
+    drawPanelBorder(viewport, dpr, !!opts.active, opts.borderColor, opts.label);
+  }
+
+  function clearOverlay() {
+    overlayCtx.save();
+    overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+    overlayCtx.clearRect(0, 0, els.overlayCanvas.width, els.overlayCanvas.height);
     overlayCtx.restore();
   }
 
-  return { drawOverlays };
+  function drawOverlays(ds) {
+    clearOverlay();
+    if (!ds) return;
+    drawOverlaysForPanel(ds, {
+      x: 0,
+      y: 0,
+      w: els.overlayCanvas.width,
+      h: els.overlayCanvas.height
+    }, {
+      active: true,
+      showScaleBar: true,
+      borderColor: "rgba(226,232,240,0.55)",
+      label: ""
+    });
+  }
+
+  return {
+    clearOverlay,
+    drawOverlays,
+    drawOverlaysForPanel
+  };
 }

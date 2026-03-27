@@ -1,3 +1,16 @@
+import {
+  allocateDisplayLinkGroupId,
+  clearDisplayPanel,
+  cloneDisplayView,
+  datasetsShareDisplaySize,
+  ensureDisplayPanels,
+  getActiveDisplayPanel,
+  getDatasetDisplayPanels,
+  getDisplayPanel,
+  getVisibleDisplayPanels,
+  panelHasLinkedPeers
+} from "./display-panels.js";
+
 export function createDatasetRuntime(deps) {
   const {
     state,
@@ -16,13 +29,26 @@ export function createDatasetRuntime(deps) {
     render,
     disposePyramid,
     clearSelection,
-    onNeedWholeStats
+    onNeedWholeStats,
+    syncActiveDatasetView
   } = deps;
 
   let nextDatasetId = 1;
 
+  function findDatasetById(id) {
+    const key = String(id || "");
+    if (!key) return null;
+    return state.datasets.find((dataset) => String(dataset?.id || "") === key) || null;
+  }
+
+  function getActivePanel() {
+    return getActiveDisplayPanel(state);
+  }
+
   function getActive() {
-    return state.datasets.find((d) => d.id === state.activeId) || null;
+    const panel = getActivePanel();
+    if (panel?.datasetId) return findDatasetById(panel.datasetId);
+    return findDatasetById(state.activeId);
   }
 
   function guessDatasetName(hdrFile, dataFile) {
@@ -41,14 +67,145 @@ export function createDatasetRuntime(deps) {
     return `Band ${b}`;
   }
 
-  function setActiveDataset(id, { fit = false, preserveBandTreeScroll = false } = {}) {
-    state.activeId = id;
-    closeSpectrum();
+  function updateActiveDataset(fit = false, preserveBandTreeScroll = false, closeSpectrumOnChange = true) {
+    const panel = getActivePanel();
+    const nextId = panel?.datasetId || null;
+    state.activeId = nextId;
+    if (typeof syncActiveDatasetView === "function") syncActiveDatasetView();
+    if (closeSpectrumOnChange) closeSpectrum();
     onAfterDatasetUIUpdate({ preserveBandTreeScroll });
     const ds = getActive();
     updateZoomRange(ds);
-    if (fit) fitToScreen();
+    if (fit && ds) fitToScreen();
     else render();
+  }
+
+  function setActivePanel(slot, opts = {}) {
+    ensureDisplayPanels(state);
+    const panel = getDisplayPanel(state, slot);
+    if (!panel?.datasetId) return false;
+    if (Number(state.activePanelSlot) === Number(panel.slot) && String(state.activeId || "") === String(panel.datasetId || "")) {
+      if (typeof syncActiveDatasetView === "function") syncActiveDatasetView();
+      return true;
+    }
+    state.activePanelSlot = Number(panel.slot) || 1;
+    updateActiveDataset(!!opts.fit, !!opts.preserveBandTreeScroll, opts.closeSpectrumOnChange !== false);
+    return true;
+  }
+
+  function findCompatibleLinkedPanel(targetDataset, excludeSlot = null) {
+    if (!targetDataset) return null;
+    const exclude = Number(excludeSlot);
+    const ownPanels = getDatasetDisplayPanels(state, targetDataset.id)
+      .filter((panel) => Number(panel.slot) !== exclude);
+    if (ownPanels.length) return ownPanels[0];
+
+    const activePanel = getActivePanel();
+    if (
+      activePanel
+      && Number(activePanel.slot) !== exclude
+      && activePanel.datasetId
+    ) {
+      const activeDataset = findDatasetById(activePanel.datasetId);
+      if (datasetsShareDisplaySize(targetDataset, activeDataset)) return activePanel;
+    }
+
+    for (const panel of getVisibleDisplayPanels(state)) {
+      if (Number(panel.slot) === exclude) continue;
+      const dataset = findDatasetById(panel.datasetId);
+      if (datasetsShareDisplaySize(targetDataset, dataset)) return panel;
+    }
+    return null;
+  }
+
+  function setPanelLinkToSource(panel, sourcePanel) {
+    if (!panel || !sourcePanel) return;
+    panel.linkGroupId = Number(sourcePanel.linkGroupId) || allocateDisplayLinkGroupId(state);
+    panel.view = sourcePanel.view || cloneDisplayView();
+  }
+
+  function makePanelUnique(panel, sourceView = null) {
+    if (!panel) return;
+    panel.linkGroupId = allocateDisplayLinkGroupId(state);
+    panel.view = cloneDisplayView(sourceView || panel.view);
+  }
+
+  function assignDatasetToPanel(dataset, slot, opts = {}) {
+    ensureDisplayPanels(state);
+    const panel = getDisplayPanel(state, slot);
+    if (!dataset || !panel) return false;
+
+    const sameDatasetPanels = getDatasetDisplayPanels(state, dataset.id)
+      .filter((item) => Number(item.slot) !== Number(panel.slot));
+    panel.datasetId = dataset.id;
+    if (sameDatasetPanels.length) {
+      setPanelLinkToSource(panel, sameDatasetPanels[0]);
+    } else {
+      const compatible = findCompatibleLinkedPanel(dataset, panel.slot);
+      if (compatible) setPanelLinkToSource(panel, compatible);
+      else makePanelUnique(panel, dataset.view);
+    }
+
+    state.activePanelSlot = Number(panel.slot) || 1;
+    updateActiveDataset(!!opts.fit, !!opts.preserveBandTreeScroll, opts.closeSpectrumOnChange !== false);
+    return true;
+  }
+
+  function cycleDatasetPanel(id, slot, opts = {}) {
+    const ds = findDatasetById(id);
+    const panel = getDisplayPanel(state, slot);
+    if (!ds || !panel) return false;
+
+    if (String(panel.datasetId || "") !== String(ds.id)) {
+      return assignDatasetToPanel(ds, slot, {
+        fit: !!opts.fit,
+        preserveBandTreeScroll: !!opts.preserveBandTreeScroll
+      });
+    }
+
+    if (panelHasLinkedPeers(state, slot)) {
+      makePanelUnique(panel, panel.view);
+    } else {
+      const compatible = findCompatibleLinkedPanel(ds, slot);
+      if (!compatible) {
+        state.activePanelSlot = Number(panel.slot) || state.activePanelSlot;
+        updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+        return false;
+      }
+      setPanelLinkToSource(panel, compatible);
+    }
+
+    state.activePanelSlot = Number(panel.slot) || 1;
+    updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+    return true;
+  }
+
+  function resolvePanelForDatasetSelection(dataset) {
+    const assigned = getDatasetDisplayPanels(state, dataset?.id);
+    if (assigned.length) return assigned[0];
+    const empty = ensureDisplayPanels(state).find((panel) => !panel?.datasetId) || null;
+    if (empty) return empty;
+    return getDisplayPanel(state, state.activePanelSlot) || getDisplayPanel(state, 1);
+  }
+
+  function setActiveDataset(id, { fit = false, preserveBandTreeScroll = false, panelSlot = null } = {}) {
+    const dataset = findDatasetById(id);
+    if (!dataset) return;
+
+    if (panelSlot != null) {
+      assignDatasetToPanel(dataset, panelSlot, { fit, preserveBandTreeScroll });
+      return;
+    }
+
+    const existing = getDatasetDisplayPanels(state, dataset.id);
+    if (existing.length) {
+      setActivePanel(existing[0].slot, { fit, preserveBandTreeScroll });
+      return;
+    }
+
+    const panel = resolvePanelForDatasetSelection(dataset);
+    if (!panel) return;
+    assignDatasetToPanel(dataset, panel.slot, { fit, preserveBandTreeScroll });
   }
 
   function makeDatasetFromLoadedFiles({ hdrFile, dataFile, meta, base, cached }) {
@@ -59,7 +216,7 @@ export function createDatasetRuntime(deps) {
       meta,
       ds: cached,
       baseDs: base,
-      view: { x: 0, y: 0, scale: 1 },
+      view: { x: 0, y: 0, scale: 1, minScale: 1 },
       activeBand: clamp(initialBand, 0, meta.bands - 1),
       bandSettings: new Map(),
       bandStatsWhole: new Map(),
@@ -69,12 +226,13 @@ export function createDatasetRuntime(deps) {
       selectedAreaId: null,
       thumb: { ready: false, _t: 0, scale: 1, x0: 0, y0: 0, w: 0, h: 0 },
       treeExpanded: true,
-      displaySlot: 0,
       displayMode: "gray",
       displayAdjustColor: "red",
       pyramid: null,
       lastRaster: null,
-      lastCompositeRaster: null
+      lastCompositeRaster: null,
+      lastScreenFrame: null,
+      lastScreenFrames: new Map()
     };
     ds.bandSettings.set(ds.activeBand, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 });
     return ds;
@@ -107,16 +265,20 @@ export function createDatasetRuntime(deps) {
     ds.lastRaster = null;
     ds.lastCompositeRaster = null;
     ds.lastScreenFrame = null;
+    if (ds.lastScreenFrames && typeof ds.lastScreenFrames.clear === "function") ds.lastScreenFrames.clear();
   }
 
   function attachDataset(ds) {
-    const occupied = new Set(state.datasets.map((item) => Number(item.displaySlot || 0)));
-    if (!occupied.has(1)) ds.displaySlot = 1;
-    else if (!occupied.has(2)) ds.displaySlot = 2;
-    else ds.displaySlot = 0;
     state.datasets.unshift(ds);
     recomputeCacheBudgets();
-    setActiveDataset(ds.id, { fit: true });
+    ensureDisplayPanels(state);
+    const empty = state.displayPanels.find((panel) => !panel?.datasetId) || getDisplayPanel(state, state.activePanelSlot) || getDisplayPanel(state, 1);
+    if (empty) {
+      assignDatasetToPanel(ds, empty.slot, { fit: true });
+    } else {
+      onAfterDatasetUIUpdate();
+      render();
+    }
     onNeedWholeStats(ds, ds.activeBand);
   }
 
@@ -168,17 +330,24 @@ export function createDatasetRuntime(deps) {
   }
 
   function closeDataset(id) {
-    const idx = state.datasets.findIndex((d) => d.id === id);
+    const idx = state.datasets.findIndex((dataset) => String(dataset?.id || "") === String(id || ""));
     if (idx === -1) return;
     const ds = state.datasets[idx];
 
     invalidateAsyncState();
     releaseDatasetResources(ds);
 
+    for (const panel of getDatasetDisplayPanels(state, id)) clearDisplayPanel(panel);
     state.datasets.splice(idx, 1);
-    if (state.activeId === id) {
+
+    const nextPanel = getActiveDisplayPanel(state);
+    if (nextPanel?.datasetId) {
+      state.activePanelSlot = Number(nextPanel.slot) || 1;
+      state.activeId = nextPanel.datasetId;
+    } else {
       state.activeId = state.datasets[0]?.id || null;
     }
+    if (typeof syncActiveDatasetView === "function") syncActiveDatasetView();
 
     recomputeCacheBudgets();
     onAfterDatasetUIUpdate();
@@ -187,18 +356,18 @@ export function createDatasetRuntime(deps) {
   }
 
   function closeAllDatasets() {
-    if (!state.datasets.length) {
-      invalidateAsyncState();
-      clearSelection();
-      render();
-      return;
-    }
-
     invalidateAsyncState();
     closeSpectrum();
-    const datasets = state.datasets.splice(0, state.datasets.length);
-    for (const ds of datasets) releaseDatasetResources(ds);
+    if (state.datasets.length) {
+      const datasets = state.datasets.splice(0, state.datasets.length);
+      for (const ds of datasets) releaseDatasetResources(ds);
+    }
+
+    ensureDisplayPanels(state);
+    for (const panel of state.displayPanels) clearDisplayPanel(panel);
     state.activeId = null;
+    state.activePanelSlot = 1;
+    if (typeof syncActiveDatasetView === "function") syncActiveDatasetView();
 
     recomputeCacheBudgets();
     onAfterDatasetUIUpdate();
@@ -208,7 +377,11 @@ export function createDatasetRuntime(deps) {
 
   return {
     getActive,
+    getActivePanel,
+    getVisibleDisplayPanels: () => getVisibleDisplayPanels(state),
     setActiveDataset,
+    setActivePanel,
+    cycleDatasetPanel,
     bandLabel,
     addDatasetsFromFileList,
     addDatasetFromFiles,

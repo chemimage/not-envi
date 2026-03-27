@@ -5,6 +5,17 @@ import { collectElements } from "./elements.js";
 import { createUIPanels } from "./ui-panels.js";
 import { createViewControls } from "./view-controls.js";
 import { wireApp } from "./wiring.js";
+import {
+  computeDisplayPanelLayout,
+  createDisplayPanels,
+  ensureDisplayPanels,
+  getActiveDisplayPanel,
+  getDisplayPanel,
+  getDisplayPanelRect,
+  getVisibleDisplayPanels,
+  resolveDisplayLinkColorName,
+  resolveDisplayPanelAtPoint
+} from "./display-panels.js";
 import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/envi-loader.js";
 import {
   readBandWindow as readBandWindowCore,
@@ -146,6 +157,9 @@ import { pointInPolygon } from "./draw-geometry.js";
   const state = {
     datasets: [],
     activeId: null,
+    displayPanels: createDisplayPanels(),
+    activePanelSlot: 1,
+    nextLinkGroupId: 1,
     ioParallel: APP_CONFIG.io.parallelEnabledByDefault,
 
     // Zoom slider maps 0..100 to 2^[zoomExpMin..zoomExpMax].
@@ -171,6 +185,101 @@ import { pointInPolygon } from "./draw-geometry.js";
 
     exportKind: null,
   };
+
+  ensureDisplayPanels(state);
+
+  function getDatasetById(id) {
+    const key = String(id || "");
+    if (!key) return null;
+    return state.datasets.find((dataset) => String(dataset?.id || "") === key) || null;
+  }
+
+  function getPanelDataset(panel) {
+    return getDatasetById(panel?.datasetId || null);
+  }
+
+  function getActivePanel() {
+    return getActiveDisplayPanel(state);
+  }
+
+  function getVisibleDatasetPanels() {
+    return getVisibleDisplayPanels(state)
+      .map((panel) => ({ panel, dataset: getPanelDataset(panel) }))
+      .filter((entry) => !!entry.dataset);
+  }
+
+  function syncActiveDatasetView() {
+    const panel = getActiveDisplayPanel(state);
+    if (!panel?.datasetId) {
+      const fallback = state.datasets[0] || null;
+      state.activeId = fallback ? fallback.id : null;
+      return;
+    }
+    state.activePanelSlot = Number(panel.slot) || 1;
+    state.activeId = panel.datasetId;
+    const ds = getPanelDataset(panel);
+    if (ds) ds.view = panel.view;
+  }
+
+  function getMainRect() {
+    if (!els.main || typeof els.main.getBoundingClientRect !== "function") {
+      return { width: 1, height: 1, left: 0, top: 0 };
+    }
+    const rect = els.main.getBoundingClientRect();
+    return {
+      width: Math.max(1, Number(rect.width) || 1),
+      height: Math.max(1, Number(rect.height) || 1),
+      left: Number(rect.left) || 0,
+      top: Number(rect.top) || 0
+    };
+  }
+
+  function getDisplayPanelLayoutCss() {
+    const rect = getMainRect();
+    return computeDisplayPanelLayout(getVisibleDisplayPanels(state), rect.width, rect.height);
+  }
+
+  function getDisplayPanelLayoutDevice() {
+    return computeDisplayPanelLayout(getVisibleDisplayPanels(state), els.cpuCanvas.width || 1, els.cpuCanvas.height || 1);
+  }
+
+  function getPanelRectCss(slot = null) {
+    const panel = slot == null ? getActiveDisplayPanel(state) : getDisplayPanel(state, slot);
+    if (!panel?.datasetId) return null;
+    return getDisplayPanelRect(getDisplayPanelLayoutCss(), panel.slot);
+  }
+
+  function getPanelRectDevice(slot = null) {
+    const panel = slot == null ? getActiveDisplayPanel(state) : getDisplayPanel(state, slot);
+    if (!panel?.datasetId) return null;
+    return getDisplayPanelRect(getDisplayPanelLayoutDevice(), panel.slot);
+  }
+
+  function getActiveViewportCss() {
+    const rect = getPanelRectCss();
+    if (rect) return { width: rect.w, height: rect.h };
+    const mainRect = getMainRect();
+    return { width: mainRect.width, height: mainRect.height };
+  }
+
+  function getActiveViewportDevice() {
+    const rect = getPanelRectDevice();
+    if (rect) return { width: rect.w, height: rect.h };
+    return { width: Math.max(1, els.cpuCanvas.width || 1), height: Math.max(1, els.cpuCanvas.height || 1) };
+  }
+
+  function resolvePanelAtClientPoint(clientX, clientY) {
+    const rect = getMainRect();
+    const localX = Number(clientX) - rect.left;
+    const localY = Number(clientY) - rect.top;
+    return resolveDisplayPanelAtPoint(getDisplayPanelLayoutCss(), localX, localY);
+  }
+
+  function activatePanelAtClientPoint(clientX, clientY, opts = {}) {
+    const panelRect = resolvePanelAtClientPoint(clientX, clientY);
+    if (!panelRect) return false;
+    return setActivePanel(panelRect.slot, opts);
+  }
 
   
   // ========= I/O mode =========
@@ -200,6 +309,9 @@ import { pointInPolygon } from "./draw-geometry.js";
     els,
     clamp,
     getActive,
+    getActivePanel,
+    getPanelRectCss,
+    getPanelRectDevice,
     onRender: () => render(),
   });
   function computeFitScale(ds){ return viewControls.computeFitScale(ds); }
@@ -213,6 +325,8 @@ import { pointInPolygon } from "./draw-geometry.js";
 
   let datasetRuntime = null;
   function getActive(){ return datasetRuntime ? datasetRuntime.getActive() : null; }
+  function setActivePanel(slot, opts){ return datasetRuntime ? datasetRuntime.setActivePanel(slot, opts) : false; }
+  function cycleDatasetPanel(id, slot, opts){ return datasetRuntime ? datasetRuntime.cycleDatasetPanel(id, slot, opts) : false; }
   function setActiveDataset(id, opts){ if (datasetRuntime) datasetRuntime.setActiveDataset(id, opts); }
   function bandLabel(ds, b){ return datasetRuntime ? datasetRuntime.bandLabel(ds, b) : `Band ${b}`; }
   async function addDatasetsFromFileList(files){ if (datasetRuntime) await datasetRuntime.addDatasetsFromFileList(files); }
@@ -300,6 +414,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     humanBytes,
     bandLabel,
     setActiveDataset,
+    cycleDatasetPanel,
     closeDataset,
     drawHistogram,
     render,
@@ -351,6 +466,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     disposePyramid,
     clearSelection,
     onNeedWholeStats: (ds, band) => buildBandStatsWhole(ds, band).catch(() => {}),
+    syncActiveDatasetView,
   });
   // ========= Histogram computation & drawing =========
 
@@ -439,8 +555,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     return pyramid.tryRasterFromPyramid(ds, band, eff);
   }
 
-  function cpuRenderGray(rasterF32, w, h, params){
-    // draw into offscreen imageData then scale to canvas
+  function buildGrayCanvas(rasterF32, w, h, params){
     const img = cpuCtx.createImageData(w, h);
     const dst = img.data;
     const minVal = params.minVal, maxVal = params.maxVal;
@@ -452,22 +567,39 @@ import { pointInPolygon } from "./draw-geometry.js";
       dst[j] = u; dst[j+1] = u; dst[j+2] = u; dst[j+3] = 255;
     }
 
-    // Clear + draw scaled
+    const off = document.createElement('canvas');
+    off.width = w;
+    off.height = h;
+    off.getContext('2d', {alpha:false}).putImageData(img,0,0);
+    return off;
+  }
+
+  function drawCanvasToViewport(ctx, sourceCanvas, viewport, clear = false){
+    if (!ctx || !sourceCanvas || !viewport) return;
+    const x = Number(viewport.x) || 0;
+    const y = Number(viewport.y) || 0;
+    const w = Math.max(1, Number(viewport.w) || 1);
+    const h = Math.max(1, Number(viewport.h) || 1);
+    ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.imageSmoothingEnabled = false;
+    if (clear) ctx.clearRect(x, y, w, h);
+    ctx.drawImage(sourceCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height, x, y, w, h);
+    ctx.restore();
+  }
+
+  function cpuRenderGray(rasterF32, w, h, params){
+    const off = buildGrayCanvas(rasterF32, w, h, params);
     cpuCtx.save();
     cpuCtx.setTransform(1,0,0,1,0,0);
     cpuCtx.imageSmoothingEnabled = false;
     cpuCtx.clearRect(0,0,els.cpuCanvas.width, els.cpuCanvas.height);
-
-    // draw to temp canvas for scaling if needed
-    const off = document.createElement('canvas');
-    off.width = w; off.height = h;
-    off.getContext('2d', {alpha:false}).putImageData(img,0,0);
     cpuCtx.drawImage(off, 0,0,w,h, 0,0, els.cpuCanvas.width, els.cpuCanvas.height);
-
     cpuCtx.restore();
+    return off;
   }
 
-  function cpuRenderColor(rasters, paramsByChannel){
+  function buildColorCanvas(rasters, paramsByChannel){
     if (!Array.isArray(rasters) || rasters.length < 3) return;
     const [rRaster, gRaster, bRaster] = rasters;
     if (!rRaster || !gRaster || !bRaster) return;
@@ -492,18 +624,23 @@ import { pointInPolygon } from "./draw-geometry.js";
       dst[j + 3] = 255;
     }
 
-    cpuCtx.save();
-    cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
-    cpuCtx.imageSmoothingEnabled = false;
-    cpuCtx.clearRect(0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
-
     const off = document.createElement("canvas");
     off.width = w;
     off.height = h;
     off.getContext("2d", { alpha: false }).putImageData(img, 0, 0);
-    cpuCtx.drawImage(off, 0, 0, w, h, 0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
+    return off;
+  }
 
+  function cpuRenderColor(rasters, paramsByChannel){
+    const off = buildColorCanvas(rasters, paramsByChannel);
+    if (!off) return null;
+    cpuCtx.save();
+    cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cpuCtx.imageSmoothingEnabled = false;
+    cpuCtx.clearRect(0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
+    cpuCtx.drawImage(off, 0, 0, off.width, off.height, 0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
     cpuCtx.restore();
+    return off;
   }
 
   const overlayRenderer = createOverlayRenderer({
@@ -513,8 +650,32 @@ import { pointInPolygon } from "./draw-geometry.js";
     getDrawData,
   });
 
-  function drawOverlays(ds){
-    overlayRenderer.drawOverlays(ds);
+  function drawOverlays(){
+    overlayRenderer.clearOverlay();
+    const layout = getDisplayPanelLayoutDevice();
+    const activeSlot = Number(getActivePanel()?.slot) || 1;
+    for (const entry of getVisibleDatasetPanels()) {
+      const { panel, dataset: ds } = entry;
+      const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
+      if (!viewport || !ds) continue;
+      const prevView = ds.view;
+      ds.view = panel.view || prevView;
+      try {
+        overlayRenderer.drawOverlaysForPanel(ds, viewport, {
+          active: Number(panel.slot) === activeSlot,
+          showScaleBar: Number(panel.slot) === activeSlot,
+          borderColor: ({
+            amber: "rgba(253,224,71,0.9)",
+            cyan: "rgba(103,232,249,0.9)",
+            emerald: "rgba(134,239,172,0.9)",
+            violet: "rgba(221,214,254,0.9)"
+          })[resolveDisplayLinkColorName(state, panel.slot)] || "rgba(226,232,240,0.55)",
+          label: panel.slot
+        });
+      } finally {
+        ds.view = prevView;
+      }
+    }
   }
 
   selectionSync = createSelectionSyncController({
@@ -547,6 +708,9 @@ import { pointInPolygon } from "./draw-geometry.js";
     now,
     setStatus,
     getActive,
+    getActivePanel,
+    getVisibleDatasetPanels,
+    getPanelLayoutDevice: () => getDisplayPanelLayoutDevice(),
     getBandSettings,
     resolveDisplayRange,
     initWebGPU,
@@ -554,6 +718,9 @@ import { pointInPolygon } from "./draw-geometry.js";
     gpuRender,
     cpuRenderGray,
     cpuRenderColor,
+    buildGrayCanvas,
+    buildColorCanvas,
+    drawCanvasToViewport,
     tryRasterFromPyramid,
     readBandWindow,
     readBandWindowBIP,
@@ -581,6 +748,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     readBandWindowBIP,
     getActive,
     render,
+    getActiveViewportCss: () => getActiveViewportCss(),
+    getActiveViewportDevice: () => getActiveViewportDevice(),
     getDevicePixelRatio: () => window.devicePixelRatio || 1,
     isThreeBandColorMode,
   });
@@ -681,6 +850,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     els,
     state,
     getActive,
+    activatePanelAtClientPoint,
     clamp,
     setStatus,
     updateHud,
@@ -717,6 +887,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     renderWindowToImageData,
     readBandWindow,
     readBandWindowBIP,
+    getActiveViewportDevice: () => getActiveViewportDevice(),
     downloadBlob,
     alertFn: (msg) => alert(msg),
     confirmFn: (msg) => confirm(msg),
@@ -751,6 +922,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     els,
     clamp,
     getActive,
+    activatePanelAtClientPoint,
+    getActiveViewportDevice: () => getActiveViewportDevice(),
     closeSpectrum,
     exportSpectrumCSV,
     screenToImage,

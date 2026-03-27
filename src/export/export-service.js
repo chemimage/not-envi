@@ -67,8 +67,11 @@ export function createExportService(deps) {
   function viewRect(ds) {
     const dpr = window.devicePixelRatio || 1;
     const eff = ds.view.scale * dpr;
-    const viewW = deps.els.cpuCanvas.width / eff;
-    const viewH = deps.els.cpuCanvas.height / eff;
+    const viewport = (typeof deps.getActiveViewportDevice === "function")
+      ? deps.getActiveViewportDevice()
+      : { width: deps.els.cpuCanvas.width, height: deps.els.cpuCanvas.height };
+    const viewW = Math.max(1, Number(viewport.width || viewport.w || 1)) / eff;
+    const viewH = Math.max(1, Number(viewport.height || viewport.h || 1)) / eff;
     return clampRect(ds, {
       x0: Math.floor(ds.view.x),
       y0: Math.floor(ds.view.y),

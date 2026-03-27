@@ -1,9 +1,13 @@
 import { APP_CONFIG } from "./config.js";
+import { createDisplayPanels } from "./display-panels.js";
 
 export function createAppState() {
   return {
     datasets: [],
     activeId: null,
+    displayPanels: createDisplayPanels(),
+    activePanelSlot: 1,
+    nextLinkGroupId: 1,
     ioParallel: APP_CONFIG.io.parallelEnabledByDefault,
     zoomExpMin: -6,
     zoomExpMax: 4,

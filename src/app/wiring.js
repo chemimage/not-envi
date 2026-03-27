@@ -8,6 +8,8 @@ export function wireApp(deps) {
     els,
     clamp,
     getActive,
+    activatePanelAtClientPoint,
+    getActiveViewportDevice,
     closeSpectrum,
     exportSpectrumCSV,
     screenToImage,
@@ -509,6 +511,22 @@ export function wireApp(deps) {
   const isAreaToolEnabled = () => !!(getDrawTool && getActive() && (getDrawTool() === "rect" || getDrawTool() === "shape"));
   const isUiTarget = (target) => !!(target && target.closest && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#overlayHUD,#hudControls,#analysisHistPanel,#specPanel,dialog"));
 
+  function resolveActiveViewportCenter() {
+    const viewport = (typeof getActiveViewportDevice === "function")
+      ? getActiveViewportDevice()
+      : { x: 0, y: 0, width: els.cpuCanvas.width, height: els.cpuCanvas.height };
+    const x = Number(viewport.x || 0) + (Math.max(1, Number(viewport.width || viewport.w || els.cpuCanvas.width || 1)) * 0.5);
+    const y = Number(viewport.y || 0) + (Math.max(1, Number(viewport.height || viewport.h || els.cpuCanvas.height || 1)) * 0.5);
+    return { x, y };
+  }
+
+  if (els.main && activatePanelAtClientPoint) {
+    els.main.addEventListener("pointerdown", (ev) => {
+      if (isUiTarget(ev.target)) return;
+      activatePanelAtClientPoint(ev.clientX, ev.clientY, { preserveBandTreeScroll: true, closeSpectrumOnChange: false });
+    }, true);
+  }
+
   if (els.main && (beginAreaMoveAtPointer || selectAreaAtPointer)) {
     els.main.addEventListener("pointerdown", (ev) => {
       if (!getActive()) return;
@@ -729,10 +747,16 @@ export function wireApp(deps) {
     };
   }
   if (els.btnZoomIn) {
-    els.btnZoomIn.onclick = () => zoomAt(1.25, els.cpuCanvas.width / 2, els.cpuCanvas.height / 2);
+    els.btnZoomIn.onclick = () => {
+      const center = resolveActiveViewportCenter();
+      zoomAt(1.25, center.x, center.y);
+    };
   }
   if (els.btnZoomOut) {
-    els.btnZoomOut.onclick = () => zoomAt(0.8, els.cpuCanvas.width / 2, els.cpuCanvas.height / 2);
+    els.btnZoomOut.onclick = () => {
+      const center = resolveActiveViewportCenter();
+      zoomAt(0.8, center.x, center.y);
+    };
   }
 
   if (els.zoom) {
@@ -740,8 +764,9 @@ export function wireApp(deps) {
       const ds = getActive();
       if (!ds) return;
       const s = sliderToScale(Number(els.zoom.value));
-      const centerX = els.cpuCanvas.width / 2;
-      const centerY = els.cpuCanvas.height / 2;
+      const center = resolveActiveViewportCenter();
+      const centerX = center.x;
+      const centerY = center.y;
       const before = screenToImage(centerX, centerY);
       ds.view.scale = s;
       const minS = minScaleFor(ds);
