@@ -50,11 +50,11 @@ describe("pyramid-cache", () => {
 
     const ds = { meta: { samples: 1024, lines: 1024 }, pyramidBudgetBytes: 1024 };
     controller.ensurePyramid(ds);
-    expect(ds.pyramid.maxInflight).toBe(3);
+    expect(ds.pyramid.maxInflight).toBe(4);
 
     io = 1;
     controller.updateInflightForIO(ds);
-    expect(ds.pyramid.maxInflight).toBe(1);
+    expect(ds.pyramid.maxInflight).toBe(2);
 
     ds.pyramid.tiles.set("x", { bytes: 8 });
     ds.pyramid.pending.set("y", Promise.resolve(null));
@@ -108,12 +108,16 @@ describe("pyramid-cache", () => {
     expect(out.dataF32[100]).toBe(100);
   });
 
-  test("tryRasterFromPyramid waits for full tile coverage before returning a raster", async () => {
+  test("tryRasterFromPyramid loads a coarse viewport level before returning gaps", async () => {
     const controller = createPyramidController({
       now: () => 0,
       requestIdle: () => 1,
       cancelIdle: () => {},
-      readBandWindow: async () => new Float32Array(0),
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => {
+        const data = new Float32Array(outW * outH);
+        data.fill(7);
+        return data;
+      },
       readBandWindowBIP: async () => new Float32Array(0),
       onPerfUpdate: () => {},
       onProgressiveRender: () => {},
@@ -148,6 +152,48 @@ describe("pyramid-cache", () => {
     });
 
     const out = await controller.tryRasterFromPyramid(ds, 0, 0.5);
-    expect(out).toBeNull();
+    expect(out).toBeTruthy();
+    expect(out.partial).toBe(false);
+    expect(out.coverage).toBe(1);
+    expect(out.approximate).toBe(true);
+    expect(Number.isNaN(out.dataF32[out.dataF32.length - 1])).toBe(false);
+  });
+
+  test("tryRasterFromPyramid returns zoomed-in preview data before full-resolution tiles land", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => {
+        const data = new Float32Array(outW * outH);
+        data.fill(9);
+        return data;
+      },
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getDevicePixelRatio: () => 1,
+      getViewportSize: () => ({ width: 256, height: 128 }),
+      getIOConcurrency: () => 2
+    });
+
+    const ds = {
+      id: 1,
+      meta: { samples: 1024, lines: 256, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 2 },
+      activeBand: null,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+
+    const out = await controller.tryRasterFromPyramid(ds, 0, 2);
+    expect(out).toBeTruthy();
+    expect(out.w).toBe(128);
+    expect(out.h).toBe(64);
+    expect(out.partial).toBe(false);
+    expect(out.approximate).toBe(true);
+    expect(out.dataF32[0]).toBe(9);
   });
 });

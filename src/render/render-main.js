@@ -115,7 +115,7 @@ export function createRenderer(deps) {
 
   async function readRasterForBand(ds, band, eff, viewportW, viewportH) {
     let raster = null;
-    if (eff < 1 && !viewExtendsOutside(ds, eff, viewportW, viewportH)) {
+    if (!viewExtendsOutside(ds, eff, viewportW, viewportH)) {
       raster = await tryRasterFromPyramid(ds, band, eff);
     }
     if (!raster) {
@@ -133,7 +133,9 @@ export function createRenderer(deps) {
     return {
       mode,
       channelBands: resolveThreeBandChannelOrder(mode),
-      rasterByBand
+      rasterByBand,
+      partial: rasters.some((raster) => !!raster?.partial),
+      approximate: rasters.some((raster) => !!raster?.approximate)
     };
   }
 
@@ -204,6 +206,14 @@ export function createRenderer(deps) {
     else rasterMap.delete(slot);
     if (compositeRaster) compositeMap.set(slot, compositeRaster);
     else compositeMap.delete(slot);
+  }
+
+  function isStableRaster(raster) {
+    return !!raster && !raster.partial && !raster.approximate;
+  }
+
+  function isStableCompositeRaster(compositeRaster) {
+    return !!compositeRaster && !compositeRaster.partial && !compositeRaster.approximate;
   }
 
   function updateScreenPreviewCache(ds, panelSlot, modeKey, eff, sourceCanvas) {
@@ -372,19 +382,25 @@ export function createRenderer(deps) {
         compositeRaster = ds.lastCompositeRaster;
       } else {
         compositeRaster = await readCompositeRaster(ds, eff, els.cpuCanvas.width, els.cpuCanvas.height);
-        ds.lastCompositeRaster = compositeRaster;
       }
       raster = compositeRaster.rasterByBand.get(band) || compositeRaster.rasterByBand.get(0) || null;
-      ds.lastRaster = raster;
     } else {
       if (reuseGray) {
         raster = ds.lastRaster;
       } else {
         raster = await readRasterForBand(ds, band, eff, els.cpuCanvas.width, els.cpuCanvas.height);
       }
-      ds.lastRaster = raster;
     }
     if (seq !== state.renderSeq) return;
+
+    const stableComposite = colorMode ? isStableCompositeRaster(compositeRaster) : false;
+    const stableRaster = colorMode ? stableComposite : isStableRaster(raster);
+    if (colorMode) {
+      ds.lastCompositeRaster = stableComposite ? compositeRaster : null;
+      ds.lastRaster = stableRaster ? raster : null;
+    } else {
+      ds.lastRaster = stableRaster ? raster : null;
+    }
 
     const range = resolveDisplayRange(ds, band, raster.dataF32);
     const params = {
@@ -421,8 +437,12 @@ export function createRenderer(deps) {
       } else {
         renderedCanvas = cpuRenderGray(raster.dataF32, raster.w, raster.h, params);
       }
-      updateScreenPreviewCache(ds, panel?.slot || 1, modeKey, eff, renderedCanvas || (useGPU ? els.gpuCanvas : els.cpuCanvas));
-      updatePanelRasterCache(ds, panel?.slot || 1, raster, compositeRaster);
+      if (stableRaster || stableComposite) {
+        updateScreenPreviewCache(ds, panel?.slot || 1, modeKey, eff, renderedCanvas || (useGPU ? els.gpuCanvas : els.cpuCanvas));
+        updatePanelRasterCache(ds, panel?.slot || 1, raster, compositeRaster);
+      } else {
+        updatePanelRasterCache(ds, panel?.slot || 1, null, null);
+      }
 
       state.lastRenderMs = now() - t0;
       setStatus("ready", "ok");
@@ -485,6 +505,9 @@ export function createRenderer(deps) {
           }
           if (seq !== state.renderSeq) return;
 
+          const stableComposite = colorMode ? isStableCompositeRaster(compositeRaster) : false;
+          const stableRaster = colorMode ? stableComposite : isStableRaster(raster);
+
           const settings = getBandSettings(ds, band);
           const range = resolveDisplayRange(ds, band, raster.dataF32);
           const params = {
@@ -514,12 +537,16 @@ export function createRenderer(deps) {
             renderedCanvas = buildGrayCanvas(raster.dataF32, raster.w, raster.h, params);
           }
           drawCanvasToViewport(cpuCtx, renderedCanvas, viewport, false);
-          updateScreenPreviewCache(ds, panel.slot, modeKey, eff, renderedCanvas);
-          updatePanelRasterCache(ds, panel.slot, raster, compositeRaster);
+          if (stableRaster || stableComposite) {
+            updateScreenPreviewCache(ds, panel.slot, modeKey, eff, renderedCanvas);
+            updatePanelRasterCache(ds, panel.slot, raster, compositeRaster);
+          } else {
+            updatePanelRasterCache(ds, panel.slot, null, null);
+          }
 
           if (Number(panel.slot) === activeSlot) {
-            ds.lastRaster = raster;
-            ds.lastCompositeRaster = compositeRaster;
+            ds.lastRaster = stableRaster ? raster : null;
+            ds.lastCompositeRaster = stableComposite ? compositeRaster : null;
             syncRangeInputsFromSettings(ds);
           }
         });

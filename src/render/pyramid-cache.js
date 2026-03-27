@@ -61,6 +61,10 @@ export function createPyramidController(deps) {
     getIOConcurrency
   } = deps;
 
+  function resolveMaxInflight(ioConcurrency) {
+    return clamp(Math.floor(Math.max(1, ioConcurrency) * 0.75) + 1, 2, 8);
+  }
+
   function touchTile(pyr, key) {
     const tile = pyr.tiles.get(key);
     if (!tile) return;
@@ -79,7 +83,7 @@ export function createPyramidController(deps) {
   }
 
   function initPyramid(ds) {
-    const tileSize = 256;
+    const tileSize = 128;
     const maxLevel = computeMaxPyramidLevel(ds.meta, tileSize);
     const ioConcurrency = Math.max(1, getIOConcurrency());
     ds.pyramid = {
@@ -90,7 +94,7 @@ export function createPyramidController(deps) {
       tiles: new Map(),
       pending: new Map(),
       inflight: new Set(),
-      maxInflight: clamp(Math.floor(ioConcurrency / 2) + 1, 1, 4),
+      maxInflight: resolveMaxInflight(ioConcurrency),
       queued: new Set(),
       tick: 0,
       cancelled: false,
@@ -109,7 +113,7 @@ export function createPyramidController(deps) {
   function updateInflightForIO(ds) {
     if (!ds?.pyramid) return;
     const ioConcurrency = Math.max(1, getIOConcurrency());
-    ds.pyramid.maxInflight = clamp(Math.floor(ioConcurrency / 2) + 1, 1, 4);
+    ds.pyramid.maxInflight = resolveMaxInflight(ioConcurrency);
   }
 
   function disposePyramid(pyr) {
@@ -154,6 +158,130 @@ export function createPyramidController(deps) {
     const task = { band, level, tx, ty, key };
     if (hi) pyr.qHi.push(task);
     else pyr.qLo.push(task);
+  }
+
+  function collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH) {
+    const bounds = viewTileBounds(ds, pyr, level, eff, viewportW, viewportH);
+    if (!bounds) return null;
+    const tasks = [];
+    let total = 0;
+    let cached = 0;
+    for (let ty = bounds.ty0; ty <= bounds.ty1; ty++) {
+      for (let tx = bounds.tx0; tx <= bounds.tx1; tx++) {
+        total += 1;
+        const key = bandTileKey(band, level, tx, ty);
+        if (pyr.tiles.has(key)) cached += 1;
+        tasks.push({ band, level, tx, ty, key });
+      }
+    }
+    return { level, bounds, tasks, total, cached };
+  }
+
+  function enqueueViewportTasks(ds, band, minLevel, eff, viewportW, viewportH) {
+    const pyr = ds.pyramid;
+    const levels = [];
+    for (let level = pyr.maxLevel; level >= minLevel; level -= 1) {
+      const info = collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH);
+      if (!info) continue;
+      levels.push(info);
+      for (const task of info.tasks) {
+        if (!pyr.tiles.has(task.key) && !pyr.pending.has(task.key)) {
+          enqueueBandTask(ds, band, task.level, task.tx, task.ty, true);
+        }
+      }
+    }
+    return levels;
+  }
+
+  async function ensureViewportLevelCached(ds, band, level, eff, viewportW, viewportH, maxTiles = 16) {
+    const pyr = ds.pyramid;
+    const info = collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH);
+    if (!info || !info.total) return false;
+    const missing = info.tasks.filter((task) => !pyr.tiles.has(task.key));
+    if (!missing.length) return true;
+    if (missing.length > maxTiles) return false;
+    await Promise.all(missing.map((task) => (
+      getBandTile(ds, band, task.level, task.tx, task.ty).catch(() => null)
+    )));
+    return true;
+  }
+
+  function composePyramidRaster(ds, band, idealLevel, eff, viewportW, viewportH) {
+    const pyr = ds.pyramid;
+    const ideal = collectViewportLevel(ds, pyr, band, idealLevel, eff, viewportW, viewportH);
+    if (!ideal) return null;
+
+    const winX0 = ideal.bounds.lx0;
+    const winY0 = ideal.bounds.ly0;
+    const winW = Math.max(1, ideal.bounds.lx1 - ideal.bounds.lx0);
+    const winH = Math.max(1, ideal.bounds.ly1 - ideal.bounds.ly0);
+    const out = new Float32Array(winW * winH);
+    out.fill(Number.NaN);
+    const filled = new Uint8Array(winW * winH);
+    let filledCount = 0;
+    let bestLevel = null;
+
+    for (let level = pyr.maxLevel; level >= idealLevel; level -= 1) {
+      const info = collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH);
+      if (!info || !info.cached) continue;
+      const factor = 1 << (level - idealLevel);
+      for (const task of info.tasks) {
+        const tile = pyr.tiles.get(task.key);
+        if (!tile) continue;
+
+        touchTile(pyr, task.key);
+        const tileDx0 = task.tx * pyr.tileSize;
+        const tileDy0 = task.ty * pyr.tileSize;
+        const tileDx1 = tileDx0 + tile.w;
+        const tileDy1 = tileDy0 + tile.h;
+
+        const ovX0 = Math.max(tileDx0, info.bounds.lx0);
+        const ovY0 = Math.max(tileDy0, info.bounds.ly0);
+        const ovX1 = Math.min(tileDx1, info.bounds.lx1);
+        const ovY1 = Math.min(tileDy1, info.bounds.ly1);
+        if (ovX1 <= ovX0 || ovY1 <= ovY0) continue;
+
+        bestLevel = bestLevel == null ? level : Math.min(bestLevel, level);
+        for (let sy = ovY0; sy < ovY1; sy += 1) {
+          const dstY0 = Math.max(0, (sy * factor) - winY0);
+          const dstY1 = Math.min(winH, dstY0 + factor);
+          const srcRow = (sy - tileDy0) * tile.w;
+          for (let sx = ovX0; sx < ovX1; sx += 1) {
+            const value = tile.data[srcRow + (sx - tileDx0)];
+            const dstX0 = Math.max(0, (sx * factor) - winX0);
+            const dstX1 = Math.min(winW, dstX0 + factor);
+            for (let dy = dstY0; dy < dstY1; dy += 1) {
+              const rowOff = dy * winW;
+              for (let dx = dstX0; dx < dstX1; dx += 1) {
+                const idx = rowOff + dx;
+                out[idx] = value;
+                if (!filled[idx]) {
+                  filled[idx] = 1;
+                  filledCount += 1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (!filledCount) return null;
+    return {
+      band,
+      dataF32: out,
+      w: winW,
+      h: winH,
+      source: "pyramid",
+      level: bestLevel == null ? idealLevel : bestLevel,
+      idealLevel,
+      step: (1 << (bestLevel == null ? idealLevel : bestLevel)),
+      x0: ds.view.x,
+      y0: ds.view.y,
+      partial: filledCount < out.length,
+      coverage: filledCount / Math.max(1, out.length),
+      approximate: ideal.cached < ideal.total
+    };
   }
 
   function pumpBackgroundTasks(ds, band, minLevel) {
@@ -292,7 +420,7 @@ export function createPyramidController(deps) {
       } else {
         onProgressiveRender();
       }
-    }, { timeout: 250 });
+    }, { timeout: pyr.qHi.length ? 24 : 120 });
   }
 
   async function tryRasterFromPyramid(ds, band, eff) {
@@ -301,72 +429,33 @@ export function createPyramidController(deps) {
     if (!pyr || pyr.cancelled) return null;
 
     const lvl = pyramidLevelForEff(ds, eff);
-    if (lvl <= 0) return null;
-
     const viewport = getViewportSize();
-    const b = viewTileBounds(ds, pyr, lvl, eff, viewport.width, viewport.height);
-    if (!b) return null;
+    const levels = enqueueViewportTasks(ds, band, lvl, eff, viewport.width, viewport.height);
+    const visible = levels.find((info) => info.level === lvl) || null;
+    const visibleCached = levels.reduce((sum, info) => sum + info.cached, 0);
+    const prefer = ds.__pyrPreferImmediate || visibleCached > 0;
 
-    let total = 0;
-    let cached = 0;
-    for (let ty = b.ty0; ty <= b.ty1; ty++) {
-      for (let tx = b.tx0; tx <= b.tx1; tx++) {
-        total++;
-        const key = bandTileKey(band, lvl, tx, ty);
-        if (pyr.tiles.has(key)) cached++;
-      }
-    }
-    const frac = total ? (cached / total) : 0;
-    const prefer = ds.__pyrPreferImmediate || frac >= 0.20;
-
-    for (let ty = b.ty0; ty <= b.ty1; ty++) {
-      for (let tx = b.tx0; tx <= b.tx1; tx++) {
-        const key = bandTileKey(band, lvl, tx, ty);
-        if (!pyr.tiles.has(key) && !pyr.pending.has(key)) {
-          enqueueBandTask(ds, band, lvl, tx, ty, true);
-        }
-      }
-    }
     pruneQueuesToBand(pyr, band);
     schedulePyramidWork(ds);
     pumpBackgroundTasks(ds, band, Math.max(lvl, 2));
 
-    if (!prefer || cached < total) return null;
-
-    const tileSize = pyr.tileSize;
-    const winX0 = b.lx0;
-    const winY0 = b.ly0;
-    const winW = Math.max(1, b.lx1 - b.lx0);
-    const winH = Math.max(1, b.ly1 - b.ly0);
-
-    const out = new Float32Array(winW * winH);
-    for (let ty = b.ty0; ty <= b.ty1; ty++) {
-      for (let tx = b.tx0; tx <= b.tx1; tx++) {
-        const key = bandTileKey(band, lvl, tx, ty);
-        const tile = pyr.tiles.get(key);
-        if (!tile) return null;
-
-        touchTile(pyr, key);
-        const tileDx0 = tx * tileSize;
-        const tileDy0 = ty * tileSize;
-        const tileDx1 = tileDx0 + tile.w;
-        const tileDy1 = tileDy0 + tile.h;
-
-        const ovX0 = Math.max(tileDx0, winX0);
-        const ovY0 = Math.max(tileDy0, winY0);
-        const ovX1 = Math.min(tileDx1, winX0 + winW);
-        const ovY1 = Math.min(tileDy1, winY0 + winH);
-        if (ovX1 <= ovX0 || ovY1 <= ovY0) continue;
-
-        for (let dy = ovY0; dy < ovY1; dy++) {
-          const srcStart = (dy - tileDy0) * tile.w + (ovX0 - tileDx0);
-          const srcEnd = srcStart + (ovX1 - ovX0);
-          const dstStart = (dy - winY0) * winW + (ovX0 - winX0);
-          out.set(tile.data.subarray(srcStart, srcEnd), dstStart);
-        }
+    let raster = prefer ? composePyramidRaster(ds, band, lvl, eff, viewport.width, viewport.height) : null;
+    const needImmediateCoarse = !raster || raster.partial;
+    if (needImmediateCoarse && pyr.maxLevel > lvl) {
+      const loaded = await ensureViewportLevelCached(ds, band, pyr.maxLevel, eff, viewport.width, viewport.height, 16);
+      if (loaded) {
+        raster = composePyramidRaster(ds, band, lvl, eff, viewport.width, viewport.height);
       }
     }
-    return { band, dataF32: out, w: winW, h: winH, source: "pyramid", level: lvl, step: (1 << lvl), x0: ds.view.x, y0: ds.view.y };
+
+    if (!raster && visible && visible.total <= 16) {
+      const loaded = await ensureViewportLevelCached(ds, band, lvl, eff, viewport.width, viewport.height, 16);
+      if (loaded) {
+        raster = composePyramidRaster(ds, band, lvl, eff, viewport.width, viewport.height);
+      }
+    }
+
+    return raster;
   }
 
   return {

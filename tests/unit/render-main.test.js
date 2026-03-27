@@ -276,4 +276,79 @@ describe("render-main", () => {
     expect(buildGrayCanvas).toHaveBeenCalledTimes(2);
     expect(drawCanvasToViewport).toHaveBeenCalledTimes(2);
   });
+
+  test("render does not cache partial pyramid rasters as stable panel state", async () => {
+    const partialRaster = {
+      band: 0,
+      w: 160,
+      h: 90,
+      dataF32: new Float32Array(160 * 90),
+      partial: true
+    };
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: 0, y: 0, scale: 0.5 },
+      meta: { samples: 1280, lines: 720, bands: 1, interleave: "bsq" },
+      ds: {},
+      lastRaster: null,
+      lastScreenFrame: null,
+      lastRastersByPanel: new Map()
+    };
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      tryRasterFromPyramid: async () => partialRaster,
+      readBandWindow: vi.fn(async () => {
+        throw new Error("direct read should not run for this progressive render");
+      }),
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
+    expect(ds.lastRaster).toBeNull();
+    expect(ds.lastScreenFrame).toBeNull();
+    expect(ds.lastRastersByPanel.size).toBe(0);
+  });
+
+  test("render does not cache approximate pyramid previews as stable panel state", async () => {
+    const previewRaster = {
+      band: 0,
+      w: 160,
+      h: 90,
+      dataF32: new Float32Array(160 * 90),
+      partial: false,
+      approximate: true
+    };
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: 0, y: 0, scale: 2 },
+      meta: { samples: 1280, lines: 720, bands: 1, interleave: "bsq" },
+      ds: {},
+      lastRaster: null,
+      lastScreenFrame: null,
+      lastRastersByPanel: new Map()
+    };
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      tryRasterFromPyramid: async () => previewRaster,
+      readBandWindow: vi.fn(async () => {
+        throw new Error("direct read should not run for this preview render");
+      }),
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
+    expect(ds.lastRaster).toBeNull();
+    expect(ds.lastScreenFrame).toBeNull();
+    expect(ds.lastRastersByPanel.size).toBe(0);
+  });
 });
