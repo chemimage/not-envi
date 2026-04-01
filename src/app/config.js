@@ -84,7 +84,7 @@ export const APP_CONFIG = Object.freeze({
     })
   }),
   render: Object.freeze({
-    tiffPreviewMaxSparseSpans: 24_000,
+    tiffPreviewMaxSparseSpans: 6_000,
     tiffPreviewMaxScaledDecodePixels: 120_000,
     tiffPreviewMaxFactor: 16
   }),

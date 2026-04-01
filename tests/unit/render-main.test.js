@@ -228,6 +228,44 @@ describe("render-main", () => {
     expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
   });
 
+  test("render coarsens raw TIFF composite reads for expensive zoomed-out previews", async () => {
+    const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
+      bands: [0, 1, 2].map((band) => {
+        const arr = new Float32Array(outW * outH);
+        arr.fill(band + 1);
+        return arr;
+      })
+    }));
+    const ds = {
+      id: "ds-he",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 0.5 },
+      meta: { samples: 1280, lines: 720, bands: 3, interleave: "bip", sourceFormat: "tiff" },
+      ds: {
+        supportsCompositeWindow: () => true,
+        estimateReadWork: () => ({ sparseRaw: true, spanReads: 48_000 }),
+        readCompositeWindow: compositeWindow
+      },
+      lastRaster: null,
+      lastCompositeRaster: null,
+      bandStatsWhole: new Map()
+    };
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(compositeWindow).toHaveBeenCalledTimes(1);
+    expect(compositeWindow.mock.calls[0][3]).toBeLessThan(320);
+    expect(compositeWindow.mock.calls[0][4]).toBeLessThan(180);
+    expect(ds.lastCompositeRaster).toBeNull();
+  });
+
   test("render draws cached screen preview while a fresh raster is loading", async () => {
     let releaseRead = null;
     const ds = {

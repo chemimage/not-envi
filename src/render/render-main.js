@@ -283,10 +283,16 @@ export function createRenderer(deps) {
       if (eff < 1 && ds.__forceFullRenderKey !== renderKey && stableRenderKey !== renderKey && typeof ds.ds.estimateReadWork === "function") {
         const work = ds.ds.estimateReadWork(ds.meta, 0, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
         let factor = 1;
+        if (work?.sparseRaw && Number(work.spanReads) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
+          factor = Math.ceil(Number(work.spanReads) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
+        }
         if (work?.nativeJpeg && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)) {
-          factor = Math.ceil(Math.sqrt(
-            Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
-          ));
+          factor = Math.max(
+            factor,
+            Math.ceil(Math.sqrt(
+              Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
+            ))
+          );
         }
         factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
         if (factor > 1) {
