@@ -287,6 +287,70 @@ describe("tiff loader", () => {
     }
   });
 
+  test("reads progressive TIFF composite windows center-first and stops after cancellation", async () => {
+    const fakeImage = {
+      getWidth: () => 3,
+      getHeight: () => 1,
+      getSamplesPerPixel: () => 3,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        TileWidth: 1,
+        TileLength: 1,
+        TileOffsets: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+        TileByteCounts: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+        PlanarConfiguration: 2,
+        PhotometricInterpretation: 2
+      }),
+      readRGB: vi.fn(async () => {
+        throw new Error("raw planar progressive composite should not call geotiff RGB decode");
+      }),
+      tiles: {}
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([
+        10, 20, 30,
+        0, 0, 0,
+        0, 0, 0
+      ])], "raw-planar-progressive.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 1, cacheBytes: 16 * 1024 * 1024 });
+      const progressSnapshots = [];
+      let cancelled = false;
+      const composite = await ds.ds.readCompositeWindow(ds.meta, 0, 0, 3, 1, 1, {
+        progressEvery: 1,
+        progressMinMs: 0,
+        cancelled: () => cancelled,
+        onProgress: async (partial) => {
+          progressSnapshots.push(Array.from(partial.bands[0]));
+          cancelled = true;
+        }
+      });
+
+      expect(composite).toBeNull();
+      expect(progressSnapshots).toHaveLength(1);
+      expect(Number.isNaN(progressSnapshots[0][0])).toBe(true);
+      expect(progressSnapshots[0][1]).toBe(20);
+      expect(Number.isNaN(progressSnapshots[0][2])).toBe(true);
+      expect(fakeImage.readRGB).not.toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
   test("uses native JPEG tile decode for JPEG-compressed YCbCr TIFF blocks when available", async () => {
     const fakeImage = {
       getWidth: () => 1,

@@ -121,6 +121,8 @@ export const APP_CONFIG = Object.freeze({
     rawValidationMaxUncompressedBytes: 128 * MIB,
     indexScanYieldEvery: 32,
     sparseRawRowBatchRows: 12,
+    progressiveUpdateEveryBlocks: 2,
+    progressiveUpdateMinMs: 40,
     budgetRawFraction: 0.25,
     budgetMinBytes: 4 * MIB,
     workerCoreFraction: 0.5,

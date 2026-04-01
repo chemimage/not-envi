@@ -103,8 +103,8 @@ export class BandOffsetTiffDataSource {
     return readBandWindowCore(bandMeta, this.source, 0, x0, y0, outW, outH, step, this.concurrency, out);
   }
 
-  async readBandWindowBIP(meta, band, x0, y0, outW, outH, step, out = null) {
-    return this.readBandWindow(meta, band, x0, y0, outW, outH, step, out);
+  async readBandWindowBIP(meta, band, x0, y0, outW, outH, step, out = null, options = null) {
+    return this.readBandWindow(meta, band, x0, y0, outW, outH, step, out, options);
   }
 
   async probeValueAtBand(meta, ix, iy, band) {
@@ -339,6 +339,57 @@ function allocateOutput(meta, out, length) {
   return new Ctor(length);
 }
 
+function isWindowReadOptions(value) {
+  return !!value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && !ArrayBuffer.isView(value);
+}
+
+function sortCenterOut(items, centerX, centerY, getCenter) {
+  return items.slice().sort((a, b) => {
+    const ac = getCenter(a);
+    const bc = getCenter(b);
+    const adx = Number(ac?.x ?? 0) - centerX;
+    const ady = Number(ac?.y ?? 0) - centerY;
+    const bdx = Number(bc?.x ?? 0) - centerX;
+    const bdy = Number(bc?.y ?? 0) - centerY;
+    const da = (adx * adx) + (ady * ady);
+    const db = (bdx * bdx) + (bdy * bdy);
+    if (da !== db) return da - db;
+    if (Number(ac?.y ?? 0) !== Number(bc?.y ?? 0)) return Number(ac?.y ?? 0) - Number(bc?.y ?? 0);
+    return Number(ac?.x ?? 0) - Number(bc?.x ?? 0);
+  });
+}
+
+function orderBlockIndicesCenterOut(minIndex, maxIndex, blockSize, centerCoord) {
+  const indices = [];
+  for (let index = minIndex; index <= maxIndex; index += 1) indices.push(index);
+  return indices.sort((a, b) => {
+    const aCenter = (a * blockSize) + (blockSize * 0.5);
+    const bCenter = (b * blockSize) + (blockSize * 0.5);
+    const da = Math.abs(aCenter - centerCoord);
+    const db = Math.abs(bCenter - centerCoord);
+    if (da !== db) return da - db;
+    return a - b;
+  });
+}
+
+async function processInBatches(items, concurrency, runItem, onBatch = null, cancelled = null) {
+  const list = Array.isArray(items) ? items : [];
+  const limit = Math.max(1, Math.min(Math.floor(Number(concurrency) || 1), Math.max(1, list.length || 1)));
+  for (let start = 0; start < list.length; start += limit) {
+    if (typeof cancelled === "function" && cancelled()) return false;
+    const batch = list.slice(start, start + limit);
+    const results = await Promise.all(batch.map((item, index) => runItem(item, start + index)));
+    if (typeof cancelled === "function" && cancelled()) return false;
+    if (typeof onBatch === "function") {
+      await onBatch(batch, results, start);
+    }
+  }
+  return true;
+}
+
 let nextTiffSourceId = 1;
 
 export class TiffBlockIndexedDataSource {
@@ -460,11 +511,76 @@ export class TiffBlockIndexedDataSource {
     return specs.every((spec) => spec.kind === "rgb" || spec.kind === "native-rgb-jpeg");
   }
 
-  async readCompositeWindow(meta, x0, y0, outW, outH, step, outBands = null) {
+  #resolveReadOptions(outOrOptions = null, maybeOptions = null) {
+    if (isWindowReadOptions(outOrOptions) && maybeOptions == null) {
+      return { out: null, options: outOrOptions };
+    }
+    return { out: outOrOptions, options: isWindowReadOptions(maybeOptions) ? maybeOptions : null };
+  }
+
+  #createProgressEmitter(onProgress, totalUnits, snapshot, options = null) {
+    if (typeof onProgress !== "function" || totalUnits <= 0) return null;
+    const everyUnits = Math.max(1, Math.floor(Number(options?.progressEvery ?? APP_CONFIG.tiff.progressiveUpdateEveryBlocks) || 1));
+    const minMs = Math.max(0, Number(options?.progressMinMs ?? APP_CONFIG.tiff.progressiveUpdateMinMs) || 0);
+    let emittedUnits = 0;
+    let lastEmitMs = 0;
+    return async (completedUnits, force = false) => {
+      const safeCompleted = Math.max(0, Math.min(totalUnits, Math.floor(Number(completedUnits) || 0)));
+      const nowMs = perfNow();
+      if (!force && safeCompleted < totalUnits) {
+        const unitsDelta = safeCompleted - emittedUnits;
+        const timeDelta = nowMs - lastEmitMs;
+        if (unitsDelta < everyUnits && timeDelta < minMs) return;
+      }
+      emittedUnits = safeCompleted;
+      lastEmitMs = nowMs;
+      await onProgress({
+        ...snapshot(),
+        completedUnits: safeCompleted,
+        totalUnits
+      });
+    };
+  }
+
+  #orderedBlocks(spec, minBx, maxBx, minBy, maxBy, centerX, centerY) {
+    const blocks = [];
+    for (let by = minBy; by <= maxBy; by += 1) {
+      for (let bx = minBx; bx <= maxBx; bx += 1) {
+        const block = spec.blocks[(by * spec.table.numBlocksX) + bx];
+        if (block) blocks.push(block);
+      }
+    }
+    return sortCenterOut(blocks, centerX, centerY, (block) => ({
+      x: block.x0 + (block.w * 0.5),
+      y: block.y0 + (block.h * 0.5)
+    }));
+  }
+
+  #orderedCompositeEntries(specs, minBx, maxBx, minBy, maxBy, centerX, centerY) {
+    const table = specs[0].table;
+    const entries = [];
+    for (let by = minBy; by <= maxBy; by += 1) {
+      for (let bx = minBx; bx <= maxBx; bx += 1) {
+        const index = (by * table.numBlocksX) + bx;
+        const blocks = specs.map((spec) => spec.blocks[index] || null);
+        const anchor = blocks.find(Boolean) || null;
+        if (!anchor) continue;
+        entries.push({ anchor, blocks });
+      }
+    }
+    return sortCenterOut(entries, centerX, centerY, (entry) => ({
+      x: entry.anchor.x0 + (entry.anchor.w * 0.5),
+      y: entry.anchor.y0 + (entry.anchor.h * 0.5)
+    }));
+  }
+
+  async readCompositeWindow(meta, x0, y0, outW, outH, step, outBands = null, options = null) {
     if (!this.supportsCompositeWindow()) return null;
+    const resolved = this.#resolveReadOptions(outBands, options);
+    const readOptions = resolved.options || null;
     const specs = this.bandSpecs.slice(0, 3);
     const outputs = [0, 1, 2].map((index) => {
-      const out = Array.isArray(outBands) ? outBands[index] : null;
+      const out = Array.isArray(resolved.out) ? resolved.out[index] : null;
       return (out instanceof Float32Array && out.length >= (outW * outH))
         ? out
         : new Float32Array(outW * outH);
@@ -480,28 +596,74 @@ export class TiffBlockIndexedDataSource {
     }
 
     const first = specs[0];
+    const cancelled = typeof readOptions?.cancelled === "function" ? readOptions.cancelled : null;
+    const centerX = safeX0 + ((safeOutW * step) * 0.5);
+    const centerY = safeY0 + ((safeOutH * step) * 0.5);
     const xLast = safeX0 + ((safeOutW - 1) * step);
     const yLast = safeY0 + ((safeOutH - 1) * step);
     const minBx = Math.max(0, Math.floor(safeX0 / first.table.blockWidth));
     const maxBx = Math.min(first.table.numBlocksX - 1, Math.floor(xLast / first.table.blockWidth));
     const minBy = Math.max(0, Math.floor(safeY0 / first.table.blockHeight));
     const maxBy = Math.min(first.table.numBlocksY - 1, Math.floor(yLast / first.table.blockHeight));
+    const totalUnits = Math.max(0, (maxBx - minBx + 1) * (maxBy - minBy + 1));
+    const sparseComposite = this.#shouldUseSparseRawCompositeSampling(specs, step, totalUnits);
+    const progressUnits = sparseComposite
+      ? Math.max(1, Math.ceil(safeOutH / Math.max(1, Math.floor(APP_CONFIG.tiff.sparseRawRowBatchRows || 1))))
+      : Math.max(1, totalUnits);
+    const progress = this.#createProgressEmitter(
+      readOptions?.onProgress,
+      progressUnits,
+      () => ({ bands: outputs, width: outW, height: outH, partial: true }),
+      readOptions
+    );
+    if (progress) {
+      for (const output of outputs) output.fill(Number.NaN);
+    }
 
     const t0 = perfNow();
     if (specs.every((spec) => spec.kind === "raw")) {
-      await this.#readRawCompositeWindow(specs, outputs, safeX0, safeY0, safeOutW, safeOutH, outW, step, minBx, maxBx, minBy, maxBy);
+      const completed = await this.#readRawCompositeWindow(
+        specs,
+        outputs,
+        safeX0,
+        safeY0,
+        safeOutW,
+        safeOutH,
+        outW,
+        step,
+        minBx,
+        maxBx,
+        minBy,
+        maxBy,
+        centerX,
+        centerY,
+        progress,
+        cancelled,
+        progressUnits
+      );
+      if (!completed) return null;
     } else {
-      const blocks = [];
-      for (let by = minBy; by <= maxBy; by += 1) {
-        for (let bx = minBx; bx <= maxBx; bx += 1) {
-          const block = first.blocks[(by * first.table.numBlocksX) + bx];
-          if (block) blocks.push(block);
-        }
-      }
-
-      const decoded = await this.#loadBlocks(first, blocks, step);
-      for (let i = 0; i < blocks.length; i += 1) {
-        this.#compositeRgbBlock(blocks[i], decoded[i], outputs, safeX0, safeY0, safeOutW, safeOutH, outW, step);
+      const blocks = this.#orderedBlocks(first, minBx, maxBx, minBy, maxBy, centerX, centerY);
+      let completedUnits = 0;
+      const completed = await processInBatches(
+        blocks,
+        this.#resolveBlockLoadConcurrency(first),
+        async (block) => ({
+          block,
+          decoded: await this.#schedule(() => this.#loadDecodedBlock(first, block, step))
+        }),
+        async (_batch, results) => {
+          for (const result of results) {
+            this.#compositeRgbBlock(result.block, result.decoded, outputs, safeX0, safeY0, safeOutW, safeOutH, outW, step);
+          }
+          completedUnits += results.length;
+          if (progress) await progress(completedUnits, completedUnits >= progressUnits);
+        },
+        cancelled
+      );
+      if (!completed) return null;
+      if (progress && completedUnits < progressUnits) {
+        await progress(progressUnits, true);
       }
     }
     this.stats.blockComposeCalls += 1;
@@ -509,8 +671,9 @@ export class TiffBlockIndexedDataSource {
     return { bands: outputs, width: outW, height: outH };
   }
 
-  async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null) {
-    const target = allocateOutput(meta, out, outW * outH);
+  async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null, options = null) {
+    const resolved = this.#resolveReadOptions(out, options);
+    const target = allocateOutput(meta, resolved.out, outW * outH);
     const spec = this.bandSpecs[band];
     if (!spec) throw new Error(`TIFF band ${Number(band) + 1} is unavailable.`);
     const safeX0 = clamp(Math.floor(x0), 0, Math.max(0, meta.samples - 1));
@@ -528,27 +691,69 @@ export class TiffBlockIndexedDataSource {
     const minBy = Math.max(0, Math.floor(safeY0 / spec.table.blockHeight));
     const maxBy = Math.min(spec.table.numBlocksY - 1, Math.floor(yLast / spec.table.blockHeight));
     const blockCount = (maxBx - minBx + 1) * (maxBy - minBy + 1);
+    const sparseRaw = this.#shouldUseSparseRawSampling(spec, step, blockCount);
+    const readOptions = resolved.options || null;
+    const cancelled = typeof readOptions?.cancelled === "function" ? readOptions.cancelled : null;
+    const centerX = safeX0 + ((safeOutW * step) * 0.5);
+    const centerY = safeY0 + ((safeOutH * step) * 0.5);
+    const progressUnits = sparseRaw
+      ? Math.max(1, Math.ceil(safeOutH / Math.max(1, Math.floor(APP_CONFIG.tiff.sparseRawRowBatchRows || 1))))
+      : Math.max(1, blockCount);
+    const progress = this.#createProgressEmitter(
+      readOptions?.onProgress,
+      progressUnits,
+      () => ({ band, data: target, width: outW, height: outH, partial: true }),
+      readOptions
+    );
+    if (progress && typeof target.fill === "function") target.fill(Number.NaN);
 
-    if (this.#shouldUseSparseRawSampling(spec, step, blockCount)) {
+    if (sparseRaw) {
       const t0 = perfNow();
-      await this.#readSparseRawWindow(spec, target, safeX0, safeY0, safeOutW, safeOutH, outW, step, minBx, maxBx);
+      const completed = await this.#readSparseRawWindow(
+        spec,
+        target,
+        safeX0,
+        safeY0,
+        safeOutW,
+        safeOutH,
+        outW,
+        step,
+        minBx,
+        maxBx,
+        centerX,
+        centerY,
+        progress,
+        cancelled
+      );
+      if (!completed) return null;
       this.stats.blockComposeCalls += 1;
       this.stats.blockComposeMs += perfNow() - t0;
       return target;
     }
 
-    const blocks = [];
-    for (let by = minBy; by <= maxBy; by += 1) {
-      for (let bx = minBx; bx <= maxBx; bx += 1) {
-        const block = spec.blocks[(by * spec.table.numBlocksX) + bx];
-        if (block) blocks.push(block);
-      }
-    }
+    const blocks = this.#orderedBlocks(spec, minBx, maxBx, minBy, maxBy, centerX, centerY);
 
     const t0 = perfNow();
-    const decoded = await this.#loadBlocks(spec, blocks, step);
-    for (let i = 0; i < blocks.length; i += 1) {
-      this.#compositeBlock(spec, blocks[i], decoded[i], target, safeX0, safeY0, safeOutW, safeOutH, outW, step);
+    let completedUnits = 0;
+    const completed = await processInBatches(
+      blocks,
+      this.#resolveBlockLoadConcurrency(spec),
+      async (block) => ({
+        block,
+        decoded: await this.#schedule(() => this.#loadDecodedBlock(spec, block, step))
+      }),
+      async (_batch, results) => {
+        for (const result of results) {
+          this.#compositeBlock(spec, result.block, result.decoded, target, safeX0, safeY0, safeOutW, safeOutH, outW, step);
+        }
+        completedUnits += results.length;
+        if (progress) await progress(completedUnits, completedUnits >= progressUnits);
+      },
+      cancelled
+    );
+    if (!completed) return null;
+    if (progress && completedUnits < progressUnits) {
+      await progress(progressUnits, true);
     }
     this.stats.blockComposeCalls += 1;
     this.stats.blockComposeMs += perfNow() - t0;
@@ -835,198 +1040,256 @@ export class TiffBlockIndexedDataSource {
       && specs.every((spec) => this.#shouldUseSparseRawSampling(spec, step, blockCount));
   }
 
-  async #readRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, minBy, maxBy) {
+  async #readRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, minBy, maxBy, centerX, centerY, progress = null, cancelled = null, totalUnits = 0) {
     const table = specs[0].table;
     const blockCount = (maxBx - minBx + 1) * (maxBy - minBy + 1);
     if (this.#shouldUseSparseRawCompositeSampling(specs, step, blockCount)) {
-      await this.#readSparseRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx);
-      return;
-    }
-
-    const blockEntries = [];
-    for (let by = minBy; by <= maxBy; by += 1) {
-      for (let bx = minBx; bx <= maxBx; bx += 1) {
-        const index = (by * table.numBlocksX) + bx;
-        const blocks = specs.map((spec) => spec.blocks[index] || null);
-        const anchor = blocks.find(Boolean) || null;
-        if (!anchor) continue;
-        blockEntries.push({ anchor, blocks });
-      }
-    }
-
-    const decodedEntries = new Array(blockEntries.length);
-    await parallelFor(
-      blockEntries.length,
-      this.#resolveCompositeEntryConcurrency(),
-      async (index) => {
-        const entry = blockEntries[index];
-        decodedEntries[index] = await this.#schedule(async () => {
-          const blocks = new Array(entry.blocks.length);
-          for (let specIndex = 0; specIndex < entry.blocks.length; specIndex += 1) {
-            const block = entry.blocks[specIndex];
-            blocks[specIndex] = block ? await this.#loadDecodedBlock(specs[specIndex], block, step) : null;
-          }
-          return blocks;
-        });
-      }
-    );
-
-    for (let index = 0; index < blockEntries.length; index += 1) {
-      this.#compositeRawCompositeBlocks(
+      return this.#readSparseRawCompositeWindow(
         specs,
-        blockEntries[index].anchor,
-        decodedEntries[index],
         outputs,
         x0,
         y0,
         safeOutW,
         safeOutH,
         outW,
-        step
+        step,
+        minBx,
+        maxBx,
+        centerX,
+        centerY,
+        progress,
+        cancelled
       );
     }
+
+    const blockEntries = this.#orderedCompositeEntries(specs, minBx, maxBx, minBy, maxBy, centerX, centerY);
+    let completedUnits = 0;
+    const completed = await processInBatches(
+      blockEntries,
+      this.#resolveCompositeEntryConcurrency(),
+      async (entry) => ({
+        entry,
+        decodedBlocks: await this.#schedule(async () => {
+          const blocks = new Array(entry.blocks.length);
+          for (let specIndex = 0; specIndex < entry.blocks.length; specIndex += 1) {
+            const block = entry.blocks[specIndex];
+            blocks[specIndex] = block ? await this.#loadDecodedBlock(specs[specIndex], block, step) : null;
+          }
+          return blocks;
+        })
+      }),
+      async (_batch, results) => {
+        for (const result of results) {
+          this.#compositeRawCompositeBlocks(
+            specs,
+            result.entry.anchor,
+            result.decodedBlocks,
+            outputs,
+            x0,
+            y0,
+            safeOutW,
+            safeOutH,
+            outW,
+            step
+          );
+        }
+        completedUnits += results.length;
+        if (progress) await progress(completedUnits, completedUnits >= totalUnits);
+      },
+      cancelled
+    );
+    if (!completed) return false;
+    if (progress && completedUnits < totalUnits) {
+      await progress(totalUnits, true);
+    }
+    return true;
   }
 
-  async #readSparseRawWindow(spec, target, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx) {
+  async #readSparseRawWindow(spec, target, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, centerX, centerY, progress = null, cancelled = null) {
     const storageRowBytes = spec.table.blockWidth * spec.bytesPerPixel;
     const numBlocksX = spec.table.numBlocksX;
     const blockHeight = spec.table.blockHeight;
     const batchRows = Math.max(1, Math.floor(APP_CONFIG.tiff.sparseRawRowBatchRows || 1));
     const batchCount = Math.max(1, Math.ceil(safeOutH / batchRows));
-    await parallelFor(
-      batchCount,
-      this.#resolveRawRowConcurrency(),
-      async (batchIndex) => {
-        await this.#schedule(async () => {
-          const scratch = new Uint8Array(storageRowBytes);
-          const rowStart = batchIndex * batchRows;
-          const rowEnd = Math.min(safeOutH, rowStart + batchRows);
-          for (let rowIndex = rowStart; rowIndex < rowEnd; rowIndex += 1) {
-            const srcY = y0 + (rowIndex * step);
-            const by = Math.floor(srcY / blockHeight);
-            const rowBase = rowIndex * outW;
-            const localYBase = srcY - (by * blockHeight);
-            for (let bx = minBx; bx <= maxBx; bx += 1) {
-              const block = spec.blocks[(by * numBlocksX) + bx];
-              if (!block) continue;
-              const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
-              const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
-              if (colStart >= colEnd) continue;
-              const firstLocalX = x0 + (colStart * step) - block.x0;
-              const lastLocalX = x0 + ((colEnd - 1) * step) - block.x0;
-              const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
-              const span = scratch.subarray(0, spanBytes);
-              const readOffset = block.offset
-                + (localYBase * storageRowBytes)
-                + (firstLocalX * spec.bytesPerPixel)
-                + spec.sampleByteOffset;
-              await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-              const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
-              for (let col = colStart; col < colEnd; col += 1) {
-                const srcX = x0 + (col * step);
-                const byteOffset = (srcX - block.x0 - firstLocalX) * spec.bytesPerPixel;
-                target[rowBase + col] = readDataViewValue(dv, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
-              }
-            }
-          }
-        });
+    const rowBatches = sortCenterOut(
+      Array.from({ length: batchCount }, (_v, index) => index),
+      centerX,
+      centerY,
+      (batchIndex) => {
+        const rowStart = batchIndex * batchRows;
+        const rowEnd = Math.min(safeOutH, rowStart + batchRows);
+        const rowMid = rowStart + ((Math.max(1, rowEnd - rowStart) - 1) * 0.5);
+        return { x: centerX, y: y0 + (rowMid * step) };
       }
     );
+    const blockOrder = orderBlockIndicesCenterOut(minBx, maxBx, spec.table.blockWidth, centerX);
+    let completedUnits = 0;
+    const completed = await processInBatches(
+      rowBatches,
+      this.#resolveRawRowConcurrency(),
+      async (batchIndex) => this.#schedule(async () => {
+        const scratch = new Uint8Array(storageRowBytes);
+        const rowStart = batchIndex * batchRows;
+        const rowEnd = Math.min(safeOutH, rowStart + batchRows);
+        for (let rowIndex = rowStart; rowIndex < rowEnd; rowIndex += 1) {
+          if (typeof cancelled === "function" && cancelled()) return;
+          const srcY = y0 + (rowIndex * step);
+          const by = Math.floor(srcY / blockHeight);
+          const rowBase = rowIndex * outW;
+          const localYBase = srcY - (by * blockHeight);
+          for (const bx of blockOrder) {
+            const block = spec.blocks[(by * numBlocksX) + bx];
+            if (!block) continue;
+            const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
+            const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
+            if (colStart >= colEnd) continue;
+            const firstLocalX = x0 + (colStart * step) - block.x0;
+            const lastLocalX = x0 + ((colEnd - 1) * step) - block.x0;
+            const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
+            const span = scratch.subarray(0, spanBytes);
+            const readOffset = block.offset
+              + (localYBase * storageRowBytes)
+              + (firstLocalX * spec.bytesPerPixel)
+              + spec.sampleByteOffset;
+            await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+            const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+            for (let col = colStart; col < colEnd; col += 1) {
+              const srcX = x0 + (col * step);
+              const byteOffset = (srcX - block.x0 - firstLocalX) * spec.bytesPerPixel;
+              target[rowBase + col] = readDataViewValue(dv, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
+            }
+          }
+        }
+      }),
+      async (_batch) => {
+        completedUnits += _batch.length;
+        if (progress) await progress(completedUnits, completedUnits >= batchCount);
+      },
+      cancelled
+    );
+    if (!completed) return false;
+    if (progress && completedUnits < batchCount) {
+      await progress(batchCount, true);
+    }
     this.#syncCacheStats();
+    return true;
   }
 
-  async #readSparseRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx) {
+  async #readSparseRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, centerX, centerY, progress = null, cancelled = null) {
     const table = specs[0].table;
     const numBlocksX = table.numBlocksX;
     const blockHeight = table.blockHeight;
     const sharedBlocks = specs.every((spec) => spec.blocks === specs[0].blocks);
     const batchRows = Math.max(1, Math.floor(APP_CONFIG.tiff.sparseRawRowBatchRows || 1));
     const batchCount = Math.max(1, Math.ceil(safeOutH / batchRows));
-    await parallelFor(
-      batchCount,
+    const rowBatches = sortCenterOut(
+      Array.from({ length: batchCount }, (_v, index) => index),
+      centerX,
+      centerY,
+      (batchIndex) => {
+        const rowStart = batchIndex * batchRows;
+        const rowEnd = Math.min(safeOutH, rowStart + batchRows);
+        const rowMid = rowStart + ((Math.max(1, rowEnd - rowStart) - 1) * 0.5);
+        return { x: centerX, y: y0 + (rowMid * step) };
+      }
+    );
+    const blockOrder = orderBlockIndicesCenterOut(minBx, maxBx, table.blockWidth, centerX);
+    let completedUnits = 0;
+    const completed = await processInBatches(
+      rowBatches,
       this.#resolveRawRowConcurrency(),
-      async (batchIndex) => {
-        await this.#schedule(async () => {
-          const scratch = specs.map((spec) => new Uint8Array(table.blockWidth * spec.bytesPerPixel));
-          const views = new Array(specs.length);
-          const rowStart = batchIndex * batchRows;
-          const rowEnd = Math.min(safeOutH, rowStart + batchRows);
-          for (let rowIndex = rowStart; rowIndex < rowEnd; rowIndex += 1) {
-            const srcY = y0 + (rowIndex * step);
-            const by = Math.floor(srcY / blockHeight);
-            const rowBase = rowIndex * outW;
-            for (let bx = minBx; bx <= maxBx; bx += 1) {
-              const index = (by * numBlocksX) + bx;
-              const blocks = specs.map((spec) => spec.blocks[index] || null);
-              const anchor = blocks.find(Boolean) || null;
-              if (!anchor) continue;
-              const localYBase = srcY - anchor.y0;
-              const colStart = Math.max(0, Math.ceil((anchor.x0 - x0) / step));
-              const colEnd = Math.min(safeOutW, Math.floor((anchor.x0 + anchor.w - 1 - x0) / step) + 1);
-              if (colStart >= colEnd) continue;
-              const firstLocalX = x0 + (colStart * step) - anchor.x0;
-              const lastLocalX = x0 + ((colEnd - 1) * step) - anchor.x0;
+      async (batchIndex) => this.#schedule(async () => {
+        const scratch = specs.map((spec) => new Uint8Array(table.blockWidth * spec.bytesPerPixel));
+        const views = new Array(specs.length);
+        const rowStart = batchIndex * batchRows;
+        const rowEnd = Math.min(safeOutH, rowStart + batchRows);
+        for (let rowIndex = rowStart; rowIndex < rowEnd; rowIndex += 1) {
+          if (typeof cancelled === "function" && cancelled()) return;
+          const srcY = y0 + (rowIndex * step);
+          const by = Math.floor(srcY / blockHeight);
+          const rowBase = rowIndex * outW;
+          for (const bx of blockOrder) {
+            const index = (by * numBlocksX) + bx;
+            const blocks = specs.map((spec) => spec.blocks[index] || null);
+            const anchor = blocks.find(Boolean) || null;
+            if (!anchor) continue;
+            const localYBase = srcY - anchor.y0;
+            const colStart = Math.max(0, Math.ceil((anchor.x0 - x0) / step));
+            const colEnd = Math.min(safeOutW, Math.floor((anchor.x0 + anchor.w - 1 - x0) / step) + 1);
+            if (colStart >= colEnd) continue;
+            const firstLocalX = x0 + (colStart * step) - anchor.x0;
+            const lastLocalX = x0 + ((colEnd - 1) * step) - anchor.x0;
 
-              if (sharedBlocks) {
-                const spec = specs[0];
-                const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
-                const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerPixel;
-                const span = scratch[0].subarray(0, spanBytes);
-                const readOffset = anchor.offset
-                  + (localYBase * storageRowBytes)
-                  + (firstLocalX * spec.bytesPerPixel);
-                await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-                const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
-                for (let col = colStart; col < colEnd; col += 1) {
-                  const srcX = x0 + (col * step);
-                  const baseByteOffset = (srcX - anchor.x0 - firstLocalX) * spec.bytesPerPixel;
-                  for (let channel = 0; channel < specs.length; channel += 1) {
-                    outputs[channel][rowBase + col] = readDataViewValue(
-                      dv,
-                      baseByteOffset + specs[channel].sampleByteOffset,
-                      this.meta.dataTypeInfo,
-                      this.meta.littleEndian
-                    );
-                  }
-                }
-                continue;
-              }
-
-              for (let channel = 0; channel < specs.length; channel += 1) {
-                const spec = specs[channel];
-                const block = blocks[channel];
-                if (!block) continue;
-                const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
-                const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
-                const span = scratch[channel].subarray(0, spanBytes);
-                const readOffset = block.offset
-                  + (localYBase * storageRowBytes)
-                  + (firstLocalX * spec.bytesPerPixel)
-                  + spec.sampleByteOffset;
-                await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-                views[channel] = new DataView(span.buffer, span.byteOffset, spanBytes);
-              }
+            if (sharedBlocks) {
+              const spec = specs[0];
+              const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
+              const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerPixel;
+              const span = scratch[0].subarray(0, spanBytes);
+              const readOffset = anchor.offset
+                + (localYBase * storageRowBytes)
+                + (firstLocalX * spec.bytesPerPixel);
+              await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+              const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
               for (let col = colStart; col < colEnd; col += 1) {
                 const srcX = x0 + (col * step);
-                const localX = srcX - anchor.x0 - firstLocalX;
+                const baseByteOffset = (srcX - anchor.x0 - firstLocalX) * spec.bytesPerPixel;
                 for (let channel = 0; channel < specs.length; channel += 1) {
-                  const spec = specs[channel];
-                  const dv = views[channel];
-                  if (!dv) continue;
                   outputs[channel][rowBase + col] = readDataViewValue(
                     dv,
-                    localX * spec.bytesPerPixel,
+                    baseByteOffset + specs[channel].sampleByteOffset,
                     this.meta.dataTypeInfo,
                     this.meta.littleEndian
                   );
                 }
               }
+              continue;
+            }
+
+            views.fill(null);
+            for (let channel = 0; channel < specs.length; channel += 1) {
+              const spec = specs[channel];
+              const block = blocks[channel];
+              if (!block) continue;
+              const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
+              const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
+              const span = scratch[channel].subarray(0, spanBytes);
+              const readOffset = block.offset
+                + (localYBase * storageRowBytes)
+                + (firstLocalX * spec.bytesPerPixel)
+                + spec.sampleByteOffset;
+              await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+              views[channel] = new DataView(span.buffer, span.byteOffset, spanBytes);
+            }
+            for (let col = colStart; col < colEnd; col += 1) {
+              const srcX = x0 + (col * step);
+              const localX = srcX - anchor.x0 - firstLocalX;
+              for (let channel = 0; channel < specs.length; channel += 1) {
+                const spec = specs[channel];
+                const dv = views[channel];
+                if (!dv) continue;
+                outputs[channel][rowBase + col] = readDataViewValue(
+                  dv,
+                  localX * spec.bytesPerPixel,
+                  this.meta.dataTypeInfo,
+                  this.meta.littleEndian
+                );
+              }
             }
           }
-        });
-      }
+        }
+      }),
+      async (_batch) => {
+        completedUnits += _batch.length;
+        if (progress) await progress(completedUnits, completedUnits >= batchCount);
+      },
+      cancelled
     );
+    if (!completed) return false;
+    if (progress && completedUnits < batchCount) {
+      await progress(batchCount, true);
+    }
     this.#syncCacheStats();
+    return true;
   }
 
   #compositeRawCompositeBlocks(specs, block, decodedBlocks, outputs, x0, y0, safeOutW, safeOutH, outW, step) {

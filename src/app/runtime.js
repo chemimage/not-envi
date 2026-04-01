@@ -819,14 +819,20 @@ import { pointInPolygon } from "./draw-geometry.js";
     return pyramid.tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
   }
 
-  function buildGrayCanvas(rasterF32, w, h, params){
+  function buildGrayCanvas(rasterF32, w, h, params, opts = {}){
+    const transparentNoData = !!opts?.transparentNoData;
     const img = cpuCtx.createImageData(w, h);
     const dst = img.data;
     const minVal = params.minVal, maxVal = params.maxVal;
     const brightness = params.brightness, gain = params.gain, contrast = params.contrast;
 
     for (let i=0, j=0; i<rasterF32.length; i++, j+=4){
-      const t = tone01(rasterF32[i], minVal, maxVal, brightness, gain, contrast);
+      const value = rasterF32[i];
+      if (transparentNoData && !Number.isFinite(value)) {
+        dst[j] = 0; dst[j+1] = 0; dst[j+2] = 0; dst[j+3] = 0;
+        continue;
+      }
+      const t = tone01(value, minVal, maxVal, brightness, gain, contrast);
       const u = Math.round(t * 255);
       dst[j] = u; dst[j+1] = u; dst[j+2] = u; dst[j+3] = 255;
     }
@@ -834,7 +840,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     const off = document.createElement('canvas');
     off.width = w;
     off.height = h;
-    off.getContext('2d', {alpha:false}).putImageData(img,0,0);
+    off.getContext('2d', {alpha:transparentNoData}).putImageData(img,0,0);
     return off;
   }
 
@@ -863,10 +869,11 @@ import { pointInPolygon } from "./draw-geometry.js";
     return off;
   }
 
-  function buildColorCanvas(rasters, paramsByChannel){
+  function buildColorCanvas(rasters, paramsByChannel, opts = {}){
     if (!Array.isArray(rasters) || rasters.length < 3) return;
     const [rRaster, gRaster, bRaster] = rasters;
     if (!rRaster || !gRaster || !bRaster) return;
+    const transparentNoData = !!opts?.transparentNoData;
     const w = rRaster.w;
     const h = rRaster.h;
     const img = cpuCtx.createImageData(w, h);
@@ -879,6 +886,16 @@ import { pointInPolygon } from "./draw-geometry.js";
     const bParams = paramsByChannel[2];
 
     for (let i = 0, j = 0; i < rData.length; i += 1, j += 4) {
+      if (
+        transparentNoData
+        && (!Number.isFinite(rData[i]) || !Number.isFinite(gData[i]) || !Number.isFinite(bData[i]))
+      ) {
+        dst[j] = 0;
+        dst[j + 1] = 0;
+        dst[j + 2] = 0;
+        dst[j + 3] = 0;
+        continue;
+      }
       const r = Math.round(tone01(rData[i], rParams.minVal, rParams.maxVal, rParams.brightness, rParams.gain, rParams.contrast) * 255);
       const g = Math.round(tone01(gData[i], gParams.minVal, gParams.maxVal, gParams.brightness, gParams.gain, gParams.contrast) * 255);
       const b = Math.round(tone01(bData[i], bParams.minVal, bParams.maxVal, bParams.brightness, bParams.gain, bParams.contrast) * 255);
@@ -891,7 +908,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     const off = document.createElement("canvas");
     off.width = w;
     off.height = h;
-    off.getContext("2d", { alpha: false }).putImageData(img, 0, 0);
+    off.getContext("2d", { alpha: transparentNoData }).putImageData(img, 0, 0);
     return off;
   }
 
