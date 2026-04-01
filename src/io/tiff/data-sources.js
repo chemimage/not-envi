@@ -775,15 +775,7 @@ export class TiffBlockIndexedDataSource {
     const blob = new Blob([raw], { type: "image/jpeg" });
     let bitmap = null;
     try {
-      try {
-        bitmap = await createImageBitmap(blob, {
-          resizeWidth: width,
-          resizeHeight: height,
-          resizeQuality: "high"
-        });
-      } catch (_err) {
-        bitmap = await createImageBitmap(blob);
-      }
+      bitmap = await createImageBitmap(blob);
       const outW = Math.max(1, Number(width) || bitmap.width || 1);
       const outH = Math.max(1, Number(height) || bitmap.height || 1);
       const canvas = createDecodeCanvas(outW, outH);
@@ -791,6 +783,7 @@ export class TiffBlockIndexedDataSource {
       if (!ctx || typeof ctx.drawImage !== "function" || typeof ctx.getImageData !== "function") {
         return null;
       }
+      if ("imageSmoothingEnabled" in ctx) ctx.imageSmoothingEnabled = false;
       ctx.drawImage(bitmap, 0, 0, outW, outH);
       const imageData = ctx.getImageData(0, 0, outW, outH);
       return {

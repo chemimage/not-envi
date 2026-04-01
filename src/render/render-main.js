@@ -101,6 +101,22 @@ export function createRenderer(deps) {
     maxRetainedElements: APP_CONFIG.scratch.render.maxRetainedElements
   });
 
+  function getStableRenderKey(ds, panelSlot) {
+    const slot = Number(panelSlot) || 1;
+    const map = ds?.__stableRenderKeys;
+    return map && typeof map.get === "function" ? (map.get(slot) || null) : null;
+  }
+
+  function setStableRenderKey(ds, panelSlot, renderKey) {
+    if (!ds) return;
+    if (!ds.__stableRenderKeys || typeof ds.__stableRenderKeys.get !== "function") {
+      ds.__stableRenderKeys = new Map();
+    }
+    const slot = Number(panelSlot) || 1;
+    if (renderKey) ds.__stableRenderKeys.set(slot, renderKey);
+    else ds.__stableRenderKeys.delete(slot);
+  }
+
   function ensureRenderStats(ds) {
     if (!ds.renderStats) {
       ds.renderStats = {
@@ -146,12 +162,15 @@ export function createRenderer(deps) {
   async function readRasterDirect(ds, band, eff, viewportW, viewportH) {
     const t0 = now();
     let approximate = false;
+    const panelSlot = Number(ds.__renderPanelSlot) || 1;
     const renderKey = `${Number(ds.__renderPanelSlot) || 1}|${Math.round(Number(ds.view?.x) || 0)}|${Math.round(Number(ds.view?.y) || 0)}|${Number(ds.view?.scale || 0).toFixed(6)}|${Math.round(Number(viewportW) || 0)}x${Math.round(Number(viewportH) || 0)}`;
+    const stableRenderKey = getStableRenderKey(ds, panelSlot);
     let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
     if (
       eff < 1
       && ds?.meta?.sourceFormat === "tiff"
       && ds?.__forceFullRenderKey !== renderKey
+      && stableRenderKey !== renderKey
       && typeof ds?.ds?.estimateReadWork === "function"
     ) {
       const work = ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
@@ -255,10 +274,12 @@ export function createRenderer(deps) {
       && typeof ds?.ds?.supportsCompositeWindow === "function"
       && ds.ds.supportsCompositeWindow()
     ) {
+      const panelSlot = Number(ds.__renderPanelSlot) || 1;
       const renderKey = `${Number(ds.__renderPanelSlot) || 1}|${Math.round(Number(ds.view?.x) || 0)}|${Math.round(Number(ds.view?.y) || 0)}|${Number(ds.view?.scale || 0).toFixed(6)}|${Math.round(Number(viewportW) || 0)}x${Math.round(Number(viewportH) || 0)}`;
+      const stableRenderKey = getStableRenderKey(ds, panelSlot);
       let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
       let approximate = false;
-      if (eff < 1 && ds.__forceFullRenderKey !== renderKey && typeof ds.ds.estimateReadWork === "function") {
+      if (eff < 1 && ds.__forceFullRenderKey !== renderKey && stableRenderKey !== renderKey && typeof ds.ds.estimateReadWork === "function") {
         const work = ds.ds.estimateReadWork(ds.meta, 0, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
         let factor = 1;
         if (work?.nativeJpeg && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)) {
@@ -528,10 +549,15 @@ export function createRenderer(deps) {
         renderedCanvas = cpuRenderGray(raster.dataF32, raster.w, raster.h, params);
       }
       if (renderedCanvas || useGPU) {
-        updateScreenPreviewCache(ds, panel?.slot || 1, modeKey, eff, renderedCanvas || els.gpuCanvas);
+        const slot = panel?.slot || 1;
+        const hasPreview = !!ds?.lastScreenFrames?.get?.(Number(slot)) || (Number(slot) === 1 && !!ds?.lastScreenFrame);
+        if (stableRaster || stableComposite || !hasPreview) {
+          updateScreenPreviewCache(ds, slot, modeKey, eff, renderedCanvas || els.gpuCanvas);
+        }
       }
       if (stableRaster || stableComposite) {
         updatePanelRasterCache(ds, panel?.slot || 1, raster, compositeRaster);
+        setStableRenderKey(ds, panel?.slot || 1, raster?.renderKey || compositeRaster?.rasterByBand?.get?.(0)?.renderKey || compositeRaster?.rasterByBand?.get?.(band)?.renderKey || null);
       } else {
         updatePanelRasterCache(ds, panel?.slot || 1, null, null);
       }
@@ -639,10 +665,14 @@ export function createRenderer(deps) {
           }
           drawCanvasToViewport(cpuCtx, renderedCanvas, viewport, false);
           if (renderedCanvas) {
-            updateScreenPreviewCache(ds, panel.slot, modeKey, eff, renderedCanvas);
+            const hasPreview = !!ds?.lastScreenFrames?.get?.(Number(panel.slot)) || (Number(panel.slot) === 1 && !!ds?.lastScreenFrame);
+            if (stableRaster || stableComposite || !hasPreview) {
+              updateScreenPreviewCache(ds, panel.slot, modeKey, eff, renderedCanvas);
+            }
           }
           if (stableRaster || stableComposite) {
             updatePanelRasterCache(ds, panel.slot, raster, compositeRaster);
+            setStableRenderKey(ds, panel.slot, raster?.renderKey || compositeRaster?.rasterByBand?.get?.(0)?.renderKey || compositeRaster?.rasterByBand?.get?.(band)?.renderKey || null);
           } else {
             updatePanelRasterCache(ds, panel.slot, null, null);
           }
@@ -726,10 +756,14 @@ export function createRenderer(deps) {
           const renderedCanvas = buildGrayCanvas(raster.dataF32, raster.w, raster.h, params);
 
           if (renderedCanvas) {
-            updateScreenPreviewCache(ds, panel.slot, renderModeKey(ds, band, false, null), eff, renderedCanvas);
+            const hasPreview = !!ds?.lastScreenFrames?.get?.(Number(panel.slot)) || (Number(panel.slot) === 1 && !!ds?.lastScreenFrame);
+            if (stableRaster || !hasPreview) {
+              updateScreenPreviewCache(ds, panel.slot, renderModeKey(ds, band, false, null), eff, renderedCanvas);
+            }
           }
           if (stableRaster) {
             updatePanelRasterCache(ds, panel.slot, raster, null);
+            setStableRenderKey(ds, panel.slot, raster?.renderKey || null);
           } else {
             updatePanelRasterCache(ds, panel.slot, null, null);
           }
