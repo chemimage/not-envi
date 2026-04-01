@@ -52,7 +52,7 @@ import { createSpectrumAreaController } from "./spectrum-area-controller.js";
 import { createAreaReductionWorkerClient } from "./area-reduction-worker-client.js";
 import { createSelectionSyncController } from "./selection-sync-controller.js";
 import { getThreeBandAdjustColor, isThreeBandColorMode } from "./three-band-display.js";
-import { linkedDatasetsShareDisplaySize, scaleViewAboutCurrentCenter } from "./linked-view.js";
+import { applyNormalizedViewBox, captureNormalizedViewBox, withNormalizedCenter } from "./linked-view.js";
 import {
   resolveSelectionBoundsForSpectrum,
   resolveSelectionBoundsList as resolveSelectionBoundsListCore,
@@ -657,34 +657,48 @@ import { pointInPolygon } from "./draw-geometry.js";
       .filter((entry) => !!entry.dataset);
   }
 
-  function resolveLinkedViewportAnchor(sx, sy, sourceSlot, targetSlot) {
-    const sourceViewport = getPanelRectDevice(sourceSlot);
-    const targetViewport = getPanelRectDevice(targetSlot);
-    if (!sourceViewport || !targetViewport) {
-      return { x: Number(sx) || 0, y: Number(sy) || 0 };
-    }
-    const sourceW = Math.max(1, Number(sourceViewport.w) || 1);
-    const sourceH = Math.max(1, Number(sourceViewport.h) || 1);
-    const ratioX = clamp((((Number(sx) || 0) - (Number(sourceViewport.x) || 0)) / sourceW), 0, 1);
-    const ratioY = clamp((((Number(sy) || 0) - (Number(sourceViewport.y) || 0)) / sourceH), 0, 1);
-    return {
-      x: (Number(targetViewport.x) || 0) + (ratioX * Math.max(1, Number(targetViewport.w) || 1)),
-      y: (Number(targetViewport.y) || 0) + (ratioY * Math.max(1, Number(targetViewport.h) || 1))
+  function fallbackPanelViewport(slot) {
+    return getPanelRectDevice(slot) || {
+      w: Math.max(1, Number(els.cpuCanvas.width) || 1),
+      h: Math.max(1, Number(els.cpuCanvas.height) || 1)
     };
+  }
+
+  function syncLinkedPanelsFromSource(entries, sourceEntry) {
+    if (!sourceEntry?.panel || !sourceEntry?.dataset) return;
+    const dpr = window.devicePixelRatio || 1;
+    const sourceViewport = fallbackPanelViewport(sourceEntry.panel.slot);
+    const normalized = captureNormalizedViewBox(sourceEntry.panel.view, sourceEntry.dataset.meta, sourceViewport, dpr);
+    for (const entry of entries) {
+      if (Number(entry.panel?.slot) === Number(sourceEntry.panel.slot)) continue;
+      const { panel, dataset: ds } = entry;
+      const viewport = fallbackPanelViewport(panel.slot);
+      const next = applyNormalizedViewBox(normalized, ds.meta, viewport, dpr, {
+        minScale: minScaleFor(ds, panel.slot),
+        maxScale: 128
+      });
+      panel.view.scale = next.scale;
+      panel.view.x = next.x;
+      panel.view.y = next.y;
+      withPanelDatasetView(panel, ds, () => {
+        clampView(panel.slot, ds);
+      });
+    }
   }
 
   function panLinkedPanelsByPixels(dx, dy, slot = null) {
     const entries = listLinkedViewEntries(slot);
     if (!entries.length) return false;
-    for (const entry of entries) {
-      const { panel, dataset: ds } = entry;
-      const scale = Math.max(1e-9, Number(panel.view?.scale) || 1);
-      panel.view.x -= (Number(dx) || 0) / scale;
-      panel.view.y -= (Number(dy) || 0) / scale;
-      withPanelDatasetView(panel, ds, () => {
-        clampView(panel.slot, ds);
-      });
-    }
+    const sourceSlot = slot == null ? Number(getActiveDisplayPanel(state)?.slot) || 1 : Number(slot);
+    const sourceEntry = entries.find((entry) => Number(entry.panel?.slot) === sourceSlot) || entries[0];
+    if (!sourceEntry) return false;
+    withPanelDatasetView(sourceEntry.panel, sourceEntry.dataset, () => {
+      const scale = Math.max(1e-9, Number(sourceEntry.panel.view?.scale) || 1);
+      sourceEntry.panel.view.x -= (Number(dx) || 0) / scale;
+      sourceEntry.panel.view.y -= (Number(dy) || 0) / scale;
+      clampView(sourceEntry.panel.slot, sourceEntry.dataset);
+    });
+    syncLinkedPanelsFromSource(entries, sourceEntry);
     return true;
   }
 
@@ -692,60 +706,44 @@ import { pointInPolygon } from "./draw-geometry.js";
     const sourcePanel = slot == null ? getActiveDisplayPanel(state) : getDisplayPanel(state, slot);
     const entries = sourcePanel?.datasetId ? listLinkedViewEntries(sourcePanel.slot) : [];
     if (!sourcePanel?.datasetId || !entries.length) return null;
-    const preserveCursorAnchor = linkedDatasetsShareDisplaySize(entries);
+    const sourceEntry = entries.find((entry) => Number(entry.panel?.slot) === Number(sourcePanel.slot)) || entries[0];
+    if (!sourceEntry) return null;
     let activeScale = null;
-    for (const entry of entries) {
-      const { panel, dataset: ds } = entry;
-      const viewport = getPanelRectDevice(panel.slot) || {
-        w: Math.max(1, Number(els.cpuCanvas.width) || 1),
-        h: Math.max(1, Number(els.cpuCanvas.height) || 1)
-      };
-      const anchor = preserveCursorAnchor
-        ? resolveLinkedViewportAnchor(sx, sy, sourcePanel.slot, panel.slot)
-        : null;
-      withPanelDatasetView(panel, ds, () => {
-        const minS = minScaleFor(ds, panel.slot);
-        const nextScale = clamp(targetScale, minS, 128);
-        if (preserveCursorAnchor && anchor) {
-          const before = screenToImage(anchor.x, anchor.y, panel.slot, ds);
-          panel.view.scale = nextScale;
-          const after = screenToImage(anchor.x, anchor.y, panel.slot, ds);
-          panel.view.x += before.x - after.x;
-          panel.view.y += before.y - after.y;
-        } else {
-          const centered = scaleViewAboutCurrentCenter(panel.view, viewport, nextScale, window.devicePixelRatio || 1);
-          panel.view.scale = centered.scale;
-          panel.view.x = centered.x;
-          panel.view.y = centered.y;
-        }
-        clampView(panel.slot, ds);
-      });
-      if (Number(panel.slot) === Number(sourcePanel.slot)) activeScale = panel.view.scale;
-    }
+    withPanelDatasetView(sourceEntry.panel, sourceEntry.dataset, () => {
+      const before = screenToImage(sx, sy, sourceEntry.panel.slot, sourceEntry.dataset);
+      const minS = minScaleFor(sourceEntry.dataset, sourceEntry.panel.slot);
+      sourceEntry.panel.view.scale = clamp(targetScale, minS, 128);
+      const after = screenToImage(sx, sy, sourceEntry.panel.slot, sourceEntry.dataset);
+      sourceEntry.panel.view.x += before.x - after.x;
+      sourceEntry.panel.view.y += before.y - after.y;
+      clampView(sourceEntry.panel.slot, sourceEntry.dataset);
+      activeScale = sourceEntry.panel.view.scale;
+    });
+    syncLinkedPanelsFromSource(entries, sourceEntry);
     return activeScale;
   }
 
   function recenterLinkedPanelsAtFraction(nx, ny, slot = null) {
     const entries = listLinkedViewEntries(slot);
     if (!entries.length) return false;
-    const centerX = clamp(Number(nx) || 0, 0, 1);
-    const centerY = clamp(Number(ny) || 0, 0, 1);
+    const sourceSlot = slot == null ? Number(getActiveDisplayPanel(state)?.slot) || 1 : Number(slot);
+    const sourceEntry = entries.find((entry) => Number(entry.panel?.slot) === sourceSlot) || entries[0];
+    if (!sourceEntry) return false;
     const dpr = window.devicePixelRatio || 1;
-    for (const entry of entries) {
-      const { panel, dataset: ds } = entry;
-      const viewport = getPanelRectDevice(panel.slot) || {
-        w: Math.max(1, Number(els.cpuCanvas.width) || 1),
-        h: Math.max(1, Number(els.cpuCanvas.height) || 1)
-      };
-      const eff = Math.max(1e-9, (Number(panel.view?.scale) || 1) * dpr);
-      const viewW = Math.max(1, Number(viewport.w || viewport.width || 1)) / eff;
-      const viewH = Math.max(1, Number(viewport.h || viewport.height || 1)) / eff;
-      panel.view.x = clamp(centerX * ds.meta.samples - (viewW * 0.5), 0, Math.max(0, ds.meta.samples - viewW));
-      panel.view.y = clamp(centerY * ds.meta.lines - (viewH * 0.5), 0, Math.max(0, ds.meta.lines - viewH));
-      withPanelDatasetView(panel, ds, () => {
-        clampView(panel.slot, ds);
-      });
-    }
+    const sourceViewport = fallbackPanelViewport(sourceEntry.panel.slot);
+    const current = captureNormalizedViewBox(sourceEntry.panel.view, sourceEntry.dataset.meta, sourceViewport, dpr);
+    const desired = withNormalizedCenter(current, clamp(Number(nx) || 0, 0, 1), clamp(Number(ny) || 0, 0, 1));
+    const next = applyNormalizedViewBox(desired, sourceEntry.dataset.meta, sourceViewport, dpr, {
+      minScale: minScaleFor(sourceEntry.dataset, sourceEntry.panel.slot),
+      maxScale: 128
+    });
+    sourceEntry.panel.view.scale = next.scale;
+    sourceEntry.panel.view.x = next.x;
+    sourceEntry.panel.view.y = next.y;
+    withPanelDatasetView(sourceEntry.panel, sourceEntry.dataset, () => {
+      clampView(sourceEntry.panel.slot, sourceEntry.dataset);
+    });
+    syncLinkedPanelsFromSource(entries, sourceEntry);
     return true;
   }
 
