@@ -128,6 +128,33 @@ function chooseSlabRows(rowStrideBytes, segmentBytes, remainingRows, targetBytes
   return 1;
 }
 
+async function readViaCustomWindowReader(meta, reader, band, x0, y0, outW, outH, step, outArr) {
+  const S = meta.samples;
+  const L = meta.lines;
+  const safeX0 = clamp(Math.floor(x0), 0, S - 1);
+  const safeY0 = clamp(Math.floor(y0), 0, L - 1);
+  const maxX = clamp(safeX0 + outW * step, 0, S);
+  const maxY = clamp(safeY0 + outH * step, 0, L);
+  const safeOutW = Math.floor((maxX - safeX0 + (step - 1)) / step);
+  const safeOutH = Math.floor((maxY - safeY0 + (step - 1)) / step);
+  if (safeOutW <= 0 || safeOutH <= 0) {
+    return { out: outArr, safeOutW: 0, safeOutH: 0 };
+  }
+
+  const target = (safeOutW === outW && safeOutH === outH)
+    ? outArr
+    : allocBandArray(meta, safeOutW * safeOutH);
+  const src = await reader(meta, band, safeX0, safeY0, safeOutW, safeOutH, step, target) || target;
+  if (src !== outArr) {
+    for (let row = 0; row < safeOutH; row += 1) {
+      const srcStart = row * safeOutW;
+      const dstStart = row * outW;
+      outArr.set(src.subarray(srcStart, srcStart + safeOutW), dstStart);
+    }
+  }
+  return { out: outArr, safeOutW, safeOutH };
+}
+
 async function decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr) {
   const bytes = meta.dataTypeInfo.bytes;
   const rowStrideBytes = (meta.interleave === "bil")
@@ -191,13 +218,24 @@ async function decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOut
 }
 
 export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2, out = null) {
-  const bytes = meta.dataTypeInfo.bytes;
-  const S = meta.samples;
-  const L = meta.lines;
   const outArr = ensureOutputArray(meta, out, outW * outH);
   const stats = ensureRasterStats(ds);
   const t0 = perfNow();
   if (stats) stats.windowCalls += 1;
+
+  if (typeof ds?.readBandWindow === "function") {
+    const custom = await readViaCustomWindowReader(meta, ds.readBandWindow.bind(ds), band, x0, y0, outW, outH, step, outArr);
+    if (stats) {
+      stats.rowWindowCalls += 1;
+      stats.decodedPixels += custom.safeOutW * custom.safeOutH;
+      stats.windowReadMs += perfNow() - t0;
+    }
+    return custom.out;
+  }
+
+  const bytes = meta.dataTypeInfo.bytes;
+  const S = meta.samples;
+  const L = meta.lines;
 
   if (meta.interleave === "bip") {
     throw new Error("readBandWindow not used for BIP");
@@ -246,9 +284,6 @@ export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, c
 }
 
 export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2, out = null) {
-  const S = meta.samples;
-  const L = meta.lines;
-  const B = meta.bands;
   const outArr = ensureOutputArray(meta, out, outW * outH);
   const stats = ensureRasterStats(ds);
   const t0 = perfNow();
@@ -256,6 +291,23 @@ export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step
     stats.windowCalls += 1;
     stats.bipWindowCalls += 1;
   }
+
+  const customReader = (typeof ds?.readBandWindowBIP === "function")
+    ? ds.readBandWindowBIP.bind(ds)
+    : ((typeof ds?.readBandWindow === "function") ? ds.readBandWindow.bind(ds) : null);
+  if (customReader) {
+    const custom = await readViaCustomWindowReader(meta, customReader, band, x0, y0, outW, outH, step, outArr);
+    if (stats) {
+      stats.rowWindowCalls += 1;
+      stats.decodedPixels += custom.safeOutW * custom.safeOutH;
+      stats.windowReadMs += perfNow() - t0;
+    }
+    return custom.out;
+  }
+
+  const S = meta.samples;
+  const L = meta.lines;
+  const B = meta.bands;
 
   x0 = clamp(Math.floor(x0), 0, S - 1);
   y0 = clamp(Math.floor(y0), 0, L - 1);

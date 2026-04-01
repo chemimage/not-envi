@@ -20,7 +20,7 @@ import {
   resolveDisplayLinkColorName,
   resolveDisplayPanelAtPoint
 } from "./display-panels.js";
-import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/envi-loader.js";
+import { addDatasetFromFiles as addDatasetFromFilesMod, addDatasetsFromFileList as addDatasetsFromFileListMod } from "../io/dataset-loader.js";
 import {
   readBandWindow as readBandWindowCore,
   readBandWindowBIP as readBandWindowBIPCore,

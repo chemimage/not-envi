@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { probeValueAtBand, readSpectrumAtPixel, wavelengthArrayOrNull } from "../../src/render/spectrum-data.js";
 
 function makeMeta(interleave, samples = 3, lines = 2, bands = 3) {
@@ -86,6 +86,23 @@ describe("spectrum-data", () => {
     const dsBil = makeDs(makeMeta("bil"));
     const outBil = await readSpectrumAtPixel(dsBil, 1, 1, 2);
     expect(Array.from(outBil)).toEqual([11, 111, 211]);
+  });
+
+  test("custom datasource hooks are preferred for probe and spectrum reads", async () => {
+    const probeValue = vi.fn(async () => 42);
+    const spectrumValue = vi.fn(async () => Float32Array.from([7, 8, 9]));
+    const ds = {
+      meta: makeMeta("bsq"),
+      ds: {
+        probeValueAtBand: probeValue,
+        readSpectrumAtPixel: spectrumValue
+      }
+    };
+
+    expect(await probeValueAtBand(ds, 1, 1, 2)).toBe(42);
+    expect(Array.from(await readSpectrumAtPixel(ds, 1, 1, 2))).toEqual([7, 8, 9]);
+    expect(probeValue).toHaveBeenCalledWith(ds.meta, 1, 1, 2);
+    expect(spectrumValue).toHaveBeenCalledWith(ds.meta, 1, 1, 2);
   });
 
   test("wavelengthArrayOrNull normalizes numeric-like values", () => {

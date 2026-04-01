@@ -135,6 +135,42 @@ describe("raster-io", () => {
     expect(ds.stats.readIntoCalls).toBe(1);
   });
 
+  test("readBandWindow delegates to a custom datasource reader", async () => {
+    const meta = makeMeta("bsq", 4, 4, 2);
+    const ds = {
+      async readBandWindow(_meta, band, x0, y0, outW, outH, step, out) {
+        expect(band).toBe(1);
+        expect(x0).toBe(1);
+        expect(y0).toBe(1);
+        expect(outW).toBe(2);
+        expect(outH).toBe(2);
+        expect(step).toBe(1);
+        out.set([100, 101, 110, 111]);
+        return out;
+      }
+    };
+    const out = await readBandWindow(meta, ds, 1, 1, 1, 2, 2, 1, 2);
+    expect(Array.from(out)).toEqual([100, 101, 110, 111]);
+  });
+
+  test("readBandWindowBIP delegates to a custom datasource reader", async () => {
+    const meta = makeMeta("bip", 4, 4, 3);
+    const ds = {
+      async readBandWindowBIP(_meta, band, x0, y0, outW, outH, step, out) {
+        expect(band).toBe(2);
+        expect(x0).toBe(0);
+        expect(y0).toBe(1);
+        expect(outW).toBe(2);
+        expect(outH).toBe(2);
+        expect(step).toBe(1);
+        out.set([200, 201, 210, 211]);
+        return out;
+      }
+    };
+    const out = await readBandWindowBIP(meta, ds, 2, 0, 1, 2, 2, 1, 2);
+    expect(Array.from(out)).toEqual([200, 201, 210, 211]);
+  });
+
   test("toFloat32 converts numeric arrays", () => {
     const inArr = new Uint16Array([1, 2, 3]);
     const out = toFloat32(inArr);

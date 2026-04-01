@@ -59,7 +59,10 @@ export function createDatasetRuntime(deps) {
 
   function guessDatasetName(hdrFile, dataFile) {
     const n = hdrFile?.name || dataFile?.name || "dataset";
-    return n.replace(/\.hdr$/i, "").replace(/\.(img|dat|raw|bin|bip|bil|bsq)$/i, "");
+    return n
+      .replace(/\.hdr$/i, "")
+      .replace(/\.(img|dat|raw|bin|bip|bil|bsq)$/i, "")
+      .replace(/\.(tif|tiff)$/i, "");
   }
 
   function bandLabel(ds, b) {
@@ -405,8 +408,8 @@ export function createDatasetRuntime(deps) {
       selectedAreaId: null,
       thumb: { ready: false, _t: 0, scale: 1, x0: 0, y0: 0, w: 0, h: 0 },
       treeExpanded: true,
-      displayMode: "gray",
-      displayAdjustColor: "red",
+      displayMode: meta.defaultDisplayMode || "gray",
+      displayAdjustColor: meta.defaultAdjustColor || "red",
       pyramid: null,
       lastRaster: null,
       lastCompositeRaster: null,
@@ -485,13 +488,17 @@ export function createDatasetRuntime(deps) {
       return;
     }
 
-    const { datasets, missing, headersFound } = result;
-    if (!headersFound) {
-      alertFn("No .hdr file found. Please select/drop the ENVI header (.hdr) and its matching binary file.");
+    const { datasets, missing, headersFound, directFound } = result;
+    if (!headersFound && !directFound) {
+      alertFn("No supported dataset file found. Select ENVI (.hdr + data) files or TIFF (.tif/.tiff).");
       return;
     }
     if (!datasets.length) {
-      alertFn(`No complete ENVI pairs found.\n\nMissing data file for:\n${missing.join("\n")}`);
+      if (headersFound && missing.length) {
+        alertFn(`No complete ENVI pairs found.\n\nMissing data file for:\n${missing.join("\n")}`);
+        return;
+      }
+      alertFn("No supported datasets could be opened from the selected files.");
       return;
     }
 

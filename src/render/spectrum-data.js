@@ -19,6 +19,13 @@ async function parallelFor(count, limit, fn) {
 export async function probeValueAtBand(ds, ix, iy, band) {
   const m = ds.meta;
   if (ix < 0 || iy < 0 || ix >= m.samples || iy >= m.lines) return null;
+  if (typeof ds?.ds?.probeValueAtBand === "function") {
+    return ds.ds.probeValueAtBand(m, ix, iy, band);
+  }
+  if (typeof ds?.ds?.readBandWindow === "function") {
+    const out = await ds.ds.readBandWindow(m, band, ix, iy, 1, 1, 1);
+    return Number(out?.[0]);
+  }
   const bytes = m.dataTypeInfo.bytes;
   const offset = pixelOffset(m, ix, iy, band);
   const u8 = await ds.ds.read(offset, bytes);
@@ -29,6 +36,12 @@ export async function probeValueAtBand(ds, ix, iy, band) {
 export async function readSpectrumAtPixel(ds, ix, iy, concurrency = 2) {
   const meta = ds.meta;
   const B = meta.bands;
+  if (ix < 0 || iy < 0 || ix >= meta.samples || iy >= meta.lines) {
+    return new Float32Array(B);
+  }
+  if (typeof ds?.ds?.readSpectrumAtPixel === "function") {
+    return ds.ds.readSpectrumAtPixel(meta, ix, iy, concurrency);
+  }
   const bytes = meta.dataTypeInfo.bytes;
   const out = new Float32Array(B);
 
