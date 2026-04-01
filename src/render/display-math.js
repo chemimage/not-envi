@@ -86,7 +86,12 @@ export function resolveDisplayRange(ds, band, fallbackArray, getBandSettings) {
   let minVal = s.min;
   let maxVal = s.max;
 
-  const stats = ds.bandStatsWhole.get(band) || ds.bandStatsView;
+  const viewStats = ds.bandStatsView && (
+    ds.bandStatsView.band == null || Number(ds.bandStatsView.band) === Number(band)
+  )
+    ? ds.bandStatsView
+    : null;
+  const stats = ds.bandStatsWhole.get(band) || viewStats;
   if ((minVal == null || maxVal == null) && stats) {
     if (minVal == null) minVal = stats.p1;
     if (maxVal == null) maxVal = stats.p99;

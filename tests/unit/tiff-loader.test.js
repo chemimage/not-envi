@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { writeArrayBuffer } from "geotiff";
 import { encodeTIFF_MultiPage_GrayRaw } from "../../src/core/tiff-encoder.js";
 import { readBandWindow, readBandWindowBIP } from "../../src/core/raster-io.js";
@@ -22,6 +22,16 @@ function encodeFloat32Page(values) {
     dv.setFloat32(i * 4, Number(values[i]), false);
   }
   return new Uint8Array(ab);
+}
+
+async function importLoaderWithMockedFromBlob(fromBlobImpl) {
+  vi.resetModules();
+  const actual = await vi.importActual("geotiff");
+  vi.doMock("geotiff", () => ({
+    ...actual,
+    fromBlob: fromBlobImpl
+  }));
+  return import("../../src/io/tiff-loader.js");
 }
 
 describe("tiff loader", () => {
@@ -84,5 +94,168 @@ describe("tiff loader", () => {
     expect(ds.meta.bands).toBe(2);
     const spectrum = await readSpectrumAtPixel(ds, 1, 1, 2);
     expect(Array.from(spectrum)).toEqual([4, 8]);
+  });
+
+  test("loads palette TIFF through RGB conversion when raw grayscale assumptions do not apply", async () => {
+    const fakeImage = {
+      getWidth: () => 3,
+      getHeight: () => 1,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        RowsPerStrip: 1,
+        StripOffsets: [0],
+        StripByteCounts: [3],
+        PhotometricInterpretation: 3
+      }),
+      readRGB: vi.fn(async () => new Uint8Array([
+        255, 0, 0,
+        0, 255, 0,
+        0, 0, 255
+      ]))
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async () => fakeImage,
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([0, 0, 0])], "palette.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 2 });
+
+      expect(ds.meta.bands).toBe(3);
+      expect(ds.meta.defaultDisplayMode).toBe("rgb");
+
+      const red = await readBandWindowBIP(ds.meta, ds.ds, 0, 0, 0, 3, 1, 1, 2);
+      const green = await readBandWindowBIP(ds.meta, ds.ds, 1, 0, 0, 3, 1, 1, 2);
+      const blue = await readBandWindowBIP(ds.meta, ds.ds, 2, 0, 0, 3, 1, 1, 2);
+      expect(Array.from(red)).toEqual([255, 0, 0]);
+      expect(Array.from(green)).toEqual([0, 255, 0]);
+      expect(Array.from(blue)).toEqual([0, 0, 255]);
+      expect(fakeImage.readRGB).toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
+  test("falls back to the geotiff windowed reader when the raw shortcut does not match decoded values", async () => {
+    const fakeImage = {
+      getWidth: () => 1,
+      getHeight: () => 1,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        RowsPerStrip: 1,
+        StripOffsets: [0],
+        StripByteCounts: [1],
+        PhotometricInterpretation: 1
+      }),
+      readRasters: vi.fn(async () => new Uint8Array([42]))
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async () => fakeImage,
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([7])], "mismatch.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 1 });
+      const out = await readBandWindow(ds.meta, ds.ds, 0, 0, 0, 1, 1, 1, 1);
+      expect(Array.from(out)).toEqual([42]);
+      expect(fakeImage.readRasters).toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
+  test("composes multi-strip grayscale TIFF through the block-indexed path and reuses decoded blocks", async () => {
+    const fakeImage = {
+      getWidth: () => 2,
+      getHeight: () => 2,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        RowsPerStrip: 1,
+        StripOffsets: [0, 2],
+        StripByteCounts: [2, 2],
+        PhotometricInterpretation: 1
+      }),
+      tiles: {}
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async () => fakeImage,
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([1, 2, 3, 4])], "striped.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 1, cacheBytes: 16 * 1024 * 1024 });
+      const first = await readBandWindow(ds.meta, ds.ds, 0, 0, 0, 2, 2, 1, 1);
+      const second = await readBandWindow(ds.meta, ds.ds, 0, 0, 0, 2, 2, 1, 1);
+
+      expect(Array.from(first)).toEqual([1, 2, 3, 4]);
+      expect(Array.from(second)).toEqual([1, 2, 3, 4]);
+      expect(ds.ds.stats.decodeCalls).toBe(2);
+      expect(ds.ds.stats.decodedCacheHits).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
+  test("raises on huge compressed single-strip TIFF", async () => {
+    const fakeImage = {
+      getWidth: () => 32768,
+      getHeight: () => 32768,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 16,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 5,
+        RowsPerStrip: 32768,
+        StripOffsets: [0],
+        StripByteCounts: [8 * 1024 * 1024],
+        PhotometricInterpretation: 1
+      }),
+      tiles: {}
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async () => fakeImage,
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([0])], "huge-compressed.tif", { type: "image/tiff" });
+      await expect(addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 1 }))
+        .rejects
+        .toThrow(/compressed-strip TIFF is not supported/i);
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
   });
 });

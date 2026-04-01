@@ -39,6 +39,7 @@ export function createHistogramController(deps) {
     if (!stats) return null;
     return {
       ...stats,
+      band: Number.isFinite(metadata.band) ? metadata.band : null,
       sampleStep: Number.isFinite(metadata.sampleStep) ? metadata.sampleStep : 1,
       trueRawSamples: metadata.trueRawSamples !== false,
       samplingMode: metadata.samplingMode || "raw"
@@ -213,6 +214,7 @@ export function createHistogramController(deps) {
     return decorateHistogramStats(
       computeHistogram(samples, 256),
       {
+        band,
         sampleStep: step,
         trueRawSamples: step === 1,
         samplingMode: step === 1 ? "selection-raw" : "selection-subsampled"
@@ -238,6 +240,7 @@ export function createHistogramController(deps) {
         const stats = decorateHistogramStats(
           computeHistogram(window.data, 256),
           {
+            band,
             sampleStep: step,
             trueRawSamples: step === 1,
             samplingMode: step === 1 ? "whole-raw" : "whole-subsampled"
@@ -266,6 +269,7 @@ export function createHistogramController(deps) {
     const stats = decorateHistogramStats(
       computeHistogram(ds.lastRaster.dataF32, 256),
       {
+        band: b,
         sampleStep: Number.isFinite(ds.lastRaster.step) ? ds.lastRaster.step : 1,
         trueRawSamples: false,
         samplingMode: "view-raster"

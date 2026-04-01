@@ -52,7 +52,11 @@ export function createUIPanels(deps) {
     const band = resolveDisplayControlBand(ds);
     if (band == null) return null;
     // Display panel histogram always follows the currently adjusted display band.
-    return ds.bandStatsWhole.get(band) || null;
+    if (ds.bandStatsWhole.has(band)) return ds.bandStatsWhole.get(band) || null;
+    if (ds.bandStatsView && (ds.bandStatsView.band == null || Number(ds.bandStatsView.band) === Number(band))) {
+      return ds.bandStatsView;
+    }
+    return null;
   }
 
   function describeThreeBandDisplayMode(mode) {
