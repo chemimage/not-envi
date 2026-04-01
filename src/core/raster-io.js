@@ -59,42 +59,45 @@ function allocBandArray(meta, n) {
   return new Float64Array(n);
 }
 
-async function parallelFor(count, limit, fn) {
+function ensureOutputArray(meta, out, n) {
+  if (out && typeof out.length === "number" && out.length >= n) return out;
+  return allocBandArray(meta, n);
+}
+
+async function fillReadBuffer(ds, offset, scratch, length = scratch.byteLength) {
+  const want = Math.max(0, Math.min(scratch.byteLength, Number(length) || 0));
+  if (want <= 0) return scratch.subarray(0, 0);
+  if (typeof ds?.readInto === "function") {
+    const bytesRead = await ds.readInto(offset, scratch, 0, want);
+    return scratch.subarray(0, Math.max(0, bytesRead | 0));
+  }
+  const u8 = await ds.read(offset, want);
+  scratch.set(u8.subarray(0, want), 0);
+  return scratch.subarray(0, u8.byteLength);
+}
+
+async function parallelFor(count, limit, fn, makeState = null) {
   const n = Math.min(Math.max(1, limit | 0), count | 0);
   let next = 0;
   const workers = [];
   for (let w = 0; w < n; w += 1) {
+    const state = (typeof makeState === "function") ? makeState(w) : null;
     workers.push((async () => {
       while (true) {
         const i = next++;
         if (i >= count) break;
-        await fn(i);
+        await fn(i, state);
       }
     })());
   }
   await Promise.all(workers);
 }
 
-async function readBipRowAllBands(meta, ds, x0, y, spanPixels) {
-  const bytes = meta.dataTypeInfo.bytes;
-  const S = meta.samples;
-  const B = meta.bands;
-
-  const startX = clamp(x0, 0, S - 1);
-  const endX = clamp(x0 + spanPixels, 0, S);
-  const nPix = Math.max(0, endX - startX);
-  if (!nPix) return new Uint8Array(0);
-
-  const offset = pixelOffset(meta, startX, y, 0);
-  const len = nPix * B * bytes;
-  return ds.read(offset, len);
-}
-
-export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2) {
+export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2, out = null) {
   const bytes = meta.dataTypeInfo.bytes;
   const S = meta.samples;
   const L = meta.lines;
-  const out = allocBandArray(meta, outW * outH);
+  const outArr = ensureOutputArray(meta, out, outW * outH);
 
   if (meta.interleave === "bip") {
     throw new Error("readBandWindow not used for BIP");
@@ -107,29 +110,30 @@ export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, c
   const maxY = clamp(y0 + outH * step, 0, L);
   const safeOutW = Math.floor((maxX - x0 + (step - 1)) / step);
   const safeOutH = Math.floor((maxY - y0 + (step - 1)) / step);
+  const spanPixels = safeOutW * step;
+  const rowBytes = spanPixels * bytes;
 
-  const rowWorker = async (sy) => {
+  const rowWorker = async (sy, workerState) => {
     const y = y0 + sy * step;
     const rowOffset = pixelOffset(meta, x0, y, band);
-    const spanPixels = safeOutW * step;
-    const rowBytes = spanPixels * bytes;
-    const u8 = await ds.read(rowOffset, rowBytes);
+    const scratch = workerState?.scratch || new Uint8Array(rowBytes);
+    const u8 = await fillReadBuffer(ds, rowOffset, scratch, rowBytes);
     const seg = makeSegmentReader(meta, u8);
     const baseOut = sy * outW;
     for (let sx = 0; sx < safeOutW; sx += 1) {
-      out[baseOut + sx] = segGet(meta, seg, sx * step);
+      outArr[baseOut + sx] = segGet(meta, seg, sx * step);
     }
   };
 
-  await parallelFor(safeOutH, concurrency, rowWorker);
-  return out;
+  await parallelFor(safeOutH, concurrency, rowWorker, () => ({ scratch: new Uint8Array(rowBytes) }));
+  return outArr;
 }
 
-export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2) {
+export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2, out = null) {
   const S = meta.samples;
   const L = meta.lines;
   const B = meta.bands;
-  const out = allocBandArray(meta, outW * outH);
+  const outArr = ensureOutputArray(meta, out, outW * outH);
 
   x0 = clamp(Math.floor(x0), 0, S - 1);
   y0 = clamp(Math.floor(y0), 0, L - 1);
@@ -139,21 +143,24 @@ export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step
   const safeOutW = Math.floor((maxX - x0 + (step - 1)) / step);
   const safeOutH = Math.floor((maxY - y0 + (step - 1)) / step);
   const spanPixels = safeOutW * step;
+  const rowBytes = spanPixels * B * meta.dataTypeInfo.bytes;
 
-  const rowWorker = async (sy) => {
+  const rowWorker = async (sy, workerState) => {
     const y = y0 + sy * step;
-    const u8 = await readBipRowAllBands(meta, ds, x0, y, spanPixels);
+    const scratch = workerState?.scratch || new Uint8Array(rowBytes);
+    const rowOffset = pixelOffset(meta, x0, y, 0);
+    const u8 = await fillReadBuffer(ds, rowOffset, scratch, rowBytes);
     const seg = makeSegmentReader(meta, u8);
     const baseOut = sy * outW;
     for (let sx = 0; sx < safeOutW; sx += 1) {
       const rawPix = sx * step;
       const idx = rawPix * B + band;
-      out[baseOut + sx] = segGet(meta, seg, idx);
+      outArr[baseOut + sx] = segGet(meta, seg, idx);
     }
   };
 
-  await parallelFor(safeOutH, concurrency, rowWorker);
-  return out;
+  await parallelFor(safeOutH, concurrency, rowWorker, () => ({ scratch: new Uint8Array(rowBytes) }));
+  return outArr;
 }
 
 export function toFloat32(arr) {

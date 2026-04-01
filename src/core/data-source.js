@@ -20,6 +20,28 @@ export class BlobDataSource {
     return u8;
   }
 
+  async readInto(offset, dest, destOffset = 0, length = null) {
+    if (this.closed || !this.file) throw new Error("Data source closed");
+    if (!dest || typeof dest.byteLength !== "number") return 0;
+    const dstOffset = Math.max(0, Number(destOffset) || 0);
+    const maxLen = Math.max(0, dest.byteLength - dstOffset);
+    const wantLen = length == null ? maxLen : Math.max(0, Math.min(maxLen, Number(length) || 0));
+    if (wantLen <= 0) return 0;
+    const u8 = await this.read(offset, wantLen);
+    dest.set(u8, dstOffset);
+    return u8.byteLength;
+  }
+
+  async visitPages(offset, length, visitor) {
+    if (this.closed || !this.file) throw new Error("Data source closed");
+    const safeOffset = Math.max(0, Number(offset) || 0);
+    const safeLength = Math.max(0, Number(length) || 0);
+    if (safeLength <= 0 || typeof visitor !== "function") return 0;
+    const u8 = await this.read(safeOffset, safeLength);
+    await visitor(u8, safeOffset);
+    return u8.byteLength;
+  }
+
   close() {
     this.closed = true;
     this.file = null;
@@ -128,6 +150,78 @@ export class ChunkCacheDataSource {
     return p;
   }
 
+  async #loadChunkRange(first, last) {
+    const idxs = [];
+    for (let ci = first; ci <= last; ci += 1) idxs.push(ci);
+    const chunks = new Array(idxs.length);
+    let next = 0;
+    const worker = async () => {
+      while (true) {
+        const i = next++;
+        if (i >= idxs.length) break;
+        chunks[i] = await this.#getChunk(idxs[i]);
+      }
+    };
+    const nWorkers = Math.min(this.concurrency, idxs.length);
+    const workers = [];
+    for (let i = 0; i < nWorkers; i += 1) workers.push(worker());
+    await Promise.all(workers);
+    return { idxs, chunks };
+  }
+
+  async visitPages(offset, length, visitor) {
+    if (this.closed || !this.source) throw new Error("Data source closed");
+    const safeOffset = Math.max(0, Number(offset) || 0);
+    const safeLength = Math.max(0, Number(length) || 0);
+    if (safeLength <= 0 || typeof visitor !== "function") return 0;
+
+    const end = safeOffset + safeLength;
+    const first = Math.floor(safeOffset / this.chunkSize);
+    const last = Math.floor((end - 1) / this.chunkSize);
+
+    if (first === last) {
+      const chunk = await this.#getChunk(first);
+      const base = first * this.chunkSize;
+      const startIn = safeOffset - base;
+      const view = chunk.subarray(startIn, startIn + safeLength);
+      await visitor(view, safeOffset);
+      return view.byteLength;
+    }
+
+    const { idxs, chunks } = await this.#loadChunkRange(first, last);
+    let visited = 0;
+    for (let i = 0; i < idxs.length; i += 1) {
+      const ci = idxs[i];
+      const chunk = chunks[i];
+      const base = ci * this.chunkSize;
+      const start = Math.max(safeOffset, base);
+      const stop = Math.min(end, base + chunk.byteLength);
+      const sIn = start - base;
+      const view = chunk.subarray(sIn, sIn + (stop - start));
+      await visitor(view, start);
+      visited += view.byteLength;
+    }
+    return visited;
+  }
+
+  async readInto(offset, dest, destOffset = 0, length = null) {
+    if (this.closed || !this.source) throw new Error("Data source closed");
+    if (!dest || typeof dest.byteLength !== "number") return 0;
+    const dstOffset = Math.max(0, Number(destOffset) || 0);
+    const maxLen = Math.max(0, dest.byteLength - dstOffset);
+    const wantLen = length == null ? maxLen : Math.max(0, Math.min(maxLen, Number(length) || 0));
+    if (wantLen <= 0) return 0;
+
+    let writeOffset = dstOffset;
+    let total = 0;
+    await this.visitPages(offset, wantLen, async (view) => {
+      dest.set(view, writeOffset);
+      writeOffset += view.byteLength;
+      total += view.byteLength;
+    });
+    return total;
+  }
+
   async read(offset, length) {
     if (this.closed || !this.source) throw new Error("Data source closed");
     const safeOffset = Math.max(0, Number(offset) || 0);
@@ -146,37 +240,7 @@ export class ChunkCacheDataSource {
     }
 
     const out = new Uint8Array(safeLength);
-    const idxs = [];
-    for (let ci = first; ci <= last; ci += 1) idxs.push(ci);
-
-    const chunks = new Array(idxs.length);
-    let next = 0;
-    const worker = async () => {
-      while (true) {
-        const i = next++;
-        if (i >= idxs.length) break;
-        chunks[i] = await this.#getChunk(idxs[i]);
-      }
-    };
-
-    const nWorkers = Math.min(this.concurrency, idxs.length);
-    const workers = [];
-    for (let i = 0; i < nWorkers; i += 1) workers.push(worker());
-    await Promise.all(workers);
-
-    let outPos = 0;
-    for (let i = 0; i < idxs.length; i += 1) {
-      const ci = idxs[i];
-      const chunk = chunks[i];
-      const base = ci * this.chunkSize;
-      const start = Math.max(safeOffset, base);
-      const stop = Math.min(end, base + chunk.byteLength);
-      const sIn = start - base;
-      const n = stop - start;
-      out.set(chunk.subarray(sIn, sIn + n), outPos);
-      outPos += n;
-    }
-
+    await this.readInto(safeOffset, out, 0, safeLength);
     return out;
   }
 

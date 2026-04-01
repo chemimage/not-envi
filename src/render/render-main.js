@@ -84,6 +84,27 @@ export function createRenderer(deps) {
     return resolveDisplayPanelBand(panel, ds);
   }
 
+  const floatScratchPool = new Map();
+
+  function acquireFloatScratch(length) {
+    const size = Math.max(0, Math.floor(Number(length) || 0));
+    if (!size) return new Float32Array(0);
+    const bucket = floatScratchPool.get(size);
+    if (bucket?.length) return bucket.pop();
+    return new Float32Array(size);
+  }
+
+  function releaseFloatScratch(arr) {
+    if (!(arr instanceof Float32Array) || !arr.length) return;
+    const size = arr.length;
+    let bucket = floatScratchPool.get(size);
+    if (!bucket) {
+      bucket = [];
+      floatScratchPool.set(size, bucket);
+    }
+    if (bucket.length < 4) bucket.push(arr);
+  }
+
   async function readRasterDirect(ds, band, eff, viewportW, viewportH) {
     const geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
     const {
@@ -98,20 +119,30 @@ export function createRenderer(deps) {
       srcY0
     } = geom;
     const out = new Float32Array(rasterW * rasterH);
-    out.fill(Number.NaN);
+    const fullCoverage = colStart === 0 && rowStart === 0 && validW === rasterW && validH === rasterH;
+    if (!fullCoverage) out.fill(Number.NaN);
 
     if (validW > 0 && validH > 0) {
-      let raw;
-      if (ds.meta.interleave === "bip") {
-        raw = await readBandWindowBIP(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step);
-      } else {
-        raw = await readBandWindow(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step);
-      }
-      const src = toFloat32(raw);
-      for (let r = 0; r < validH; r += 1) {
-        const srcOff = r * validW;
-        const dstOff = (rowStart + r) * rasterW + colStart;
-        out.set(src.subarray(srcOff, srcOff + validW), dstOff);
+      const scratch = fullCoverage ? out : acquireFloatScratch(validW * validH);
+      try {
+        let raw;
+        if (ds.meta.interleave === "bip") {
+          raw = await readBandWindowBIP(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step, scratch);
+        } else {
+          raw = await readBandWindow(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step, scratch);
+        }
+        const src = raw === scratch ? scratch : toFloat32(raw);
+        if (fullCoverage) {
+          if (src !== out) out.set(src.subarray(0, out.length), 0);
+        } else {
+          for (let r = 0; r < validH; r += 1) {
+            const srcOff = r * validW;
+            const dstOff = (rowStart + r) * rasterW + colStart;
+            out.set(src.subarray(srcOff, srcOff + validW), dstOff);
+          }
+        }
+      } finally {
+        if (!fullCoverage) releaseFloatScratch(scratch);
       }
     }
 

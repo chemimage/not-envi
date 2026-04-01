@@ -53,6 +53,19 @@ function makeDs(u8) {
   };
 }
 
+function makeDsReadIntoOnly(u8) {
+  return {
+    async read() {
+      throw new Error("read() should not be used when readInto() is available");
+    },
+    async readInto(offset, dest, destOffset = 0, length = dest.byteLength) {
+      const view = u8.subarray(offset, offset + length);
+      dest.set(view, destOffset);
+      return view.byteLength;
+    }
+  };
+}
+
 describe("raster-io", () => {
   test("pixelOffset computes offsets for bsq/bil/bip", () => {
     const bsq = makeMeta("bsq", 4, 3, 2);
@@ -82,6 +95,24 @@ describe("raster-io", () => {
     const meta = makeMeta("bip");
     const ds = makeDs(makeBuffer(meta));
     const out = await readBandWindowBIP(meta, ds, 0, 1, 0, 2, 2, 1, 2);
+    expect(Array.from(out)).toEqual([1, 2, 11, 12]);
+  });
+
+  test("readBandWindow fills a provided Float32Array via readInto", async () => {
+    const meta = makeMeta("bsq");
+    const ds = makeDsReadIntoOnly(makeBuffer(meta));
+    const dest = new Float32Array(6);
+    const out = await readBandWindow(meta, ds, 1, 0, 0, 3, 2, 1, 2, dest);
+    expect(out).toBe(dest);
+    expect(Array.from(out)).toEqual([100, 101, 102, 110, 111, 112]);
+  });
+
+  test("readBandWindowBIP fills a provided Float32Array via readInto", async () => {
+    const meta = makeMeta("bip");
+    const ds = makeDsReadIntoOnly(makeBuffer(meta));
+    const dest = new Float32Array(4);
+    const out = await readBandWindowBIP(meta, ds, 0, 1, 0, 2, 2, 1, 2, dest);
+    expect(out).toBe(dest);
     expect(Array.from(out)).toEqual([1, 2, 11, 12]);
   });
 

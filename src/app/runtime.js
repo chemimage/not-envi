@@ -122,8 +122,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     console.info(`[state${suffix}] ${statusText || "idle"}`);
   }
 
-  async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY); }
-  async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step){ return readBandWindowBIPCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY); }
+  async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, out = null){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out); }
+  async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, out = null){ return readBandWindowBIPCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out); }
   function toFloat32(arr){ return toFloat32Core(arr); }
 
   // ========= Pyramid cache (per-band tiles) =========

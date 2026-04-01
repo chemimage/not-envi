@@ -51,4 +51,45 @@ describe("data sources", () => {
     expect(base.closed).toBe(true);
     await expect(ds.read(0, 1)).rejects.toThrow("Data source closed");
   });
+
+  test("ChunkCacheDataSource readInto fills caller-owned buffers across chunks", async () => {
+    const chunkSize = 64 * 1024;
+    const data = new Uint8Array((2 * chunkSize) + 8);
+    for (let i = 0; i < data.length; i += 1) data[i] = i;
+    const base = new BlobDataSource(makeFile(data));
+    const ds = new ChunkCacheDataSource(base, {
+      chunkSize,
+      maxBytes: 2 * chunkSize,
+      concurrency: 2
+    });
+
+    const out = new Uint8Array(6);
+    const bytesRead = await ds.readInto(chunkSize - 2, out);
+
+    expect(bytesRead).toBe(6);
+    expect(Array.from(out)).toEqual([254, 255, 0, 1, 2, 3]);
+  });
+
+  test("ChunkCacheDataSource visitPages yields chunk slices in order", async () => {
+    const chunkSize = 64 * 1024;
+    const data = new Uint8Array((3 * chunkSize) + 8);
+    for (let i = 0; i < data.length; i += 1) data[i] = i;
+    const base = new BlobDataSource(makeFile(data));
+    const ds = new ChunkCacheDataSource(base, {
+      chunkSize,
+      maxBytes: 3 * chunkSize,
+      concurrency: 2
+    });
+
+    const parts = [];
+    await ds.visitPages(chunkSize - 2, chunkSize + 4, async (view, offset) => {
+      parts.push({ offset, bytes: Array.from(view) });
+    });
+
+    expect(parts).toEqual([
+      { offset: chunkSize - 2, bytes: [254, 255] },
+      { offset: chunkSize, bytes: Array.from({ length: chunkSize }, (_unused, index) => index % 256) },
+      { offset: 2 * chunkSize, bytes: [0, 1] }
+    ]);
+  });
 });
