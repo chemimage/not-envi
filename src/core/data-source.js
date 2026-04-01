@@ -1,4 +1,5 @@
 import { clamp } from "./utils.js";
+import { APP_CONFIG } from "../app/config.js";
 
 export class BlobDataSource {
   constructor(file) {
@@ -58,11 +59,28 @@ export class ChunkCacheDataSource {
   constructor(source, options = {}) {
     this.source = source;
     this.size = source.size;
-    this.chunkSize = Math.max(64 * 1024, Number(options.chunkSize) || (1 << 20));
-    this.maxBytes = Math.max(this.chunkSize * 2, Number(options.maxBytes) || (256 * 1024 * 1024));
+    this.chunkSize = Math.max(
+      APP_CONFIG.dataSource.minChunkSizeBytes,
+      Number(options.chunkSize) || APP_CONFIG.dataSource.defaultChunkSizeBytes
+    );
+    this.maxBytes = Math.max(
+      this.chunkSize * 2,
+      Number(options.maxBytes) || APP_CONFIG.dataSource.defaultMaxBytes
+    );
 
-    const hc = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4;
-    this.concurrency = clamp(Number(options.concurrency) || clamp(Math.floor(hc / 2) + 1, 1, 8), 1, 8);
+    const hc = (typeof navigator !== "undefined" && navigator.hardwareConcurrency)
+      ? navigator.hardwareConcurrency
+      : 4;
+    const defaultConcurrency = clamp(
+      Math.floor(hc / APP_CONFIG.io.hardwareParallelDivisor) + APP_CONFIG.io.hardwareParallelBias,
+      APP_CONFIG.io.hardwareParallelMin,
+      APP_CONFIG.io.maxConcurrency
+    );
+    this.concurrency = clamp(
+      Number(options.concurrency) || defaultConcurrency,
+      APP_CONFIG.io.minConcurrency,
+      APP_CONFIG.io.maxConcurrency
+    );
 
     this.cache = new Map();
     this.inflight = new Map();
@@ -83,7 +101,11 @@ export class ChunkCacheDataSource {
   setConcurrency(n) {
     const v = Number(n);
     if (Number.isFinite(v)) {
-      this.concurrency = clamp(Math.floor(v), 1, 8);
+      this.concurrency = clamp(
+        Math.floor(v),
+        APP_CONFIG.io.minConcurrency,
+        APP_CONFIG.io.maxConcurrency
+      );
     }
   }
 

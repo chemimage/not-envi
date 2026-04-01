@@ -1,0 +1,226 @@
+function panelSlotValue(panelSlot) {
+  return Number(panelSlot) || 1;
+}
+
+function cloneCanvasImage(sourceCanvas) {
+  if (!sourceCanvas) return null;
+  if (typeof document === "undefined" || typeof document.createElement !== "function") {
+    return sourceCanvas;
+  }
+  if (typeof navigator !== "undefined" && /jsdom/i.test(String(navigator.userAgent || ""))) {
+    return sourceCanvas;
+  }
+  try {
+    const copy = document.createElement("canvas");
+    copy.width = Math.max(1, sourceCanvas.width || 1);
+    copy.height = Math.max(1, sourceCanvas.height || 1);
+    const ctx = copy.getContext("2d", { alpha: false });
+    if (ctx && typeof ctx.drawImage === "function") ctx.drawImage(sourceCanvas, 0, 0);
+    return copy;
+  } catch (_err) {
+    return sourceCanvas;
+  }
+}
+
+function tintCanvas(sourceCanvas, color) {
+  if (!sourceCanvas) return null;
+  if (typeof document === "undefined" || typeof document.createElement !== "function") {
+    return sourceCanvas;
+  }
+  try {
+    const tinted = document.createElement("canvas");
+    tinted.width = Math.max(1, sourceCanvas.width || 1);
+    tinted.height = Math.max(1, sourceCanvas.height || 1);
+    const ctx = tinted.getContext("2d", { alpha: true });
+    if (!ctx) return sourceCanvas;
+    ctx.drawImage(sourceCanvas, 0, 0);
+    ctx.globalCompositeOperation = "multiply";
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, tinted.width, tinted.height);
+    ctx.globalCompositeOperation = "source-over";
+    return tinted;
+  } catch (_err) {
+    return sourceCanvas;
+  }
+}
+
+function getFrameMap(ds) {
+  if (!ds.lastScreenFrames || typeof ds.lastScreenFrames.get !== "function") {
+    ds.lastScreenFrames = new Map();
+  }
+  if (ds.lastScreenFrame && !ds.lastScreenFrames.has(1)) {
+    ds.lastScreenFrames.set(1, ds.lastScreenFrame);
+  }
+  return ds.lastScreenFrames;
+}
+
+function getRasterMap(ds) {
+  if (!ds.lastRastersByPanel || typeof ds.lastRastersByPanel.get !== "function") {
+    ds.lastRastersByPanel = new Map();
+  }
+  return ds.lastRastersByPanel;
+}
+
+function getCompositeRasterMap(ds) {
+  if (!ds.lastCompositeRastersByPanel || typeof ds.lastCompositeRastersByPanel.get !== "function") {
+    ds.lastCompositeRastersByPanel = new Map();
+  }
+  return ds.lastCompositeRastersByPanel;
+}
+
+export function updatePanelRasterCache(ds, panelSlot, raster = null, compositeRaster = null) {
+  if (!ds) return;
+  const slot = panelSlotValue(panelSlot);
+  const rasterMap = getRasterMap(ds);
+  const compositeMap = getCompositeRasterMap(ds);
+  if (raster) rasterMap.set(slot, raster);
+  else rasterMap.delete(slot);
+  if (compositeRaster) compositeMap.set(slot, compositeRaster);
+  else compositeMap.delete(slot);
+}
+
+export function isStableRaster(raster) {
+  return !!raster && !raster.partial && !raster.approximate;
+}
+
+export function isStableCompositeRaster(compositeRaster) {
+  return !!compositeRaster && !compositeRaster.partial && !compositeRaster.approximate;
+}
+
+export function updateScreenPreviewCache(ds, panelSlot, modeKey, eff, sourceCanvas) {
+  if (!ds || !sourceCanvas) return;
+  const frame = {
+    modeKey,
+    eff,
+    viewX: ds.view.x,
+    viewY: ds.view.y,
+    canvas: cloneCanvasImage(sourceCanvas)
+  };
+  getFrameMap(ds).set(panelSlotValue(panelSlot), frame);
+  ds.lastScreenFrame = frame;
+}
+
+export function drawCachedScreenPreview({ els, ds, panelSlot, modeKey, eff, viewport }) {
+  const frame = getFrameMap(ds).get(panelSlotValue(panelSlot));
+  if (!frame || frame.modeKey !== modeKey || !frame.canvas) return false;
+  const prevEff = Math.max(1e-9, Number(frame.eff) || 0);
+  const scale = eff / prevEff;
+  if (!Number.isFinite(scale) || scale <= 0) return false;
+
+  const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
+  const dx = (Number(viewport.x) || 0) + (((Number(frame.viewX) || 0) - ds.view.x) * eff);
+  const dy = (Number(viewport.y) || 0) + (((Number(frame.viewY) || 0) - ds.view.y) * eff);
+
+  cpuCtx.save();
+  cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+  cpuCtx.imageSmoothingEnabled = false;
+  cpuCtx.fillStyle = "#000";
+  cpuCtx.fillRect(
+    Number(viewport.x) || 0,
+    Number(viewport.y) || 0,
+    Math.max(1, Number(viewport.w) || 1),
+    Math.max(1, Number(viewport.h) || 1)
+  );
+  cpuCtx.drawImage(frame.canvas, dx, dy, frame.canvas.width * scale, frame.canvas.height * scale);
+  cpuCtx.restore();
+
+  if (els.cpuCanvas?.style) els.cpuCanvas.style.display = "block";
+  if (els.gpuCanvas?.style) els.gpuCanvas.style.display = "none";
+  return true;
+}
+
+export function drawOverlayCachedPreview({
+  els,
+  entries,
+  layout,
+  resolvePanelBand,
+  clampView,
+  renderModeKey,
+  overlayColorForSlot
+}) {
+  const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
+  const dpr = window.devicePixelRatio || 1;
+  let drewAny = false;
+  let clearedViewport = false;
+
+  for (const entry of entries) {
+    const { panel, dataset: ds } = entry;
+    const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
+    const band = resolvePanelBand(panel, ds);
+    if (!viewport || !ds || band == null) continue;
+
+    const prevView = ds.view;
+    ds.view = panel.view || prevView;
+    try {
+      clampView(panel.slot, ds);
+      const eff = ds.view.scale * dpr;
+      const modeKey = renderModeKey(ds, band, false, null);
+      const frame = getFrameMap(ds).get(panelSlotValue(panel.slot));
+      if (!frame || frame.modeKey !== modeKey || !frame.canvas) continue;
+
+      const prevEff = Math.max(1e-9, Number(frame.eff) || 0);
+      const scale = eff / prevEff;
+      if (!Number.isFinite(scale) || scale <= 0) continue;
+      const tinted = tintCanvas(frame.canvas, overlayColorForSlot(panel.slot));
+      const dx = (Number(viewport.x) || 0) + (((Number(frame.viewX) || 0) - ds.view.x) * eff);
+      const dy = (Number(viewport.y) || 0) + (((Number(frame.viewY) || 0) - ds.view.y) * eff);
+
+      cpuCtx.save();
+      cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+      cpuCtx.imageSmoothingEnabled = false;
+      cpuCtx.globalCompositeOperation = clearedViewport ? "lighter" : "source-over";
+      if (!clearedViewport) {
+        cpuCtx.fillStyle = "#000";
+        cpuCtx.fillRect(
+          Number(viewport.x) || 0,
+          Number(viewport.y) || 0,
+          Math.max(1, Number(viewport.w) || 1),
+          Math.max(1, Number(viewport.h) || 1)
+        );
+        clearedViewport = true;
+      }
+      cpuCtx.drawImage(tinted, dx, dy, tinted.width * scale, tinted.height * scale);
+      cpuCtx.restore();
+      drewAny = true;
+    } finally {
+      ds.view = prevView;
+    }
+  }
+
+  if (drewAny) {
+    if (els.cpuCanvas?.style) els.cpuCanvas.style.display = "block";
+    if (els.gpuCanvas?.style) els.gpuCanvas.style.display = "none";
+  }
+  return drewAny;
+}
+
+export async function withPanelView(ds, panel, fn) {
+  if (!ds || !panel) return fn();
+  const prevView = ds.view;
+  ds.view = panel.view || prevView;
+  try {
+    return await fn();
+  } finally {
+    ds.view = prevView;
+  }
+}
+
+export function clearBaseCanvases(els) {
+  const gpuCtx = (els.gpuCanvas && typeof els.gpuCanvas.getContext === "function")
+    ? els.gpuCanvas.getContext("2d", { alpha: false })
+    : null;
+  const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
+  const overlayCtx = els.overlayCanvas.getContext("2d", { alpha: true });
+  if (els.gpuCanvas && els.gpuCanvas.style) els.gpuCanvas.style.display = "none";
+  if (els.cpuCanvas && els.cpuCanvas.style) els.cpuCanvas.style.display = "block";
+  if (gpuCtx) {
+    gpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+    gpuCtx.fillStyle = "#000";
+    gpuCtx.fillRect(0, 0, els.gpuCanvas.width, els.gpuCanvas.height);
+  }
+  cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+  cpuCtx.fillStyle = "#000";
+  cpuCtx.fillRect(0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
+  overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+  overlayCtx.clearRect(0, 0, els.overlayCanvas.width, els.overlayCanvas.height);
+}

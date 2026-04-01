@@ -119,7 +119,10 @@ describe("tiff loader", () => {
     const close = vi.fn();
     const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
       getImageCount: async () => 1,
-      getImage: async () => fakeImage,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
       littleEndian: true,
       bigTiff: false,
       close
@@ -145,6 +148,55 @@ describe("tiff loader", () => {
     }
   });
 
+  test("shares in-flight RGB block decodes across channel reads", async () => {
+    const fakeImage = {
+      getWidth: () => 2,
+      getHeight: () => 1,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        RowsPerStrip: 1,
+        StripOffsets: [0],
+        StripByteCounts: [2],
+        PhotometricInterpretation: 3
+      }),
+      readRGB: vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return new Uint8Array([255, 0, 0, 0, 255, 0]);
+      })
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([0, 0])], "palette-shared.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 3 });
+      const [red, green, blue] = await Promise.all([
+        readBandWindowBIP(ds.meta, ds.ds, 0, 0, 0, 2, 1, 1, 3),
+        readBandWindowBIP(ds.meta, ds.ds, 1, 0, 0, 2, 1, 1, 3),
+        readBandWindowBIP(ds.meta, ds.ds, 2, 0, 0, 2, 1, 1, 3)
+      ]);
+      expect(Array.from(red)).toEqual([255, 0]);
+      expect(Array.from(green)).toEqual([0, 255]);
+      expect(Array.from(blue)).toEqual([0, 0]);
+      expect(fakeImage.readRGB).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
   test("falls back to the geotiff windowed reader when the raw shortcut does not match decoded values", async () => {
     const fakeImage = {
       getWidth: () => 1,
@@ -164,7 +216,10 @@ describe("tiff loader", () => {
     const close = vi.fn();
     const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
       getImageCount: async () => 1,
-      getImage: async () => fakeImage,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
       littleEndian: true,
       bigTiff: false,
       close
@@ -201,7 +256,10 @@ describe("tiff loader", () => {
     const close = vi.fn();
     const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
       getImageCount: async () => 1,
-      getImage: async () => fakeImage,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
       littleEndian: true,
       bigTiff: false,
       close
@@ -217,6 +275,140 @@ describe("tiff loader", () => {
       expect(Array.from(second)).toEqual([1, 2, 3, 4]);
       expect(ds.ds.stats.decodeCalls).toBe(2);
       expect(ds.ds.stats.decodedCacheHits).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
+  test("samples uncompressed tiled TIFF sparsely for downsampled windows", async () => {
+    const fakeImage = {
+      getWidth: () => 4,
+      getHeight: () => 4,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        TileWidth: 2,
+        TileLength: 2,
+        TileOffsets: [0, 4, 8, 12],
+        TileByteCounts: [4, 4, 4, 4],
+        PhotometricInterpretation: 1
+      }),
+      tiles: {}
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+        13, 14, 15, 16
+      ])], "tiled-sparse.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 1, cacheBytes: 16 * 1024 * 1024 });
+      const out = await readBandWindow(ds.meta, ds.ds, 0, 0, 0, 2, 2, 2, 1);
+      expect(Array.from(out)).toEqual([1, 5, 9, 13]);
+      expect(ds.ds.stats.decodeCalls).toBe(0);
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
+  test("skips raw validation reads for large single-strip TIFF fast paths", async () => {
+    const fakeImage = {
+      getWidth: () => 8192,
+      getHeight: () => 8192,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 32,
+      getSampleFormat: () => 3,
+      getFileDirectory: () => ({
+        Compression: 1,
+        RowsPerStrip: 8192,
+        StripOffsets: [0],
+        StripByteCounts: [8192 * 8192 * 4],
+        PhotometricInterpretation: 1
+      }),
+      readRasters: vi.fn(async () => {
+        throw new Error("validation should have been skipped");
+      })
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array(32 * 1024)], "large-linear.tif", { type: "image/tiff" });
+      Object.defineProperty(file, "size", { value: 64 * 1024 * 1024 });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 1 });
+      expect(ds.meta.bands).toBe(1);
+      expect(fakeImage.readRasters).not.toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
+  test("keeps block-indexed TIFF handles open after dataset creation", async () => {
+    const fakeImage = {
+      getWidth: () => 3,
+      getHeight: () => 1,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        RowsPerStrip: 1,
+        StripOffsets: [0],
+        StripByteCounts: [3],
+        PhotometricInterpretation: 3
+      }),
+      readRGB: vi.fn(async () => new Uint8Array([
+        255, 0, 0,
+        0, 255, 0,
+        0, 0, 255
+      ]))
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([0, 0, 0])], "palette-open.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 1 });
+      expect(close).not.toHaveBeenCalled();
+      await readBandWindowBIP(ds.meta, ds.ds, 0, 0, 0, 3, 1, 1, 1);
+      expect(fakeImage.readRGB).toHaveBeenCalled();
+      ds.ds.close();
+      expect(close).toHaveBeenCalled();
     } finally {
       vi.doUnmock("geotiff");
       vi.resetModules();
@@ -242,7 +434,10 @@ describe("tiff loader", () => {
     const close = vi.fn();
     const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
       getImageCount: async () => 1,
-      getImage: async () => fakeImage,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
       littleEndian: true,
       bigTiff: false,
       close

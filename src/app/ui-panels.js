@@ -83,6 +83,20 @@ export function createUIPanels(deps) {
     return resolveThreeBandAdjustBand(ds);
   }
 
+  function shouldAutoWholeStats(ds) {
+    if (!ds?.meta) return true;
+    if (ds.meta.sourceFormat !== "tiff") return true;
+    const pixels = Number(ds.meta.samples || 0) * Number(ds.meta.lines || 0);
+    return pixels <= 20_000_000;
+  }
+
+  function requestWholeStatsIfNeeded(ds, band, opts = {}) {
+    if (!ds || band == null) return;
+    if (!shouldAutoWholeStats(ds)) return;
+    if (!opts.force && ds.bandStatsWhole.has(band)) return;
+    onNeedWholeStats(ds, band);
+  }
+
   function resolveActiveBandForDataset(ds) {
     if (!ds) return null;
     const panel = (typeof getActivePanel === "function") ? getActivePanel() : null;
@@ -115,7 +129,7 @@ export function createUIPanels(deps) {
     if (!ds || !isThreeBandColorMode(ds)) return;
     ds.displayAdjustColor = cycleThreeBandAdjustColor(getThreeBandAdjustColor(ds));
     const band = resolveDisplayControlBand(ds);
-    if (band != null && !ds.bandStatsWhole.has(band)) onNeedWholeStats(ds, band);
+    requestWholeStatsIfNeeded(ds, band);
     updateDisplayUI(true);
   }
 
@@ -135,7 +149,7 @@ export function createUIPanels(deps) {
       ds.thumb.buildKey = null;
       ds.thumb.buildPendingKey = null;
     }
-    for (let b = 0; b < 3; b += 1) onNeedWholeStats(ds, b);
+    for (let b = 0; b < 3; b += 1) requestWholeStatsIfNeeded(ds, b, { force: true });
     rebuildBandTree({ preserveScroll: true });
     updateDisplayUI(true);
     render();
@@ -340,7 +354,7 @@ export function createUIPanels(deps) {
     rebuildBandTree({ preserveScroll: true });
     updateDisplayUI(true);
     render();
-    if (!ds.bandStatsWhole.has(b)) onNeedWholeStats(ds, b);
+    requestWholeStatsIfNeeded(ds, b);
     if (onBandChanged) onBandChanged(ds, b);
   }
 

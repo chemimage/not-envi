@@ -1,4 +1,5 @@
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
+import { APP_CONFIG } from "./config.js";
 
 export function createSpectrumAreaController(deps) {
   const {
@@ -19,8 +20,8 @@ export function createSpectrumAreaController(deps) {
     fmtNoGroup
   } = deps;
   const floatScratchPool = createFloat32ScratchPool({
-    maxRetainedBuffers: 1,
-    maxRetainedElements: 1_048_576
+    maxRetainedBuffers: APP_CONFIG.scratch.spectrumArea.maxRetainedBuffers,
+    maxRetainedElements: APP_CONFIG.scratch.spectrumArea.maxRetainedElements
   });
 
   const ABORTED = Symbol("spectrum-area-aborted");

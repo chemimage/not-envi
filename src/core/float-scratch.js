@@ -1,6 +1,14 @@
+import { APP_CONFIG } from "../app/config.js";
+
 export function createFloat32ScratchPool(options = {}) {
-  const maxRetainedBuffers = Math.max(1, Math.floor(Number(options.maxRetainedBuffers) || 2));
-  const maxRetainedElements = Math.max(0, Math.floor(Number(options.maxRetainedElements) || (1 << 20)));
+  const maxRetainedBuffers = Math.max(
+    1,
+    Math.floor(Number(options.maxRetainedBuffers) || APP_CONFIG.scratch.defaultMaxRetainedBuffers)
+  );
+  const maxRetainedElements = Math.max(
+    0,
+    Math.floor(Number(options.maxRetainedElements) || APP_CONFIG.scratch.defaultMaxRetainedElements)
+  );
   const buckets = new Map();
 
   function acquire(length) {

@@ -95,8 +95,15 @@ import { pointInPolygon } from "./draw-geometry.js";
 
   // A small, bounded amount of parallelism helps on SSDs (and reduces latency for scattered reads),
   // but too much can overwhelm the browser. We keep it conservative.
-  const IO_CONCURRENCY_MAX = clamp(Math.floor(((navigator && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) / 2) + 1, 2, 8);
-  let IO_CONCURRENCY = APP_CONFIG.io.parallelEnabledByDefault ? IO_CONCURRENCY_MAX : 1;
+  const IO_CONCURRENCY_MAX = clamp(
+    Math.floor(
+      (((navigator && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) / APP_CONFIG.io.hardwareParallelDivisor)
+      + APP_CONFIG.io.hardwareParallelBias
+    ),
+    APP_CONFIG.io.hardwareParallelMin,
+    APP_CONFIG.io.maxConcurrency
+  );
+  let IO_CONCURRENCY = APP_CONFIG.io.parallelEnabledByDefault ? IO_CONCURRENCY_MAX : APP_CONFIG.io.minConcurrency;
   // ========= Elements =========
 
   const els = collectElements();

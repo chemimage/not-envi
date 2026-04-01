@@ -14,6 +14,7 @@ import {
   getVisibleDisplayPanels,
   panelHasLinkedPeers
 } from "./display-panels.js";
+import { APP_CONFIG } from "./config.js";
 
 export function createDatasetRuntime(deps) {
   const {
@@ -465,7 +466,6 @@ export function createDatasetRuntime(deps) {
       onAfterDatasetUIUpdate();
       render();
     }
-    onNeedWholeStats(ds, ds.activeBand);
   }
 
   async function addDatasetsFromFileList(files) {
@@ -477,8 +477,8 @@ export function createDatasetRuntime(deps) {
       result = await addDatasetsFromFileListMod(list, {
         setStatus,
         ioConcurrency: getIOConcurrency(),
-        chunkSize: 1 << 20,
-        cacheBytes: 128 * 1024 * 1024,
+        chunkSize: APP_CONFIG.io.defaultChunkSizeBytes,
+        cacheBytes: APP_CONFIG.io.defaultDatasetCacheBytes,
         createDataset: makeDatasetFromLoadedFiles
       });
     } catch (e) {
@@ -512,8 +512,8 @@ export function createDatasetRuntime(deps) {
     const ds = await addDatasetFromFilesMod(hdrFile, dataFile, {
       setStatus,
       ioConcurrency: getIOConcurrency(),
-      chunkSize: 1 << 20,
-      cacheBytes: 128 * 1024 * 1024,
+      chunkSize: APP_CONFIG.io.defaultChunkSizeBytes,
+      cacheBytes: APP_CONFIG.io.defaultDatasetCacheBytes,
       createDataset: makeDatasetFromLoadedFiles
     });
     attachDataset(ds);

@@ -7,6 +7,7 @@ import {
   resolveHistogramDisplay
 } from "./histogram-math.js";
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
+import { APP_CONFIG } from "../app/config.js";
 
 export function createHistogramController(deps) {
   const {
@@ -26,8 +27,8 @@ export function createHistogramController(deps) {
     render
   } = deps;
   const floatScratchPool = createFloat32ScratchPool({
-    maxRetainedBuffers: 2,
-    maxRetainedElements: 1_048_576
+    maxRetainedBuffers: APP_CONFIG.scratch.histogram.maxRetainedBuffers,
+    maxRetainedElements: APP_CONFIG.scratch.histogram.maxRetainedElements
   });
 
   function resolveDisplayBand(ds) {

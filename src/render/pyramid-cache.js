@@ -1,5 +1,6 @@
 import { clamp } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
+import { APP_CONFIG } from "../app/config.js";
 
 const perfNow = () => (
   (typeof performance !== "undefined" && typeof performance.now === "function")
@@ -193,7 +194,11 @@ export function createPyramidController(deps) {
   } = deps;
 
   function resolveMaxInflight(ioConcurrency) {
-    return clamp(Math.floor(Math.max(1, ioConcurrency) * 0.75) + 1, 2, 8);
+    return clamp(
+      Math.floor(Math.max(1, ioConcurrency) * APP_CONFIG.pyramid.inflightFactor) + APP_CONFIG.pyramid.inflightBias,
+      APP_CONFIG.pyramid.inflightMin,
+      APP_CONFIG.pyramid.inflightMax
+    );
   }
 
   function touchTile(pyr, key) {
@@ -214,13 +219,13 @@ export function createPyramidController(deps) {
   }
 
   function initPyramid(ds) {
-    const tileSize = 128;
+    const tileSize = APP_CONFIG.pyramid.tileSize;
     const maxLevel = computeMaxPyramidLevel(ds.meta, tileSize);
     const ioConcurrency = Math.max(1, getIOConcurrency());
     ds.pyramid = {
       tileSize,
       maxLevel,
-      limitBytes: ds.pyramidBudgetBytes || (256 * 1024 * 1024),
+      limitBytes: ds.pyramidBudgetBytes || APP_CONFIG.pyramid.defaultLimitBytes,
       totalBytes: 0,
       tiles: new Map(),
       pending: new Map(),

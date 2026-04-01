@@ -1,3 +1,5 @@
+import { APP_CONFIG } from "./config.js";
+
 export function createCacheRuntime(deps) {
   const {
     state,
@@ -13,10 +15,12 @@ export function createCacheRuntime(deps) {
 
   const cacheBudget = {
     fracOfAvailable: cacheFraction,
-    minBytes: 256 * 1024 * 1024,
-    maxBytes: 3 * 1024 * 1024 * 1024,
-    fracChunk: 0.60,
-    fracPyramid: 0.40,
+    minBytes: Number(appConfig?.cache?.minBytes) || APP_CONFIG.cache.minBytes,
+    maxBytes: Number(appConfig?.cache?.maxBytes) || APP_CONFIG.cache.maxBytes,
+    minChunkBudgetChunks: Number(appConfig?.cache?.minChunkBudgetChunks) || APP_CONFIG.cache.minChunkBudgetChunks,
+    minPyramidBytes: Number(appConfig?.cache?.minPyramidBytes) || APP_CONFIG.cache.minPyramidBytes,
+    fracChunk: Number(appConfig?.cache?.fracChunk) || APP_CONFIG.cache.fracChunk,
+    fracPyramid: Number(appConfig?.cache?.fracPyramid) || APP_CONFIG.cache.fracPyramid,
     totalBytes: 0
   };
 
@@ -45,9 +49,17 @@ export function createCacheRuntime(deps) {
     const per = cacheBudget.totalBytes / n;
 
     for (const ds of state.datasets) {
-      const chunkSize = (ds.ds && ds.ds.chunkSize) ? ds.ds.chunkSize : (1 << 20);
-      const chunkBytes = Math.max(chunkSize * 8, Math.floor(per * cacheBudget.fracChunk));
-      const pyramidBytes = Math.max(64 * 1024 * 1024, Math.floor(per * cacheBudget.fracPyramid));
+      const chunkSize = (ds.ds && ds.ds.chunkSize)
+        ? ds.ds.chunkSize
+        : (appConfig?.io?.defaultChunkSizeBytes || APP_CONFIG.io.defaultChunkSizeBytes);
+      const chunkBytes = Math.max(
+        chunkSize * cacheBudget.minChunkBudgetChunks,
+        Math.floor(per * cacheBudget.fracChunk)
+      );
+      const pyramidBytes = Math.max(
+        cacheBudget.minPyramidBytes,
+        Math.floor(per * cacheBudget.fracPyramid)
+      );
 
       ds.chunkBudgetBytes = chunkBytes;
       ds.pyramidBudgetBytes = pyramidBytes;
@@ -66,7 +78,13 @@ export function createCacheRuntime(deps) {
       try {
         if (ds && ds.ds) {
           if (typeof ds.ds.setConcurrency === "function") ds.ds.setConcurrency(io);
-          else if (typeof ds.ds.concurrency === "number") ds.ds.concurrency = clamp(io, 1, 8);
+          else if (typeof ds.ds.concurrency === "number") {
+            ds.ds.concurrency = clamp(
+              io,
+              Number(appConfig?.io?.minConcurrency) || APP_CONFIG.io.minConcurrency,
+              Number(appConfig?.io?.maxConcurrency) || APP_CONFIG.io.maxConcurrency
+            );
+          }
         }
         if (ds && ds.pyramid) updatePyramidInflight(ds);
       } catch (_err) {}

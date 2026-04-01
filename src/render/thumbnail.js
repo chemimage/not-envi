@@ -1,6 +1,7 @@
 import { clamp } from "../core/utils.js";
 import { resolveThreeBandChannelOrder } from "../app/three-band-display.js";
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
+import { APP_CONFIG } from "../app/config.js";
 
 export function createThumbnailController(deps) {
   const {
@@ -21,8 +22,8 @@ export function createThumbnailController(deps) {
     recenterViewAtFraction
   } = deps;
   const floatScratchPool = createFloat32ScratchPool({
-    maxRetainedBuffers: 3,
-    maxRetainedElements: 1_048_576
+    maxRetainedBuffers: APP_CONFIG.scratch.thumbnail.maxRetainedBuffers,
+    maxRetainedElements: APP_CONFIG.scratch.thumbnail.maxRetainedElements
   });
 
   function syncThumbWrapSize() {
