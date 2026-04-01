@@ -17,6 +17,7 @@ import {
   isRawCompatibleSummary,
   isUncompressedSingleStrip,
   loadImageSummaries,
+  loadSubIfdOverviewSummaries,
   needsRgbWindowSource,
   photometricName,
   resolveTiffCacheBudgets,
@@ -102,6 +103,7 @@ function createLinearSingleSource(summary, sampleType, file, deps) {
 async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets) {
   const first = images[0];
   const description = String(file?.name || "TIFF");
+  const overviewSummaries = await loadSubIfdOverviewSummaries(tiff, first, deps);
 
   if (first.samplesPerPixel !== 1 && first.samplesPerPixel !== 3) {
     throw new Error("Only grayscale TIFF or 3-band TIFF images are supported.");
@@ -126,6 +128,7 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
         tiff,
         meta,
         bandSpecs: buildRgbBandSpecs(first, 0),
+        overviewSummaries,
         budgets,
         concurrency: deps?.ioConcurrency ?? APP_CONFIG.io.defaultConcurrency
       })
@@ -193,12 +196,13 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
     mode: "block-indexed",
     base: null,
     cached: new TiffBlockIndexedDataSource({
-      file,
-      tiff,
-      meta,
-      bandSpecs: preferWindowBlocks
-        ? buildWindowBandSpecs(first, 0)
-        : buildRawBandSpecs(first, sampleType, 0),
+        file,
+        tiff,
+        meta,
+        overviewSummaries,
+        bandSpecs: preferWindowBlocks
+          ? buildWindowBandSpecs(first, 0)
+          : buildRawBandSpecs(first, sampleType, 0),
       budgets,
       concurrency: deps?.ioConcurrency ?? APP_CONFIG.io.defaultConcurrency
     })
@@ -317,7 +321,10 @@ export async function describeTiffDataset(tiff, file, deps = {}) {
   };
 
   if (images.length === 1) {
-    return describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets);
+    raw.overviewCount = 0;
+    const desc = await describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets);
+    raw.overviewCount = Number(desc?.cached?.overviewCount || 0);
+    return desc;
   }
   return describeMultiPageDataset(tiff, images, file, deps, raw, sampleType, budgets);
 }

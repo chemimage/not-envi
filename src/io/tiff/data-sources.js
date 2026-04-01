@@ -400,7 +400,7 @@ async function processInBatches(items, concurrency, runItem, onBatch = null, can
 let nextTiffSourceId = 1;
 
 export class TiffBlockIndexedDataSource {
-  constructor({ file, tiff, meta, bandSpecs, budgets = {}, concurrency = 2, ownerId = "" }) {
+  constructor({ file, tiff, meta, bandSpecs, overviewSummaries = [], budgets = {}, concurrency = 2, ownerId = "" }) {
     this.file = file;
     this.tiff = tiff;
     this.meta = meta;
@@ -429,6 +429,21 @@ export class TiffBlockIndexedDataSource {
     this.stats = createTiffStats();
     this.closed = false;
     this.ownerId = String(this.rawSource?.ownerId || this.base?.ownerId || "").trim() || `tiff:${nextTiffSourceId++}`;
+    this.overviews = Array.isArray(overviewSummaries)
+      ? overviewSummaries
+        .map((summary) => ({
+          summary,
+          scaleX: Number(summary?.scaleX) || (Number(this.meta?.samples) / Math.max(1, Number(summary?.width) || 1)),
+          scaleY: Number(summary?.scaleY) || (Number(this.meta?.lines) / Math.max(1, Number(summary?.height) || 1)),
+          scale: Number(summary?.scale) || Math.min(
+            Number(summary?.scaleX) || (Number(this.meta?.samples) / Math.max(1, Number(summary?.width) || 1)),
+            Number(summary?.scaleY) || (Number(this.meta?.lines) / Math.max(1, Number(summary?.height) || 1))
+          )
+        }))
+        .filter((entry) => entry.summary && entry.scale > 1)
+        .sort((a, b) => Number(a.scale || 1) - Number(b.scale || 1))
+      : [];
+    this.overviewCount = this.overviews.length;
   }
 
   get maxBytes() {
@@ -520,6 +535,10 @@ export class TiffBlockIndexedDataSource {
     return specs.every((spec) => spec.kind === "rgb" || spec.kind === "native-rgb-jpeg");
   }
 
+  hasNativeOverviews() {
+    return this.overviews.length > 0;
+  }
+
   #resolveReadOptions(outOrOptions = null, maybeOptions = null) {
     if (isWindowReadOptions(outOrOptions) && maybeOptions == null) {
       return { out: null, options: outOrOptions };
@@ -602,6 +621,10 @@ export class TiffBlockIndexedDataSource {
     const safeOutH = Math.floor((maxY - safeY0 + (step - 1)) / step);
     if (safeOutW <= 0 || safeOutH <= 0) {
       return { bands: outputs, width: outW, height: outH };
+    }
+    const overviewPlan = this.#selectOverviewPlan(step);
+    if (overviewPlan) {
+      return this.#readCompositeWindowFromOverview(meta, specs, overviewPlan, x0, y0, safeOutW, safeOutH, outW, step, outputs);
     }
 
     const first = specs[0];
@@ -696,6 +719,10 @@ export class TiffBlockIndexedDataSource {
     const safeOutW = Math.floor((maxX - safeX0 + (step - 1)) / step);
     const safeOutH = Math.floor((maxY - safeY0 + (step - 1)) / step);
     if (safeOutW <= 0 || safeOutH <= 0) return target;
+    const overviewPlan = this.#selectOverviewPlan(step);
+    if (overviewPlan) {
+      return this.#readBandWindowFromOverview(meta, band, target, overviewPlan, safeX0, safeY0, safeOutW, safeOutH, step);
+    }
 
     const xLast = safeX0 + ((safeOutW - 1) * step);
     const yLast = safeY0 + ((safeOutH - 1) * step);
@@ -812,6 +839,128 @@ export class TiffBlockIndexedDataSource {
       try { this.tiff.close(); } catch (_err) {}
     }
     this.tiff = null;
+  }
+
+  #selectOverviewPlan(step) {
+    const desiredStep = Math.max(1, Number(step) || 1);
+    if (desiredStep <= 1 || !this.overviews.length) return null;
+    let best = null;
+    let fallback = null;
+    for (const overview of this.overviews) {
+      const scale = Math.max(1, Number(overview?.scale) || 1);
+      if (scale <= desiredStep) best = overview;
+      else if (!fallback) fallback = overview;
+    }
+    return best || fallback || null;
+  }
+
+  #resolveOverviewWindow(overviewPlan, x0, y0, outW, outH, step) {
+    const summary = overviewPlan?.summary || null;
+    if (!summary) return null;
+    const scaleX = Math.max(1, Number(overviewPlan.scaleX) || 1);
+    const scaleY = Math.max(1, Number(overviewPlan.scaleY) || 1);
+    const xLast = x0 + ((Math.max(1, outW) - 1) * step);
+    const yLast = y0 + ((Math.max(1, outH) - 1) * step);
+    const ox0 = clamp(Math.floor(x0 / scaleX), 0, Math.max(0, Number(summary.width) - 1));
+    const oy0 = clamp(Math.floor(y0 / scaleY), 0, Math.max(0, Number(summary.height) - 1));
+    const ox1 = clamp(Math.floor(xLast / scaleX) + 1, ox0 + 1, Math.max(1, Number(summary.width)));
+    const oy1 = clamp(Math.floor(yLast / scaleY) + 1, oy0 + 1, Math.max(1, Number(summary.height)));
+    return {
+      summary,
+      window: [ox0, oy0, ox1, oy1],
+      width: outW,
+      height: outH
+    };
+  }
+
+  #overviewUsesRgb(spec, summary) {
+    return spec?.kind === "rgb"
+      || spec?.kind === "native-rgb-jpeg"
+      || !isRawCompatibleSummary(summary);
+  }
+
+  #overviewSampleIndex(spec, band) {
+    if (Number.isFinite(Number(spec?.windowSampleIndex))) return Number(spec.windowSampleIndex);
+    if (Number.isFinite(Number(spec?.channel))) return Number(spec.channel);
+    return Math.max(0, Math.floor(Number(band) || 0));
+  }
+
+  async #readBandWindowFromOverview(meta, band, target, overviewPlan, x0, y0, outW, outH, step) {
+    const spec = this.bandSpecs[band];
+    if (!spec) throw new Error(`TIFF band ${Number(band) + 1} is unavailable.`);
+    const request = this.#resolveOverviewWindow(overviewPlan, x0, y0, outW, outH, step);
+    if (!request) return target;
+    const t0 = perfNow();
+    if (this.#overviewUsesRgb(spec, request.summary)) {
+      const rgb = await request.summary.image.readRGB({
+        window: request.window,
+        interleave: true,
+        width: request.width,
+        height: request.height,
+        resampleMethod: "nearest",
+        pool: this.#getPool()
+      });
+      const channel = clamp(this.#overviewSampleIndex(spec, band), 0, 2);
+      for (let index = 0, offset = channel; index < target.length && offset < rgb.length; index += 1, offset += 3) {
+        target[index] = rgb[offset];
+      }
+    } else {
+      const sampleIndex = this.#overviewSampleIndex(spec, band);
+      const raw = await request.summary.image.readRasters({
+        window: request.window,
+        samples: [sampleIndex],
+        interleave: true,
+        width: request.width,
+        height: request.height,
+        resampleMethod: "nearest",
+        fillValue: 0,
+        pool: this.#getPool()
+      });
+      target.set(raw.subarray(0, target.length), 0);
+    }
+    this.stats.decodeCalls += 1;
+    this.stats.decodeMs += perfNow() - t0;
+    return target;
+  }
+
+  async #readCompositeWindowFromOverview(meta, specs, overviewPlan, x0, y0, outW, outH, fullOutW, step, outputs) {
+    const request = this.#resolveOverviewWindow(overviewPlan, x0, y0, outW, outH, step);
+    if (!request) return { bands: outputs, width: fullOutW, height: outH };
+    const t0 = perfNow();
+    if (specs.some((spec) => this.#overviewUsesRgb(spec, request.summary))) {
+      const rgb = await request.summary.image.readRGB({
+        window: request.window,
+        interleave: true,
+        width: request.width,
+        height: request.height,
+        resampleMethod: "nearest",
+        pool: this.#getPool()
+      });
+      for (let index = 0, offset = 0; index < outputs[0].length && (offset + 2) < rgb.length; index += 1, offset += 3) {
+        outputs[0][index] = rgb[offset];
+        outputs[1][index] = rgb[offset + 1];
+        outputs[2][index] = rgb[offset + 2];
+      }
+    } else {
+      const samples = specs.map((spec, index) => this.#overviewSampleIndex(spec, index));
+      const raw = await request.summary.image.readRasters({
+        window: request.window,
+        samples,
+        interleave: false,
+        width: request.width,
+        height: request.height,
+        resampleMethod: "nearest",
+        fillValue: 0,
+        pool: this.#getPool()
+      });
+      for (let channel = 0; channel < 3; channel += 1) {
+        const band = raw[channel];
+        outputs[channel].set(band.subarray(0, outputs[channel].length), 0);
+      }
+    }
+    this.stats.decodeCalls += 1;
+    this.stats.decodeMs += perfNow() - t0;
+    return { bands: outputs, width: fullOutW, height: outH };
   }
 
   async #loadDecodedBlock(spec, block, step = 1) {

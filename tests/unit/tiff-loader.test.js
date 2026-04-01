@@ -239,6 +239,85 @@ describe("tiff loader", () => {
     }
   });
 
+  test("uses TIFF SubIFD overview images for coarse RGB composite reads", async () => {
+    const baseImage = {
+      getWidth: () => 8,
+      getHeight: () => 4,
+      getSamplesPerPixel: () => 3,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 7,
+        PhotometricInterpretation: 6,
+        PlanarConfiguration: 1,
+        RowsPerStrip: 4,
+        StripOffsets: [0],
+        StripByteCounts: [4],
+        SubIFDs: [12345]
+      }),
+      readRGB: vi.fn(async () => {
+        throw new Error("base image overview path should not be used for coarse read");
+      })
+    };
+    const overviewImage = {
+      getWidth: () => 2,
+      getHeight: () => 1,
+      getSamplesPerPixel: () => 3,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 7,
+        PhotometricInterpretation: 6,
+        PlanarConfiguration: 1,
+        RowsPerStrip: 1,
+        StripOffsets: [0],
+        StripByteCounts: [4],
+        NewSubfileType: 1
+      }),
+      readRGB: vi.fn(async () => new Uint8Array([
+        10, 20, 30,
+        40, 50, 60
+      ]))
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return baseImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      parseFileDirectoryAt: vi.fn(async (offset) => {
+        if (offset !== 12345) throw new Error(`Unexpected offset ${offset}`);
+        return {
+          image: overviewImage,
+          fileDirectory: overviewImage.getFileDirectory(),
+          geoKeyDirectory: null,
+          nextIFDByteOffset: 0
+        };
+      }),
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([0, 0, 0, 0])], "subifd-overview.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 2 });
+      expect(ds.ds.hasNativeOverviews()).toBe(true);
+      expect(ds.ds.overviewCount).toBe(1);
+
+      const composite = await ds.ds.readCompositeWindow(ds.meta, 0, 0, 2, 1, 4);
+      expect(Array.from(composite.bands[0])).toEqual([10, 40]);
+      expect(Array.from(composite.bands[1])).toEqual([20, 50]);
+      expect(Array.from(composite.bands[2])).toEqual([30, 60]);
+      expect(overviewImage.readRGB).toHaveBeenCalledTimes(1);
+      expect(baseImage.readRGB).not.toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
   test("reads raw planar RGB TIFF composite windows without geotiff RGB decode", async () => {
     const fakeImage = {
       getWidth: () => 2,

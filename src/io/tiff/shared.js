@@ -2,6 +2,7 @@ import {
   readBandWindow as readBandWindowCore,
   readBandWindowBIP as readBandWindowBIPCore
 } from "../../core/raster-io.js";
+import { GeoTIFFImage } from "geotiff";
 import { DATA_TYPES } from "../../core/envi-types.js";
 import { APP_CONFIG, detectDeviceMemoryGiB } from "../../app/config.js";
 import { resolveTiffWorkerPoolSize } from "./scheduler.js";
@@ -126,7 +127,9 @@ export function summarizeImage(image) {
   const stripOffsets = listTagValues(fileDirectory?.StripOffsets);
   const stripByteCounts = listTagValues(fileDirectory?.StripByteCounts);
   const tileOffsets = listTagValues(fileDirectory?.TileOffsets);
+  const subIFDOffsets = listTagValues(fileDirectory?.SubIFDs);
   const pageNumber = listTagValues(fileDirectory?.PageNumber);
+  const newSubfileType = firstFinite([fileDirectory?.NewSubfileType, fileDirectory?.SubfileType], 0);
   return {
     image,
     fileDirectory,
@@ -142,8 +145,82 @@ export function summarizeImage(image) {
     stripOffsets,
     stripByteCounts,
     tileOffsets,
-    pageNumber
+    subIFDOffsets,
+    pageNumber,
+    newSubfileType
   };
+}
+
+function arraysEqualNumeric(a, b) {
+  const aa = Array.isArray(a) ? a : (ArrayBuffer.isView(a) ? Array.from(a) : []);
+  const bb = Array.isArray(b) ? b : (ArrayBuffer.isView(b) ? Array.from(b) : []);
+  if (aa.length !== bb.length) return false;
+  for (let index = 0; index < aa.length; index += 1) {
+    if (Number(aa[index]) !== Number(bb[index])) return false;
+  }
+  return true;
+}
+
+function buildImageFromParsedIfd(tiff, parsed) {
+  if (parsed?.image) return parsed.image;
+  if (!parsed?.fileDirectory || !tiff?.source) return null;
+  return new GeoTIFFImage(
+    parsed.fileDirectory,
+    parsed.geoKeyDirectory || null,
+    tiff.dataView || null,
+    !!tiff.littleEndian,
+    !!tiff.cache,
+    tiff.source
+  );
+}
+
+function isCompatibleOverviewSummary(base, candidate) {
+  if (!base || !candidate) return false;
+  if (!(Number(candidate.width) > 0) || !(Number(candidate.height) > 0)) return false;
+  if (Number(candidate.width) >= Number(base.width) || Number(candidate.height) >= Number(base.height)) return false;
+  if (Number(candidate.samplesPerPixel) !== Number(base.samplesPerPixel)) return false;
+  if (Number(candidate.planarConfiguration || 1) !== Number(base.planarConfiguration || 1)) return false;
+  if (!arraysEqualNumeric(candidate.bitsPerSample, base.bitsPerSample)) return false;
+  if (!arraysEqualNumeric(candidate.sampleFormats, base.sampleFormats)) return false;
+  return true;
+}
+
+export async function loadSubIfdOverviewSummaries(tiff, baseSummary, deps = {}) {
+  const offsets = (Array.isArray(baseSummary?.subIFDOffsets) ? baseSummary.subIFDOffsets : [])
+    .map((value) => firstSafeOffsetOrNull([value]))
+    .filter((value) => value != null);
+  if (!offsets.length || !tiff || typeof tiff.parseFileDirectoryAt !== "function") return [];
+
+  const overviews = [];
+  for (let index = 0; index < offsets.length; index += 1) {
+    try {
+      const offset = offsets[index];
+      const parsed = await tiff.parseFileDirectoryAt(offset);
+      const image = buildImageFromParsedIfd(tiff, parsed);
+      if (!image) continue;
+      const summary = summarizeImage(image);
+      if (!isCompatibleOverviewSummary(baseSummary, summary)) continue;
+      summary.isOverview = true;
+      summary.overviewOffset = offset;
+      summary.scaleX = Number(baseSummary.width) / Number(summary.width);
+      summary.scaleY = Number(baseSummary.height) / Number(summary.height);
+      summary.scale = Math.min(summary.scaleX, summary.scaleY);
+      overviews.push(summary);
+    } catch (_err) {
+      // Ignore malformed overview entries and keep the base image usable.
+    }
+    if ((index + 1) % APP_CONFIG.tiff.indexScanYieldEvery === 0) {
+      deps?.setStatus?.(`indexing TIFF… (${index + 1} overviews)`, "warn");
+      await yieldToEventLoop();
+    }
+  }
+
+  overviews.sort((a, b) => (
+    (Number(a.scale) || 1) - (Number(b.scale) || 1)
+    || Number(b.width || 0) - Number(a.width || 0)
+    || Number(b.height || 0) - Number(a.height || 0)
+  ));
+  return overviews;
 }
 
 export function resolveUniformSampleType(summary, label = "TIFF image") {

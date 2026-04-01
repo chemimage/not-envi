@@ -505,7 +505,12 @@ export function createRenderer(deps) {
         renderKey,
         stagedLimit
       } = resolveTiffPreviewFactor(ds, 0, eff, geom, panelSlot, viewportW, viewportH);
-      if (previewFactor > 1 && stagedLimit == null) {
+      if (
+        previewFactor > 1
+        && stagedLimit == null
+        && typeof ds?.ds?.hasNativeOverviews === "function"
+        && ds.ds.hasNativeOverviews()
+      ) {
         const pyramidComposite = await tryCompositeFromPyramidOverview(
           ds,
           eff,

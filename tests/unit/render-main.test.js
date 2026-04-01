@@ -320,6 +320,52 @@ describe("render-main", () => {
     expect(ds.lastCompositeRaster).toBeNull();
   });
 
+  test("render skips pyramid-overview TIFF preview path when native overviews are unavailable", async () => {
+    const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
+      bands: [0, 1, 2].map((band) => {
+        const arr = new Float32Array(outW * outH);
+        arr.fill(band + 1);
+        return arr;
+      })
+    }));
+    const tryRasterFromPyramid = vi.fn(async (_ds, band) => ({
+      band,
+      w: 64,
+      h: 36,
+      dataF32: new Float32Array(64 * 36).fill(band + 1),
+      partial: false,
+      approximate: true
+    }));
+    const ds = {
+      id: "ds-vis-no-overview",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 0.5 },
+      meta: { samples: 1280, lines: 720, bands: 3, interleave: "bip", sourceFormat: "tiff" },
+      ds: {
+        supportsCompositeWindow: () => true,
+        hasNativeOverviews: () => false,
+        estimateReadWork: () => ({ sparseRaw: false, nativeJpeg: true, blockCount: 400, scaledDecodePixels: 800_000 }),
+        readCompositeWindow: compositeWindow
+      },
+      lastRaster: null,
+      lastCompositeRaster: null,
+      bandStatsWhole: new Map()
+    };
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      tryRasterFromPyramid,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(compositeWindow).toHaveBeenCalledTimes(1);
+    expect(tryRasterFromPyramid).not.toHaveBeenCalled();
+  });
+
   test("render stages raw TIFF composite refinement across same-view rerenders", async () => {
     const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
       bands: [0, 1, 2].map((band) => {
@@ -344,6 +390,7 @@ describe("render-main", () => {
       meta: { samples: 1280, lines: 720, bands: 3, interleave: "bip", sourceFormat: "tiff" },
       ds: {
         supportsCompositeWindow: () => true,
+        hasNativeOverviews: () => true,
         estimateReadWork: () => ({ sparseRaw: true, nativeJpeg: false, blockCount: 400, spanReads: 48_000 }),
         readCompositeWindow: compositeWindow
       },
