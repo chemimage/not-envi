@@ -98,6 +98,21 @@ function createFairOwnerScheduler(maxConcurrency, minPerOwner = 1) {
         requestPump();
       });
     },
+    cancel(owner) {
+      const ownerKey = String(owner || "default");
+      const queue = queues.get(ownerKey);
+      if (!queue?.length) return 0;
+      let cancelled = 0;
+      for (const job of queue) {
+        cancelled += 1;
+        const err = new Error("Task cancelled");
+        err.name = "AbortError";
+        job.reject(err);
+      }
+      queues.delete(ownerKey);
+      cleanupOwner(ownerKey);
+      return cancelled;
+    },
     stats() {
       return {
         running,
@@ -123,6 +138,10 @@ let sharedScheduler = createFairOwnerScheduler(
 
 export function scheduleSharedTask(ownerId, task) {
   return sharedScheduler.schedule(ownerId, task);
+}
+
+export function cancelSharedTasks(ownerId) {
+  return sharedScheduler.cancel(ownerId);
 }
 
 export function getSharedSchedulerStats() {

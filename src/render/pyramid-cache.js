@@ -82,6 +82,23 @@ function clearLowPriorityQueue(pyr) {
   pyr.qLo.length = 0;
 }
 
+function getPinnedOverviewLevels(pyr) {
+  const count = clamp(
+    Math.floor(Number(APP_CONFIG.pyramid.pinnedOverviewLevels) || 0),
+    0,
+    Math.max(0, Number(pyr?.maxLevel) || 0) + 1
+  );
+  const levels = [];
+  for (let index = 0; index < count; index += 1) {
+    levels.push(Math.max(0, Number(pyr?.maxLevel) - index));
+  }
+  return levels;
+}
+
+function isPinnedOverviewLevel(pyr, level) {
+  return getPinnedOverviewLevels(pyr).includes(Math.max(0, Math.floor(Number(level) || 0)));
+}
+
 function collectRingTasks(bounds, band, level, radius) {
   const tasks = [];
   const tilesX = Math.max(1, Number(bounds?.info?.tilesX) || 1);
@@ -223,9 +240,18 @@ export function createPyramidController(deps) {
 
   function evictPyramidIfNeeded(pyr) {
     while (pyr.totalBytes > pyr.limitBytes && pyr.tiles.size) {
-      const oldestKey = pyr.tiles.keys().next().value;
+      let oldestKey = null;
+      for (const key of pyr.tiles.keys()) {
+        if (!pyr.pinnedKeys?.has(key)) {
+          oldestKey = key;
+          break;
+        }
+        if (oldestKey == null) oldestKey = key;
+      }
+      if (!oldestKey) break;
       const tile = pyr.tiles.get(oldestKey);
       pyr.tiles.delete(oldestKey);
+      pyr.pinnedKeys?.delete(oldestKey);
       if (tile) pyr.totalBytes -= tile.bytes || 0;
     }
   }
@@ -244,6 +270,7 @@ export function createPyramidController(deps) {
       inflight: new Set(),
       maxInflight: resolveMaxInflight(ioConcurrency),
       queued: new Set(),
+      pinnedKeys: new Set(),
       tick: 0,
       cancelled: false,
       qHi: [],
@@ -284,6 +311,7 @@ export function createPyramidController(deps) {
     pyr.pending.clear();
     if (pyr.inflight) pyr.inflight.clear();
     pyr.queued.clear();
+    pyr.pinnedKeys?.clear();
     pyr.qHi.length = 0;
     pyr.qLo.length = 0;
     pyr.focus = null;
@@ -335,6 +363,45 @@ export function createPyramidController(deps) {
       }
     }
     return levels;
+  }
+
+  function collectOverviewTasks(ds, band) {
+    const pyr = ds?.pyramid;
+    if (!pyr) return [];
+    const tasks = [];
+    for (const level of getPinnedOverviewLevels(pyr)) {
+      const info = levelInfo(ds, pyr, level);
+      for (let ty = 0; ty < info.tilesY; ty += 1) {
+        for (let tx = 0; tx < info.tilesX; tx += 1) {
+          tasks.push({
+            band,
+            level,
+            tx,
+            ty,
+            key: bandTileKey(band, level, tx, ty)
+          });
+        }
+      }
+    }
+    return tasks;
+  }
+
+  function enqueueOverviewTasks(ds, band, hi = true) {
+    for (const task of collectOverviewTasks(ds, band)) {
+      const pyr = ds?.pyramid;
+      if (!pyr || pyr.tiles.has(task.key) || pyr.pending.has(task.key)) continue;
+      enqueueBandTask(ds, task.band, task.level, task.tx, task.ty, hi);
+    }
+  }
+
+  async function ensureOverviewLevelsCached(ds, band, maxTiles = APP_CONFIG.pyramid.immediateOverviewMaxTiles) {
+    const pyr = ds?.pyramid;
+    if (!pyr || pyr.cancelled) return false;
+    const missing = collectOverviewTasks(ds, band).filter((task) => !pyr.tiles.has(task.key));
+    if (!missing.length) return true;
+    if (missing.length > Math.max(1, Number(maxTiles) || 1)) return false;
+    await Promise.all(missing.map((task) => getBandTile(ds, band, task.level, task.tx, task.ty).catch(() => null)));
+    return true;
   }
 
   function updatePyramidFocus(ds, band, minLevel, eff, viewportW, viewportH) {
@@ -517,6 +584,8 @@ export function createPyramidController(deps) {
       const tile = { band, level, tx, ty, data, w: outW, h: outH, bytes: data.byteLength, t: ++ds.pyramid.tick };
       ds.pyramid.pending.delete(key);
       ds.pyramid.tiles.set(key, tile);
+      if (isPinnedOverviewLevel(ds.pyramid, level)) ds.pyramid.pinnedKeys.add(key);
+      else ds.pyramid.pinnedKeys.delete(key);
       ds.pyramid.totalBytes += tile.bytes;
       ds.pyramid.stats.tileReads += 1;
       ds.pyramid.stats.tilePixelsRead += outW * outH;
@@ -595,6 +664,7 @@ export function createPyramidController(deps) {
       : null;
     const width = Math.max(1, Number(viewportW ?? fallbackViewport?.width) || 1);
     const height = Math.max(1, Number(viewportH ?? fallbackViewport?.height) || 1);
+    enqueueOverviewTasks(ds, band, true);
     const levels = enqueueViewportTasks(ds, band, lvl, eff, width, height);
     const visible = levels.find((info) => info.level === lvl) || null;
     const visibleCached = levels.reduce((sum, info) => sum + info.cached, 0);
@@ -605,6 +675,12 @@ export function createPyramidController(deps) {
     schedulePyramidWork(ds);
 
     let raster = prefer ? composePyramidRaster(ds, band, lvl, eff, width, height) : null;
+    if ((!raster || raster.partial) && eff < 1) {
+      const loaded = await ensureOverviewLevelsCached(ds, band, APP_CONFIG.pyramid.immediateOverviewMaxTiles);
+      if (loaded) {
+        raster = composePyramidRaster(ds, band, lvl, eff, width, height) || raster;
+      }
+    }
     const needImmediateCoarse = !raster || raster.partial;
     if (needImmediateCoarse && pyr.maxLevel > lvl) {
       const loaded = await ensureViewportLevelCached(

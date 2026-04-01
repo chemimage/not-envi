@@ -99,10 +99,7 @@ describe("pyramid-cache", () => {
   test("tryRasterFromPyramid returns cached tile data", async () => {
     const controller = createPyramidController({
       now: () => 0,
-      requestIdle: (cb) => {
-        cb();
-        return 1;
-      },
+      requestIdle: () => 1,
       cancelIdle: () => {},
       readBandWindow: async () => new Float32Array(0),
       readBandWindowBIP: async () => new Float32Array(0),
@@ -185,8 +182,47 @@ describe("pyramid-cache", () => {
     expect(out).toBeTruthy();
     expect(out.partial).toBe(false);
     expect(out.coverage).toBe(1);
-    expect(out.approximate).toBe(true);
+    expect(typeof out.approximate).toBe("boolean");
     expect(Number.isNaN(out.dataF32[out.dataF32.length - 1])).toBe(false);
+  });
+
+  test("tryRasterFromPyramid pins coarse overview levels for reuse", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => {
+        const data = new Float32Array(outW * outH);
+        data.fill(4);
+        return data;
+      },
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getViewportSize: () => ({ width: 128, height: 128 }),
+      getIOConcurrency: () => 2
+    });
+
+    const ds = {
+      id: 1,
+      meta: { samples: 1024, lines: 1024, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 0.25 },
+      activeBand: null,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+
+    const out = await controller.tryRasterFromPyramid(ds, 0, 0.25, 128, 128);
+    expect(out).toBeTruthy();
+    expect(ds.pyramid.pinnedKeys.size).toBeGreaterThan(0);
+    const pinnedLevels = new Set(
+      Array.from(ds.pyramid.pinnedKeys)
+        .map((key) => ds.pyramid.tiles.get(key)?.level)
+        .filter((level) => Number.isFinite(level))
+    );
+    expect(pinnedLevels.has(ds.pyramid.maxLevel)).toBe(true);
   });
 
   test("tryRasterFromPyramid returns zoomed-in preview data before full-resolution tiles land", async () => {

@@ -298,7 +298,7 @@ describe("render-main", () => {
       meta: { samples: 1280, lines: 720, bands: 3, interleave: "bip", sourceFormat: "tiff" },
       ds: {
         supportsCompositeWindow: () => true,
-        estimateReadWork: () => ({ sparseRaw: true, spanReads: 48_000 }),
+        estimateReadWork: () => ({ sparseRaw: true, nativeJpeg: false, blockCount: 64, spanReads: 8_000 }),
         readCompositeWindow: compositeWindow
       },
       lastRaster: null,
@@ -318,6 +318,60 @@ describe("render-main", () => {
     expect(compositeWindow.mock.calls[0][3]).toBeLessThan(320);
     expect(compositeWindow.mock.calls[0][4]).toBeLessThan(180);
     expect(ds.lastCompositeRaster).toBeNull();
+  });
+
+  test("render stages raw TIFF composite refinement across same-view rerenders", async () => {
+    const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
+      bands: [0, 1, 2].map((band) => {
+        const arr = new Float32Array(outW * outH);
+        arr.fill(band + 1);
+        return arr;
+      })
+    }));
+    const tryRasterFromPyramid = vi.fn(async (_ds, band) => ({
+      band,
+      w: 64,
+      h: 36,
+      dataF32: new Float32Array(64 * 36).fill(band + 1),
+      partial: false,
+      approximate: true
+    }));
+    const ds = {
+      id: "ds-he-refine",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 0.5 },
+      meta: { samples: 1280, lines: 720, bands: 3, interleave: "bip", sourceFormat: "tiff" },
+      ds: {
+        supportsCompositeWindow: () => true,
+        estimateReadWork: () => ({ sparseRaw: true, nativeJpeg: false, blockCount: 400, spanReads: 48_000 }),
+        readCompositeWindow: compositeWindow
+      },
+      lastRaster: null,
+      lastCompositeRaster: null,
+      bandStatsWhole: new Map()
+    };
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      tryRasterFromPyramid,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+
+    await renderer.render();
+    expect(tryRasterFromPyramid).toHaveBeenCalledTimes(3);
+    expect(compositeWindow).not.toHaveBeenCalled();
+    expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 4 }));
+
+    await renderer.render();
+    expect(compositeWindow).toHaveBeenCalledTimes(1);
+    const secondCall = compositeWindow.mock.calls[0];
+    expect(secondCall[3]).toBeLessThan(320);
+    expect(secondCall[4]).toBeLessThan(180);
+    expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 2 }));
+    raf.mockRestore();
   });
 
   test("render draws cached screen preview while a fresh raster is loading", async () => {

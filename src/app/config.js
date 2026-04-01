@@ -77,6 +77,8 @@ export const APP_CONFIG = Object.freeze({
     inflightBias: 1,
     inflightMin: 2,
     inflightMax: 8,
+    pinnedOverviewLevels: 3,
+    immediateOverviewMaxTiles: 24,
     immediateCoarseMaxTiles: 64,
     immediateVisibleMaxTiles: 32
   }),

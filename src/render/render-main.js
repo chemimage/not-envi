@@ -164,6 +164,25 @@ export function createRenderer(deps) {
     return ds.__panelInFlightReads;
   }
 
+  function getTiffRefineState(ds, panelSlot) {
+    const slot = Number(panelSlot) || 1;
+    const map = ds?.__tiffRefineStates;
+    return map && typeof map.get === "function" ? (map.get(slot) || null) : null;
+  }
+
+  function setTiffRefineState(ds, panelSlot, stateValue) {
+    if (!ds) return;
+    if (!stateValue && (!ds.__tiffRefineStates || typeof ds.__tiffRefineStates.get !== "function")) {
+      return;
+    }
+    if (!ds.__tiffRefineStates || typeof ds.__tiffRefineStates.get !== "function") {
+      ds.__tiffRefineStates = new Map();
+    }
+    const slot = Number(panelSlot) || 1;
+    if (stateValue) ds.__tiffRefineStates.set(slot, stateValue);
+    else ds.__tiffRefineStates.delete(slot);
+  }
+
   async function getOrStartPanelRead(ds, panelSlot, requestKey, loader) {
     const slot = Number(panelSlot) || 1;
     const inflightMap = getPanelInFlightMap(ds);
@@ -241,37 +260,93 @@ export function createRenderer(deps) {
     };
   }
 
+  function resolveTiffPreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH) {
+    const renderKey = buildViewportRenderKey(ds, panelSlot, viewportW, viewportH);
+    const stableRenderKey = getStableRenderKey(ds, panelSlot);
+    if (
+      eff >= 1
+      || ds?.meta?.sourceFormat !== "tiff"
+      || stableRenderKey === renderKey
+      || typeof ds?.ds?.estimateReadWork !== "function"
+    ) {
+      return { factor: 1, renderKey, stableRenderKey };
+    }
+    const stagedRefine = getTiffRefineState(ds, panelSlot);
+    const stagedLimit = stagedRefine && stagedRefine.renderKey === renderKey
+      ? Math.max(1, Math.floor(Number(stagedRefine.maxFactor) || 1))
+      : null;
+    if (ds.__forceFullRenderKey === renderKey && stagedLimit == null) {
+      return { factor: 1, renderKey, stableRenderKey, stagedLimit };
+    }
+
+    const work = ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
+    let factor = 1;
+    if (work?.sparseRaw && Number(work.spanReads) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
+      factor = Math.ceil(Number(work.spanReads) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
+    } else if (
+      work?.nativeJpeg
+      && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)
+    ) {
+      factor = Math.ceil(Math.sqrt(
+        Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
+      ));
+    }
+    factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
+    if (stagedLimit != null) factor = Math.min(factor, stagedLimit);
+    return { factor, renderKey, stableRenderKey, stagedLimit };
+  }
+
+  async function tryCompositeFromPyramidOverview(ds, eff, viewportW, viewportH, sourceBands, channelBands, mode, renderKey, refineFactor) {
+    const rasters = await Promise.all(sourceBands.map((band) => tryRasterFromPyramid(ds, band, eff, viewportW, viewportH)));
+    if (rasters.some((raster) => !raster)) return null;
+    return {
+      mode,
+      channelBands,
+      rasterByBand: new Map(rasters.map((raster) => [raster.band, raster])),
+      partial: rasters.some((raster) => !!raster?.partial),
+      approximate: true,
+      renderKey,
+      refineFactor
+    };
+  }
+
+  function applyApproximateRefineState(ds, panelSlot, raster, compositeRaster) {
+    const currentRenderKey = raster?.renderKey || compositeRaster?.renderKey || null;
+    const currentFactor = Math.max(
+      1,
+      Number(raster?.refineFactor) || 1,
+      Number(compositeRaster?.refineFactor) || 1
+    );
+    const approximate = !!(raster?.approximate || compositeRaster?.approximate);
+    if (!approximate) {
+      if (currentRenderKey && ds.__forceFullRenderKey === currentRenderKey) ds.__forceFullRenderKey = null;
+      setTiffRefineState(ds, panelSlot, null);
+      return false;
+    }
+
+    if (ds?.meta?.sourceFormat === "tiff" && currentRenderKey && currentFactor > 1) {
+      const nextFactor = Math.max(1, Math.ceil(currentFactor / 2));
+      setTiffRefineState(ds, panelSlot, {
+        renderKey: currentRenderKey,
+        maxFactor: nextFactor
+      });
+      ds.__forceFullRenderKey = null;
+      return true;
+    }
+
+    if (currentRenderKey) ds.__forceFullRenderKey = currentRenderKey;
+    return true;
+  }
+
   async function readRasterDirect(ds, band, eff, viewportW, viewportH) {
     const t0 = now();
     let approximate = false;
     const panelSlot = Number(ds.__renderPanelSlot) || 1;
-    const renderKey = buildViewportRenderKey(ds, panelSlot, viewportW, viewportH);
-    const stableRenderKey = getStableRenderKey(ds, panelSlot);
     let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
-    if (
-      eff < 1
-      && ds?.meta?.sourceFormat === "tiff"
-      && ds?.__forceFullRenderKey !== renderKey
-      && stableRenderKey !== renderKey
-      && typeof ds?.ds?.estimateReadWork === "function"
-    ) {
-      const work = ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
-      let factor = 1;
-      if (work?.sparseRaw && Number(work.spanReads) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
-        factor = Math.ceil(Number(work.spanReads) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
-      } else if (
-        work?.nativeJpeg
-        && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)
-      ) {
-        factor = Math.ceil(Math.sqrt(
-          Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
-        ));
-      }
-      factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
-      if (factor > 1) {
-        geom = coarsenSamplingGeometry(geom, factor);
-        approximate = true;
-      }
+    const { factor: previewFactor, renderKey } = resolveTiffPreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH);
+    if (previewFactor > 1) {
+      geom = coarsenSamplingGeometry(geom, previewFactor);
+      approximate = true;
     }
     const {
       step,
@@ -327,7 +402,8 @@ export function createRenderer(deps) {
       x0: ds.view.x,
       y0: ds.view.y,
       approximate,
-      renderKey
+      renderKey,
+      refineFactor: previewFactor
     };
   }
 
@@ -346,7 +422,7 @@ export function createRenderer(deps) {
     return raster;
   }
 
-  function packCompositeBandsToRasters(sourceBands, composite, geom, ds, approximate, renderKey, partial = false) {
+  function packCompositeBandsToRasters(sourceBands, composite, geom, ds, approximate, renderKey, partial = false, refineFactor = 1) {
     if (!composite?.bands || composite.bands.length < 3) return null;
     const {
       step,
@@ -383,7 +459,8 @@ export function createRenderer(deps) {
         y0: ds.view.y,
         partial,
         approximate,
-        renderKey
+        renderKey,
+        refineFactor
       };
     });
   }
@@ -421,29 +498,30 @@ export function createRenderer(deps) {
       && ds.ds.supportsCompositeWindow()
     ) {
       const panelSlot = Number(ds.__renderPanelSlot) || 1;
-      const renderKey = buildViewportRenderKey(ds, panelSlot, viewportW, viewportH);
-      const stableRenderKey = getStableRenderKey(ds, panelSlot);
       let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
       let approximate = false;
-      if (eff < 1 && ds.__forceFullRenderKey !== renderKey && stableRenderKey !== renderKey && typeof ds.ds.estimateReadWork === "function") {
-        const work = ds.ds.estimateReadWork(ds.meta, 0, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
-        let factor = 1;
-        if (work?.sparseRaw && Number(work.spanReads) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
-          factor = Math.ceil(Number(work.spanReads) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
-        }
-        if (work?.nativeJpeg && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)) {
-          factor = Math.max(
-            factor,
-            Math.ceil(Math.sqrt(
-              Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
-            ))
-          );
-        }
-        factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
-        if (factor > 1) {
-          geom = coarsenSamplingGeometry(geom, factor);
-          approximate = true;
-        }
+      const {
+        factor: previewFactor,
+        renderKey,
+        stagedLimit
+      } = resolveTiffPreviewFactor(ds, 0, eff, geom, panelSlot, viewportW, viewportH);
+      if (previewFactor > 1 && stagedLimit == null) {
+        const pyramidComposite = await tryCompositeFromPyramidOverview(
+          ds,
+          eff,
+          viewportW,
+          viewportH,
+          sourceBands,
+          channelBands,
+          mode,
+          renderKey,
+          previewFactor
+        );
+        if (pyramidComposite) return pyramidComposite;
+      }
+      if (previewFactor > 1) {
+        geom = coarsenSamplingGeometry(geom, previewFactor);
+        approximate = true;
       }
       const {
         step,
@@ -470,7 +548,8 @@ export function createRenderer(deps) {
                 ds,
                 true,
                 renderKey,
-                true
+                true,
+                previewFactor
               );
               if (!partialRasters) return;
               await options.onPartial({
@@ -478,14 +557,16 @@ export function createRenderer(deps) {
                 channelBands,
                 rasterByBand: new Map(partialRasters.map((raster) => [raster.band, raster])),
                 partial: true,
-                approximate: true
+                approximate: true,
+                renderKey,
+                refineFactor: previewFactor
               });
             }
             : null
         });
         if (!composite) return null;
         if (composite?.bands?.length === 3) {
-          rasters = packCompositeBandsToRasters(sourceBands, composite, geom, ds, approximate, renderKey, false);
+          rasters = packCompositeBandsToRasters(sourceBands, composite, geom, ds, approximate, renderKey, false, previewFactor);
           const stats = ensureRenderStats(ds);
           stats.directReads += 1;
           stats.directPixels += rasterW * rasterH * 3;
@@ -502,7 +583,9 @@ export function createRenderer(deps) {
       channelBands,
       rasterByBand,
       partial: rasters.some((raster) => !!raster?.partial),
-      approximate: rasters.some((raster) => !!raster?.approximate)
+      approximate: rasters.some((raster) => !!raster?.approximate),
+      renderKey: rasters.find((raster) => raster?.renderKey)?.renderKey || null,
+      refineFactor: Math.max(1, ...rasters.map((raster) => Number(raster?.refineFactor) || 1))
     };
   }
 
@@ -718,13 +801,8 @@ export function createRenderer(deps) {
       drawOverlays();
       updatePerf();
 
-      const needsRefine = !!(raster?.approximate || compositeRaster?.approximate);
-      if (needsRefine) {
-        ds.__forceFullRenderKey = raster?.renderKey || compositeRaster?.renderKey || ds.__forceFullRenderKey || null;
-        scheduleRender();
-      } else if (ds.__forceFullRenderKey && ds.__forceFullRenderKey === (raster?.renderKey || compositeRaster?.renderKey || null)) {
-        ds.__forceFullRenderKey = null;
-      }
+      const needsRefine = applyApproximateRefineState(ds, panelSlot, raster, compositeRaster);
+      if (needsRefine) scheduleRender();
 
       if (state.histViewDebounce) clearTimeout(state.histViewDebounce);
       state.histViewDebounce = setTimeout(() => {
@@ -855,12 +933,8 @@ export function createRenderer(deps) {
               syncRangeInputsFromSettings(ds);
             }
 
-            const needsRefine = !!(raster?.approximate || compositeRaster?.approximate);
-            if (needsRefine) {
-              ds.__forceFullRenderKey = raster?.renderKey || compositeRaster?.renderKey || ds.__forceFullRenderKey || null;
+            if (applyApproximateRefineState(ds, panelSlot, raster, compositeRaster)) {
               needsRefineAny = true;
-            } else if (ds.__forceFullRenderKey && ds.__forceFullRenderKey === (raster?.renderKey || compositeRaster?.renderKey || null)) {
-              ds.__forceFullRenderKey = null;
             }
           } finally {
             ds.__renderPanelSlot = null;
@@ -975,11 +1049,8 @@ export function createRenderer(deps) {
               ds.lastCompositeRaster = null;
               syncRangeInputsFromSettings(ds);
             }
-            if (raster?.approximate) {
-              ds.__forceFullRenderKey = raster.renderKey || ds.__forceFullRenderKey || null;
+            if (applyApproximateRefineState(ds, panel.slot, raster, null)) {
               needsRefineAny = true;
-            } else if (ds.__forceFullRenderKey && ds.__forceFullRenderKey === (raster?.renderKey || null)) {
-              ds.__forceFullRenderKey = null;
             }
           } finally {
             ds.__renderPanelSlot = null;

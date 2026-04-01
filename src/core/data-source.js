@@ -1,6 +1,6 @@
 import { clamp } from "./utils.js";
 import { APP_CONFIG, resolveHardwareConcurrencyLimit } from "../app/config.js";
-import { scheduleSharedTask } from "./shared-scheduler.js";
+import { cancelSharedTasks, scheduleSharedTask } from "./shared-scheduler.js";
 
 let nextDataSourceOwnerId = 1;
 
@@ -301,6 +301,7 @@ export class ChunkCacheDataSource {
     this.closed = true;
     this.clear();
     this.size = 0;
+    cancelSharedTasks(this.ownerId);
     const base = this.source;
     this.source = null;
     if (base && typeof base.close === "function") {
