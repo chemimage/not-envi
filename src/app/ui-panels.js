@@ -718,6 +718,8 @@ export function createUIPanels(deps) {
     if (!ds) {
       els.perfBarCacheText.textContent = "Cache: 0 B / 0 B";
       els.perfBarCacheFill.style.width = "0%";
+      els.perfBarCacheText.title = "";
+      els.perfBarCacheFill.title = "";
       return;
     }
     const chunkUsed = ds.ds.cacheBytes ? ds.ds.cacheBytes() : 0;
@@ -730,6 +732,19 @@ export function createUIPanels(deps) {
     const frac = clamp(used / cap, 0, 1);
     els.perfBarCacheFill.style.width = `${(frac * 100).toFixed(1)}%`;
     els.perfBarCacheText.textContent = `Cache: ${humanBytes(used)} / ${humanBytes(cap)}`;
+    const ioStats = ds.ds?.stats || {};
+    const rasterStats = ioStats.raster || {};
+    const pyramidStats = ds.pyramid?.stats || {};
+    const renderStats = ds.renderStats || {};
+    const detail = [
+      `Source: ${humanBytes(ioStats.bytesRead || 0)} in ${fmtNoGroup(ioStats.readCalls || 0)} read / ${fmtNoGroup(ioStats.readIntoCalls || 0)} readInto`,
+      `Chunk cache: ${fmtNoGroup(ioStats.cacheHits || 0)} hits / ${fmtNoGroup(ioStats.cacheMisses || 0)} misses / ${fmtNoGroup(ioStats.cacheEvictions || 0)} evictions`,
+      `Raster decode: ${fmtNoGroup(rasterStats.windowCalls || 0)} windows, ${fmtNoGroup(rasterStats.slabWindowCalls || 0)} slab, ${fmtNoGroup(rasterStats.rowWindowCalls || 0)} row, ${(Number(rasterStats.windowReadMs) || 0).toFixed(1)} ms`,
+      `Pyramid: ${fmtNoGroup(pyramidStats.tileReads || 0)} tile reads, ${fmtNoGroup(pyramidStats.tilesComposed || 0)} tiles composed, ${(Number(pyramidStats.composeMs) || 0).toFixed(1)} ms`,
+      `Renderer: ${fmtNoGroup(renderStats.pyramidHits || 0)} pyramid hits / ${fmtNoGroup(renderStats.pyramidMisses || 0)} direct fallbacks, ${(Number(renderStats.directReadMs) || 0).toFixed(1)} ms direct`
+    ].join("\n");
+    els.perfBarCacheText.title = detail;
+    els.perfBarCacheFill.title = detail;
   }
 
   return {

@@ -219,11 +219,14 @@ describe("render-main", () => {
     const renderer = createRenderer(deps);
 
     const renderPromise = renderer.render();
+    await Promise.resolve();
 
     const cpuCtx = deps.els.cpuCanvas.getContext();
     expect(cpuCtx.drawImage).toHaveBeenCalledTimes(1);
     expect(deps.els.cpuCanvas.style.display).toBe("block");
     expect(deps.els.gpuCanvas.style.display).toBe("none");
+    expect(readBandWindow).toHaveBeenCalledTimes(1);
+    expect(typeof releaseRead).toBe("function");
 
     releaseRead();
     await renderPromise;
@@ -328,6 +331,44 @@ describe("render-main", () => {
 
     expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(1, ds, 0, 2, 140, 180);
     expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(2, ds, 0, 2, 180, 180);
+  });
+
+  test("render tries the pyramid path even when the view extends outside bounds", async () => {
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: -4, y: 0, scale: 1 },
+      meta: { samples: 8, lines: 4, bands: 1, interleave: "bsq" },
+      ds: {},
+      lastRaster: null,
+      lastScreenFrame: null,
+      lastRastersByPanel: new Map()
+    };
+    const pyramidRaster = {
+      band: 0,
+      w: 4,
+      h: 2,
+      dataF32: new Float32Array(8),
+      partial: false,
+      approximate: false
+    };
+    const tryRasterFromPyramid = vi.fn(async () => pyramidRaster);
+    const readBandWindow = vi.fn(async () => {
+      throw new Error("direct read should not run when pyramid raster is available");
+    });
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      tryRasterFromPyramid,
+      readBandWindow,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(tryRasterFromPyramid).toHaveBeenCalledWith(ds, 0, 1, 320, 180);
+    expect(readBandWindow).not.toHaveBeenCalled();
   });
 
   test("render does not cache partial pyramid rasters as stable panel state", async () => {

@@ -32,6 +32,8 @@ describe("data sources", () => {
     await ds.read(2 * 64 * 1024 + 8, 8);
     expect(ds.cacheBytes()).toBeLessThanOrEqual(2 * 64 * 1024);
     expect(ds.bytesRead).toBeGreaterThan(0);
+    expect(ds.stats.cacheMisses).toBeGreaterThan(0);
+    expect(ds.stats.cacheEvictions).toBeGreaterThan(0);
   });
 
   test("ChunkCacheDataSource close clears cache and closes the base source", async () => {
@@ -68,6 +70,7 @@ describe("data sources", () => {
 
     expect(bytesRead).toBe(6);
     expect(Array.from(out)).toEqual([254, 255, 0, 1, 2, 3]);
+    expect(ds.stats.readIntoCalls).toBe(1);
   });
 
   test("ChunkCacheDataSource visitPages yields chunk slices in order", async () => {

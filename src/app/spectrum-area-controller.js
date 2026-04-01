@@ -1,3 +1,5 @@
+import { createFloat32ScratchPool } from "../core/float-scratch.js";
+
 export function createSpectrumAreaController(deps) {
   const {
     getActive,
@@ -16,6 +18,10 @@ export function createSpectrumAreaController(deps) {
     wavelengthArrayOrNull,
     fmtNoGroup
   } = deps;
+  const floatScratchPool = createFloat32ScratchPool({
+    maxRetainedBuffers: 1,
+    maxRetainedElements: 1_048_576
+  });
 
   const ABORTED = Symbol("spectrum-area-aborted");
   const ABORT_CHECK_MASK = 1023;
@@ -138,6 +144,25 @@ export function createSpectrumAreaController(deps) {
     return reduceBandValuesLocal(values, sampleIndices);
   }
 
+  async function readWindowF32(ds, band, x0, y0, outW, outH, step) {
+    const length = Math.max(0, outW * outH);
+    const scratch = floatScratchPool.acquire(length);
+    try {
+      const raw = ds.meta.interleave === "bip"
+        ? await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch)
+        : await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch);
+      return {
+        data: raw === scratch ? scratch : toFloat32(raw, scratch),
+        release() {
+          floatScratchPool.release(scratch);
+        }
+      };
+    } catch (err) {
+      floatScratchPool.release(scratch);
+      throw err;
+    }
+  }
+
   async function buildAreaAverageSpectrum(ds, selections, options = {}) {
     const shouldAbort = options.shouldAbort;
     if (!ds || !Array.isArray(selections) || !selections.length) return null;
@@ -176,19 +201,17 @@ export function createSpectrumAreaController(deps) {
       for (const item of sampleItems) {
         if (isAborted(shouldAbort)) return ABORTED;
         const { bounds, outW, outH, sampleIndices } = item;
-        let raw;
-        if (ds.meta.interleave === "bip") {
-          raw = await readBandWindowBIP(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep);
-        } else {
-          raw = await readBandWindow(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep);
+        const window = await readWindowF32(ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep);
+        try {
+          if (isAborted(shouldAbort)) return ABORTED;
+          const reduced = await reduceBandValues(window.data, sampleIndices, shouldAbort);
+          if (reduced === ABORTED) return ABORTED;
+          sum += reduced.sum;
+          sumSq += reduced.sumSq;
+          finiteCount += reduced.count;
+        } finally {
+          window.release();
         }
-        if (isAborted(shouldAbort)) return ABORTED;
-        const f32 = toFloat32(raw);
-        const reduced = await reduceBandValues(f32, sampleIndices, shouldAbort);
-        if (reduced === ABORTED) return ABORTED;
-        sum += reduced.sum;
-        sumSq += reduced.sumSq;
-        finiteCount += reduced.count;
       }
 
       if (finiteCount > 0) {

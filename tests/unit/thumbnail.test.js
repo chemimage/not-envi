@@ -115,4 +115,43 @@ describe("thumbnail controller", () => {
     expect(recenterViewAtFraction).toHaveBeenCalledWith(0.75, 0.25);
     expect(render).toHaveBeenCalledTimes(1);
   });
+
+  test("renderWindowToImageData reuses a caller-owned Float32Array scratch buffer", async () => {
+    let capturedOut = null;
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      meta: { samples: 2, lines: 2, interleave: "bsq" },
+      ds: {}
+    };
+    const ctrl = createThumbnailController({
+      els: {
+        thumbWrap: { style: { display: "none" } },
+        main: { getBoundingClientRect: () => ({ width: 800, height: 400 }) },
+        thumb: { width: 200, height: 100, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+        cpuCanvas: { width: 100, height: 50 }
+      },
+      thumbCtx: makeThumbCtx(),
+      toFloat32: (arr, out = null) => out || arr,
+      tone01: (v) => v / 4,
+      resolveDisplayRange: () => ({ minVal: 0, maxVal: 4 }),
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      readBandWindow: async (...args) => {
+        capturedOut = args[8];
+        capturedOut.set([0, 1, 2, 3], 0);
+        return capturedOut;
+      },
+      readBandWindowBIP: async () => new Float32Array(0),
+      getActive: () => ds,
+      render: vi.fn(),
+      getDevicePixelRatio: () => 1
+    });
+
+    const img = await ctrl.renderWindowToImageData(ds, 0, 0, 0, 2, 2, 1);
+
+    expect(capturedOut).toBeInstanceOf(Float32Array);
+    expect(img.width).toBe(2);
+    expect(img.height).toBe(2);
+    expect(Array.from(img.data.slice(0, 8))).toEqual([0, 0, 0, 255, 64, 64, 64, 255]);
+  });
 });

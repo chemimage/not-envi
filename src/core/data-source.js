@@ -5,6 +5,7 @@ export class BlobDataSource {
     this.file = file;
     this.size = file.size;
     this.bytesRead = 0;
+    this.stats = createDataSourceStats();
     this.closed = false;
   }
 
@@ -17,12 +18,15 @@ export class BlobDataSource {
     const ab = await blobToArrayBuffer(slice);
     const u8 = new Uint8Array(ab);
     this.bytesRead += u8.byteLength;
+    this.stats.readCalls += 1;
+    this.stats.bytesRead = this.bytesRead;
     return u8;
   }
 
   async readInto(offset, dest, destOffset = 0, length = null) {
     if (this.closed || !this.file) throw new Error("Data source closed");
     if (!dest || typeof dest.byteLength !== "number") return 0;
+    this.stats.readIntoCalls += 1;
     const dstOffset = Math.max(0, Number(destOffset) || 0);
     const maxLen = Math.max(0, dest.byteLength - dstOffset);
     const wantLen = length == null ? maxLen : Math.max(0, Math.min(maxLen, Number(length) || 0));
@@ -37,6 +41,7 @@ export class BlobDataSource {
     const safeOffset = Math.max(0, Number(offset) || 0);
     const safeLength = Math.max(0, Number(length) || 0);
     if (safeLength <= 0 || typeof visitor !== "function") return 0;
+    this.stats.visitPagesCalls += 1;
     const u8 = await this.read(safeOffset, safeLength);
     await visitor(u8, safeOffset);
     return u8.byteLength;
@@ -63,6 +68,7 @@ export class ChunkCacheDataSource {
     this.inflight = new Map();
     this.cacheSizeBytes = 0;
     this.bytesRead = 0;
+    this.stats = createDataSourceStats();
     this.closed = false;
   }
 
@@ -85,6 +91,7 @@ export class ChunkCacheDataSource {
     this.cache.clear();
     this.inflight.clear();
     this.cacheSizeBytes = 0;
+    this.stats.cacheBytes = 0;
   }
 
   cacheBytes() {
@@ -104,7 +111,9 @@ export class ChunkCacheDataSource {
       const ent = this.cache.get(oldestKey);
       this.cache.delete(oldestKey);
       this.cacheSizeBytes -= ent.bytes;
+      this.stats.cacheEvictions += 1;
     }
+    this.stats.cacheBytes = this.cacheSizeBytes;
   }
 
   async #loadChunk(chunkIndex) {
@@ -113,6 +122,7 @@ export class ChunkCacheDataSource {
     const len = Math.min(this.chunkSize, this.size - offset);
     const u8 = await this.source.read(offset, len);
     this.bytesRead += u8.byteLength;
+    this.stats.bytesRead = this.bytesRead;
     return u8;
   }
 
@@ -120,12 +130,14 @@ export class ChunkCacheDataSource {
     const key = String(chunkIndex);
     const got = this.cache.get(key);
     if (got) {
+      this.stats.cacheHits += 1;
       this.#touch(key);
       return got.u8;
     }
 
     const inflight = this.inflight.get(key);
     if (inflight) return inflight;
+    this.stats.cacheMisses += 1;
 
     const p = this.#loadChunk(chunkIndex).then((u8) => {
       if (this.closed) {
@@ -139,6 +151,7 @@ export class ChunkCacheDataSource {
       }
       this.#touch(key);
       this.#evictIfNeeded();
+      this.stats.cacheBytes = this.cacheSizeBytes;
       this.inflight.delete(key);
       return u8;
     }).catch((err) => {
@@ -174,6 +187,7 @@ export class ChunkCacheDataSource {
     const safeOffset = Math.max(0, Number(offset) || 0);
     const safeLength = Math.max(0, Number(length) || 0);
     if (safeLength <= 0 || typeof visitor !== "function") return 0;
+    this.stats.visitPagesCalls += 1;
 
     const end = safeOffset + safeLength;
     const first = Math.floor(safeOffset / this.chunkSize);
@@ -207,6 +221,7 @@ export class ChunkCacheDataSource {
   async readInto(offset, dest, destOffset = 0, length = null) {
     if (this.closed || !this.source) throw new Error("Data source closed");
     if (!dest || typeof dest.byteLength !== "number") return 0;
+    this.stats.readIntoCalls += 1;
     const dstOffset = Math.max(0, Number(destOffset) || 0);
     const maxLen = Math.max(0, dest.byteLength - dstOffset);
     const wantLen = length == null ? maxLen : Math.max(0, Math.min(maxLen, Number(length) || 0));
@@ -227,6 +242,7 @@ export class ChunkCacheDataSource {
     const safeOffset = Math.max(0, Number(offset) || 0);
     const safeLength = Math.max(0, Number(length) || 0);
     if (safeLength <= 0) return new Uint8Array(0);
+    this.stats.readCalls += 1;
 
     const end = safeOffset + safeLength;
     const first = Math.floor(safeOffset / this.chunkSize);
@@ -279,4 +295,17 @@ async function blobToArrayBuffer(blobLike) {
   }
 
   throw new Error("No blob reader available in this runtime.");
+}
+
+function createDataSourceStats() {
+  return {
+    bytesRead: 0,
+    readCalls: 0,
+    readIntoCalls: 0,
+    visitPagesCalls: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    cacheEvictions: 0,
+    cacheBytes: 0
+  };
 }

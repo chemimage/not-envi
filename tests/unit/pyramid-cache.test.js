@@ -261,4 +261,52 @@ describe("pyramid-cache", () => {
     expect(out.w).toBe(128);
     expect(out.h).toBe(64);
   });
+
+  test("tryRasterFromPyramid aligns level-0 cached tiles for edge views outside bounds", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async () => new Float32Array(0),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getViewportSize: () => ({ width: 4, height: 2 }),
+      getIOConcurrency: () => 2
+    });
+
+    const ds = {
+      id: 1,
+      meta: { samples: 4, lines: 2, interleave: "bsq" },
+      ds: {},
+      view: { x: -1, y: 0, scale: 1 },
+      activeBand: null,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+    ds.pyramid.tiles.set(bandTileKey(0, 0, 0, 0), {
+      band: 0,
+      level: 0,
+      tx: 0,
+      ty: 0,
+      data: new Float32Array([
+        10, 11, 12, 13,
+        20, 21, 22, 23
+      ]),
+      w: 4,
+      h: 2,
+      bytes: 8 * Float32Array.BYTES_PER_ELEMENT,
+      t: 0
+    });
+
+    const out = await controller.tryRasterFromPyramid(ds, 0, 1, 4, 2);
+    expect(out).toBeTruthy();
+    expect(out.w).toBe(4);
+    expect(out.h).toBe(2);
+    expect(Number.isNaN(out.dataF32[0])).toBe(true);
+    expect(Array.from(out.dataF32.slice(1, 4))).toEqual([10, 11, 12]);
+    expect(Number.isNaN(out.dataF32[4])).toBe(true);
+    expect(Array.from(out.dataF32.slice(5, 8))).toEqual([20, 21, 22]);
+  });
 });

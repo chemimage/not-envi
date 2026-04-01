@@ -1,6 +1,7 @@
 import { clamp } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
 import { resolveDisplayPanelBand } from "../app/display-panels.js";
+import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import {
   getThreeBandDisplayMode,
   isThreeBandColorMode,
@@ -84,28 +85,27 @@ export function createRenderer(deps) {
     return resolveDisplayPanelBand(panel, ds);
   }
 
-  const floatScratchPool = new Map();
+  const floatScratchPool = createFloat32ScratchPool({
+    maxRetainedBuffers: 2,
+    maxRetainedElements: 2_097_152
+  });
 
-  function acquireFloatScratch(length) {
-    const size = Math.max(0, Math.floor(Number(length) || 0));
-    if (!size) return new Float32Array(0);
-    const bucket = floatScratchPool.get(size);
-    if (bucket?.length) return bucket.pop();
-    return new Float32Array(size);
-  }
-
-  function releaseFloatScratch(arr) {
-    if (!(arr instanceof Float32Array) || !arr.length) return;
-    const size = arr.length;
-    let bucket = floatScratchPool.get(size);
-    if (!bucket) {
-      bucket = [];
-      floatScratchPool.set(size, bucket);
+  function ensureRenderStats(ds) {
+    if (!ds.renderStats) {
+      ds.renderStats = {
+        pyramidAttempts: 0,
+        pyramidHits: 0,
+        pyramidMisses: 0,
+        directReads: 0,
+        directPixels: 0,
+        directReadMs: 0
+      };
     }
-    if (bucket.length < 4) bucket.push(arr);
+    return ds.renderStats;
   }
 
   async function readRasterDirect(ds, band, eff, viewportW, viewportH) {
+    const t0 = now();
     const geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
     const {
       step,
@@ -123,7 +123,7 @@ export function createRenderer(deps) {
     if (!fullCoverage) out.fill(Number.NaN);
 
     if (validW > 0 && validH > 0) {
-      const scratch = fullCoverage ? out : acquireFloatScratch(validW * validH);
+      const scratch = fullCoverage ? out : floatScratchPool.acquire(validW * validH);
       try {
         let raw;
         if (ds.meta.interleave === "bip") {
@@ -131,7 +131,7 @@ export function createRenderer(deps) {
         } else {
           raw = await readBandWindow(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step, scratch);
         }
-        const src = raw === scratch ? scratch : toFloat32(raw);
+        const src = raw === scratch ? scratch : toFloat32(raw, scratch);
         if (fullCoverage) {
           if (src !== out) out.set(src.subarray(0, out.length), 0);
         } else {
@@ -142,30 +142,26 @@ export function createRenderer(deps) {
           }
         }
       } finally {
-        if (!fullCoverage) releaseFloatScratch(scratch);
+        if (!fullCoverage) floatScratchPool.release(scratch);
       }
     }
 
+    const stats = ensureRenderStats(ds);
+    stats.directReads += 1;
+    stats.directPixels += rasterW * rasterH;
+    stats.directReadMs += now() - t0;
     return { band, dataF32: out, w: rasterW, h: rasterH, source: "direct", level: 0, step, x0: ds.view.x, y0: ds.view.y };
   }
 
-  function viewExtendsOutside(ds, eff, viewportW, viewportH) {
-    const viewW = viewportW / eff;
-    const viewH = viewportH / eff;
-    return (
-      ds.view.x < 0
-      || ds.view.y < 0
-      || (ds.view.x + viewW) > ds.meta.samples
-      || (ds.view.y + viewH) > ds.meta.lines
-    );
-  }
-
   async function readRasterForBand(ds, band, eff, viewportW, viewportH) {
-    let raster = null;
-    if (!viewExtendsOutside(ds, eff, viewportW, viewportH)) {
-      raster = await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
+    const stats = ensureRenderStats(ds);
+    stats.pyramidAttempts += 1;
+    let raster = await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
+    if (raster) {
+      stats.pyramidHits += 1;
     }
     if (!raster) {
+      stats.pyramidMisses += 1;
       setStatus("reading…", "warn");
       raster = await readRasterDirect(ds, band, eff, viewportW, viewportH);
     }

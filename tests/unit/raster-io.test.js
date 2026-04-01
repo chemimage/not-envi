@@ -54,11 +54,14 @@ function makeDs(u8) {
 }
 
 function makeDsReadIntoOnly(u8) {
+  const stats = { readIntoCalls: 0 };
   return {
+    stats,
     async read() {
       throw new Error("read() should not be used when readInto() is available");
     },
     async readInto(offset, dest, destOffset = 0, length = dest.byteLength) {
+      stats.readIntoCalls += 1;
       const view = u8.subarray(offset, offset + length);
       dest.set(view, destOffset);
       return view.byteLength;
@@ -116,10 +119,34 @@ describe("raster-io", () => {
     expect(Array.from(out)).toEqual([1, 2, 11, 12]);
   });
 
+  test("readBandWindow groups contiguous full-width rows into one slab read", async () => {
+    const meta = makeMeta("bsq", 3, 4, 2);
+    const ds = makeDsReadIntoOnly(makeBuffer(meta));
+    const out = await readBandWindow(meta, ds, 1, 0, 0, 3, 4, 1, 2);
+    expect(Array.from(out)).toEqual([100, 101, 102, 110, 111, 112, 120, 121, 122, 130, 131, 132]);
+    expect(ds.stats.readIntoCalls).toBe(1);
+  });
+
+  test("readBandWindowBIP groups contiguous full-width rows into one slab read", async () => {
+    const meta = makeMeta("bip", 3, 4, 2);
+    const ds = makeDsReadIntoOnly(makeBuffer(meta));
+    const out = await readBandWindowBIP(meta, ds, 1, 0, 0, 3, 4, 1, 2);
+    expect(Array.from(out)).toEqual([100, 101, 102, 110, 111, 112, 120, 121, 122, 130, 131, 132]);
+    expect(ds.stats.readIntoCalls).toBe(1);
+  });
+
   test("toFloat32 converts numeric arrays", () => {
     const inArr = new Uint16Array([1, 2, 3]);
     const out = toFloat32(inArr);
     expect(out).toBeInstanceOf(Float32Array);
     expect(Array.from(out)).toEqual([1, 2, 3]);
+  });
+
+  test("toFloat32 can fill a provided destination buffer", () => {
+    const inArr = new Uint16Array([4, 5, 6]);
+    const dest = new Float32Array(3);
+    const out = toFloat32(inArr, dest);
+    expect(out).toBe(dest);
+    expect(Array.from(dest)).toEqual([4, 5, 6]);
   });
 });

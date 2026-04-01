@@ -134,4 +134,40 @@ describe("histogram controller", () => {
     grayCtrl.drawHistogram({ activeBand: 0 });
     expect(fillStyles).toContain("rgba(156,163,175,0.35)");
   });
+
+  test("buildBandStatsWhole reuses a caller-owned Float32Array scratch buffer", async () => {
+    let capturedOut = null;
+    const computeHistogram = vi.fn(() => ({ bins: new Uint32Array([1]), min: 0, max: 1, p1: 0, p99: 1 }));
+    const ctrl = createHistogramController({
+      state: { activeId: "other", histMode: "whole" },
+      els: { hist: { getBoundingClientRect: () => ({ width: 100, height: 40 }) } },
+      setStatus: () => {},
+      readBandWindow: async (...args) => {
+        capturedOut = args[8];
+        capturedOut.set([1, 2, 3, 4], 0);
+        return capturedOut;
+      },
+      readBandWindowBIP: async () => new Float32Array(0),
+      toFloat32: (arr, out = null) => out || arr,
+      computeHistogram,
+      tone01: () => 0,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      resolveStats: () => null,
+      syncRangeInputsFromSettings: () => {},
+      render: () => {}
+    });
+    const ds = {
+      id: "ds-1",
+      activeBand: 0,
+      bandStatsWhole: new Map(),
+      meta: { samples: 2, lines: 2, interleave: "bsq" },
+      ds: {}
+    };
+
+    await ctrl.buildBandStatsWhole(ds, 0);
+
+    expect(capturedOut).toBeInstanceOf(Float32Array);
+    expect(computeHistogram).toHaveBeenCalledWith(capturedOut, 256);
+    expect(ds.bandStatsWhole.has(0)).toBe(true);
+  });
 });

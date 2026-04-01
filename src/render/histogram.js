@@ -6,6 +6,7 @@ import {
   pickHistogramHandle,
   resolveHistogramDisplay
 } from "./histogram-math.js";
+import { createFloat32ScratchPool } from "../core/float-scratch.js";
 
 export function createHistogramController(deps) {
   const {
@@ -24,6 +25,10 @@ export function createHistogramController(deps) {
     syncRangeInputsFromSettings,
     render
   } = deps;
+  const floatScratchPool = createFloat32ScratchPool({
+    maxRetainedBuffers: 2,
+    maxRetainedElements: 1_048_576
+  });
 
   function resolveDisplayBand(ds) {
     if (!ds) return null;
@@ -129,8 +134,37 @@ export function createHistogramController(deps) {
         const key = iy * rowStride + ix;
         if (seen.has(key)) continue;
         seen.add(key);
-        values.push(f32[row * outW + col]);
+        ensureSelectionValueCapacity(values, values.length + 1);
+        values.buffer[values.length] = f32[row * outW + col];
+        values.length += 1;
       }
+    }
+  }
+
+  function ensureSelectionValueCapacity(values, needed) {
+    if (!values || values.buffer.length >= needed) return;
+    const nextSize = Math.max(needed, values.buffer.length ? values.buffer.length * 2 : 1024);
+    const next = new Float32Array(nextSize);
+    if (values.length > 0) next.set(values.buffer.subarray(0, values.length), 0);
+    values.buffer = next;
+  }
+
+  async function readWindowF32(ds, band, x0, y0, outW, outH, step) {
+    const length = Math.max(0, outW * outH);
+    const scratch = floatScratchPool.acquire(length);
+    try {
+      const raw = ds.meta.interleave === "bip"
+        ? await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch)
+        : await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch);
+      return {
+        data: raw === scratch ? scratch : toFloat32(raw, scratch),
+        release() {
+          floatScratchPool.release(scratch);
+        }
+      };
+    } catch (err) {
+      floatScratchPool.release(scratch);
+      throw err;
     }
   }
 
@@ -154,26 +188,30 @@ export function createHistogramController(deps) {
     const targetSamples = 700_000;
     const step = Math.max(1, Math.ceil(Math.sqrt(totalArea / targetSamples)));
     const seen = new Set();
-    const values = [];
+    const estimatedSamples = Math.max(1, Math.ceil(totalArea / Math.max(1, step * step)));
+    const values = {
+      buffer: new Float32Array(estimatedSamples),
+      length: 0
+    };
 
     for (const item of valid) {
       const { selection, bounds, width, height } = item;
       const outW = Math.max(1, Math.ceil(width / step));
       const outH = Math.max(1, Math.ceil(height / step));
-
-      let raw;
-      if (ds.meta.interleave === "bip") {
-        raw = await readBandWindowBIP(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, step);
-      } else {
-        raw = await readBandWindow(ds.meta, ds.ds, band, bounds.x0, bounds.y0, outW, outH, step);
+      const window = await readWindowF32(ds, band, bounds.x0, bounds.y0, outW, outH, step);
+      try {
+        appendSelectionValues(selection, window.data, outW, outH, bounds.x0, bounds.y0, step, ds.meta.samples, seen, values);
+      } finally {
+        window.release();
       }
-      const f32 = toFloat32(raw);
-      appendSelectionValues(selection, f32, outW, outH, bounds.x0, bounds.y0, step, ds.meta.samples, seen, values);
     }
 
     if (!values.length) return null;
+    const samples = values.length === values.buffer.length
+      ? values.buffer
+      : values.buffer.subarray(0, values.length);
     return decorateHistogramStats(
-      computeHistogram(new Float32Array(values), 256),
+      computeHistogram(samples, 256),
       {
         sampleStep: step,
         trueRawSamples: step === 1,
@@ -195,26 +233,24 @@ export function createHistogramController(deps) {
 
     try {
       setStatus("histogram…", "warn");
-      let raw;
-      if (ds.meta.interleave === "bip") {
-        raw = await readBandWindowBIP(ds.meta, ds.ds, band, 0, 0, outW, outH, step);
-      } else {
-        raw = await readBandWindow(ds.meta, ds.ds, band, 0, 0, outW, outH, step);
-      }
-      const f32 = toFloat32(raw);
-      const stats = decorateHistogramStats(
-        computeHistogram(f32, 256),
-        {
-          sampleStep: step,
-          trueRawSamples: step === 1,
-          samplingMode: step === 1 ? "whole-raw" : "whole-subsampled"
-        }
-      );
-      ds.bandStatsWhole.set(band, stats);
+      const window = await readWindowF32(ds, band, 0, 0, outW, outH, step);
+      try {
+        const stats = decorateHistogramStats(
+          computeHistogram(window.data, 256),
+          {
+            sampleStep: step,
+            trueRawSamples: step === 1,
+            samplingMode: step === 1 ? "whole-raw" : "whole-subsampled"
+          }
+        );
+        ds.bandStatsWhole.set(band, stats);
 
-      if (ds.id === state.activeId && ds.activeBand === band && state.histMode === "whole") {
-        syncRangeInputsFromSettings(ds, { force: true });
-        drawHistogram(ds);
+        if (ds.id === state.activeId && ds.activeBand === band && state.histMode === "whole") {
+          syncRangeInputsFromSettings(ds, { force: true });
+          drawHistogram(ds);
+        }
+      } finally {
+        window.release();
       }
       setStatus("ready", "ok");
     } catch (e) {

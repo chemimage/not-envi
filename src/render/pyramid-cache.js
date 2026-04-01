@@ -1,6 +1,12 @@
 import { clamp } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
 
+const perfNow = () => (
+  (typeof performance !== "undefined" && typeof performance.now === "function")
+    ? performance.now()
+    : Date.now()
+);
+
 export function computeMaxPyramidLevel(meta, tileSize) {
   const maxDim = Math.max(meta.samples, meta.lines);
   if (!Number.isFinite(maxDim) || maxDim <= 0) return 1;
@@ -227,7 +233,16 @@ export function createPyramidController(deps) {
       qLo: [],
       focus: null,
       _idleHandle: null,
-      _lastKick: 0
+      _lastKick: 0,
+      stats: {
+        tileReads: 0,
+        tilePixelsRead: 0,
+        tileReadMs: 0,
+        composeCalls: 0,
+        tilesComposed: 0,
+        composePixels: 0,
+        composeMs: 0
+      }
     };
   }
 
@@ -345,6 +360,7 @@ export function createPyramidController(deps) {
 
   function composePyramidRaster(ds, band, idealLevel, eff, viewportW, viewportH) {
     const pyr = ds.pyramid;
+    const composeStart = perfNow();
     const ideal = collectViewportLevel(ds, pyr, band, idealLevel, eff, viewportW, viewportH);
     if (!ideal) return null;
 
@@ -355,11 +371,18 @@ export function createPyramidController(deps) {
     const winY0 = sampling ? Math.floor(sampling.srcY0) : ideal.bounds.ly0;
     const winW = sampling ? Math.max(1, sampling.rasterW) : Math.max(1, ideal.bounds.lx1 - ideal.bounds.lx0);
     const winH = sampling ? Math.max(1, sampling.rasterH) : Math.max(1, ideal.bounds.ly1 - ideal.bounds.ly0);
+    const dstOriginX = sampling
+      ? ((Math.floor(Number(sampling.colStart) || 0)) - winX0)
+      : (-winX0);
+    const dstOriginY = sampling
+      ? ((Math.floor(Number(sampling.rowStart) || 0)) - winY0)
+      : (-winY0);
     const out = new Float32Array(winW * winH);
     out.fill(Number.NaN);
     const filled = new Uint8Array(winW * winH);
     let filledCount = 0;
     let bestLevel = null;
+    let tilesUsed = 0;
 
     for (let level = pyr.maxLevel; level >= idealLevel; level -= 1) {
       const info = collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH);
@@ -382,13 +405,14 @@ export function createPyramidController(deps) {
         if (ovX1 <= ovX0 || ovY1 <= ovY0) continue;
 
         bestLevel = bestLevel == null ? level : Math.min(bestLevel, level);
+        tilesUsed += 1;
         for (let sy = ovY0; sy < ovY1; sy += 1) {
-          const dstY0 = Math.max(0, (sy * factor) - winY0);
+          const dstY0 = Math.max(0, dstOriginY + (sy * factor));
           const dstY1 = Math.min(winH, dstY0 + factor);
           const srcRow = (sy - tileDy0) * tile.w;
           for (let sx = ovX0; sx < ovX1; sx += 1) {
             const value = tile.data[srcRow + (sx - tileDx0)];
-            const dstX0 = Math.max(0, (sx * factor) - winX0);
+            const dstX0 = Math.max(0, dstOriginX + (sx * factor));
             const dstX1 = Math.min(winW, dstX0 + factor);
             for (let dy = dstY0; dy < dstY1; dy += 1) {
               const rowOff = dy * winW;
@@ -406,6 +430,10 @@ export function createPyramidController(deps) {
       }
     }
 
+    pyr.stats.composeCalls += 1;
+    pyr.stats.tilesComposed += tilesUsed;
+    pyr.stats.composePixels += filledCount;
+    pyr.stats.composeMs += perfNow() - composeStart;
     if (!filledCount) return null;
     return {
       band,
@@ -451,6 +479,7 @@ export function createPyramidController(deps) {
     pyr.queued.add(key);
 
     const p = (async () => {
+      const readStart = perfNow();
       const step = 1 << level;
       const x0 = tx * pyr.tileSize * step;
       const y0 = ty * pyr.tileSize * step;
@@ -472,6 +501,9 @@ export function createPyramidController(deps) {
       ds.pyramid.pending.delete(key);
       ds.pyramid.tiles.set(key, tile);
       ds.pyramid.totalBytes += tile.bytes;
+      ds.pyramid.stats.tileReads += 1;
+      ds.pyramid.stats.tilePixelsRead += outW * outH;
+      ds.pyramid.stats.tileReadMs += perfNow() - readStart;
       evictPyramidIfNeeded(ds.pyramid);
       return tile;
     })().catch((err) => {

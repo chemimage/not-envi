@@ -5,6 +5,11 @@ const HOST_LITTLE_ENDIAN = (() => {
 })();
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const perfNow = () => (
+  (typeof performance !== "undefined" && typeof performance.now === "function")
+    ? performance.now()
+    : Date.now()
+);
 
 export function pixelOffset(meta, x, y, b) {
   const bytes = meta.dataTypeInfo.bytes;
@@ -64,6 +69,22 @@ function ensureOutputArray(meta, out, n) {
   return allocBandArray(meta, n);
 }
 
+function ensureRasterStats(ds) {
+  if (!ds || (typeof ds !== "object" && typeof ds !== "function")) return null;
+  if (!ds.stats || typeof ds.stats !== "object") ds.stats = {};
+  if (!ds.stats.raster) {
+    ds.stats.raster = {
+      windowCalls: 0,
+      bipWindowCalls: 0,
+      slabWindowCalls: 0,
+      rowWindowCalls: 0,
+      decodedPixels: 0,
+      windowReadMs: 0
+    };
+  }
+  return ds.stats.raster;
+}
+
 async function fillReadBuffer(ds, offset, scratch, length = scratch.byteLength) {
   const want = Math.max(0, Math.min(scratch.byteLength, Number(length) || 0));
   if (want <= 0) return scratch.subarray(0, 0);
@@ -93,11 +114,90 @@ async function parallelFor(count, limit, fn, makeState = null) {
   await Promise.all(workers);
 }
 
+function chooseSlabRows(rowStrideBytes, segmentBytes, remainingRows, targetBytes = 512 * 1024, maxOverreadRatio = 2) {
+  const stride = Math.max(1, Math.floor(Number(rowStrideBytes) || 1));
+  const segment = Math.max(1, Math.floor(Number(segmentBytes) || 1));
+  const totalRows = Math.max(1, Math.floor(Number(remainingRows) || 1));
+  const maxRowsBySize = Math.max(1, Math.floor((targetBytes - segment) / stride) + 1);
+  let rows = Math.min(totalRows, maxRowsBySize);
+  while (rows > 1) {
+    const slabBytes = ((rows - 1) * stride) + segment;
+    if (slabBytes <= (rows * segment * maxOverreadRatio)) return rows;
+    rows -= 1;
+  }
+  return 1;
+}
+
+async function decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr) {
+  const bytes = meta.dataTypeInfo.bytes;
+  const rowStrideBytes = (meta.interleave === "bil")
+    ? (meta.bands * meta.samples * bytes)
+    : (meta.samples * bytes);
+  const segmentBytes = safeOutW * bytes;
+  const slabRows = chooseSlabRows(rowStrideBytes, segmentBytes, safeOutH);
+  if (slabRows <= 1) return false;
+
+  const groupCount = Math.ceil(safeOutH / slabRows);
+  const maxScratchBytes = ((slabRows - 1) * rowStrideBytes) + segmentBytes;
+  await parallelFor(groupCount, concurrency, async (groupIndex, workerState) => {
+    const rowStart = groupIndex * slabRows;
+    const rows = Math.min(slabRows, safeOutH - rowStart);
+    const slabBytes = ((rows - 1) * rowStrideBytes) + segmentBytes;
+    const y = y0 + rowStart;
+    const offset = pixelOffset(meta, x0, y, band);
+    const scratch = workerState?.scratch || new Uint8Array(maxScratchBytes);
+    const u8 = await fillReadBuffer(ds, offset, scratch, slabBytes);
+    for (let localRow = 0; localRow < rows; localRow += 1) {
+      const rowByteOffset = localRow * rowStrideBytes;
+      const rowBytes = u8.subarray(rowByteOffset, rowByteOffset + segmentBytes);
+      const seg = makeSegmentReader(meta, rowBytes);
+      const baseOut = (rowStart + localRow) * outW;
+      for (let sx = 0; sx < safeOutW; sx += 1) {
+        outArr[baseOut + sx] = segGet(meta, seg, sx);
+      }
+    }
+  }, () => ({ scratch: new Uint8Array(maxScratchBytes) }));
+  return true;
+}
+
+async function decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr) {
+  const bytes = meta.dataTypeInfo.bytes;
+  const rowStrideBytes = meta.samples * meta.bands * bytes;
+  const segmentBytes = safeOutW * meta.bands * bytes;
+  const slabRows = chooseSlabRows(rowStrideBytes, segmentBytes, safeOutH);
+  if (slabRows <= 1) return false;
+
+  const groupCount = Math.ceil(safeOutH / slabRows);
+  const maxScratchBytes = ((slabRows - 1) * rowStrideBytes) + segmentBytes;
+  await parallelFor(groupCount, concurrency, async (groupIndex, workerState) => {
+    const rowStart = groupIndex * slabRows;
+    const rows = Math.min(slabRows, safeOutH - rowStart);
+    const slabBytes = ((rows - 1) * rowStrideBytes) + segmentBytes;
+    const y = y0 + rowStart;
+    const offset = pixelOffset(meta, x0, y, 0);
+    const scratch = workerState?.scratch || new Uint8Array(maxScratchBytes);
+    const u8 = await fillReadBuffer(ds, offset, scratch, slabBytes);
+    for (let localRow = 0; localRow < rows; localRow += 1) {
+      const rowByteOffset = localRow * rowStrideBytes;
+      const rowBytes = u8.subarray(rowByteOffset, rowByteOffset + segmentBytes);
+      const seg = makeSegmentReader(meta, rowBytes);
+      const baseOut = (rowStart + localRow) * outW;
+      for (let sx = 0; sx < safeOutW; sx += 1) {
+        outArr[baseOut + sx] = segGet(meta, seg, (sx * meta.bands) + band);
+      }
+    }
+  }, () => ({ scratch: new Uint8Array(maxScratchBytes) }));
+  return true;
+}
+
 export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2, out = null) {
   const bytes = meta.dataTypeInfo.bytes;
   const S = meta.samples;
   const L = meta.lines;
   const outArr = ensureOutputArray(meta, out, outW * outH);
+  const stats = ensureRasterStats(ds);
+  const t0 = perfNow();
+  if (stats) stats.windowCalls += 1;
 
   if (meta.interleave === "bip") {
     throw new Error("readBandWindow not used for BIP");
@@ -110,6 +210,17 @@ export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, c
   const maxY = clamp(y0 + outH * step, 0, L);
   const safeOutW = Math.floor((maxX - x0 + (step - 1)) / step);
   const safeOutH = Math.floor((maxY - y0 + (step - 1)) / step);
+  if (step === 1 && safeOutW > 0 && safeOutH > 1) {
+    const usedSlabs = await decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr);
+    if (usedSlabs) {
+      if (stats) {
+        stats.slabWindowCalls += 1;
+        stats.decodedPixels += safeOutW * safeOutH;
+        stats.windowReadMs += perfNow() - t0;
+      }
+      return outArr;
+    }
+  }
   const spanPixels = safeOutW * step;
   const rowBytes = spanPixels * bytes;
 
@@ -126,6 +237,11 @@ export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, c
   };
 
   await parallelFor(safeOutH, concurrency, rowWorker, () => ({ scratch: new Uint8Array(rowBytes) }));
+  if (stats) {
+    stats.rowWindowCalls += 1;
+    stats.decodedPixels += safeOutW * safeOutH;
+    stats.windowReadMs += perfNow() - t0;
+  }
   return outArr;
 }
 
@@ -134,6 +250,12 @@ export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step
   const L = meta.lines;
   const B = meta.bands;
   const outArr = ensureOutputArray(meta, out, outW * outH);
+  const stats = ensureRasterStats(ds);
+  const t0 = perfNow();
+  if (stats) {
+    stats.windowCalls += 1;
+    stats.bipWindowCalls += 1;
+  }
 
   x0 = clamp(Math.floor(x0), 0, S - 1);
   y0 = clamp(Math.floor(y0), 0, L - 1);
@@ -142,6 +264,17 @@ export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step
   const maxY = clamp(y0 + outH * step, 0, L);
   const safeOutW = Math.floor((maxX - x0 + (step - 1)) / step);
   const safeOutH = Math.floor((maxY - y0 + (step - 1)) / step);
+  if (step === 1 && safeOutW > 0 && safeOutH > 1) {
+    const usedSlabs = await decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr);
+    if (usedSlabs) {
+      if (stats) {
+        stats.slabWindowCalls += 1;
+        stats.decodedPixels += safeOutW * safeOutH;
+        stats.windowReadMs += perfNow() - t0;
+      }
+      return outArr;
+    }
+  }
   const spanPixels = safeOutW * step;
   const rowBytes = spanPixels * B * meta.dataTypeInfo.bytes;
 
@@ -160,12 +293,22 @@ export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step
   };
 
   await parallelFor(safeOutH, concurrency, rowWorker, () => ({ scratch: new Uint8Array(rowBytes) }));
+  if (stats) {
+    stats.rowWindowCalls += 1;
+    stats.decodedPixels += safeOutW * safeOutH;
+    stats.windowReadMs += perfNow() - t0;
+  }
   return outArr;
 }
 
-export function toFloat32(arr) {
-  if (arr instanceof Float32Array) return arr;
-  const out = new Float32Array(arr.length);
-  for (let i = 0; i < arr.length; i += 1) out[i] = Number(arr[i]);
-  return out;
+export function toFloat32(arr, out = null) {
+  if (arr instanceof Float32Array && (!out || out === arr)) return arr;
+  const length = Math.max(0, Number(arr?.length) || 0);
+  const dst = (out instanceof Float32Array && out.length >= length) ? out : new Float32Array(length);
+  if (arr instanceof Float32Array) {
+    if (arr !== dst) dst.set(arr, 0);
+    return dst;
+  }
+  for (let i = 0; i < length; i += 1) dst[i] = Number(arr[i]);
+  return dst;
 }
