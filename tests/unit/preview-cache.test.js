@@ -5,10 +5,16 @@ describe("preview cache", () => {
   test("replays cached preview using its original viewport size", () => {
     const drawImage = vi.fn();
     const fillRect = vi.fn();
+    const beginPath = vi.fn();
+    const rect = vi.fn();
+    const clip = vi.fn();
     const cpuCtx = {
       save: vi.fn(),
       restore: vi.fn(),
       setTransform: vi.fn(),
+      beginPath,
+      rect,
+      clip,
       fillRect,
       drawImage,
       imageSmoothingEnabled: false,
@@ -37,6 +43,9 @@ describe("preview cache", () => {
 
     expect(drew).toBe(true);
     expect(fillRect).toHaveBeenCalledWith(0, 0, 320, 180);
+    expect(beginPath).toHaveBeenCalledTimes(1);
+    expect(rect).toHaveBeenCalledWith(0, 0, 320, 180);
+    expect(clip).toHaveBeenCalledTimes(1);
     expect(drawImage).toHaveBeenCalledWith(sourceCanvas, 0, 0, 320, 180);
   });
 });

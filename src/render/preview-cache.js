@@ -2,6 +2,25 @@ function panelSlotValue(panelSlot) {
   return Number(panelSlot) || 1;
 }
 
+function clipToViewport(ctx, viewport) {
+  if (!ctx || !viewport) return;
+  if (
+    typeof ctx.beginPath !== "function"
+    || typeof ctx.rect !== "function"
+    || typeof ctx.clip !== "function"
+  ) {
+    return;
+  }
+  ctx.beginPath();
+  ctx.rect(
+    Number(viewport.x) || 0,
+    Number(viewport.y) || 0,
+    Math.max(1, Number(viewport.w) || 1),
+    Math.max(1, Number(viewport.h) || 1)
+  );
+  ctx.clip();
+}
+
 function cloneCanvasImage(sourceCanvas) {
   if (!sourceCanvas) return null;
   if (typeof document === "undefined" || typeof document.createElement !== "function") {
@@ -123,6 +142,7 @@ export function drawCachedScreenPreview({ els, ds, panelSlot, modeKey, eff, view
     Math.max(1, Number(viewport.w) || 1),
     Math.max(1, Number(viewport.h) || 1)
   );
+  clipToViewport(cpuCtx, viewport);
   cpuCtx.drawImage(
     frame.canvas,
     dx,
@@ -187,6 +207,7 @@ export function drawOverlayCachedPreview({
         );
         clearedViewport = true;
       }
+      clipToViewport(cpuCtx, viewport);
       cpuCtx.drawImage(
         tinted,
         dx,
