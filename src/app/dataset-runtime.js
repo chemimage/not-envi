@@ -86,10 +86,70 @@ export function createDatasetRuntime(deps) {
     else render();
   }
 
-  function setDisplayCompositionMode(mode = DISPLAY_COMPOSITION_SPLIT) {
+  function clonePanelSnapshot(panel) {
+    return {
+      slot: Number(panel?.slot) || 1,
+      datasetId: panel?.datasetId || null,
+      linkGroupId: Number.isFinite(Number(panel?.linkGroupId)) ? Number(panel.linkGroupId) : null,
+      activeBand: Number.isFinite(Number(panel?.activeBand)) ? Number(panel.activeBand) : null,
+      annotations: createDisplayAnnotationState(panel?.annotations),
+      view: cloneDisplayView(panel?.view)
+    };
+  }
+
+  function captureSplitSnapshot() {
+    ensureDisplayPanels(state);
+    return {
+      panels: state.displayPanels.map((panel) => clonePanelSnapshot(panel)),
+      activePanelSlot: Number(state.activePanelSlot) || 1,
+      activeId: state.activeId || null
+    };
+  }
+
+  function rememberSplitSnapshot() {
+    if (state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY) return;
+    state.displaySplitSnapshot = captureSplitSnapshot();
+  }
+
+  function clearSplitSnapshot() {
+    state.displaySplitSnapshot = null;
+  }
+
+  function restoreSplitSnapshot(opts = {}) {
+    const snapshot = state.displaySplitSnapshot;
+    if (!snapshot || !Array.isArray(snapshot.panels) || !snapshot.panels.length) return false;
+    ensureDisplayPanels(state);
+
+    for (const panel of state.displayPanels) {
+      const saved = snapshot.panels.find((item) => Number(item?.slot) === Number(panel.slot)) || null;
+      if (!saved?.datasetId || !findDatasetById(saved.datasetId)) {
+        clearDisplayPanel(panel);
+        continue;
+      }
+      panel.datasetId = saved.datasetId;
+      panel.linkGroupId = Number.isFinite(Number(saved.linkGroupId)) ? Number(saved.linkGroupId) : null;
+      panel.activeBand = Number.isFinite(Number(saved.activeBand)) ? Number(saved.activeBand) : null;
+      panel.annotations = createDisplayAnnotationState(saved.annotations);
+      panel.view = cloneDisplayView(saved.view);
+    }
+
+    const savedActiveSlot = Number(snapshot.activePanelSlot);
+    const savedActivePanel = getDisplayPanel(state, savedActiveSlot);
+    state.activePanelSlot = savedActivePanel?.datasetId ? savedActiveSlot : (getActiveDisplayPanel(state)?.slot || 1);
+    state.activeId = savedActivePanel?.datasetId || snapshot.activeId || null;
+    setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT, { preserveSplitSnapshot: true });
+    clearSplitSnapshot();
+    updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+    return true;
+  }
+
+  function setDisplayCompositionMode(mode = DISPLAY_COMPOSITION_SPLIT, opts = {}) {
     state.displayCompositionMode = (mode === DISPLAY_COMPOSITION_OVERLAY)
       ? DISPLAY_COMPOSITION_OVERLAY
       : DISPLAY_COMPOSITION_SPLIT;
+    if (state.displayCompositionMode !== DISPLAY_COMPOSITION_OVERLAY && !opts?.preserveSplitSnapshot) {
+      clearSplitSnapshot();
+    }
   }
 
   function hideDatasetFromPanel(id, slot, opts = {}) {
@@ -201,6 +261,7 @@ export function createDatasetRuntime(deps) {
     const panel1 = getDisplayPanel(state, 1);
     const panel2 = getDisplayPanel(state, 2);
     if (!dataset || !panel1 || !panel2) return false;
+    rememberSplitSnapshot();
 
     const viewSnapshot = (typeof captureDisplayViewState === "function") ? captureDisplayViewState() : null;
     const existing1 = String(panel1.datasetId || "") === String(dataset.id) ? panel1 : null;
@@ -251,11 +312,8 @@ export function createDatasetRuntime(deps) {
     if (slot === "both") {
       const assigned = getDatasetDisplayPanels(state, ds.id).filter((panel) => Number(panel.slot) === 1 || Number(panel.slot) === 2);
       if (assigned.length === 2 && state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY) {
-        const viewSnapshot = (typeof captureDisplayViewState === "function") ? captureDisplayViewState() : null;
-        clearDisplayPanel(getDisplayPanel(state, 1));
-        clearDisplayPanel(getDisplayPanel(state, 2));
+        if (restoreSplitSnapshot(opts)) return true;
         setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
-        if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
         updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
         return true;
       }
@@ -467,6 +525,7 @@ export function createDatasetRuntime(deps) {
     state.datasets.splice(idx, 1);
     if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
     if (getVisibleDisplayPanels(state).length < 2) setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
+    else if (state.displayCompositionMode !== DISPLAY_COMPOSITION_OVERLAY) clearSplitSnapshot();
 
     const nextPanel = getActiveDisplayPanel(state);
     if (nextPanel?.datasetId) {

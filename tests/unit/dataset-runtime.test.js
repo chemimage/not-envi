@@ -189,4 +189,67 @@ describe("dataset runtime", () => {
     expect(panel1?.linkGroupId).toBe(panel2?.linkGroupId);
     expect(deps.closeSpectrum).not.toHaveBeenCalled();
   });
+
+  test("turning off overlay restores the previous split state instead of clearing panels", () => {
+    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 0, y: 0, scale: 1 }, drawings: [], selectedAreaId: null };
+    const state = {
+      datasets: [ds1],
+      activeId: "ds1",
+      activePanelSlot: 2,
+      nextLinkGroupId: 4,
+      displayPanels: [
+        { slot: 1, datasetId: "ds1", linkGroupId: 1, activeBand: 0, annotations: { drawings: [{ id: 10 }], selectedAreaId: 10 }, view: { x: 1, y: 2, scale: 1.25 } },
+        { slot: 2, datasetId: "ds1", linkGroupId: 2, activeBand: 1, annotations: { drawings: [{ id: 20 }], selectedAreaId: 20 }, view: { x: 9, y: 8, scale: 2.5 } }
+      ]
+    };
+    const deps = makeDeps(state);
+    const rt = createDatasetRuntime(deps);
+
+    rt.cycleDatasetPanel("ds1", "both");
+    expect(state.displayCompositionMode).toBe(DISPLAY_COMPOSITION_OVERLAY);
+
+    rt.cycleDatasetPanel("ds1", "both");
+
+    const panel1 = getDisplayPanel(state, 1);
+    const panel2 = getDisplayPanel(state, 2);
+    expect(state.displayCompositionMode).toBe("split");
+    expect(panel1?.datasetId).toBe("ds1");
+    expect(panel2?.datasetId).toBe("ds1");
+    expect(panel1?.linkGroupId).toBe(1);
+    expect(panel2?.linkGroupId).toBe(2);
+    expect(panel1?.activeBand).toBe(0);
+    expect(panel2?.activeBand).toBe(1);
+    expect(panel1?.annotations?.selectedAreaId).toBe(10);
+    expect(panel2?.annotations?.selectedAreaId).toBe(20);
+    expect(panel1?.view).toEqual({ x: 1, y: 2, scale: 1.25, minScale: 1 });
+    expect(panel2?.view).toEqual({ x: 9, y: 8, scale: 2.5, minScale: 1 });
+    expect(state.activePanelSlot).toBe(2);
+  });
+
+  test("turning off overlay without a saved split snapshot keeps both panels visible", () => {
+    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 0, y: 0, scale: 1 }, drawings: [], selectedAreaId: null };
+    const state = {
+      datasets: [ds1],
+      activeId: "ds1",
+      activePanelSlot: 1,
+      displayCompositionMode: DISPLAY_COMPOSITION_OVERLAY,
+      displaySplitSnapshot: null,
+      displayPanels: [
+        { slot: 1, datasetId: "ds1", linkGroupId: 1, activeBand: 0, annotations: { drawings: [], selectedAreaId: null }, view: { x: 1, y: 2, scale: 3 } },
+        { slot: 2, datasetId: "ds1", linkGroupId: 1, activeBand: 1, annotations: { drawings: [], selectedAreaId: null }, view: { x: 1, y: 2, scale: 3 } }
+      ]
+    };
+    const deps = makeDeps(state);
+    const rt = createDatasetRuntime(deps);
+
+    rt.cycleDatasetPanel("ds1", "both");
+
+    const panel1 = getDisplayPanel(state, 1);
+    const panel2 = getDisplayPanel(state, 2);
+    expect(state.displayCompositionMode).toBe("split");
+    expect(panel1?.datasetId).toBe("ds1");
+    expect(panel2?.datasetId).toBe("ds1");
+    expect(panel1?.linkGroupId).toBe(1);
+    expect(panel2?.linkGroupId).toBe(1);
+  });
 });

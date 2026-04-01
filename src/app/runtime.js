@@ -164,6 +164,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     displayPanels: createDisplayPanels(),
     activePanelSlot: 1,
     displayCompositionMode: DISPLAY_COMPOSITION_SPLIT,
+    displaySplitSnapshot: null,
     nextLinkGroupId: 1,
     ioParallel: APP_CONFIG.io.parallelEnabledByDefault,
 
