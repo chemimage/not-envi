@@ -508,6 +508,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   const uiPanels = createUIPanels({
     state,
     els,
+    cacheBudget: cacheRuntime.cacheBudget,
     getActive,
     getActivePanel,
     clamp,

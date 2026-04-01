@@ -15,6 +15,17 @@ export function detectHardwareCores(fallback = 4) {
   return Math.max(1, Math.floor(Number.isFinite(cores) ? cores : fallback));
 }
 
+export function detectDeviceMemoryGiB(fallback = 0) {
+  const deviceMemory = Number(
+    (typeof navigator !== "undefined" && navigator && navigator.deviceMemory)
+      ? navigator.deviceMemory
+      : fallback
+  );
+  return Number.isFinite(deviceMemory) && deviceMemory > 0
+    ? deviceMemory
+    : Math.max(0, Number(fallback) || 0);
+}
+
 export function resolveHardwareConcurrencyLimit({
   fraction = 1,
   min = 1,
@@ -89,10 +100,21 @@ export const APP_CONFIG = Object.freeze({
     tiffPreviewMaxFactor: 16
   }),
   tiff: Object.freeze({
-    desktopRawCacheBytes: 512 * MIB,
-    desktopDecodedCacheBytes: 2 * GIB,
-    ipadRawCacheBytes: 128 * MIB,
-    ipadDecodedCacheBytes: 512 * MIB,
+    // `standard` is sized around a current 15-inch MacBook Air base-class machine:
+    // 10-core CPU and 16GB unified memory.
+    standardReferenceDeviceMemoryGiB: 16,
+    standardReferenceHardwareCores: 10,
+    standardRawCacheBytes: 640 * MIB,
+    standardDecodedCacheBytes: 1920 * MIB,
+
+    // `lite` is sized to stay safe on current iPad Pro / MacBook Neo class hardware.
+    // Those current baselines range from roughly 6-9 cores and 8-12GB unified memory.
+    liteReferenceDeviceMemoryGiB: 8,
+    liteReferenceHardwareCores: 6,
+    liteProfileMaxDeviceMemoryGiB: 12,
+    liteProfileMaxHardwareCores: 9,
+    liteRawCacheBytes: 192 * MIB,
+    liteDecodedCacheBytes: 640 * MIB,
     hugeCompressedStripFileBytes: 256 * MIB,
     hugeCompressedStripUncompressedBytes: 1 * GIB,
     rawValidationMaxFileBytes: 32 * MIB,
@@ -102,8 +124,8 @@ export const APP_CONFIG = Object.freeze({
     budgetMinBytes: 4 * MIB,
     workerCoreFraction: 0.5,
     workerPoolMin: 1,
-    desktopWorkerPoolMax: 4,
-    ipadWorkerPoolMax: 1,
+    standardWorkerPoolMax: 5,
+    liteWorkerPoolMax: 2,
     taskCoreFraction: 0.5,
     taskMinConcurrency: 2,
     taskMaxConcurrency: 8,

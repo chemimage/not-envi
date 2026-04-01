@@ -353,14 +353,18 @@ export class TiffBlockIndexedDataSource {
       APP_CONFIG.io.maxConcurrency
     );
     this.base = new BlobDataSource(file);
+    this.profileName = String(budgets.profileName || "standard");
+    this.rawCacheLimitBytes = Math.max(0, Number(budgets.rawCacheBytes) || 0);
+    this.decodedCacheLimitBytes = Math.max(0, Number(budgets.decodedCacheBytes) || 0);
     this.rawSource = new ChunkCacheDataSource(this.base, {
       chunkSize: APP_CONFIG.io.defaultChunkSizeBytes,
-      maxBytes: Math.max(0, Number(budgets.rawCacheBytes) || 0),
+      maxBytes: this.rawCacheLimitBytes,
       concurrency: this.ioConcurrency
     });
-    this.decodedCache = new LruByteCache(Math.max(0, Number(budgets.decodedCacheBytes) || 0));
+    this.decodedCache = new LruByteCache(this.decodedCacheLimitBytes);
     this.decodedInflight = new Map();
     this.workerPoolSize = Math.max(0, Number(budgets.workerPoolSize) || 0);
+    this.taskConcurrency = resolveTiffTaskConcurrency();
     this.pool = null;
     this.stats = createTiffStats();
     this.closed = false;
@@ -381,10 +385,12 @@ export class TiffBlockIndexedDataSource {
   setMaxBytes(bytes) {
     const total = Math.max(0, Number(bytes) || 0);
     const raw = Math.max(0, Math.floor(total * 0.25));
+    this.rawCacheLimitBytes = raw;
+    this.decodedCacheLimitBytes = Math.max(0, total - raw);
     if (this.rawSource && typeof this.rawSource.setMaxBytes === "function") {
       this.rawSource.setMaxBytes(raw);
     }
-    this.decodedCache.setMaxBytes(Math.max(0, total - raw));
+    this.decodedCache.setMaxBytes(this.decodedCacheLimitBytes);
     this.#syncCacheStats();
   }
 
@@ -1073,15 +1079,15 @@ export class TiffBlockIndexedDataSource {
     const decodeLike = spec?.kind === "rgb" || spec?.kind === "window" || spec?.kind === "native-rgb-jpeg";
     if (!decodeLike) return Math.max(1, this.ioConcurrency);
     const workerCap = Math.max(1, this.workerPoolSize || 1);
-    return Math.max(1, Math.min(this.ioConcurrency, workerCap, resolveTiffTaskConcurrency()));
+    return Math.max(1, Math.min(this.ioConcurrency, workerCap, this.taskConcurrency));
   }
 
   #resolveRawRowConcurrency() {
-    return Math.max(1, Math.min(this.ioConcurrency, resolveTiffTaskConcurrency()));
+    return Math.max(1, Math.min(this.ioConcurrency, this.taskConcurrency));
   }
 
   #resolveCompositeEntryConcurrency() {
-    return Math.max(1, Math.min(Math.max(1, Math.ceil(this.ioConcurrency / 2)), resolveTiffTaskConcurrency()));
+    return Math.max(1, Math.min(Math.max(1, Math.ceil(this.ioConcurrency / 2)), this.taskConcurrency));
   }
 
   #schedule(task) {

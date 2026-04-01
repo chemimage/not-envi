@@ -99,7 +99,7 @@ function createFairScheduler(maxConcurrency, minPerOwner = 1) {
   };
 }
 
-export function resolveTiffWorkerPoolSize(requested = null, maxWorkers = APP_CONFIG.tiff.desktopWorkerPoolMax) {
+export function resolveTiffWorkerPoolSize(requested = null, maxWorkers = APP_CONFIG.tiff.standardWorkerPoolMax) {
   const configured = resolveHardwareConcurrencyLimit({
     fraction: APP_CONFIG.tiff.workerCoreFraction,
     min: APP_CONFIG.tiff.workerPoolMin,

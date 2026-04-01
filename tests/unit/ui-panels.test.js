@@ -1,5 +1,19 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createUIPanels } from "../../src/app/ui-panels.js";
+
+const originalHardwareConcurrency = navigator.hardwareConcurrency;
+const originalDeviceMemory = navigator.deviceMemory;
+
+afterEach(() => {
+  Object.defineProperty(navigator, "hardwareConcurrency", {
+    configurable: true,
+    value: originalHardwareConcurrency
+  });
+  Object.defineProperty(navigator, "deviceMemory", {
+    configurable: true,
+    value: originalDeviceMemory
+  });
+});
 
 function makeDeps() {
   const state = { histMode: "whole", datasets: [], activeId: null };
@@ -271,5 +285,81 @@ describe("ui-panels", () => {
     expect(buttons?.[1]?.className).toContain("slot-link-amber");
     expect(buttons?.[2]?.textContent).toBe("L|R");
     expect(buttons?.[2]?.className).toContain("overlay-active");
+  });
+
+  test("perf tooltip includes detected hardware and chosen budgets", () => {
+    Object.defineProperty(navigator, "hardwareConcurrency", {
+      configurable: true,
+      value: 8
+    });
+    Object.defineProperty(navigator, "deviceMemory", {
+      configurable: true,
+      value: 16
+    });
+
+    document.body.innerHTML = `
+      <div id="perfBarCacheText"></div>
+      <div id="perfBarCacheFill"></div>
+    `;
+
+    const deps = makeDeps();
+    const ds = {
+      meta: { sourceFormat: "tiff" },
+      ds: {
+        cacheBytes: () => 48,
+        maxBytes: 96,
+        profileName: "standard",
+        rawCacheLimitBytes: 32,
+        decodedCacheLimitBytes: 64,
+        workerPoolSize: 3,
+        taskConcurrency: 4,
+        stats: {
+          bytesRead: 12,
+          readCalls: 2,
+          readIntoCalls: 3,
+          cacheHits: 5,
+          cacheMisses: 1,
+          cacheEvictions: 0,
+          raster: {
+            windowCalls: 7,
+            slabWindowCalls: 4,
+            rowWindowCalls: 3,
+            windowReadMs: 8.5
+          }
+        }
+      },
+      pyramid: {
+        totalBytes: 24,
+        limitBytes: 48,
+        stats: {
+          tileReads: 9,
+          tilesComposed: 6,
+          composeMs: 4.2
+        }
+      },
+      renderStats: {
+        pyramidHits: 2,
+        pyramidMisses: 1,
+        directReadMs: 1.5
+      },
+      chunkBudgetBytes: 96,
+      pyramidBudgetBytes: 48
+    };
+    deps.getActive = () => ds;
+    deps.cacheBudget = {
+      totalBytes: 512,
+      detectedBudgetBasisBytes: 1024
+    };
+    deps.els = {
+      perfBarCacheText: document.querySelector("#perfBarCacheText"),
+      perfBarCacheFill: document.querySelector("#perfBarCacheFill")
+    };
+
+    const ui = createUIPanels(deps);
+    ui.updatePerf();
+
+    expect(deps.els.perfBarCacheText.title).toContain("Browser: 8 cores, 16 GiB deviceMemory");
+    expect(deps.els.perfBarCacheText.title).toContain("Budgets: 512 total from 1024 basis, dataset 96 chunk + 48 pyramid");
+    expect(deps.els.perfBarCacheText.title).toContain("TIFF: standard profile, 32 raw + 64 decoded, 3 workers, 4 tasks");
   });
 });

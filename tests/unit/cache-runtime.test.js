@@ -1,5 +1,19 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createCacheRuntime } from "../../src/app/cache-runtime.js";
+
+const originalDeviceMemory = navigator.deviceMemory;
+const originalPerformanceMemory = performance.memory;
+
+afterEach(() => {
+  Object.defineProperty(navigator, "deviceMemory", {
+    configurable: true,
+    value: originalDeviceMemory
+  });
+  Object.defineProperty(performance, "memory", {
+    configurable: true,
+    value: originalPerformanceMemory
+  });
+});
 
 describe("cache runtime", () => {
   test("setIOParallel toggles state and updates dataset concurrency", () => {
@@ -62,5 +76,35 @@ describe("cache runtime", () => {
       getIOConcurrencyMax: () => 2
     });
     expect(cache.cacheBudget.fracOfAvailable).toBeCloseTo(0.2);
+  });
+
+  test("records detected cache budget basis details", () => {
+    Object.defineProperty(navigator, "deviceMemory", {
+      configurable: true,
+      value: 8
+    });
+    Object.defineProperty(performance, "memory", {
+      configurable: true,
+      value: { jsHeapSizeLimit: 2 * 1024 * 1024 * 1024 }
+    });
+
+    const state = {
+      datasets: [
+        { ds: { chunkSize: 1024, setMaxBytes: vi.fn() }, pyramid: { limitBytes: 0 } }
+      ],
+      ioParallel: true
+    };
+    const cache = createCacheRuntime({
+      state,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      updatePerf: () => {},
+      updatePyramidInflight: () => {},
+      getIOConcurrencyMax: () => 2
+    });
+
+    cache.recomputeCacheBudgets();
+    expect(cache.cacheBudget.detectedHeapLimitBytes).toBe(2 * 1024 * 1024 * 1024);
+    expect(cache.cacheBudget.detectedDeviceMemoryBytes).toBe(8 * 1024 * 1024 * 1024);
+    expect(cache.cacheBudget.detectedBudgetBasisBytes).toBe(2 * 1024 * 1024 * 1024);
   });
 });

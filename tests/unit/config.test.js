@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { APP_CONFIG, detectHardwareCores, resolveHardwareConcurrencyLimit } from "../../src/app/config.js";
+import { APP_CONFIG, detectDeviceMemoryGiB, detectHardwareCores, resolveHardwareConcurrencyLimit } from "../../src/app/config.js";
 
 const originalHardwareConcurrency = navigator.hardwareConcurrency;
+const originalDeviceMemory = navigator.deviceMemory;
 
 afterEach(() => {
   Object.defineProperty(navigator, "hardwareConcurrency", {
     configurable: true,
     value: originalHardwareConcurrency
+  });
+  Object.defineProperty(navigator, "deviceMemory", {
+    configurable: true,
+    value: originalDeviceMemory
   });
 });
 
@@ -29,5 +34,13 @@ describe("config hardware concurrency", () => {
       min: APP_CONFIG.io.hardwareParallelMin,
       max: APP_CONFIG.io.maxConcurrency
     })).toBe(6);
+  });
+
+  test("detectDeviceMemoryGiB reads navigator.deviceMemory", () => {
+    Object.defineProperty(navigator, "deviceMemory", {
+      configurable: true,
+      value: 8
+    });
+    expect(detectDeviceMemoryGiB()).toBe(8);
   });
 });

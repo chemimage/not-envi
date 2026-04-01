@@ -3,7 +3,7 @@ import {
   readBandWindowBIP as readBandWindowBIPCore
 } from "../../core/raster-io.js";
 import { DATA_TYPES } from "../../core/envi-types.js";
-import { APP_CONFIG } from "../../app/config.js";
+import { APP_CONFIG, detectDeviceMemoryGiB } from "../../app/config.js";
 import { resolveTiffWorkerPoolSize } from "./scheduler.js";
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -264,19 +264,34 @@ export function buildRgbDisplayMeta(summary, description) {
   });
 }
 
-function isIpadLike() {
+function shouldUseLiteTiffProfile() {
   if (typeof navigator === "undefined") return false;
   const ua = String(navigator.userAgent || "");
   if (/iPad/i.test(ua)) return true;
-  return navigator.platform === "MacIntel" && Number(navigator.maxTouchPoints || 0) > 1;
+  if (navigator.platform === "MacIntel" && Number(navigator.maxTouchPoints || 0) > 1) return true;
+
+  const deviceMemoryGiB = detectDeviceMemoryGiB(0);
+  const hardwareCoresRaw = Number(navigator.hardwareConcurrency || 0);
+  const hardwareCores = Number.isFinite(hardwareCoresRaw) && hardwareCoresRaw > 0
+    ? Math.max(1, Math.floor(hardwareCoresRaw))
+    : 0;
+
+  if (deviceMemoryGiB > 0 && deviceMemoryGiB <= APP_CONFIG.tiff.liteProfileMaxDeviceMemoryGiB) {
+    return true;
+  }
+  if (hardwareCores > 0 && hardwareCores <= APP_CONFIG.tiff.liteProfileMaxHardwareCores) {
+    return true;
+  }
+  return false;
 }
 
 export function resolveTiffCacheBudgets(deps = {}) {
-  const isIpad = isIpadLike();
-  const defaultRaw = isIpad ? APP_CONFIG.tiff.ipadRawCacheBytes : APP_CONFIG.tiff.desktopRawCacheBytes;
-  const defaultDecoded = isIpad ? APP_CONFIG.tiff.ipadDecodedCacheBytes : APP_CONFIG.tiff.desktopDecodedCacheBytes;
+  const profileName = shouldUseLiteTiffProfile() ? "lite" : "standard";
+  const useLiteProfile = profileName === "lite";
+  const defaultRaw = useLiteProfile ? APP_CONFIG.tiff.liteRawCacheBytes : APP_CONFIG.tiff.standardRawCacheBytes;
+  const defaultDecoded = useLiteProfile ? APP_CONFIG.tiff.liteDecodedCacheBytes : APP_CONFIG.tiff.standardDecodedCacheBytes;
   const defaultTotal = defaultRaw + defaultDecoded;
-  const workerPoolMax = isIpad ? APP_CONFIG.tiff.ipadWorkerPoolMax : APP_CONFIG.tiff.desktopWorkerPoolMax;
+  const workerPoolMax = useLiteProfile ? APP_CONFIG.tiff.liteWorkerPoolMax : APP_CONFIG.tiff.standardWorkerPoolMax;
   const workerPoolSize = resolveTiffWorkerPoolSize(Number(deps?.ioConcurrency) || APP_CONFIG.io.defaultConcurrency, workerPoolMax);
   const totalHint = Number(deps?.cacheBytes);
   if (Number.isFinite(totalHint) && totalHint > 0) {
@@ -286,12 +301,14 @@ export function resolveTiffCacheBudgets(deps = {}) {
       Math.floor(total * APP_CONFIG.tiff.budgetRawFraction)
     );
     return {
+      profileName,
       rawCacheBytes: Math.min(raw, total),
       decodedCacheBytes: Math.max(APP_CONFIG.tiff.budgetMinBytes, total - Math.min(raw, total)),
       workerPoolSize
     };
   }
   return {
+    profileName,
     rawCacheBytes: defaultRaw,
     decodedCacheBytes: defaultDecoded,
     workerPoolSize

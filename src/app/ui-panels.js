@@ -21,6 +21,7 @@ export function createUIPanels(deps) {
   const {
     state,
     els,
+    cacheBudget,
     getActive,
     getActivePanel,
     clamp,
@@ -730,14 +731,50 @@ export function createUIPanels(deps) {
     }, true);
   }
 
+  function detectBrowserHardware() {
+    const cores = Number(
+      (typeof navigator !== "undefined" && navigator && navigator.hardwareConcurrency)
+        ? navigator.hardwareConcurrency
+        : 0
+    );
+    const deviceMemoryGiB = Number(
+      (typeof navigator !== "undefined" && navigator && navigator.deviceMemory)
+        ? navigator.deviceMemory
+        : 0
+    );
+    return {
+      cores: Number.isFinite(cores) && cores > 0 ? Math.max(1, Math.floor(cores)) : 0,
+      deviceMemoryGiB: Number.isFinite(deviceMemoryGiB) && deviceMemoryGiB > 0 ? deviceMemoryGiB : 0
+    };
+  }
+
+  function buildPerfDetail(ds, chunkCap, pyramidCap, ioStats, rasterStats, pyramidStats, renderStats) {
+    const hardware = detectBrowserHardware();
+    const lines = [
+      `Browser: ${hardware.cores ? fmtNoGroup(hardware.cores) : "n/a"} cores, ${hardware.deviceMemoryGiB ? `${fmtNoGroup(hardware.deviceMemoryGiB)} GiB deviceMemory` : "deviceMemory n/a"}`,
+      `Budgets: ${cacheBudget?.totalBytes ? humanBytes(cacheBudget.totalBytes) : "n/a"} total from ${cacheBudget?.detectedBudgetBasisBytes ? humanBytes(cacheBudget.detectedBudgetBasisBytes) : "n/a"} basis, dataset ${humanBytes(chunkCap)} chunk + ${humanBytes(pyramidCap)} pyramid`,
+      `Source: ${humanBytes(ioStats.bytesRead || 0)} in ${fmtNoGroup(ioStats.readCalls || 0)} read / ${fmtNoGroup(ioStats.readIntoCalls || 0)} readInto`,
+      `Chunk cache: ${fmtNoGroup(ioStats.cacheHits || 0)} hits / ${fmtNoGroup(ioStats.cacheMisses || 0)} misses / ${fmtNoGroup(ioStats.cacheEvictions || 0)} evictions`,
+      `Raster decode: ${fmtNoGroup(rasterStats.windowCalls || 0)} windows, ${fmtNoGroup(rasterStats.slabWindowCalls || 0)} slab, ${fmtNoGroup(rasterStats.rowWindowCalls || 0)} row, ${(Number(rasterStats.windowReadMs) || 0).toFixed(1)} ms`,
+      `Pyramid: ${fmtNoGroup(pyramidStats.tileReads || 0)} tile reads, ${fmtNoGroup(pyramidStats.tilesComposed || 0)} tiles composed, ${(Number(pyramidStats.composeMs) || 0).toFixed(1)} ms`,
+      `Renderer: ${fmtNoGroup(renderStats.pyramidHits || 0)} pyramid hits / ${fmtNoGroup(renderStats.pyramidMisses || 0)} direct fallbacks, ${(Number(renderStats.directReadMs) || 0).toFixed(1)} ms direct`
+    ];
+    if (ds?.meta?.sourceFormat === "tiff") {
+      lines.splice(2, 0, `TIFF: ${String(ds.ds?.profileName || "standard")} profile, ${humanBytes(Number(ds.ds?.rawCacheLimitBytes || ds.ds?.rawSource?.maxBytes || 0))} raw + ${humanBytes(Number(ds.ds?.decodedCacheLimitBytes || ds.ds?.decodedCache?.maxBytes || 0))} decoded, ${fmtNoGroup(Number(ds.ds?.workerPoolSize || 0))} workers, ${fmtNoGroup(Number(ds.ds?.taskConcurrency || 0))} tasks`);
+    }
+    return lines.join("\n");
+  }
+
   function updatePerf() {
     if (!els.perfBarCacheText || !els.perfBarCacheFill) return;
     const ds = getActive();
     if (!ds) {
       els.perfBarCacheText.textContent = "Cache: 0 B / 0 B";
       els.perfBarCacheFill.style.width = "0%";
-      els.perfBarCacheText.title = "";
-      els.perfBarCacheFill.title = "";
+      const hardware = detectBrowserHardware();
+      const detail = `Browser: ${hardware.cores ? fmtNoGroup(hardware.cores) : "n/a"} cores, ${hardware.deviceMemoryGiB ? `${fmtNoGroup(hardware.deviceMemoryGiB)} GiB deviceMemory` : "deviceMemory n/a"}\nBudgets: ${cacheBudget?.totalBytes ? humanBytes(cacheBudget.totalBytes) : "n/a"} total from ${cacheBudget?.detectedBudgetBasisBytes ? humanBytes(cacheBudget.detectedBudgetBasisBytes) : "n/a"} basis`;
+      els.perfBarCacheText.title = detail;
+      els.perfBarCacheFill.title = detail;
       return;
     }
     const chunkUsed = ds.ds.cacheBytes ? ds.ds.cacheBytes() : 0;
@@ -754,13 +791,7 @@ export function createUIPanels(deps) {
     const rasterStats = ioStats.raster || {};
     const pyramidStats = ds.pyramid?.stats || {};
     const renderStats = ds.renderStats || {};
-    const detail = [
-      `Source: ${humanBytes(ioStats.bytesRead || 0)} in ${fmtNoGroup(ioStats.readCalls || 0)} read / ${fmtNoGroup(ioStats.readIntoCalls || 0)} readInto`,
-      `Chunk cache: ${fmtNoGroup(ioStats.cacheHits || 0)} hits / ${fmtNoGroup(ioStats.cacheMisses || 0)} misses / ${fmtNoGroup(ioStats.cacheEvictions || 0)} evictions`,
-      `Raster decode: ${fmtNoGroup(rasterStats.windowCalls || 0)} windows, ${fmtNoGroup(rasterStats.slabWindowCalls || 0)} slab, ${fmtNoGroup(rasterStats.rowWindowCalls || 0)} row, ${(Number(rasterStats.windowReadMs) || 0).toFixed(1)} ms`,
-      `Pyramid: ${fmtNoGroup(pyramidStats.tileReads || 0)} tile reads, ${fmtNoGroup(pyramidStats.tilesComposed || 0)} tiles composed, ${(Number(pyramidStats.composeMs) || 0).toFixed(1)} ms`,
-      `Renderer: ${fmtNoGroup(renderStats.pyramidHits || 0)} pyramid hits / ${fmtNoGroup(renderStats.pyramidMisses || 0)} direct fallbacks, ${(Number(renderStats.directReadMs) || 0).toFixed(1)} ms direct`
-    ].join("\n");
+    const detail = buildPerfDetail(ds, chunkCap, pyramidCap, ioStats, rasterStats, pyramidStats, renderStats);
     els.perfBarCacheText.title = detail;
     els.perfBarCacheFill.title = detail;
   }

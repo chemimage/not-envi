@@ -21,6 +21,9 @@ export function createCacheRuntime(deps) {
     minPyramidBytes: Number(appConfig?.cache?.minPyramidBytes) || APP_CONFIG.cache.minPyramidBytes,
     fracChunk: Number(appConfig?.cache?.fracChunk) || APP_CONFIG.cache.fracChunk,
     fracPyramid: Number(appConfig?.cache?.fracPyramid) || APP_CONFIG.cache.fracPyramid,
+    detectedHeapLimitBytes: 0,
+    detectedDeviceMemoryBytes: 0,
+    detectedBudgetBasisBytes: 0,
     totalBytes: 0
   };
 
@@ -36,6 +39,9 @@ export function createCacheRuntime(deps) {
 
     let basis = heapLimit || devBytes || (1024 * 1024 * 1024);
     if (heapLimit && devBytes) basis = Math.min(heapLimit, devBytes);
+    cacheBudget.detectedHeapLimitBytes = heapLimit;
+    cacheBudget.detectedDeviceMemoryBytes = devBytes;
+    cacheBudget.detectedBudgetBasisBytes = basis;
     let budget = basis * cacheBudget.fracOfAvailable;
     budget = clamp(budget, cacheBudget.minBytes, cacheBudget.maxBytes);
     return budget;
