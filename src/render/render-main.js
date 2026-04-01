@@ -5,6 +5,7 @@ import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import { APP_CONFIG } from "../app/config.js";
 import {
   clearBaseCanvases,
+  drawThumbnailOnlyPreview,
   drawCachedScreenPreview,
   drawOverlayCachedPreview,
   isStableCompositeRaster,
@@ -607,6 +608,26 @@ export function createRenderer(deps) {
 
     try {
       for (const entry of ordered) {
+        const { panel, dataset: ds } = entry;
+        const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
+        const band = resolvePanelBand(panel, ds);
+        if (!viewport || !ds || band == null) continue;
+        const prevView = ds.view;
+        ds.view = panel.view || prevView;
+        try {
+          clampView(panel.slot, ds);
+          const eff = ds.view.scale * dpr;
+          const colorMode = isThreeBandColorMode(ds);
+          const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
+          const modeKey = renderModeKey(ds, band, colorMode, colorRenderMode);
+          drawCachedScreenPreview({ els, ds, panelSlot: panel.slot, modeKey, eff, viewport })
+            || drawThumbnailOnlyPreview({ els, ds, viewport, eff });
+        } finally {
+          ds.view = prevView;
+        }
+      }
+
+      for (const entry of ordered) {
         if (seq !== state.renderSeq) return;
         const { panel, dataset: ds } = entry;
         const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
@@ -725,6 +746,16 @@ export function createRenderer(deps) {
     const t0 = now();
 
     try {
+      drawOverlayCachedPreview({
+        els,
+        entries: visible,
+        layout,
+        resolvePanelBand,
+        clampView,
+        renderModeKey,
+        overlayColorForSlot
+      });
+
       for (const entry of visible) {
         if (seq !== state.renderSeq) return;
         const { panel, dataset: ds } = entry;

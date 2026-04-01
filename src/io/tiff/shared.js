@@ -4,6 +4,7 @@ import {
 } from "../../core/raster-io.js";
 import { DATA_TYPES } from "../../core/envi-types.js";
 import { APP_CONFIG } from "../../app/config.js";
+import { resolveTiffWorkerPoolSize } from "./scheduler.js";
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -275,6 +276,8 @@ export function resolveTiffCacheBudgets(deps = {}) {
   const defaultRaw = isIpad ? APP_CONFIG.tiff.ipadRawCacheBytes : APP_CONFIG.tiff.desktopRawCacheBytes;
   const defaultDecoded = isIpad ? APP_CONFIG.tiff.ipadDecodedCacheBytes : APP_CONFIG.tiff.desktopDecodedCacheBytes;
   const defaultTotal = defaultRaw + defaultDecoded;
+  const workerPoolMax = isIpad ? APP_CONFIG.tiff.ipadWorkerPoolMax : APP_CONFIG.tiff.desktopWorkerPoolMax;
+  const workerPoolSize = resolveTiffWorkerPoolSize(Number(deps?.ioConcurrency) || APP_CONFIG.io.defaultConcurrency, workerPoolMax);
   const totalHint = Number(deps?.cacheBytes);
   if (Number.isFinite(totalHint) && totalHint > 0) {
     const total = Math.min(totalHint, defaultTotal);
@@ -285,25 +288,13 @@ export function resolveTiffCacheBudgets(deps = {}) {
     return {
       rawCacheBytes: Math.min(raw, total),
       decodedCacheBytes: Math.max(APP_CONFIG.tiff.budgetMinBytes, total - Math.min(raw, total)),
-      workerPoolSize: Math.max(
-        0,
-        Math.min(
-          Number(deps?.ioConcurrency) || APP_CONFIG.io.defaultConcurrency,
-          isIpad ? APP_CONFIG.tiff.ipadWorkerPoolMax : APP_CONFIG.tiff.desktopWorkerPoolMax
-        )
-      )
+      workerPoolSize
     };
   }
   return {
     rawCacheBytes: defaultRaw,
     decodedCacheBytes: defaultDecoded,
-    workerPoolSize: Math.max(
-      0,
-      Math.min(
-        Number(deps?.ioConcurrency) || APP_CONFIG.io.defaultConcurrency,
-        isIpad ? APP_CONFIG.tiff.ipadWorkerPoolMax : APP_CONFIG.tiff.desktopWorkerPoolMax
-      )
-    )
+    workerPoolSize
   };
 }
 

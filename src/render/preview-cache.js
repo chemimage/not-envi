@@ -21,8 +21,8 @@ function clipToViewport(ctx, viewport) {
   ctx.clip();
 }
 
-function drawThumbnailOverview(ctx, ds, viewport, eff) {
-  const base = ds?.thumb?.base;
+function drawOverviewImage(ctx, image, ds, viewport, eff) {
+  const base = image;
   const samples = Number(ds?.meta?.samples || 0);
   const lines = Number(ds?.meta?.lines || 0);
   if (!base || samples <= 0 || lines <= 0) return false;
@@ -34,6 +34,40 @@ function drawThumbnailOverview(ctx, ds, viewport, eff) {
   if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(dw) || !Number.isFinite(dh)) return false;
   ctx.drawImage(base, dx, dy, dw, dh);
   return true;
+}
+
+export function drawThumbnailOverview(ctx, ds, viewport, eff) {
+  const base = ds?.thumb?.base;
+  return drawOverviewImage(ctx, base, ds, viewport, eff);
+}
+
+function drawPreviewBackground(cpuCtx, viewport) {
+  cpuCtx.fillStyle = "#000";
+  cpuCtx.fillRect(
+    Number(viewport.x) || 0,
+    Number(viewport.y) || 0,
+    Math.max(1, Number(viewport.w) || 1),
+    Math.max(1, Number(viewport.h) || 1)
+  );
+}
+
+export function drawThumbnailOnlyPreview({ els, ds, viewport, eff, tint = null, composite = "source-over" }) {
+  const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
+  const source = tint ? tintCanvas(ds?.thumb?.base, tint) : ds?.thumb?.base;
+  if (!source) return false;
+  cpuCtx.save();
+  cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+  cpuCtx.imageSmoothingEnabled = false;
+  cpuCtx.globalCompositeOperation = composite;
+  if (composite === "source-over") drawPreviewBackground(cpuCtx, viewport);
+  clipToViewport(cpuCtx, viewport);
+  const drew = drawOverviewImage(cpuCtx, source, ds, viewport, eff);
+  cpuCtx.restore();
+  if (drew) {
+    if (els.cpuCanvas?.style) els.cpuCanvas.style.display = "block";
+    if (els.gpuCanvas?.style) els.gpuCanvas.style.display = "none";
+  }
+  return drew;
 }
 
 function cloneCanvasImage(sourceCanvas) {
@@ -138,10 +172,14 @@ export function updateScreenPreviewCache(ds, panelSlot, modeKey, eff, sourceCanv
 
 export function drawCachedScreenPreview({ els, ds, panelSlot, modeKey, eff, viewport }) {
   const frame = getFrameMap(ds).get(panelSlotValue(panelSlot));
-  if (!frame || frame.modeKey !== modeKey || !frame.canvas) return false;
+  if (!frame || frame.modeKey !== modeKey || !frame.canvas) {
+    return drawThumbnailOnlyPreview({ els, ds, viewport, eff });
+  }
   const prevEff = Math.max(1e-9, Number(frame.eff) || 0);
   const scale = eff / prevEff;
-  if (!Number.isFinite(scale) || scale <= 0) return false;
+  if (!Number.isFinite(scale) || scale <= 0) {
+    return drawThumbnailOnlyPreview({ els, ds, viewport, eff });
+  }
 
   const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
   const dx = (Number(viewport.x) || 0) + (((Number(frame.viewX) || 0) - ds.view.x) * eff);
@@ -150,13 +188,7 @@ export function drawCachedScreenPreview({ els, ds, panelSlot, modeKey, eff, view
   cpuCtx.save();
   cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
   cpuCtx.imageSmoothingEnabled = false;
-  cpuCtx.fillStyle = "#000";
-  cpuCtx.fillRect(
-    Number(viewport.x) || 0,
-    Number(viewport.y) || 0,
-    Math.max(1, Number(viewport.w) || 1),
-    Math.max(1, Number(viewport.h) || 1)
-  );
+  drawPreviewBackground(cpuCtx, viewport);
   clipToViewport(cpuCtx, viewport);
   drawThumbnailOverview(cpuCtx, ds, viewport, eff);
   cpuCtx.drawImage(
@@ -200,11 +232,39 @@ export function drawOverlayCachedPreview({
       const eff = ds.view.scale * dpr;
       const modeKey = renderModeKey(ds, band, false, null);
       const frame = getFrameMap(ds).get(panelSlotValue(panel.slot));
-      if (!frame || frame.modeKey !== modeKey || !frame.canvas) continue;
+      if (!frame || frame.modeKey !== modeKey || !frame.canvas) {
+        const drewThumb = drawThumbnailOnlyPreview({
+          els,
+          ds,
+          viewport,
+          eff,
+          tint: overlayColorForSlot(panel.slot),
+          composite: clearedViewport ? "lighter" : "source-over"
+        });
+        if (drewThumb) {
+          clearedViewport = true;
+          drewAny = true;
+        }
+        continue;
+      }
 
       const prevEff = Math.max(1e-9, Number(frame.eff) || 0);
       const scale = eff / prevEff;
-      if (!Number.isFinite(scale) || scale <= 0) continue;
+      if (!Number.isFinite(scale) || scale <= 0) {
+        const drewThumb = drawThumbnailOnlyPreview({
+          els,
+          ds,
+          viewport,
+          eff,
+          tint: overlayColorForSlot(panel.slot),
+          composite: clearedViewport ? "lighter" : "source-over"
+        });
+        if (drewThumb) {
+          clearedViewport = true;
+          drewAny = true;
+        }
+        continue;
+      }
       const tinted = tintCanvas(frame.canvas, overlayColorForSlot(panel.slot));
       const dx = (Number(viewport.x) || 0) + (((Number(frame.viewX) || 0) - ds.view.x) * eff);
       const dy = (Number(viewport.y) || 0) + (((Number(frame.viewY) || 0) - ds.view.y) * eff);
@@ -214,13 +274,7 @@ export function drawOverlayCachedPreview({
       cpuCtx.imageSmoothingEnabled = false;
       cpuCtx.globalCompositeOperation = clearedViewport ? "lighter" : "source-over";
       if (!clearedViewport) {
-        cpuCtx.fillStyle = "#000";
-        cpuCtx.fillRect(
-          Number(viewport.x) || 0,
-          Number(viewport.y) || 0,
-          Math.max(1, Number(viewport.w) || 1),
-          Math.max(1, Number(viewport.h) || 1)
-        );
+        drawPreviewBackground(cpuCtx, viewport);
         clearedViewport = true;
       }
       clipToViewport(cpuCtx, viewport);

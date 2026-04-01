@@ -2,6 +2,30 @@ const KIB = 1024;
 const MIB = 1024 * KIB;
 const GIB = 1024 * MIB;
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function detectHardwareCores(fallback = 4) {
+  const cores = Number(
+    (typeof navigator !== "undefined" && navigator && navigator.hardwareConcurrency)
+      ? navigator.hardwareConcurrency
+      : fallback
+  );
+  return Math.max(1, Math.floor(Number.isFinite(cores) ? cores : fallback));
+}
+
+export function resolveHardwareConcurrencyLimit({
+  fraction = 1,
+  min = 1,
+  max = Number.POSITIVE_INFINITY,
+  fallback = 4
+} = {}) {
+  const cores = detectHardwareCores(fallback);
+  const scaled = Math.floor(cores * Math.max(0, Number(fraction) || 0));
+  return clamp(Math.max(1, scaled || 1), Math.max(1, Number(min) || 1), Math.max(1, Number(max) || 1));
+}
+
 export const APP_CONFIG = Object.freeze({
   io: Object.freeze({
     parallelEnabledByDefault: true,
@@ -10,6 +34,7 @@ export const APP_CONFIG = Object.freeze({
     defaultConcurrency: 2,
     minConcurrency: 1,
     maxConcurrency: 8,
+    hardwareCoreFraction: 0.5,
     hardwareParallelDivisor: 2,
     hardwareParallelBias: 1,
     hardwareParallelMin: 2
@@ -75,7 +100,13 @@ export const APP_CONFIG = Object.freeze({
     indexScanYieldEvery: 32,
     budgetRawFraction: 0.25,
     budgetMinBytes: 4 * MIB,
+    workerCoreFraction: 0.5,
+    workerPoolMin: 1,
     desktopWorkerPoolMax: 4,
-    ipadWorkerPoolMax: 1
+    ipadWorkerPoolMax: 1,
+    taskCoreFraction: 0.5,
+    taskMinConcurrency: 2,
+    taskMaxConcurrency: 8,
+    fairShareMinPerDataset: 1
   })
 });

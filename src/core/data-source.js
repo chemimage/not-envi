@@ -1,5 +1,5 @@
 import { clamp } from "./utils.js";
-import { APP_CONFIG } from "../app/config.js";
+import { APP_CONFIG, resolveHardwareConcurrencyLimit } from "../app/config.js";
 
 export class BlobDataSource {
   constructor(file) {
@@ -68,14 +68,11 @@ export class ChunkCacheDataSource {
       Number(options.maxBytes) || APP_CONFIG.dataSource.defaultMaxBytes
     );
 
-    const hc = (typeof navigator !== "undefined" && navigator.hardwareConcurrency)
-      ? navigator.hardwareConcurrency
-      : 4;
-    const defaultConcurrency = clamp(
-      Math.floor(hc / APP_CONFIG.io.hardwareParallelDivisor) + APP_CONFIG.io.hardwareParallelBias,
-      APP_CONFIG.io.hardwareParallelMin,
-      APP_CONFIG.io.maxConcurrency
-    );
+    const defaultConcurrency = resolveHardwareConcurrencyLimit({
+      fraction: APP_CONFIG.io.hardwareCoreFraction,
+      min: APP_CONFIG.io.hardwareParallelMin,
+      max: APP_CONFIG.io.maxConcurrency
+    });
     this.concurrency = clamp(
       Number(options.concurrency) || defaultConcurrency,
       APP_CONFIG.io.minConcurrency,

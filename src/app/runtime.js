@@ -45,7 +45,7 @@ import { readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull a
 import { createThumbnailController } from "../render/thumbnail.js";
 import { clamp, fmt, fmtNoGroup, humanBytes } from "../core/utils.js";
 import { createInteractionController } from "../ui/events.js";
-import { APP_CONFIG } from "./config.js";
+import { APP_CONFIG, resolveHardwareConcurrencyLimit } from "./config.js";
 import { createAnalysisHistogramController } from "./analysis-histogram-controller.js";
 import { createAnnotationController } from "./annotation-controller.js";
 import { createSpectrumAreaController } from "./spectrum-area-controller.js";
@@ -98,10 +98,11 @@ import { pointInPolygon } from "./draw-geometry.js";
   // A small, bounded amount of parallelism helps on SSDs (and reduces latency for scattered reads),
   // but too much can overwhelm the browser. We keep it conservative.
   const IO_CONCURRENCY_MAX = clamp(
-    Math.floor(
-      (((navigator && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) / APP_CONFIG.io.hardwareParallelDivisor)
-      + APP_CONFIG.io.hardwareParallelBias
-    ),
+    resolveHardwareConcurrencyLimit({
+      fraction: APP_CONFIG.io.hardwareCoreFraction,
+      min: APP_CONFIG.io.hardwareParallelMin,
+      max: APP_CONFIG.io.maxConcurrency
+    }),
     APP_CONFIG.io.hardwareParallelMin,
     APP_CONFIG.io.maxConcurrency
   );

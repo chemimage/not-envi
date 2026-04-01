@@ -1,4 +1,3 @@
-import { Pool } from "geotiff";
 import { BlobDataSource, ChunkCacheDataSource } from "../../core/data-source.js";
 import {
   makeSegmentReader,
@@ -18,6 +17,11 @@ import {
   requireSafeOffset,
   supportsNativeJpegTileDecode
 } from "./shared.js";
+import {
+  getSharedTiffDecodePool,
+  resolveTiffTaskConcurrency,
+  scheduleTiffTask
+} from "./scheduler.js";
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -335,6 +339,8 @@ function allocateOutput(meta, out, length) {
   return new Ctor(length);
 }
 
+let nextTiffSourceId = 1;
+
 export class TiffBlockIndexedDataSource {
   constructor({ file, tiff, meta, bandSpecs, budgets = {}, concurrency = 2 }) {
     this.file = file;
@@ -358,6 +364,7 @@ export class TiffBlockIndexedDataSource {
     this.pool = null;
     this.stats = createTiffStats();
     this.closed = false;
+    this.ownerId = `tiff:${nextTiffSourceId++}`;
   }
 
   get maxBytes() {
@@ -552,7 +559,7 @@ export class TiffBlockIndexedDataSource {
     if (!spec) return null;
     const block = spec.blocks[(Math.floor(iy / spec.table.blockHeight) * spec.table.numBlocksX) + Math.floor(ix / spec.table.blockWidth)];
     if (!block) return null;
-    const decoded = await this.#loadDecodedBlock(spec, block, 1);
+    const decoded = await this.#schedule(() => this.#loadDecodedBlock(spec, block, 1));
     return this.#readBlockValue(spec, decoded, ix - block.x0, iy - block.y0);
   }
 
@@ -751,7 +758,7 @@ export class TiffBlockIndexedDataSource {
       blocks.length,
       this.#resolveBlockLoadConcurrency(spec),
       async (index) => {
-        decoded[index] = await this.#loadDecodedBlock(spec, blocks[index], step);
+        decoded[index] = await this.#schedule(() => this.#loadDecodedBlock(spec, blocks[index], step));
       }
     );
     return decoded;
@@ -844,12 +851,17 @@ export class TiffBlockIndexedDataSource {
     const decodedEntries = new Array(blockEntries.length);
     await parallelFor(
       blockEntries.length,
-      Math.max(1, Math.ceil(this.ioConcurrency / 2)),
+      this.#resolveCompositeEntryConcurrency(),
       async (index) => {
         const entry = blockEntries[index];
-        decodedEntries[index] = await Promise.all(entry.blocks.map((block, specIndex) => (
-          block ? this.#loadDecodedBlock(specs[specIndex], block, step) : null
-        )));
+        decodedEntries[index] = await this.#schedule(async () => {
+          const blocks = new Array(entry.blocks.length);
+          for (let specIndex = 0; specIndex < entry.blocks.length; specIndex += 1) {
+            const block = entry.blocks[specIndex];
+            blocks[specIndex] = block ? await this.#loadDecodedBlock(specs[specIndex], block, step) : null;
+          }
+          return blocks;
+        });
       }
     );
 
@@ -875,35 +887,37 @@ export class TiffBlockIndexedDataSource {
     const blockHeight = spec.table.blockHeight;
     await parallelFor(
       safeOutH,
-      this.ioConcurrency,
+      this.#resolveRawRowConcurrency(),
       async (rowIndex) => {
-        const srcY = y0 + (rowIndex * step);
-        const by = Math.floor(srcY / blockHeight);
-        const rowBase = rowIndex * outW;
-        const localYBase = srcY - (by * blockHeight);
-        const scratch = new Uint8Array(storageRowBytes);
-        for (let bx = minBx; bx <= maxBx; bx += 1) {
-          const block = spec.blocks[(by * numBlocksX) + bx];
-          if (!block) continue;
-          const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
-          const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
-          if (colStart >= colEnd) continue;
-          const firstLocalX = x0 + (colStart * step) - block.x0;
-          const lastLocalX = x0 + ((colEnd - 1) * step) - block.x0;
-          const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
-          const span = scratch.subarray(0, spanBytes);
-          const readOffset = block.offset
-            + (localYBase * storageRowBytes)
-            + (firstLocalX * spec.bytesPerPixel)
-            + spec.sampleByteOffset;
-          await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-          const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
-          for (let col = colStart; col < colEnd; col += 1) {
-            const srcX = x0 + (col * step);
-            const byteOffset = (srcX - block.x0 - firstLocalX) * spec.bytesPerPixel;
-            target[rowBase + col] = readDataViewValue(dv, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
+        await this.#schedule(async () => {
+          const srcY = y0 + (rowIndex * step);
+          const by = Math.floor(srcY / blockHeight);
+          const rowBase = rowIndex * outW;
+          const localYBase = srcY - (by * blockHeight);
+          const scratch = new Uint8Array(storageRowBytes);
+          for (let bx = minBx; bx <= maxBx; bx += 1) {
+            const block = spec.blocks[(by * numBlocksX) + bx];
+            if (!block) continue;
+            const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
+            const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
+            if (colStart >= colEnd) continue;
+            const firstLocalX = x0 + (colStart * step) - block.x0;
+            const lastLocalX = x0 + ((colEnd - 1) * step) - block.x0;
+            const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
+            const span = scratch.subarray(0, spanBytes);
+            const readOffset = block.offset
+              + (localYBase * storageRowBytes)
+              + (firstLocalX * spec.bytesPerPixel)
+              + spec.sampleByteOffset;
+            await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+            const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+            for (let col = colStart; col < colEnd; col += 1) {
+              const srcX = x0 + (col * step);
+              const byteOffset = (srcX - block.x0 - firstLocalX) * spec.bytesPerPixel;
+              target[rowBase + col] = readDataViewValue(dv, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
+            }
           }
-        }
+        });
       }
     );
     this.#syncCacheStats();
@@ -916,80 +930,82 @@ export class TiffBlockIndexedDataSource {
     const sharedBlocks = specs.every((spec) => spec.blocks === specs[0].blocks);
     await parallelFor(
       safeOutH,
-      this.ioConcurrency,
+      this.#resolveRawRowConcurrency(),
       async (rowIndex) => {
-        const srcY = y0 + (rowIndex * step);
-        const by = Math.floor(srcY / blockHeight);
-        const rowBase = rowIndex * outW;
-        const scratch = specs.map((spec) => new Uint8Array(table.blockWidth * spec.bytesPerPixel));
-        const views = new Array(specs.length);
-        for (let bx = minBx; bx <= maxBx; bx += 1) {
-          const index = (by * numBlocksX) + bx;
-          const blocks = specs.map((spec) => spec.blocks[index] || null);
-          const anchor = blocks.find(Boolean) || null;
-          if (!anchor) continue;
-          const localYBase = srcY - anchor.y0;
-          const colStart = Math.max(0, Math.ceil((anchor.x0 - x0) / step));
-          const colEnd = Math.min(safeOutW, Math.floor((anchor.x0 + anchor.w - 1 - x0) / step) + 1);
-          if (colStart >= colEnd) continue;
-          const firstLocalX = x0 + (colStart * step) - anchor.x0;
-          const lastLocalX = x0 + ((colEnd - 1) * step) - anchor.x0;
+        await this.#schedule(async () => {
+          const srcY = y0 + (rowIndex * step);
+          const by = Math.floor(srcY / blockHeight);
+          const rowBase = rowIndex * outW;
+          const scratch = specs.map((spec) => new Uint8Array(table.blockWidth * spec.bytesPerPixel));
+          const views = new Array(specs.length);
+          for (let bx = minBx; bx <= maxBx; bx += 1) {
+            const index = (by * numBlocksX) + bx;
+            const blocks = specs.map((spec) => spec.blocks[index] || null);
+            const anchor = blocks.find(Boolean) || null;
+            if (!anchor) continue;
+            const localYBase = srcY - anchor.y0;
+            const colStart = Math.max(0, Math.ceil((anchor.x0 - x0) / step));
+            const colEnd = Math.min(safeOutW, Math.floor((anchor.x0 + anchor.w - 1 - x0) / step) + 1);
+            if (colStart >= colEnd) continue;
+            const firstLocalX = x0 + (colStart * step) - anchor.x0;
+            const lastLocalX = x0 + ((colEnd - 1) * step) - anchor.x0;
 
-          if (sharedBlocks) {
-            const spec = specs[0];
-            const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
-            const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerPixel;
-            const span = scratch[0].subarray(0, spanBytes);
-            const readOffset = anchor.offset
-              + (localYBase * storageRowBytes)
-              + (firstLocalX * spec.bytesPerPixel);
-            await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-            const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+            if (sharedBlocks) {
+              const spec = specs[0];
+              const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
+              const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerPixel;
+              const span = scratch[0].subarray(0, spanBytes);
+              const readOffset = anchor.offset
+                + (localYBase * storageRowBytes)
+                + (firstLocalX * spec.bytesPerPixel);
+              await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+              const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+              for (let col = colStart; col < colEnd; col += 1) {
+                const srcX = x0 + (col * step);
+                const baseByteOffset = (srcX - anchor.x0 - firstLocalX) * spec.bytesPerPixel;
+                for (let channel = 0; channel < specs.length; channel += 1) {
+                  outputs[channel][rowBase + col] = readDataViewValue(
+                    dv,
+                    baseByteOffset + specs[channel].sampleByteOffset,
+                    this.meta.dataTypeInfo,
+                    this.meta.littleEndian
+                  );
+                }
+              }
+              continue;
+            }
+
+            for (let channel = 0; channel < specs.length; channel += 1) {
+              const spec = specs[channel];
+              const block = blocks[channel];
+              if (!block) continue;
+              const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
+              const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
+              const span = scratch[channel].subarray(0, spanBytes);
+              const readOffset = block.offset
+                + (localYBase * storageRowBytes)
+                + (firstLocalX * spec.bytesPerPixel)
+                + spec.sampleByteOffset;
+              await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+              views[channel] = new DataView(span.buffer, span.byteOffset, spanBytes);
+            }
             for (let col = colStart; col < colEnd; col += 1) {
               const srcX = x0 + (col * step);
-              const baseByteOffset = (srcX - anchor.x0 - firstLocalX) * spec.bytesPerPixel;
+              const localX = srcX - anchor.x0 - firstLocalX;
               for (let channel = 0; channel < specs.length; channel += 1) {
+                const spec = specs[channel];
+                const dv = views[channel];
+                if (!dv) continue;
                 outputs[channel][rowBase + col] = readDataViewValue(
                   dv,
-                  baseByteOffset + specs[channel].sampleByteOffset,
+                  localX * spec.bytesPerPixel,
                   this.meta.dataTypeInfo,
                   this.meta.littleEndian
                 );
               }
             }
-            continue;
           }
-
-          for (let channel = 0; channel < specs.length; channel += 1) {
-            const spec = specs[channel];
-            const block = blocks[channel];
-            if (!block) continue;
-            const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
-            const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
-            const span = scratch[channel].subarray(0, spanBytes);
-            const readOffset = block.offset
-              + (localYBase * storageRowBytes)
-              + (firstLocalX * spec.bytesPerPixel)
-              + spec.sampleByteOffset;
-            await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-            views[channel] = new DataView(span.buffer, span.byteOffset, spanBytes);
-          }
-          for (let col = colStart; col < colEnd; col += 1) {
-            const srcX = x0 + (col * step);
-            const localX = srcX - anchor.x0 - firstLocalX;
-            for (let channel = 0; channel < specs.length; channel += 1) {
-              const spec = specs[channel];
-              const dv = views[channel];
-              if (!dv) continue;
-              outputs[channel][rowBase + col] = readDataViewValue(
-                dv,
-                localX * spec.bytesPerPixel,
-                this.meta.dataTypeInfo,
-                this.meta.littleEndian
-              );
-            }
-          }
-        }
+        });
       }
     );
     this.#syncCacheStats();
@@ -1057,7 +1073,19 @@ export class TiffBlockIndexedDataSource {
     const decodeLike = spec?.kind === "rgb" || spec?.kind === "window" || spec?.kind === "native-rgb-jpeg";
     if (!decodeLike) return Math.max(1, this.ioConcurrency);
     const workerCap = Math.max(1, this.workerPoolSize || 1);
-    return Math.max(1, Math.min(this.ioConcurrency, workerCap));
+    return Math.max(1, Math.min(this.ioConcurrency, workerCap, resolveTiffTaskConcurrency()));
+  }
+
+  #resolveRawRowConcurrency() {
+    return Math.max(1, Math.min(this.ioConcurrency, resolveTiffTaskConcurrency()));
+  }
+
+  #resolveCompositeEntryConcurrency() {
+    return Math.max(1, Math.min(Math.max(1, Math.ceil(this.ioConcurrency / 2)), resolveTiffTaskConcurrency()));
+  }
+
+  #schedule(task) {
+    return scheduleTiffTask(this.ownerId, task);
   }
 
   #resolveDecodedStoragePoint(decoded, localX, localY) {
@@ -1091,20 +1119,13 @@ export class TiffBlockIndexedDataSource {
   }
 
   #getPool() {
-    if (!this.pool) {
-      const size = (typeof Worker !== "undefined") ? this.workerPoolSize : 0;
-      this.pool = new Pool(size);
-    }
+    if (!this.pool) this.pool = getSharedTiffDecodePool(this.workerPoolSize);
     return this.pool;
   }
 
   #resetPool(force = false) {
-    if (this.pool) {
-      try { this.pool.destroy(); } catch (_err) {}
-      this.pool = null;
-    } else if (!force) {
-      return;
-    }
+    if (!force && !this.pool) return;
+    this.pool = null;
   }
 
   #syncCacheStats() {
