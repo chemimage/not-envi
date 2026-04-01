@@ -1,5 +1,14 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createThumbnailController } from "../../src/render/thumbnail.js";
+
+const originalUserAgent = navigator.userAgent;
+
+afterEach(() => {
+  Object.defineProperty(navigator, "userAgent", {
+    configurable: true,
+    value: originalUserAgent
+  });
+});
 
 function makeThumbCtx() {
   return {
@@ -153,5 +162,65 @@ describe("thumbnail controller", () => {
     expect(img.width).toBe(2);
     expect(img.height).toBe(2);
     expect(Array.from(img.data.slice(0, 8))).toEqual([0, 0, 0, 255, 64, 64, 64, 255]);
+  });
+
+  test("renderThumbnail defers TIFF thumbnail builds until a stable raster exists", async () => {
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+    });
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName) => {
+      if (String(tagName).toLowerCase() === "canvas") {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            putImageData: vi.fn()
+          })
+        };
+      }
+      return originalCreateElement(tagName);
+    });
+
+    try {
+      const readBandWindow = vi.fn(async () => new Float32Array([0, 0, 0, 0]));
+      const ds = {
+        id: "ds-tiff",
+        activeBand: 0,
+        meta: { samples: 100, lines: 50, interleave: "bsq", sourceFormat: "tiff" },
+        ds: {},
+        view: { x: 0, y: 0, scale: 1 },
+        thumb: { ready: false }
+      };
+      const els = {
+        thumbWrap: { style: { display: "block", width: "", height: "" } },
+        main: { getBoundingClientRect: () => ({ width: 800, height: 400 }) },
+        thumb: { width: 200, height: 120, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+        cpuCanvas: { width: 800, height: 600 }
+      };
+      const ctrl = createThumbnailController({
+        els,
+        thumbCtx: makeThumbCtx(),
+        toFloat32: (x) => x,
+        tone01: () => 0,
+        resolveDisplayRange: () => ({ minVal: 0, maxVal: 1 }),
+        getBandSettings: () => ({ gamma: 1, gain: 1, contrast: 1 }),
+        readBandWindow,
+        readBandWindowBIP: async () => new Float32Array(0),
+        getActive: () => ds,
+        render: vi.fn(),
+        getDevicePixelRatio: () => 1
+      });
+
+      ctrl.renderThumbnail();
+      await Promise.resolve();
+
+      expect(readBandWindow).not.toHaveBeenCalled();
+      expect(ds.thumb.buildPendingKey).toBeUndefined();
+    } finally {
+      createElementSpy.mockRestore();
+    }
   });
 });

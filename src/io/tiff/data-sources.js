@@ -891,36 +891,42 @@ export class TiffBlockIndexedDataSource {
     const storageRowBytes = spec.table.blockWidth * spec.bytesPerPixel;
     const numBlocksX = spec.table.numBlocksX;
     const blockHeight = spec.table.blockHeight;
+    const batchRows = Math.max(1, Math.floor(APP_CONFIG.tiff.sparseRawRowBatchRows || 1));
+    const batchCount = Math.max(1, Math.ceil(safeOutH / batchRows));
     await parallelFor(
-      safeOutH,
+      batchCount,
       this.#resolveRawRowConcurrency(),
-      async (rowIndex) => {
+      async (batchIndex) => {
         await this.#schedule(async () => {
-          const srcY = y0 + (rowIndex * step);
-          const by = Math.floor(srcY / blockHeight);
-          const rowBase = rowIndex * outW;
-          const localYBase = srcY - (by * blockHeight);
           const scratch = new Uint8Array(storageRowBytes);
-          for (let bx = minBx; bx <= maxBx; bx += 1) {
-            const block = spec.blocks[(by * numBlocksX) + bx];
-            if (!block) continue;
-            const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
-            const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
-            if (colStart >= colEnd) continue;
-            const firstLocalX = x0 + (colStart * step) - block.x0;
-            const lastLocalX = x0 + ((colEnd - 1) * step) - block.x0;
-            const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
-            const span = scratch.subarray(0, spanBytes);
-            const readOffset = block.offset
-              + (localYBase * storageRowBytes)
-              + (firstLocalX * spec.bytesPerPixel)
-              + spec.sampleByteOffset;
-            await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-            const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
-            for (let col = colStart; col < colEnd; col += 1) {
-              const srcX = x0 + (col * step);
-              const byteOffset = (srcX - block.x0 - firstLocalX) * spec.bytesPerPixel;
-              target[rowBase + col] = readDataViewValue(dv, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
+          const rowStart = batchIndex * batchRows;
+          const rowEnd = Math.min(safeOutH, rowStart + batchRows);
+          for (let rowIndex = rowStart; rowIndex < rowEnd; rowIndex += 1) {
+            const srcY = y0 + (rowIndex * step);
+            const by = Math.floor(srcY / blockHeight);
+            const rowBase = rowIndex * outW;
+            const localYBase = srcY - (by * blockHeight);
+            for (let bx = minBx; bx <= maxBx; bx += 1) {
+              const block = spec.blocks[(by * numBlocksX) + bx];
+              if (!block) continue;
+              const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
+              const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
+              if (colStart >= colEnd) continue;
+              const firstLocalX = x0 + (colStart * step) - block.x0;
+              const lastLocalX = x0 + ((colEnd - 1) * step) - block.x0;
+              const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
+              const span = scratch.subarray(0, spanBytes);
+              const readOffset = block.offset
+                + (localYBase * storageRowBytes)
+                + (firstLocalX * spec.bytesPerPixel)
+                + spec.sampleByteOffset;
+              await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+              const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+              for (let col = colStart; col < colEnd; col += 1) {
+                const srcX = x0 + (col * step);
+                const byteOffset = (srcX - block.x0 - firstLocalX) * spec.bytesPerPixel;
+                target[rowBase + col] = readDataViewValue(dv, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
+              }
             }
           }
         });
@@ -934,80 +940,86 @@ export class TiffBlockIndexedDataSource {
     const numBlocksX = table.numBlocksX;
     const blockHeight = table.blockHeight;
     const sharedBlocks = specs.every((spec) => spec.blocks === specs[0].blocks);
+    const batchRows = Math.max(1, Math.floor(APP_CONFIG.tiff.sparseRawRowBatchRows || 1));
+    const batchCount = Math.max(1, Math.ceil(safeOutH / batchRows));
     await parallelFor(
-      safeOutH,
+      batchCount,
       this.#resolveRawRowConcurrency(),
-      async (rowIndex) => {
+      async (batchIndex) => {
         await this.#schedule(async () => {
-          const srcY = y0 + (rowIndex * step);
-          const by = Math.floor(srcY / blockHeight);
-          const rowBase = rowIndex * outW;
           const scratch = specs.map((spec) => new Uint8Array(table.blockWidth * spec.bytesPerPixel));
           const views = new Array(specs.length);
-          for (let bx = minBx; bx <= maxBx; bx += 1) {
-            const index = (by * numBlocksX) + bx;
-            const blocks = specs.map((spec) => spec.blocks[index] || null);
-            const anchor = blocks.find(Boolean) || null;
-            if (!anchor) continue;
-            const localYBase = srcY - anchor.y0;
-            const colStart = Math.max(0, Math.ceil((anchor.x0 - x0) / step));
-            const colEnd = Math.min(safeOutW, Math.floor((anchor.x0 + anchor.w - 1 - x0) / step) + 1);
-            if (colStart >= colEnd) continue;
-            const firstLocalX = x0 + (colStart * step) - anchor.x0;
-            const lastLocalX = x0 + ((colEnd - 1) * step) - anchor.x0;
+          const rowStart = batchIndex * batchRows;
+          const rowEnd = Math.min(safeOutH, rowStart + batchRows);
+          for (let rowIndex = rowStart; rowIndex < rowEnd; rowIndex += 1) {
+            const srcY = y0 + (rowIndex * step);
+            const by = Math.floor(srcY / blockHeight);
+            const rowBase = rowIndex * outW;
+            for (let bx = minBx; bx <= maxBx; bx += 1) {
+              const index = (by * numBlocksX) + bx;
+              const blocks = specs.map((spec) => spec.blocks[index] || null);
+              const anchor = blocks.find(Boolean) || null;
+              if (!anchor) continue;
+              const localYBase = srcY - anchor.y0;
+              const colStart = Math.max(0, Math.ceil((anchor.x0 - x0) / step));
+              const colEnd = Math.min(safeOutW, Math.floor((anchor.x0 + anchor.w - 1 - x0) / step) + 1);
+              if (colStart >= colEnd) continue;
+              const firstLocalX = x0 + (colStart * step) - anchor.x0;
+              const lastLocalX = x0 + ((colEnd - 1) * step) - anchor.x0;
 
-            if (sharedBlocks) {
-              const spec = specs[0];
-              const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
-              const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerPixel;
-              const span = scratch[0].subarray(0, spanBytes);
-              const readOffset = anchor.offset
-                + (localYBase * storageRowBytes)
-                + (firstLocalX * spec.bytesPerPixel);
-              await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-              const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+              if (sharedBlocks) {
+                const spec = specs[0];
+                const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
+                const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerPixel;
+                const span = scratch[0].subarray(0, spanBytes);
+                const readOffset = anchor.offset
+                  + (localYBase * storageRowBytes)
+                  + (firstLocalX * spec.bytesPerPixel);
+                await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+                const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+                for (let col = colStart; col < colEnd; col += 1) {
+                  const srcX = x0 + (col * step);
+                  const baseByteOffset = (srcX - anchor.x0 - firstLocalX) * spec.bytesPerPixel;
+                  for (let channel = 0; channel < specs.length; channel += 1) {
+                    outputs[channel][rowBase + col] = readDataViewValue(
+                      dv,
+                      baseByteOffset + specs[channel].sampleByteOffset,
+                      this.meta.dataTypeInfo,
+                      this.meta.littleEndian
+                    );
+                  }
+                }
+                continue;
+              }
+
+              for (let channel = 0; channel < specs.length; channel += 1) {
+                const spec = specs[channel];
+                const block = blocks[channel];
+                if (!block) continue;
+                const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
+                const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
+                const span = scratch[channel].subarray(0, spanBytes);
+                const readOffset = block.offset
+                  + (localYBase * storageRowBytes)
+                  + (firstLocalX * spec.bytesPerPixel)
+                  + spec.sampleByteOffset;
+                await this.rawSource.readInto(readOffset, span, 0, spanBytes);
+                views[channel] = new DataView(span.buffer, span.byteOffset, spanBytes);
+              }
               for (let col = colStart; col < colEnd; col += 1) {
                 const srcX = x0 + (col * step);
-                const baseByteOffset = (srcX - anchor.x0 - firstLocalX) * spec.bytesPerPixel;
+                const localX = srcX - anchor.x0 - firstLocalX;
                 for (let channel = 0; channel < specs.length; channel += 1) {
+                  const spec = specs[channel];
+                  const dv = views[channel];
+                  if (!dv) continue;
                   outputs[channel][rowBase + col] = readDataViewValue(
                     dv,
-                    baseByteOffset + specs[channel].sampleByteOffset,
+                    localX * spec.bytesPerPixel,
                     this.meta.dataTypeInfo,
                     this.meta.littleEndian
                   );
                 }
-              }
-              continue;
-            }
-
-            for (let channel = 0; channel < specs.length; channel += 1) {
-              const spec = specs[channel];
-              const block = blocks[channel];
-              if (!block) continue;
-              const storageRowBytes = table.blockWidth * spec.bytesPerPixel;
-              const spanBytes = ((lastLocalX - firstLocalX) * spec.bytesPerPixel) + spec.bytesPerSample;
-              const span = scratch[channel].subarray(0, spanBytes);
-              const readOffset = block.offset
-                + (localYBase * storageRowBytes)
-                + (firstLocalX * spec.bytesPerPixel)
-                + spec.sampleByteOffset;
-              await this.rawSource.readInto(readOffset, span, 0, spanBytes);
-              views[channel] = new DataView(span.buffer, span.byteOffset, spanBytes);
-            }
-            for (let col = colStart; col < colEnd; col += 1) {
-              const srcX = x0 + (col * step);
-              const localX = srcX - anchor.x0 - firstLocalX;
-              for (let channel = 0; channel < specs.length; channel += 1) {
-                const spec = specs[channel];
-                const dv = views[channel];
-                if (!dv) continue;
-                outputs[channel][rowBase + col] = readDataViewValue(
-                  dv,
-                  localX * spec.bytesPerPixel,
-                  this.meta.dataTypeInfo,
-                  this.meta.littleEndian
-                );
               }
             }
           }

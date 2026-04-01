@@ -351,9 +351,9 @@ describe("render-main", () => {
 
     await renderer.render();
 
-    expect(clampView).toHaveBeenNthCalledWith(1, 1, ds);
-    expect(clampView).toHaveBeenNthCalledWith(2, 2, ds);
-    expect(readBandWindow.mock.calls.map((call) => call[2])).toEqual([0, 2]);
+    expect(clampView).toHaveBeenNthCalledWith(1, 2, ds);
+    expect(clampView).toHaveBeenNthCalledWith(2, 1, ds);
+    expect(readBandWindow.mock.calls.map((call) => call[2])).toEqual([2, 0]);
     expect(buildGrayCanvas).toHaveBeenCalledTimes(2);
     expect(drawCanvasToViewport).toHaveBeenCalledTimes(2);
   });
@@ -407,8 +407,8 @@ describe("render-main", () => {
 
     await renderer.render();
 
-    expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(1, ds, 0, 2, 140, 180);
-    expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(2, ds, 0, 2, 180, 180);
+    expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(1, ds, 0, 2, 180, 180);
+    expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(2, ds, 0, 2, 140, 180);
   });
 
   test("render tries the pyramid path even when the view extends outside bounds", async () => {

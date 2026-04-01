@@ -260,7 +260,11 @@ export function createThumbnailController(deps) {
 
     const key = thumbBuildKey(ds, tw, th);
     const needsBuild = !ds.thumb.ready || ds.thumb.buildKey !== key;
-    if (needsBuild && ds.thumb.buildPendingKey !== key) {
+    const deferTiffBuild = ds?.meta?.sourceFormat === "tiff"
+      && !ds.thumb.base
+      && !ds.lastRaster
+      && !ds.lastCompositeRaster;
+    if (needsBuild && ds.thumb.buildPendingKey !== key && !deferTiffBuild) {
       void buildThumbnail(ds, key, tw, th);
     }
 

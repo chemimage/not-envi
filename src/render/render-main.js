@@ -606,8 +606,8 @@ export function createRenderer(deps) {
     const dpr = window.devicePixelRatio || 1;
     const activeSlot = Number(activePanelInfo()?.slot) || Number(visible[0]?.panel?.slot) || 1;
     const ordered = visible.slice().sort((a, b) => {
-      if (Number(a.panel.slot) === activeSlot) return 1;
-      if (Number(b.panel.slot) === activeSlot) return -1;
+      if (Number(a.panel.slot) === activeSlot) return -1;
+      if (Number(b.panel.slot) === activeSlot) return 1;
       return Number(a.panel.slot) - Number(b.panel.slot);
     });
     const t0 = now();
