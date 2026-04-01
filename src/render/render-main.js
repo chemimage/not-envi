@@ -155,9 +155,17 @@ export function createRenderer(deps) {
       && typeof ds?.ds?.estimateReadWork === "function"
     ) {
       const work = ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
-      let factor = work?.sparseRaw && Number(work.spanReads) > APP_CONFIG.render.tiffPreviewMaxSparseSpans
-        ? Math.ceil(Number(work.spanReads) / APP_CONFIG.render.tiffPreviewMaxSparseSpans)
-        : 1;
+      let factor = 1;
+      if (work?.sparseRaw && Number(work.spanReads) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
+        factor = Math.ceil(Number(work.spanReads) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
+      } else if (
+        work?.nativeJpeg
+        && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)
+      ) {
+        factor = Math.ceil(Math.sqrt(
+          Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
+        ));
+      }
       factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
       if (factor > 1) {
         geom = coarsenSamplingGeometry(geom, factor);
@@ -240,7 +248,84 @@ export function createRenderer(deps) {
   async function readCompositeRaster(ds, eff, viewportW, viewportH) {
     const mode = getThreeBandDisplayMode(ds);
     const sourceBands = [0, 1, 2];
-    const rasters = await Promise.all(sourceBands.map((band) => readRasterForBand(ds, band, eff, viewportW, viewportH)));
+    let rasters = null;
+    if (
+      ds?.meta?.sourceFormat === "tiff"
+      && typeof ds?.ds?.readCompositeWindow === "function"
+      && typeof ds?.ds?.supportsCompositeWindow === "function"
+      && ds.ds.supportsCompositeWindow()
+    ) {
+      const renderKey = `${Number(ds.__renderPanelSlot) || 1}|${Math.round(Number(ds.view?.x) || 0)}|${Math.round(Number(ds.view?.y) || 0)}|${Number(ds.view?.scale || 0).toFixed(6)}|${Math.round(Number(viewportW) || 0)}x${Math.round(Number(viewportH) || 0)}`;
+      let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
+      let approximate = false;
+      if (eff < 1 && ds.__forceFullRenderKey !== renderKey && typeof ds.ds.estimateReadWork === "function") {
+        const work = ds.ds.estimateReadWork(ds.meta, 0, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
+        let factor = 1;
+        if (work?.nativeJpeg && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)) {
+          factor = Math.ceil(Math.sqrt(
+            Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
+          ));
+        }
+        factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
+        if (factor > 1) {
+          geom = coarsenSamplingGeometry(geom, factor);
+          approximate = true;
+        }
+      }
+      const {
+        step,
+        rasterW,
+        rasterH,
+        colStart,
+        rowStart,
+        validW,
+        validH,
+        srcX0,
+        srcY0
+      } = geom;
+      const fullCoverage = colStart === 0 && rowStart === 0 && validW === rasterW && validH === rasterH;
+      if (validW > 0 && validH > 0) {
+        setStatus("reading…", "warn");
+        const t0 = now();
+        const composite = await ds.ds.readCompositeWindow(ds.meta, srcX0, srcY0, validW, validH, step);
+        if (composite?.bands?.length === 3) {
+          rasters = sourceBands.map((band) => {
+            const out = new Float32Array(rasterW * rasterH);
+            if (!fullCoverage) out.fill(Number.NaN);
+            const src = composite.bands[band];
+            if (fullCoverage) {
+              out.set(src.subarray(0, out.length), 0);
+            } else {
+              for (let r = 0; r < validH; r += 1) {
+                const srcOff = r * validW;
+                const dstOff = (rowStart + r) * rasterW + colStart;
+                out.set(src.subarray(srcOff, srcOff + validW), dstOff);
+              }
+            }
+            return {
+              band,
+              dataF32: out,
+              w: rasterW,
+              h: rasterH,
+              source: "direct",
+              level: 0,
+              step,
+              x0: ds.view.x,
+              y0: ds.view.y,
+              approximate,
+              renderKey
+            };
+          });
+          const stats = ensureRenderStats(ds);
+          stats.directReads += 1;
+          stats.directPixels += rasterW * rasterH * 3;
+          stats.directReadMs += now() - t0;
+        }
+      }
+    }
+    if (!rasters) {
+      rasters = await Promise.all(sourceBands.map((band) => readRasterForBand(ds, band, eff, viewportW, viewportH)));
+    }
     const rasterByBand = new Map(rasters.map((raster) => [raster.band, raster]));
     return {
       mode,

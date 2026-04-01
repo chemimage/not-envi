@@ -188,6 +188,46 @@ describe("render-main", () => {
     expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
   });
 
+  test("render uses TIFF composite window reads when available", async () => {
+    const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
+      bands: [0, 1, 2].map((band) => {
+        const arr = new Float32Array(outW * outH);
+        arr.fill(band + 1);
+        return arr;
+      })
+    }));
+    const ds = {
+      id: "ds-tiff",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 8, lines: 4, bands: 3, interleave: "bip", sourceFormat: "tiff" },
+      ds: {
+        supportsCompositeWindow: () => true,
+        readCompositeWindow: compositeWindow
+      },
+      lastRaster: null,
+      lastCompositeRaster: null,
+      bandStatsWhole: new Map()
+    };
+    const readBandWindow = vi.fn(async () => new Float32Array(0));
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      readBandWindow,
+      readBandWindowBIP: readBandWindow,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(compositeWindow).toHaveBeenCalledTimes(1);
+    expect(readBandWindow).not.toHaveBeenCalled();
+    expect(deps.cpuRenderColor).toHaveBeenCalledTimes(1);
+    expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
+  });
+
   test("render draws cached screen preview while a fresh raster is loading", async () => {
     let releaseRead = null;
     const ds = {

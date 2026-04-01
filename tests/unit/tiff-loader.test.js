@@ -197,6 +197,123 @@ describe("tiff loader", () => {
     }
   });
 
+  test("reads TIFF RGB composite windows in one block pass", async () => {
+    const fakeImage = {
+      getWidth: () => 2,
+      getHeight: () => 1,
+      getSamplesPerPixel: () => 1,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        RowsPerStrip: 1,
+        StripOffsets: [0],
+        StripByteCounts: [2],
+        PhotometricInterpretation: 3
+      }),
+      readRGB: vi.fn(async () => new Uint8Array([255, 0, 0, 0, 255, 0]))
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([0, 0])], "palette-composite.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 2 });
+      const composite = await ds.ds.readCompositeWindow(ds.meta, 0, 0, 2, 1, 1);
+      expect(Array.from(composite.bands[0])).toEqual([255, 0]);
+      expect(Array.from(composite.bands[1])).toEqual([0, 255]);
+      expect(Array.from(composite.bands[2])).toEqual([0, 0]);
+      expect(fakeImage.readRGB).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
+  test("uses native JPEG tile decode for JPEG-compressed YCbCr TIFF blocks when available", async () => {
+    const fakeImage = {
+      getWidth: () => 1,
+      getHeight: () => 1,
+      getSamplesPerPixel: () => 3,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 7,
+        PhotometricInterpretation: 6,
+        PlanarConfiguration: 1,
+        TileWidth: 1,
+        TileLength: 1,
+        TileOffsets: [0],
+        TileByteCounts: [4]
+      }),
+      readRGB: vi.fn(async () => new Uint8Array([99, 88, 77])),
+      tiles: {}
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    const prevCreateImageBitmap = globalThis.createImageBitmap;
+    const bitmapClose = vi.fn();
+    const createImageBitmapMock = vi.fn(async () => ({ width: 1, height: 1, close: bitmapClose }));
+    globalThis.createImageBitmap = createImageBitmapMock;
+    const originalCreateElement = document.createElement.bind(document);
+    const drawImage = vi.fn();
+    const getImageData = vi.fn(() => ({ data: Uint8ClampedArray.from([11, 22, 33, 255]) }));
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName, options) => {
+      if (String(tagName).toLowerCase() === "canvas") {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({ drawImage, getImageData })
+        };
+      }
+      return originalCreateElement(tagName, options);
+    });
+
+    try {
+      const file = new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], "jpeg-tile.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 3 });
+      const [red, green, blue] = await Promise.all([
+        readBandWindowBIP(ds.meta, ds.ds, 0, 0, 0, 1, 1, 1, 3),
+        readBandWindowBIP(ds.meta, ds.ds, 1, 0, 0, 1, 1, 1, 3),
+        readBandWindowBIP(ds.meta, ds.ds, 2, 0, 0, 1, 1, 1, 3)
+      ]);
+      expect(Array.from(red)).toEqual([11]);
+      expect(Array.from(green)).toEqual([22]);
+      expect(Array.from(blue)).toEqual([33]);
+      expect(createImageBitmapMock).toHaveBeenCalledTimes(1);
+      expect(fakeImage.readRGB).not.toHaveBeenCalled();
+      expect(bitmapClose).toHaveBeenCalledTimes(1);
+    } finally {
+      createElementSpy.mockRestore();
+      if (prevCreateImageBitmap === undefined) {
+        delete globalThis.createImageBitmap;
+      } else {
+        globalThis.createImageBitmap = prevCreateImageBitmap;
+      }
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
   test("falls back to the geotiff windowed reader when the raw shortcut does not match decoded values", async () => {
     const fakeImage = {
       getWidth: () => 1,
@@ -273,7 +390,7 @@ describe("tiff loader", () => {
 
       expect(Array.from(first)).toEqual([1, 2, 3, 4]);
       expect(Array.from(second)).toEqual([1, 2, 3, 4]);
-      expect(ds.ds.stats.decodeCalls).toBe(2);
+      expect(ds.ds.stats.decodeCalls).toBe(0);
       expect(ds.ds.stats.decodedCacheHits).toBeGreaterThanOrEqual(2);
     } finally {
       vi.doUnmock("geotiff");

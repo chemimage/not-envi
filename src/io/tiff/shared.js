@@ -234,6 +234,18 @@ export function needsRgbWindowSource(summary) {
   return summary.samplesPerPixel >= 1 && !isRawCompatibleSummary(summary);
 }
 
+export function supportsNativeJpegTileDecode(summary) {
+  const fileDirectory = summary?.fileDirectory || {};
+  return Number(summary?.compression) === 7
+    && Number(summary?.samplesPerPixel) === 3
+    && Number(summary?.planarConfiguration) === 1
+    && (Number(summary?.photometricInterpretation) === TIFF_PHOTOMETRIC_RGB || Number(summary?.photometricInterpretation) === 6)
+    && !fileDirectory.JPEGTables
+    && summary.bitsPerSample.every((bits) => Number(bits) === 8)
+    && summary.sampleFormats.every((format) => Number(format || 1) === 1)
+    && (summary.tileOffsets.length > 0 || summary.stripOffsets.length > 0);
+}
+
 export function buildRgbDisplayMeta(summary, description) {
   return buildMeta({
     width: summary.width,

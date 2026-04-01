@@ -15,10 +15,30 @@ import {
   listTagValues,
   perfNow,
   readDataViewValue,
-  requireSafeOffset
+  requireSafeOffset,
+  supportsNativeJpegTileDecode
 } from "./shared.js";
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function canDecodeJpegTileNatively() {
+  if (typeof createImageBitmap !== "function") return false;
+  if (typeof OffscreenCanvas !== "undefined") return true;
+  return typeof document !== "undefined" && typeof document.createElement === "function";
+}
+
+function createDecodeCanvas(width, height) {
+  if (typeof OffscreenCanvas !== "undefined") {
+    return new OffscreenCanvas(width, height);
+  }
+  if (typeof document !== "undefined" && typeof document.createElement === "function") {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  }
+  return null;
+}
 
 export class BandOffsetTiffDataSource {
   constructor(source, meta, bandOffsets) {
@@ -253,8 +273,9 @@ export function buildRawBandSpecs(summary, sampleType, imageIndex = 0) {
 
 export function buildRgbBandSpecs(summary, imageIndex = 0) {
   const table = buildBlockTable(summary, imageIndex);
+  const kind = supportsNativeJpegTileDecode(summary) ? "native-rgb-jpeg" : "rgb";
   return [0, 1, 2].map((channel) => ({
-    kind: "rgb",
+    kind,
     table,
     blocks: table.blocksByGroup[0],
     channel
@@ -402,13 +423,72 @@ export class TiffBlockIndexedDataSource {
     const yBlockCount = Math.max(0, Math.min(safeOutH, maxBy - minBy + 1));
     const blockCount = xBlockCount * yBlockCount;
     const sparseRaw = this.#shouldUseSparseRawSampling(spec, step, blockCount);
+    const nativeJpeg = spec.kind === "native-rgb-jpeg";
+    const scaledBlockW = Math.max(1, Math.ceil(spec.table.blockWidth / Math.max(1, step)));
+    const scaledBlockH = Math.max(1, Math.ceil(spec.table.blockHeight / Math.max(1, step)));
     return {
       sparseRaw,
+      nativeJpeg,
       blockCount,
       xBlockCount,
       yBlockCount,
-      spanReads: sparseRaw ? (safeOutH * xBlockCount) : 0
+      spanReads: sparseRaw ? (safeOutH * xBlockCount) : 0,
+      scaledDecodePixels: nativeJpeg ? (blockCount * scaledBlockW * scaledBlockH) : 0
     };
+  }
+
+  supportsCompositeWindow() {
+    if (this.bandSpecs.length < 3) return false;
+    const [first, second, third] = this.bandSpecs;
+    if (!first || !second || !third) return false;
+    if (first.table !== second.table || first.table !== third.table) return false;
+    if (first.blocks !== second.blocks || first.blocks !== third.blocks) return false;
+    return first.kind === "rgb" || first.kind === "native-rgb-jpeg";
+  }
+
+  async readCompositeWindow(meta, x0, y0, outW, outH, step, outBands = null) {
+    if (!this.supportsCompositeWindow()) return null;
+    const specs = this.bandSpecs.slice(0, 3);
+    const outputs = [0, 1, 2].map((index) => {
+      const out = Array.isArray(outBands) ? outBands[index] : null;
+      return (out instanceof Float32Array && out.length >= (outW * outH))
+        ? out
+        : new Float32Array(outW * outH);
+    });
+    const safeX0 = clamp(Math.floor(x0), 0, Math.max(0, meta.samples - 1));
+    const safeY0 = clamp(Math.floor(y0), 0, Math.max(0, meta.lines - 1));
+    const maxX = clamp(safeX0 + (outW * step), 0, meta.samples);
+    const maxY = clamp(safeY0 + (outH * step), 0, meta.lines);
+    const safeOutW = Math.floor((maxX - safeX0 + (step - 1)) / step);
+    const safeOutH = Math.floor((maxY - safeY0 + (step - 1)) / step);
+    if (safeOutW <= 0 || safeOutH <= 0) {
+      return { bands: outputs, width: outW, height: outH };
+    }
+
+    const first = specs[0];
+    const xLast = safeX0 + ((safeOutW - 1) * step);
+    const yLast = safeY0 + ((safeOutH - 1) * step);
+    const minBx = Math.max(0, Math.floor(safeX0 / first.table.blockWidth));
+    const maxBx = Math.min(first.table.numBlocksX - 1, Math.floor(xLast / first.table.blockWidth));
+    const minBy = Math.max(0, Math.floor(safeY0 / first.table.blockHeight));
+    const maxBy = Math.min(first.table.numBlocksY - 1, Math.floor(yLast / first.table.blockHeight));
+
+    const blocks = [];
+    for (let by = minBy; by <= maxBy; by += 1) {
+      for (let bx = minBx; bx <= maxBx; bx += 1) {
+        const block = first.blocks[(by * first.table.numBlocksX) + bx];
+        if (block) blocks.push(block);
+      }
+    }
+
+    const t0 = perfNow();
+    const decoded = await this.#loadBlocks(first, blocks, step);
+    for (let i = 0; i < blocks.length; i += 1) {
+      this.#compositeRgbBlock(blocks[i], decoded[i], outputs, safeX0, safeY0, safeOutW, safeOutH, outW, step);
+    }
+    this.stats.blockComposeCalls += 1;
+    this.stats.blockComposeMs += perfNow() - t0;
+    return { bands: outputs, width: outW, height: outH };
   }
 
   async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null) {
@@ -448,7 +528,7 @@ export class TiffBlockIndexedDataSource {
     }
 
     const t0 = perfNow();
-    const decoded = await Promise.all(blocks.map((block) => this.#loadDecodedBlock(spec, block)));
+    const decoded = await this.#loadBlocks(spec, blocks, step);
     for (let i = 0; i < blocks.length; i += 1) {
       this.#compositeBlock(spec, blocks[i], decoded[i], target, safeX0, safeY0, safeOutW, safeOutH, outW, step);
     }
@@ -467,7 +547,7 @@ export class TiffBlockIndexedDataSource {
     if (!spec) return null;
     const block = spec.blocks[(Math.floor(iy / spec.table.blockHeight) * spec.table.numBlocksX) + Math.floor(ix / spec.table.blockWidth)];
     if (!block) return null;
-    const decoded = await this.#loadDecodedBlock(spec, block);
+    const decoded = await this.#loadDecodedBlock(spec, block, 1);
     return this.#readBlockValue(spec, decoded, ix - block.x0, iy - block.y0);
   }
 
@@ -494,10 +574,11 @@ export class TiffBlockIndexedDataSource {
     this.tiff = null;
   }
 
-  async #loadDecodedBlock(spec, block) {
+  async #loadDecodedBlock(spec, block, step = 1) {
     if (spec.kind === "raw") return this.#loadRawDecodedBlock(spec, block);
-    if (spec.kind === "rgb") return this.#loadRgbDecodedBlock(spec, block);
-    return this.#loadWindowDecodedBlock(spec, block);
+    if (spec.kind === "rgb") return this.#loadRgbDecodedBlock(spec, block, step);
+    if (spec.kind === "native-rgb-jpeg") return this.#loadNativeRgbJpegBlock(spec, block, step);
+    return this.#loadWindowDecodedBlock(spec, block, step);
   }
 
   async #loadRawDecodedBlock(spec, block) {
@@ -510,6 +591,15 @@ export class TiffBlockIndexedDataSource {
     }
     return this.#loadDecodedOnce(cacheKey, async () => {
       const raw = await this.#loadRawBlock(block);
+      if (Number(spec?.table?.summary?.compression) === 1) {
+        return {
+          kind: "raw",
+          view: new DataView(raw.buffer, raw.byteOffset, raw.byteLength),
+          storageWidth: block.w,
+          storageHeight: block.h,
+          bytes: raw.byteLength
+        };
+      }
       const buffer = raw.byteOffset === 0 && raw.byteLength === raw.buffer.byteLength
         ? raw.buffer.slice(0)
         : raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
@@ -527,8 +617,10 @@ export class TiffBlockIndexedDataSource {
     });
   }
 
-  async #loadRgbDecodedBlock(spec, block) {
-    const cacheKey = `decoded:${block.key}:rgb`;
+  async #loadRgbDecodedBlock(spec, block, step = 1) {
+    const scaledW = Math.max(1, Math.ceil(block.w / Math.max(1, step)));
+    const scaledH = Math.max(1, Math.ceil(block.h / Math.max(1, step)));
+    const cacheKey = `decoded:${block.key}:rgb:${scaledW}x${scaledH}`;
     const hit = this.decodedCache.get(cacheKey);
     if (hit) {
       this.stats.decodedCacheHits += 1;
@@ -540,8 +632,8 @@ export class TiffBlockIndexedDataSource {
       const rgb = await spec.table.image.readRGB({
         window: [block.x0, block.y0, block.x0 + block.w, block.y0 + block.h],
         interleave: true,
-        width: block.w,
-        height: block.h,
+        width: scaledW,
+        height: scaledH,
         resampleMethod: "nearest",
         pool: this.#getPool()
       });
@@ -551,14 +643,65 @@ export class TiffBlockIndexedDataSource {
       return {
         kind: "rgb",
         data,
-        storageWidth: block.w,
+        storageWidth: scaledW,
+        storageHeight: scaledH,
+        sourceWidth: block.w,
+        sourceHeight: block.h,
         bytes: data.byteLength
       };
     });
   }
 
-  async #loadWindowDecodedBlock(spec, block) {
-    const cacheKey = `decoded:${block.key}:window:${spec.windowSampleIndex}`;
+  async #loadNativeRgbJpegBlock(spec, block, step = 1) {
+    const scaledW = Math.max(1, Math.ceil(block.w / Math.max(1, step)));
+    const scaledH = Math.max(1, Math.ceil(block.h / Math.max(1, step)));
+    const cacheKey = `decoded:${block.key}:native-rgba:${scaledW}x${scaledH}`;
+    const hit = this.decodedCache.get(cacheKey);
+    if (hit) {
+      this.stats.decodedCacheHits += 1;
+      this.#syncCacheStats();
+      return hit;
+    }
+    return this.#loadDecodedOnce(cacheKey, async () => {
+      const raw = await this.#loadRawBlock(block);
+      const t0 = perfNow();
+      let decoded = null;
+      if (canDecodeJpegTileNatively()) {
+        decoded = await this.#decodeNativeJpegTile(raw, scaledW, scaledH);
+        if (decoded) {
+          decoded.sourceWidth = block.w;
+          decoded.sourceHeight = block.h;
+        }
+      }
+      if (!decoded) {
+        const rgb = await spec.table.image.readRGB({
+          window: [block.x0, block.y0, block.x0 + block.w, block.y0 + block.h],
+          interleave: true,
+          width: scaledW,
+          height: scaledH,
+          resampleMethod: "nearest",
+          pool: this.#getPool()
+        });
+        decoded = {
+          kind: "rgb",
+          data: rgb instanceof Uint8Array ? rgb : Uint8Array.from(rgb),
+          storageWidth: scaledW,
+          storageHeight: scaledH,
+          sourceWidth: block.w,
+          sourceHeight: block.h,
+          bytes: rgb.byteLength ?? rgb.length ?? (scaledW * scaledH * 3)
+        };
+      }
+      this.stats.decodeCalls += 1;
+      this.stats.decodeMs += perfNow() - t0;
+      return decoded;
+    });
+  }
+
+  async #loadWindowDecodedBlock(spec, block, step = 1) {
+    const scaledW = Math.max(1, Math.ceil(block.w / Math.max(1, step)));
+    const scaledH = Math.max(1, Math.ceil(block.h / Math.max(1, step)));
+    const cacheKey = `decoded:${block.key}:window:${spec.windowSampleIndex}:${scaledW}x${scaledH}`;
     const hit = this.decodedCache.get(cacheKey);
     if (hit) {
       this.stats.decodedCacheHits += 1;
@@ -571,8 +714,8 @@ export class TiffBlockIndexedDataSource {
         window: [block.x0, block.y0, block.x0 + block.w, block.y0 + block.h],
         samples: [spec.windowSampleIndex],
         interleave: true,
-        width: block.w,
-        height: block.h,
+        width: scaledW,
+        height: scaledH,
         resampleMethod: "nearest",
         fillValue: 0,
         pool: this.#getPool()
@@ -582,7 +725,10 @@ export class TiffBlockIndexedDataSource {
       return {
         kind: "sample",
         data: raw,
-        storageWidth: block.w,
+        storageWidth: scaledW,
+        storageHeight: scaledH,
+        sourceWidth: block.w,
+        sourceHeight: block.h,
         bytes: raw.byteLength
       };
     });
@@ -592,6 +738,18 @@ export class TiffBlockIndexedDataSource {
     const raw = await this.rawSource.read(block.offset, block.byteCount);
     this.#syncCacheStats();
     return raw;
+  }
+
+  async #loadBlocks(spec, blocks, step) {
+    const decoded = new Array(blocks.length);
+    await parallelFor(
+      blocks.length,
+      this.#resolveBlockLoadConcurrency(spec),
+      async (index) => {
+        decoded[index] = await this.#loadDecodedBlock(spec, blocks[index], step);
+      }
+    );
+    return decoded;
   }
 
   async #loadDecodedOnce(cacheKey, loader) {
@@ -609,6 +767,47 @@ export class TiffBlockIndexedDataSource {
       return await p;
     } finally {
       this.decodedInflight.delete(cacheKey);
+    }
+  }
+
+  async #decodeNativeJpegTile(raw, width, height) {
+    if (!canDecodeJpegTileNatively()) return null;
+    const blob = new Blob([raw], { type: "image/jpeg" });
+    let bitmap = null;
+    try {
+      try {
+        bitmap = await createImageBitmap(blob, {
+          resizeWidth: width,
+          resizeHeight: height,
+          resizeQuality: "high"
+        });
+      } catch (_err) {
+        bitmap = await createImageBitmap(blob);
+      }
+      const outW = Math.max(1, Number(width) || bitmap.width || 1);
+      const outH = Math.max(1, Number(height) || bitmap.height || 1);
+      const canvas = createDecodeCanvas(outW, outH);
+      const ctx = canvas?.getContext?.("2d", { willReadFrequently: true, alpha: false }) || null;
+      if (!ctx || typeof ctx.drawImage !== "function" || typeof ctx.getImageData !== "function") {
+        return null;
+      }
+      ctx.drawImage(bitmap, 0, 0, outW, outH);
+      const imageData = ctx.getImageData(0, 0, outW, outH);
+      return {
+        kind: "native-rgba",
+        data: imageData.data,
+        storageWidth: outW,
+        storageHeight: outH,
+        sourceWidth: outW,
+        sourceHeight: outH,
+        bytes: imageData.data.byteLength
+      };
+    } catch (_err) {
+      return null;
+    } finally {
+      if (bitmap && typeof bitmap.close === "function") {
+        try { bitmap.close(); } catch (_err) {}
+      }
     }
   }
 
@@ -675,12 +874,59 @@ export class TiffBlockIndexedDataSource {
     }
   }
 
+  #compositeRgbBlock(block, decoded, outputs, x0, y0, safeOutW, safeOutH, outW, step) {
+    const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
+    const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
+    const rowStart = Math.max(0, Math.ceil((block.y0 - y0) / step));
+    const rowEnd = Math.min(safeOutH, Math.floor((block.y0 + block.h - 1 - y0) / step) + 1);
+    const stride = decoded.kind === "native-rgba" ? 4 : 3;
+    for (let row = rowStart; row < rowEnd; row += 1) {
+      const srcY = y0 + (row * step);
+      const localY = srcY - block.y0;
+      const baseOut = row * outW;
+      for (let col = colStart; col < colEnd; col += 1) {
+        const srcX = x0 + (col * step);
+        const { storageX, storageY } = this.#resolveDecodedStoragePoint(decoded, srcX - block.x0, localY);
+        const base = ((storageY * decoded.storageWidth) + storageX) * stride;
+        outputs[0][baseOut + col] = decoded.data[base];
+        outputs[1][baseOut + col] = decoded.data[base + 1];
+        outputs[2][baseOut + col] = decoded.data[base + 2];
+      }
+    }
+  }
+
+  #resolveBlockLoadConcurrency(spec) {
+    const decodeLike = spec?.kind === "rgb" || spec?.kind === "window" || spec?.kind === "native-rgb-jpeg";
+    if (!decodeLike) return Math.max(1, this.ioConcurrency);
+    const workerCap = Math.max(1, this.workerPoolSize || 1);
+    return Math.max(1, Math.min(this.ioConcurrency, workerCap));
+  }
+
+  #resolveDecodedStoragePoint(decoded, localX, localY) {
+    const srcW = Math.max(1, Number(decoded.sourceWidth) || Number(decoded.storageWidth) || 1);
+    const srcH = Math.max(1, Number(decoded.sourceHeight) || Number(decoded.storageHeight) || 1);
+    return {
+      storageX: Math.max(0, Math.min(
+        Math.max(0, Number(decoded.storageWidth) || 1) - 1,
+        Math.floor((Math.max(0, localX) * Math.max(1, Number(decoded.storageWidth) || 1)) / srcW)
+      )),
+      storageY: Math.max(0, Math.min(
+        Math.max(0, Number(decoded.storageHeight) || 1) - 1,
+        Math.floor((Math.max(0, localY) * Math.max(1, Number(decoded.storageHeight) || 1)) / srcH)
+      ))
+    };
+  }
+
   #readBlockValue(spec, decoded, localX, localY) {
+    const { storageX, storageY } = this.#resolveDecodedStoragePoint(decoded, localX, localY);
     if (decoded.kind === "rgb") {
-      return decoded.data[((localY * decoded.storageWidth) + localX) * 3 + spec.channel];
+      return decoded.data[((storageY * decoded.storageWidth) + storageX) * 3 + spec.channel];
     }
     if (decoded.kind === "sample") {
-      return decoded.data[(localY * decoded.storageWidth) + localX];
+      return decoded.data[(storageY * decoded.storageWidth) + storageX];
+    }
+    if (decoded.kind === "native-rgba") {
+      return decoded.data[((storageY * decoded.storageWidth) + storageX) * 4 + spec.channel];
     }
     const byteOffset = (((localY * decoded.storageWidth) + localX) * spec.bytesPerPixel) + spec.sampleByteOffset;
     return readDataViewValue(decoded.view, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
