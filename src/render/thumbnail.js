@@ -135,6 +135,36 @@ export function createThumbnailController(deps) {
   }
 
   async function renderCompositeWindowToImageData(ds, x0, y0, outW, outH, step) {
+    if (ds?.meta?.sourceFormat === "tiff" && typeof ds?.ds?.supportsCompositeWindow === "function" && ds.ds.supportsCompositeWindow()) {
+      const composite = await ds.ds.readCompositeWindow(ds.meta, x0, y0, outW, outH, step);
+      if (composite?.bands?.length === 3) {
+        const channelBands = resolveThreeBandChannelOrder(ds.displayMode || "rgb");
+        const channelData = channelBands.map((channelBand) => composite.bands[channelBand]);
+        const channelParams = channelBands.map((band, idx) => {
+          const f32 = channelData[idx];
+          const settings = getBandSettings(ds, band);
+          const range = resolveDisplayRange(ds, band, f32);
+          return {
+            minVal: range.minVal,
+            maxVal: range.maxVal,
+            brightness: clamp(settings.brightness ?? 0, -1, 1),
+            gain: clamp(settings.gain ?? 1, 0.0, 4.0),
+            contrast: clamp(settings.contrast ?? 1, 0.1, 3.0)
+          };
+        });
+
+        const img = createImageDataCompat(outW, outH);
+        const dst = img.data;
+        for (let i = 0, j = 0; i < channelData[0].length; i += 1, j += 4) {
+          dst[j] = Math.round(tone01(channelData[0][i], channelParams[0].minVal, channelParams[0].maxVal, channelParams[0].brightness, channelParams[0].gain, channelParams[0].contrast) * 255);
+          dst[j + 1] = Math.round(tone01(channelData[1][i], channelParams[1].minVal, channelParams[1].maxVal, channelParams[1].brightness, channelParams[1].gain, channelParams[1].contrast) * 255);
+          dst[j + 2] = Math.round(tone01(channelData[2][i], channelParams[2].minVal, channelParams[2].maxVal, channelParams[2].brightness, channelParams[2].gain, channelParams[2].contrast) * 255);
+          dst[j + 3] = 255;
+        }
+        return img;
+      }
+    }
+
     const channelBands = resolveThreeBandChannelOrder(ds.displayMode || "rgb");
     const channelWindows = await Promise.all(channelBands.map((band) => readWindowF32(ds, band, x0, y0, outW, outH, step)));
     try {

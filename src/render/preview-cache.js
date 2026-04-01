@@ -21,6 +21,21 @@ function clipToViewport(ctx, viewport) {
   ctx.clip();
 }
 
+function drawThumbnailOverview(ctx, ds, viewport, eff) {
+  const base = ds?.thumb?.base;
+  const samples = Number(ds?.meta?.samples || 0);
+  const lines = Number(ds?.meta?.lines || 0);
+  if (!base || samples <= 0 || lines <= 0) return false;
+  const scale = Math.max(1e-9, Number(eff) || 0);
+  const dx = (Number(viewport.x) || 0) - ((Number(ds?.view?.x) || 0) * scale);
+  const dy = (Number(viewport.y) || 0) - ((Number(ds?.view?.y) || 0) * scale);
+  const dw = samples * scale;
+  const dh = lines * scale;
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(dw) || !Number.isFinite(dh)) return false;
+  ctx.drawImage(base, dx, dy, dw, dh);
+  return true;
+}
+
 function cloneCanvasImage(sourceCanvas) {
   if (!sourceCanvas) return null;
   if (typeof document === "undefined" || typeof document.createElement !== "function") {
@@ -143,6 +158,7 @@ export function drawCachedScreenPreview({ els, ds, panelSlot, modeKey, eff, view
     Math.max(1, Number(viewport.h) || 1)
   );
   clipToViewport(cpuCtx, viewport);
+  drawThumbnailOverview(cpuCtx, ds, viewport, eff);
   cpuCtx.drawImage(
     frame.canvas,
     dx,
@@ -208,6 +224,7 @@ export function drawOverlayCachedPreview({
         clearedViewport = true;
       }
       clipToViewport(cpuCtx, viewport);
+      drawThumbnailOverview(cpuCtx, ds, viewport, eff);
       cpuCtx.drawImage(
         tinted,
         dx,
