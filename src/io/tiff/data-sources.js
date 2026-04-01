@@ -346,7 +346,9 @@ function isWindowReadOptions(value) {
     && !ArrayBuffer.isView(value);
 }
 
-function sortCenterOut(items, centerX, centerY, getCenter) {
+function sortCenterOut(items, centerX, centerY, getCenter, spanX = 1, spanY = 1) {
+  const halfSpanX = Math.max(1, Number(spanX) || 1) * 0.5;
+  const halfSpanY = Math.max(1, Number(spanY) || 1) * 0.5;
   return items.slice().sort((a, b) => {
     const ac = getCenter(a);
     const bc = getCenter(b);
@@ -354,9 +356,14 @@ function sortCenterOut(items, centerX, centerY, getCenter) {
     const ady = Number(ac?.y ?? 0) - centerY;
     const bdx = Number(bc?.x ?? 0) - centerX;
     const bdy = Number(bc?.y ?? 0) - centerY;
-    const da = (adx * adx) + (ady * ady);
-    const db = (bdx * bdx) + (bdy * bdy);
+    const da = Math.max(Math.abs(adx) / halfSpanX, Math.abs(ady) / halfSpanY);
+    const db = Math.max(Math.abs(bdx) / halfSpanX, Math.abs(bdy) / halfSpanY);
     if (da !== db) return da - db;
+    const ah = Math.abs(adx) + Math.abs(ady);
+    const bh = Math.abs(bdx) + Math.abs(bdy);
+    if (ah !== bh) return ah - bh;
+    if (Math.abs(ady) !== Math.abs(bdy)) return Math.abs(ady) - Math.abs(bdy);
+    if (Math.abs(adx) !== Math.abs(bdx)) return Math.abs(adx) - Math.abs(bdx);
     if (Number(ac?.y ?? 0) !== Number(bc?.y ?? 0)) return Number(ac?.y ?? 0) - Number(bc?.y ?? 0);
     return Number(ac?.x ?? 0) - Number(bc?.x ?? 0);
   });
@@ -393,7 +400,7 @@ async function processInBatches(items, concurrency, runItem, onBatch = null, can
 let nextTiffSourceId = 1;
 
 export class TiffBlockIndexedDataSource {
-  constructor({ file, tiff, meta, bandSpecs, budgets = {}, concurrency = 2 }) {
+  constructor({ file, tiff, meta, bandSpecs, budgets = {}, concurrency = 2, ownerId = "" }) {
     this.file = file;
     this.tiff = tiff;
     this.meta = meta;
@@ -403,14 +410,16 @@ export class TiffBlockIndexedDataSource {
       APP_CONFIG.io.minConcurrency,
       APP_CONFIG.io.maxConcurrency
     );
-    this.base = new BlobDataSource(file);
+    const resolvedOwnerId = String(ownerId || budgets.ownerId || "").trim();
+    this.base = new BlobDataSource(file, { ownerId: resolvedOwnerId });
     this.profileName = String(budgets.profileName || "standard");
     this.rawCacheLimitBytes = Math.max(0, Number(budgets.rawCacheBytes) || 0);
     this.decodedCacheLimitBytes = Math.max(0, Number(budgets.decodedCacheBytes) || 0);
     this.rawSource = new ChunkCacheDataSource(this.base, {
       chunkSize: APP_CONFIG.io.defaultChunkSizeBytes,
       maxBytes: this.rawCacheLimitBytes,
-      concurrency: this.ioConcurrency
+      concurrency: this.ioConcurrency,
+      ownerId: resolvedOwnerId
     });
     this.decodedCache = new LruByteCache(this.decodedCacheLimitBytes);
     this.decodedInflight = new Map();
@@ -419,7 +428,7 @@ export class TiffBlockIndexedDataSource {
     this.pool = null;
     this.stats = createTiffStats();
     this.closed = false;
-    this.ownerId = `tiff:${nextTiffSourceId++}`;
+    this.ownerId = String(this.rawSource?.ownerId || this.base?.ownerId || "").trim() || `tiff:${nextTiffSourceId++}`;
   }
 
   get maxBytes() {
@@ -542,7 +551,7 @@ export class TiffBlockIndexedDataSource {
     };
   }
 
-  #orderedBlocks(spec, minBx, maxBx, minBy, maxBy, centerX, centerY) {
+  #orderedBlocks(spec, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY) {
     const blocks = [];
     for (let by = minBy; by <= maxBy; by += 1) {
       for (let bx = minBx; bx <= maxBx; bx += 1) {
@@ -553,10 +562,10 @@ export class TiffBlockIndexedDataSource {
     return sortCenterOut(blocks, centerX, centerY, (block) => ({
       x: block.x0 + (block.w * 0.5),
       y: block.y0 + (block.h * 0.5)
-    }));
+    }), spanX, spanY);
   }
 
-  #orderedCompositeEntries(specs, minBx, maxBx, minBy, maxBy, centerX, centerY) {
+  #orderedCompositeEntries(specs, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY) {
     const table = specs[0].table;
     const entries = [];
     for (let by = minBy; by <= maxBy; by += 1) {
@@ -571,7 +580,7 @@ export class TiffBlockIndexedDataSource {
     return sortCenterOut(entries, centerX, centerY, (entry) => ({
       x: entry.anchor.x0 + (entry.anchor.w * 0.5),
       y: entry.anchor.y0 + (entry.anchor.h * 0.5)
-    }));
+    }), spanX, spanY);
   }
 
   async readCompositeWindow(meta, x0, y0, outW, outH, step, outBands = null, options = null) {
@@ -599,6 +608,8 @@ export class TiffBlockIndexedDataSource {
     const cancelled = typeof readOptions?.cancelled === "function" ? readOptions.cancelled : null;
     const centerX = safeX0 + ((safeOutW * step) * 0.5);
     const centerY = safeY0 + ((safeOutH * step) * 0.5);
+    const spanX = Math.max(1, safeOutW * step);
+    const spanY = Math.max(1, safeOutH * step);
     const xLast = safeX0 + ((safeOutW - 1) * step);
     const yLast = safeY0 + ((safeOutH - 1) * step);
     const minBx = Math.max(0, Math.floor(safeX0 / first.table.blockWidth));
@@ -637,13 +648,15 @@ export class TiffBlockIndexedDataSource {
         maxBy,
         centerX,
         centerY,
+        spanX,
+        spanY,
         progress,
         cancelled,
         progressUnits
       );
       if (!completed) return null;
     } else {
-      const blocks = this.#orderedBlocks(first, minBx, maxBx, minBy, maxBy, centerX, centerY);
+      const blocks = this.#orderedBlocks(first, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY);
       let completedUnits = 0;
       const completed = await processInBatches(
         blocks,
@@ -696,6 +709,8 @@ export class TiffBlockIndexedDataSource {
     const cancelled = typeof readOptions?.cancelled === "function" ? readOptions.cancelled : null;
     const centerX = safeX0 + ((safeOutW * step) * 0.5);
     const centerY = safeY0 + ((safeOutH * step) * 0.5);
+    const spanX = Math.max(1, safeOutW * step);
+    const spanY = Math.max(1, safeOutH * step);
     const progressUnits = sparseRaw
       ? Math.max(1, Math.ceil(safeOutH / Math.max(1, Math.floor(APP_CONFIG.tiff.sparseRawRowBatchRows || 1))))
       : Math.max(1, blockCount);
@@ -722,6 +737,8 @@ export class TiffBlockIndexedDataSource {
         maxBx,
         centerX,
         centerY,
+        spanX,
+        spanY,
         progress,
         cancelled
       );
@@ -731,7 +748,7 @@ export class TiffBlockIndexedDataSource {
       return target;
     }
 
-    const blocks = this.#orderedBlocks(spec, minBx, maxBx, minBy, maxBy, centerX, centerY);
+    const blocks = this.#orderedBlocks(spec, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY);
 
     const t0 = perfNow();
     let completedUnits = 0;
@@ -1040,7 +1057,7 @@ export class TiffBlockIndexedDataSource {
       && specs.every((spec) => this.#shouldUseSparseRawSampling(spec, step, blockCount));
   }
 
-  async #readRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, minBy, maxBy, centerX, centerY, progress = null, cancelled = null, totalUnits = 0) {
+  async #readRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY, progress = null, cancelled = null, totalUnits = 0) {
     const table = specs[0].table;
     const blockCount = (maxBx - minBx + 1) * (maxBy - minBy + 1);
     if (this.#shouldUseSparseRawCompositeSampling(specs, step, blockCount)) {
@@ -1057,12 +1074,14 @@ export class TiffBlockIndexedDataSource {
         maxBx,
         centerX,
         centerY,
+        spanX,
+        spanY,
         progress,
         cancelled
       );
     }
 
-    const blockEntries = this.#orderedCompositeEntries(specs, minBx, maxBx, minBy, maxBy, centerX, centerY);
+    const blockEntries = this.#orderedCompositeEntries(specs, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY);
     let completedUnits = 0;
     const completed = await processInBatches(
       blockEntries,
@@ -1105,7 +1124,7 @@ export class TiffBlockIndexedDataSource {
     return true;
   }
 
-  async #readSparseRawWindow(spec, target, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, centerX, centerY, progress = null, cancelled = null) {
+  async #readSparseRawWindow(spec, target, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, centerX, centerY, spanX, spanY, progress = null, cancelled = null) {
     const storageRowBytes = spec.table.blockWidth * spec.bytesPerPixel;
     const numBlocksX = spec.table.numBlocksX;
     const blockHeight = spec.table.blockHeight;
@@ -1120,7 +1139,9 @@ export class TiffBlockIndexedDataSource {
         const rowEnd = Math.min(safeOutH, rowStart + batchRows);
         const rowMid = rowStart + ((Math.max(1, rowEnd - rowStart) - 1) * 0.5);
         return { x: centerX, y: y0 + (rowMid * step) };
-      }
+      },
+      spanX,
+      spanY
     );
     const blockOrder = orderBlockIndicesCenterOut(minBx, maxBx, spec.table.blockWidth, centerX);
     let completedUnits = 0;
@@ -1175,7 +1196,7 @@ export class TiffBlockIndexedDataSource {
     return true;
   }
 
-  async #readSparseRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, centerX, centerY, progress = null, cancelled = null) {
+  async #readSparseRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, centerX, centerY, spanX, spanY, progress = null, cancelled = null) {
     const table = specs[0].table;
     const numBlocksX = table.numBlocksX;
     const blockHeight = table.blockHeight;
@@ -1191,7 +1212,9 @@ export class TiffBlockIndexedDataSource {
         const rowEnd = Math.min(safeOutH, rowStart + batchRows);
         const rowMid = rowStart + ((Math.max(1, rowEnd - rowStart) - 1) * 0.5);
         return { x: centerX, y: y0 + (rowMid * step) };
-      }
+      },
+      spanX,
+      spanY
     );
     const blockOrder = orderBlockIndicesCenterOut(minBx, maxBx, table.blockWidth, centerX);
     let completedUnits = 0;

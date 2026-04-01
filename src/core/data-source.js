@@ -1,10 +1,27 @@
 import { clamp } from "./utils.js";
 import { APP_CONFIG, resolveHardwareConcurrencyLimit } from "../app/config.js";
+import { scheduleSharedTask } from "./shared-scheduler.js";
+
+let nextDataSourceOwnerId = 1;
+
+function resolveOwnerId(source, options = {}) {
+  const explicit = String(options?.ownerId || source?.ownerId || "").trim();
+  if (explicit) return explicit;
+  const file = source?.file || options?.file || null;
+  const fileName = String(file?.name || "").trim();
+  if (fileName) {
+    const size = Number(file?.size || 0);
+    const lastModified = Number(file?.lastModified || 0);
+    return `file:${fileName}:${size}:${lastModified}`;
+  }
+  return `datasource:${nextDataSourceOwnerId++}`;
+}
 
 export class BlobDataSource {
-  constructor(file) {
+  constructor(file, options = {}) {
     this.file = file;
     this.size = file.size;
+    this.ownerId = resolveOwnerId({ file }, options);
     this.bytesRead = 0;
     this.stats = createDataSourceStats();
     this.closed = false;
@@ -59,6 +76,7 @@ export class ChunkCacheDataSource {
   constructor(source, options = {}) {
     this.source = source;
     this.size = source.size;
+    this.ownerId = resolveOwnerId(source, options);
     this.chunkSize = Math.max(
       APP_CONFIG.dataSource.minChunkSizeBytes,
       Number(options.chunkSize) || APP_CONFIG.dataSource.defaultChunkSizeBytes
@@ -139,7 +157,7 @@ export class ChunkCacheDataSource {
     if (this.closed || !this.source) throw new Error("Data source closed");
     const offset = chunkIndex * this.chunkSize;
     const len = Math.min(this.chunkSize, this.size - offset);
-    const u8 = await this.source.read(offset, len);
+    const u8 = await scheduleSharedTask(this.ownerId, () => this.source.read(offset, len));
     this.bytesRead += u8.byteLength;
     this.stats.bytesRead = this.bytesRead;
     return u8;

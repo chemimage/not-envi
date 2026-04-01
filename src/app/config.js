@@ -50,6 +50,12 @@ export const APP_CONFIG = Object.freeze({
     hardwareParallelBias: 1,
     hardwareParallelMin: 2
   }),
+  scheduler: Object.freeze({
+    coreFraction: 0.5,
+    minConcurrency: 2,
+    maxConcurrency: 8,
+    fairShareMinPerOwner: 1
+  }),
   dataSource: Object.freeze({
     minChunkSizeBytes: 64 * KIB,
     defaultChunkSizeBytes: 1 << 20,
@@ -128,10 +134,6 @@ export const APP_CONFIG = Object.freeze({
     workerCoreFraction: 0.5,
     workerPoolMin: 1,
     standardWorkerPoolMax: 5,
-    liteWorkerPoolMax: 2,
-    taskCoreFraction: 0.5,
-    taskMinConcurrency: 2,
-    taskMaxConcurrency: 8,
-    fairShareMinPerDataset: 1
+    liteWorkerPoolMax: 2
   })
 });
