@@ -238,7 +238,7 @@ describe("ui-panels", () => {
     expect(ds.activeBand).toBe(2);
   });
 
-  test("dataset panel buttons distinguish linked, independent, and hidden states", () => {
+  test("dataset panel buttons render L, R, and L|R states", () => {
     document.body.innerHTML = `
       <div id="datasetList"></div>
       <div id="datasetCount"></div>
@@ -250,11 +250,10 @@ describe("ui-panels", () => {
     deps.state.datasets = [ds1, ds2];
     deps.state.activeId = "ds1";
     deps.state.activePanelSlot = 1;
+    deps.state.displayCompositionMode = "overlay";
     deps.state.displayPanels = [
       { slot: 1, datasetId: "ds1", linkGroupId: 1, activeBand: 0, view: {} },
-      { slot: 2, datasetId: "ds2", linkGroupId: 1, activeBand: 0, view: {} },
-      { slot: 3, datasetId: "ds1", linkGroupId: 2, activeBand: 1, view: {} },
-      { slot: 4, datasetId: null, linkGroupId: null, activeBand: null, view: {} }
+      { slot: 2, datasetId: "ds1", linkGroupId: 1, activeBand: 1, view: {} }
     ];
     deps.els = {
       datasetList: document.querySelector("#datasetList"),
@@ -266,8 +265,11 @@ describe("ui-panels", () => {
 
     const ds1Row = document.querySelector('.ds-item[data-dsid="ds1"]');
     const buttons = ds1Row?.querySelectorAll(".slot-btn");
+    expect(buttons?.[0]?.textContent).toBe("L");
     expect(buttons?.[0]?.className).toContain("slot-link-amber");
-    expect(buttons?.[2]?.className).toContain("independent");
-    expect(buttons?.[3]?.className).not.toContain("active");
+    expect(buttons?.[1]?.textContent).toBe("R");
+    expect(buttons?.[1]?.className).toContain("slot-link-amber");
+    expect(buttons?.[2]?.textContent).toBe("L|R");
+    expect(buttons?.[2]?.className).toContain("overlay-active");
   });
 });

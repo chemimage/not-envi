@@ -1,5 +1,5 @@
 import { APP_CONFIG } from "./config.js";
-import { createDisplayPanels } from "./display-panels.js";
+import { createDisplayPanels, DISPLAY_COMPOSITION_SPLIT } from "./display-panels.js";
 
 export function createAppState() {
   return {
@@ -7,6 +7,7 @@ export function createAppState() {
     activeId: null,
     displayPanels: createDisplayPanels(),
     activePanelSlot: 1,
+    displayCompositionMode: DISPLAY_COMPOSITION_SPLIT,
     nextLinkGroupId: 1,
     ioParallel: APP_CONFIG.io.parallelEnabledByDefault,
     zoomExpMin: -6,

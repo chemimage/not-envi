@@ -4,6 +4,8 @@ import {
   createDisplayAnnotationState,
   cloneDisplayView,
   datasetsShareDisplaySize,
+  DISPLAY_COMPOSITION_OVERLAY,
+  DISPLAY_COMPOSITION_SPLIT,
   ensureDisplayPanels,
   getActiveDisplayPanel,
   getDatasetDisplayPanels,
@@ -84,12 +86,19 @@ export function createDatasetRuntime(deps) {
     else render();
   }
 
+  function setDisplayCompositionMode(mode = DISPLAY_COMPOSITION_SPLIT) {
+    state.displayCompositionMode = (mode === DISPLAY_COMPOSITION_OVERLAY)
+      ? DISPLAY_COMPOSITION_OVERLAY
+      : DISPLAY_COMPOSITION_SPLIT;
+  }
+
   function hideDatasetFromPanel(id, slot, opts = {}) {
     ensureDisplayPanels(state);
     const panel = getDisplayPanel(state, slot);
     if (!panel || String(panel.datasetId || "") !== String(id || "")) return false;
     const viewSnapshot = (typeof captureDisplayViewState === "function") ? captureDisplayViewState() : null;
     clearDisplayPanel(panel);
+    if (getVisibleDisplayPanels(state).length < 2) setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
     if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
     updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
     return true;
@@ -181,20 +190,102 @@ export function createDatasetRuntime(deps) {
       }
     }
 
+    setDisplayCompositionMode(opts.compositionMode || DISPLAY_COMPOSITION_SPLIT);
     state.activePanelSlot = Number(panel.slot) || 1;
+    updateActiveDataset(!!opts.fit, !!opts.preserveBandTreeScroll, opts.closeSpectrumOnChange !== false);
+    return true;
+  }
+
+  function assignDatasetToOverlay(dataset, opts = {}) {
+    ensureDisplayPanels(state);
+    const panel1 = getDisplayPanel(state, 1);
+    const panel2 = getDisplayPanel(state, 2);
+    if (!dataset || !panel1 || !panel2) return false;
+
+    const viewSnapshot = (typeof captureDisplayViewState === "function") ? captureDisplayViewState() : null;
+    const existing1 = String(panel1.datasetId || "") === String(dataset.id) ? panel1 : null;
+    const existing2 = String(panel2.datasetId || "") === String(dataset.id) ? panel2 : null;
+    const sourcePanel = [existing1, existing2]
+      .filter(Boolean)
+      .find((panel) => Number(panel.slot) === Number(state.activePanelSlot))
+      || existing1
+      || existing2
+      || findCompatibleLinkedPanel(dataset, null);
+    const sourceView = sourcePanel?.view || dataset.view;
+    const sourceAnnotations = sourcePanel?.annotations || {
+      drawings: dataset.drawings,
+      selectedAreaId: dataset.selectedAreaId
+    };
+
+    panel1.datasetId = dataset.id;
+    if (Number(sourcePanel?.slot) === 1) {
+      if (!Number.isFinite(Number(panel1.linkGroupId))) panel1.linkGroupId = allocateDisplayLinkGroupId(state);
+      panel1.annotations = panel1.annotations || createDisplayAnnotationState(sourceAnnotations);
+      panel1.view = cloneDisplayView(panel1.view || sourceView);
+    } else {
+      makePanelUnique(panel1, sourceView, sourceAnnotations);
+    }
+    panel1.activeBand = existing1
+      ? resolveDisplayPanelBand(existing1, dataset)
+      : resolveDisplayPanelBand(sourcePanel, dataset);
+
+    panel2.datasetId = dataset.id;
+    setPanelLinkToSource(panel2, panel1);
+    panel2.activeBand = existing2
+      ? resolveDisplayPanelBand(panel2, dataset)
+      : resolveDisplayPanelBand(sourcePanel || panel1, dataset);
+
+    if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
+    setDisplayCompositionMode(DISPLAY_COMPOSITION_OVERLAY);
+    if (![1, 2].includes(Number(state.activePanelSlot)) || String(getDisplayPanel(state, state.activePanelSlot)?.datasetId || "") !== String(dataset.id)) {
+      state.activePanelSlot = 1;
+    }
     updateActiveDataset(!!opts.fit, !!opts.preserveBandTreeScroll, opts.closeSpectrumOnChange !== false);
     return true;
   }
 
   function cycleDatasetPanel(id, slot, opts = {}) {
     const ds = findDatasetById(id);
+    if (!ds) return false;
+
+    if (slot === "both") {
+      const assigned = getDatasetDisplayPanels(state, ds.id).filter((panel) => Number(panel.slot) === 1 || Number(panel.slot) === 2);
+      if (assigned.length === 2 && state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY) {
+        const viewSnapshot = (typeof captureDisplayViewState === "function") ? captureDisplayViewState() : null;
+        clearDisplayPanel(getDisplayPanel(state, 1));
+        clearDisplayPanel(getDisplayPanel(state, 2));
+        setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
+        if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
+        updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+        return true;
+      }
+      return assignDatasetToOverlay(ds, {
+        fit: !!opts.fit,
+        preserveBandTreeScroll: !!opts.preserveBandTreeScroll
+      });
+    }
+
     const panel = getDisplayPanel(state, slot);
-    if (!ds || !panel) return false;
+    if (!panel) return false;
+
+    const otherPanel = getDisplayPanel(state, Number(slot) === 1 ? 2 : 1);
+    if (
+      state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY
+      && String(panel.datasetId || "") === String(ds.id)
+      && String(otherPanel?.datasetId || "") === String(ds.id)
+    ) {
+      return setActivePanel(panel.slot, {
+        fit: false,
+        preserveBandTreeScroll: !!opts.preserveBandTreeScroll,
+        closeSpectrumOnChange: false
+      });
+    }
 
     if (String(panel.datasetId || "") !== String(ds.id)) {
       return assignDatasetToPanel(ds, slot, {
         fit: !!opts.fit,
-        preserveBandTreeScroll: !!opts.preserveBandTreeScroll
+        preserveBandTreeScroll: !!opts.preserveBandTreeScroll,
+        compositionMode: DISPLAY_COMPOSITION_SPLIT
       });
     }
 
@@ -205,6 +296,7 @@ export function createDatasetRuntime(deps) {
     }
 
     state.activePanelSlot = Number(panel.slot) || 1;
+    setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
     updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
     return true;
   }
@@ -374,6 +466,7 @@ export function createDatasetRuntime(deps) {
     for (const panel of getDatasetDisplayPanels(state, id)) clearDisplayPanel(panel);
     state.datasets.splice(idx, 1);
     if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
+    if (getVisibleDisplayPanels(state).length < 2) setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
 
     const nextPanel = getActiveDisplayPanel(state);
     if (nextPanel?.datasetId) {
@@ -402,6 +495,7 @@ export function createDatasetRuntime(deps) {
     for (const panel of state.displayPanels) clearDisplayPanel(panel);
     state.activeId = null;
     state.activePanelSlot = 1;
+    setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
     if (typeof syncActiveDatasetView === "function") syncActiveDatasetView();
 
     recomputeCacheBudgets();

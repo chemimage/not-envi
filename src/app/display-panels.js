@@ -1,5 +1,7 @@
-export const DISPLAY_PANEL_COUNT = 4;
+export const DISPLAY_PANEL_COUNT = 2;
 export const DISPLAY_LINK_COLOR_NAMES = ["amber", "cyan", "emerald", "violet"];
+export const DISPLAY_COMPOSITION_SPLIT = "split";
+export const DISPLAY_COMPOSITION_OVERLAY = "overlay";
 
 export function createDisplayPanel(slot) {
   return {
@@ -69,6 +71,9 @@ export function ensureDisplayPanels(state) {
   }
   if (!Number.isFinite(Number(state.activePanelSlot)) || state.activePanelSlot < 1 || state.activePanelSlot > DISPLAY_PANEL_COUNT) {
     state.activePanelSlot = 1;
+  }
+  if (state.displayCompositionMode !== DISPLAY_COMPOSITION_OVERLAY) {
+    state.displayCompositionMode = DISPLAY_COMPOSITION_SPLIT;
   }
   if (!Number.isFinite(Number(state.nextLinkGroupId)) || state.nextLinkGroupId < 1) {
     state.nextLinkGroupId = 1;
@@ -166,7 +171,7 @@ export function resolveDisplayLinkColorName(state, slot) {
   return DISPLAY_LINK_COLOR_NAMES[index % DISPLAY_LINK_COLOR_NAMES.length] || DISPLAY_LINK_COLOR_NAMES[0];
 }
 
-export function computeDisplayPanelLayout(panels, width, height) {
+export function computeDisplayPanelLayout(panels, width, height, opts = {}) {
   const list = Array.isArray(panels)
     ? panels
       .filter((panel) => !!panel?.datasetId)
@@ -176,6 +181,15 @@ export function computeDisplayPanelLayout(panels, width, height) {
 
   const w = Math.max(1, Number(width) || 1);
   const h = Math.max(1, Number(height) || 1);
+  if (opts?.composition === DISPLAY_COMPOSITION_OVERLAY && list.length > 1) {
+    return list.map((panel) => ({
+      slot: panel.slot,
+      x: 0,
+      y: 0,
+      w,
+      h
+    }));
+  }
   const shape = chooseDisplayPanelShape(list.length, w, h);
   return buildDisplayGridLayout(list, w, h, shape.rows, shape.cols);
 }
@@ -184,9 +198,7 @@ function chooseDisplayPanelShape(count, width, height) {
   const aspect = Math.max(1e-9, Number(width) || 1) / Math.max(1e-9, Number(height) || 1);
   const candidates = {
     1: [{ rows: 1, cols: 1 }],
-    2: [{ rows: 1, cols: 2 }, { rows: 2, cols: 1 }],
-    3: [{ rows: 1, cols: 3 }, { rows: 2, cols: 2 }, { rows: 3, cols: 1 }],
-    4: [{ rows: 2, cols: 2 }]
+    2: [{ rows: 1, cols: 2 }, { rows: 2, cols: 1 }]
   }[Math.max(1, Math.min(DISPLAY_PANEL_COUNT, count))] || [{ rows: 1, cols: 1 }];
 
   let best = candidates[0];

@@ -16,6 +16,7 @@ export function createRenderer(deps) {
     getActive,
     getActivePanel,
     getVisibleDatasetPanels,
+    getDisplayCompositionMode,
     getPanelLayoutDevice,
     getBandSettings,
     resolveDisplayRange,
@@ -50,6 +51,17 @@ export function createRenderer(deps) {
     return [{ panel: (typeof getActivePanel === "function" ? (getActivePanel() || { slot: 1 }) : { slot: 1 }), dataset: ds }];
   }
 
+  function compositionMode() {
+    return (typeof getDisplayCompositionMode === "function")
+      ? (getDisplayCompositionMode() || "split")
+      : "split";
+  }
+
+  function isOverlayComposition(visible = null) {
+    const entries = Array.isArray(visible) ? visible : listVisiblePanels();
+    return compositionMode() === "overlay" && entries.length > 1;
+  }
+
   function activePanelInfo() {
     if (typeof getActivePanel === "function") return getActivePanel() || null;
     const visible = listVisiblePanels();
@@ -62,6 +74,10 @@ export function createRenderer(deps) {
       if (Array.isArray(layout)) return layout;
     }
     return [{ slot: 1, x: 0, y: 0, w: els.cpuCanvas.width || 1, h: els.cpuCanvas.height || 1 }];
+  }
+
+  function overlayColorForSlot(slot) {
+    return Number(slot) === 2 ? "rgb(251 146 60)" : "rgb(103 232 249)";
   }
 
   function resolvePanelBand(panel, ds) {
@@ -173,6 +189,26 @@ export function createRenderer(deps) {
     }
   }
 
+  function tintCanvas(sourceCanvas, color) {
+    if (!sourceCanvas) return null;
+    if (typeof document === "undefined" || typeof document.createElement !== "function") return sourceCanvas;
+    try {
+      const tinted = document.createElement("canvas");
+      tinted.width = Math.max(1, sourceCanvas.width || 1);
+      tinted.height = Math.max(1, sourceCanvas.height || 1);
+      const ctx = tinted.getContext("2d", { alpha: true });
+      if (!ctx) return sourceCanvas;
+      ctx.drawImage(sourceCanvas, 0, 0);
+      ctx.globalCompositeOperation = "multiply";
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, tinted.width, tinted.height);
+      ctx.globalCompositeOperation = "source-over";
+      return tinted;
+    } catch (_err) {
+      return sourceCanvas;
+    }
+  }
+
   function getFrameMap(ds) {
     if (!ds.lastScreenFrames || typeof ds.lastScreenFrames.get !== "function") {
       ds.lastScreenFrames = new Map();
@@ -259,6 +295,64 @@ export function createRenderer(deps) {
     return true;
   }
 
+  function drawOverlayCachedPreview(entries, layout) {
+    const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
+    const dpr = window.devicePixelRatio || 1;
+    let drewAny = false;
+    let clearedViewport = false;
+
+    for (const entry of entries) {
+      const { panel, dataset: ds } = entry;
+      const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
+      const band = resolvePanelBand(panel, ds);
+      if (!viewport || !ds || band == null) continue;
+
+      const prevView = ds.view;
+      ds.view = panel.view || prevView;
+      try {
+        clampView(panel.slot, ds);
+        const eff = ds.view.scale * dpr;
+        const modeKey = renderModeKey(ds, band, false, null);
+        const frame = getFrameMap(ds).get(Number(panel.slot) || 1);
+        if (!frame || frame.modeKey !== modeKey || !frame.canvas) continue;
+
+        const prevEff = Math.max(1e-9, Number(frame.eff) || 0);
+        const scale = eff / prevEff;
+        if (!Number.isFinite(scale) || scale <= 0) continue;
+        const tinted = tintCanvas(frame.canvas, overlayColorForSlot(panel.slot));
+        const dx = (Number(viewport.x) || 0) + (((Number(frame.viewX) || 0) - ds.view.x) * eff);
+        const dy = (Number(viewport.y) || 0) + (((Number(frame.viewY) || 0) - ds.view.y) * eff);
+
+        cpuCtx.save();
+        cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+        cpuCtx.imageSmoothingEnabled = false;
+        cpuCtx.globalCompositeOperation = clearedViewport ? "lighter" : "source-over";
+        if (!clearedViewport) {
+          cpuCtx.fillStyle = "#000";
+          cpuCtx.fillRect(Number(viewport.x) || 0, Number(viewport.y) || 0, Math.max(1, Number(viewport.w) || 1), Math.max(1, Number(viewport.h) || 1));
+          clearedViewport = true;
+        }
+        cpuCtx.drawImage(
+          tinted,
+          dx,
+          dy,
+          tinted.width * scale,
+          tinted.height * scale
+        );
+        cpuCtx.restore();
+        drewAny = true;
+      } finally {
+        ds.view = prevView;
+      }
+    }
+
+    if (drewAny) {
+      if (els.cpuCanvas?.style) els.cpuCanvas.style.display = "block";
+      if (els.gpuCanvas?.style) els.gpuCanvas.style.display = "none";
+    }
+    return drewAny;
+  }
+
   async function withPanelView(ds, panel, fn) {
     if (!ds || !panel) return fn();
     const prevView = ds.view;
@@ -312,6 +406,13 @@ export function createRenderer(deps) {
     resizeCanvases();
     clearBaseCanvases();
     const layout = panelLayout();
+    if (isOverlayComposition(visible)) {
+      const drew = drawOverlayCachedPreview(visible, layout);
+      renderThumbnail();
+      updateHud();
+      drawOverlays();
+      return drew;
+    }
     let drewAny = false;
     const dpr = window.devicePixelRatio || 1;
     for (const entry of visible) {
@@ -576,6 +677,106 @@ export function createRenderer(deps) {
     }
   }
 
+  async function renderOverlayPanels(opts = {}, visible = []) {
+    const seq = ++state.renderSeq;
+    resizeCanvases();
+    clearBaseCanvases();
+    const layout = panelLayout();
+    const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
+    const dpr = window.devicePixelRatio || 1;
+    const activeSlot = Number(activePanelInfo()?.slot) || Number(visible[0]?.panel?.slot) || 1;
+    const overlayLayers = [];
+    const t0 = now();
+
+    try {
+      for (const entry of visible) {
+        if (seq !== state.renderSeq) return;
+        const { panel, dataset: ds } = entry;
+        const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
+        const band = resolvePanelBand(panel, ds);
+        if (!viewport || !ds || band == null) continue;
+        await withPanelView(ds, panel, async () => {
+          clampView(panel.slot, ds);
+          const eff = ds.view.scale * dpr;
+          const raster = await readRasterForBand(ds, band, eff, viewport.w, viewport.h);
+          if (seq !== state.renderSeq) return;
+
+          const stableRaster = isStableRaster(raster);
+          const settings = getBandSettings(ds, band);
+          const range = resolveDisplayRange(ds, band, raster.dataF32);
+          const params = {
+            minVal: range.minVal,
+            maxVal: range.maxVal,
+            brightness: clamp(settings.brightness ?? 0, -1, 1),
+            gain: clamp(settings.gain ?? 1, 0.0, 4.0),
+            contrast: clamp(settings.contrast ?? 1, 0.1, 3.0)
+          };
+          const renderedCanvas = buildGrayCanvas(raster.dataF32, raster.w, raster.h, params);
+
+          if (stableRaster) {
+            updateScreenPreviewCache(ds, panel.slot, renderModeKey(ds, band, false, null), eff, renderedCanvas);
+            updatePanelRasterCache(ds, panel.slot, raster, null);
+          } else {
+            updatePanelRasterCache(ds, panel.slot, null, null);
+          }
+
+          overlayLayers.push({
+            panel,
+            dataset: ds,
+            viewport,
+            renderedCanvas,
+            stableRaster,
+            raster
+          });
+
+          if (Number(panel.slot) === activeSlot) {
+            ds.lastRaster = stableRaster ? raster : null;
+            ds.lastCompositeRaster = null;
+            syncRangeInputsFromSettings(ds);
+          }
+        });
+      }
+
+      if (seq !== state.renderSeq) return;
+      const overlayViewport = overlayLayers[0]?.viewport || { x: 0, y: 0, w: els.cpuCanvas.width, h: els.cpuCanvas.height };
+      cpuCtx.save();
+      cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
+      cpuCtx.fillStyle = "#000";
+      cpuCtx.fillRect(Number(overlayViewport.x) || 0, Number(overlayViewport.y) || 0, Math.max(1, Number(overlayViewport.w) || 1), Math.max(1, Number(overlayViewport.h) || 1));
+      cpuCtx.restore();
+
+      for (let i = 0; i < overlayLayers.length; i += 1) {
+        const layer = overlayLayers[i];
+        const tinted = tintCanvas(layer.renderedCanvas, overlayColorForSlot(layer.panel.slot));
+        cpuCtx.save();
+        cpuCtx.globalCompositeOperation = i === 0 ? "source-over" : "lighter";
+        drawCanvasToViewport(cpuCtx, tinted, layer.viewport, false);
+        cpuCtx.restore();
+      }
+
+      state.lastRenderMs = now() - t0;
+      setStatus("ready", "ok");
+      renderThumbnail();
+      updateHud();
+      drawOverlays();
+      updatePerf();
+
+      const activeDs = getActive();
+      if (activeDs && state.histMode === "view") {
+        if (state.histViewDebounce) clearTimeout(state.histViewDebounce);
+        state.histViewDebounce = setTimeout(() => {
+          const d = getActive();
+          if (!d || d.id !== activeDs.id) return;
+          ensureViewHistogram(d);
+        }, 180);
+      }
+    } catch (e) {
+      console.error(e);
+      if (seq !== state.renderSeq) return;
+      setStatus("render error", "err");
+    }
+  }
+
   async function render(opts = {}) {
     const visible = listVisiblePanels();
     if (!visible.length) {
@@ -602,6 +803,10 @@ export function createRenderer(deps) {
 
     if (els.gpuCanvas?.style) els.gpuCanvas.style.display = "none";
     if (els.cpuCanvas?.style) els.cpuCanvas.style.display = "block";
+    if (isOverlayComposition(visible)) {
+      await renderOverlayPanels(opts, visible);
+      return;
+    }
     await renderMultiPanel(opts, visible);
   }
 

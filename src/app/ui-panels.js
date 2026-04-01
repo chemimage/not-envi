@@ -1,5 +1,5 @@
 import { formatExperimentSettingsInline, parseExperimentSettings } from "./experiment-meta.js";
-import { resolveDisplayLinkColorName, resolveDisplayPanelBand } from "./display-panels.js";
+import { DISPLAY_COMPOSITION_OVERLAY, resolveDisplayLinkColorName, resolveDisplayPanelBand } from "./display-panels.js";
 import {
   THREE_BAND_ADJUST_BLUE,
   THREE_BAND_ADJUST_GREEN,
@@ -65,6 +65,14 @@ export function createUIPanels(deps) {
     if (color === THREE_BAND_ADJUST_GREEN) return "Adjust green channel";
     if (color === THREE_BAND_ADJUST_BLUE) return "Adjust blue channel";
     return "Adjust red channel";
+  }
+
+  function displayPanelLabel(slot) {
+    return Number(slot) === 2 ? "R" : "L";
+  }
+
+  function displayPanelTitle(slot) {
+    return Number(slot) === 2 ? "Right panel" : "Left panel";
   }
 
   function resolveDisplayControlBand(ds) {
@@ -468,27 +476,56 @@ export function createUIPanels(deps) {
 
       const actions = document.createElement("div");
       actions.className = "actions";
-      for (let slot = 1; slot <= 4; slot += 1) {
-        const panel = Array.isArray(state.displayPanels)
-          ? state.displayPanels.find((item) => Number(item?.slot) === slot)
-          : null;
-        const active = !!panel && String(panel.datasetId || "") === String(ds.id);
-        const colorName = active ? resolveDisplayLinkColorName(state, slot) : "";
-        const independent = active && !colorName;
+      const panel1 = Array.isArray(state.displayPanels)
+        ? state.displayPanels.find((item) => Number(item?.slot) === 1)
+        : null;
+      const panel2 = Array.isArray(state.displayPanels)
+        ? state.displayPanels.find((item) => Number(item?.slot) === 2)
+        : null;
+      const overlayActive = (
+        state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY
+        && String(panel1?.datasetId || "") === String(ds.id)
+        && String(panel2?.datasetId || "") === String(ds.id)
+      );
+      const slotButtons = [
+        { key: 1, label: displayPanelLabel(1), panel: panel1, title: displayPanelTitle(1) },
+        { key: 2, label: displayPanelLabel(2), panel: panel2, title: displayPanelTitle(2) },
+        { key: "both", label: "L|R", panel: null, title: "Blend left and right panels" }
+      ];
+      for (const slotButton of slotButtons) {
+        const slot = slotButton.key;
+        const panel = slotButton.panel;
+        const active = slot === "both"
+          ? overlayActive
+          : (!!panel && String(panel.datasetId || "") === String(ds.id));
+        const colorName = slot === "both"
+          ? ""
+          : (active ? resolveDisplayLinkColorName(state, slot) : "");
+        const independent = slot !== "both" && active && !colorName;
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = [
           "slot-btn",
+          slot === "both" ? "slot-both" : `slot-panel-${slot}`,
           active ? "active" : "",
           independent ? "independent" : "",
           active && colorName ? `slot-link-${colorName}` : "",
-          active && Number(state.activePanelSlot) === slot ? "selected" : ""
+          active && slot === "both" ? "overlay-active" : "",
+          active && slot !== "both" && Number(state.activePanelSlot) === slot ? "selected" : ""
         ].filter(Boolean).join(" ");
         btn.title = active
-          ? (independent ? `Panel ${slot} (independent)` : `Panel ${slot} (linked)`)
-          : `Show in panel ${slot}`;
+          ? (
+            slot === "both"
+              ? "Blended across left and right panels"
+              : (
+                overlayActive
+                  ? `${slotButton.title} layer`
+                  : (independent ? `${slotButton.title} (independent)` : `${slotButton.title} (linked)`)
+              )
+          )
+          : slotButton.title;
         btn.ariaLabel = btn.title;
-        btn.textContent = String(slot);
+        btn.textContent = slotButton.label;
         btn.onclick = (ev) => {
           ev.stopPropagation();
           if (cycleDatasetPanel) cycleDatasetPanel(ds.id, slot, { preserveBandTreeScroll: true });

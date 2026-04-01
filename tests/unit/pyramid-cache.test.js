@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
   bandTileKey,
+  buildBandProximityOrder,
+  buildPyramidPrefetchPlan,
   computeMaxPyramidLevel,
   createPyramidController,
   pyramidLevelForEff,
@@ -10,6 +12,7 @@ import {
 describe("pyramid-cache", () => {
   test("pure helpers compute keys and levels", () => {
     expect(bandTileKey(3, 2, 10, 11)).toBe("3|2:10:11");
+    expect(buildBandProximityOrder(5, 10, 3)).toEqual([5, 4, 6, 3, 7, 2, 8]);
     expect(computeMaxPyramidLevel({ samples: 256, lines: 128 }, 256)).toBe(1);
     expect(computeMaxPyramidLevel({ samples: 2048, lines: 2048 }, 256)).toBe(3);
 
@@ -30,6 +33,33 @@ describe("pyramid-cache", () => {
     expect(b.ty0).toBeGreaterThanOrEqual(0);
     expect(b.tx1).toBeGreaterThanOrEqual(b.tx0);
     expect(b.ty1).toBeGreaterThanOrEqual(b.ty0);
+  });
+
+  test("buildPyramidPrefetchPlan favors nearby same-band tiles before adjacent bands", () => {
+    const ds = {
+      meta: { samples: 1024, lines: 1024, bands: 10 },
+      view: { x: 0, y: 0, scale: 1 },
+      pyramid: {
+        tileSize: 128,
+        maxLevel: 3,
+        tiles: new Map(),
+        pending: new Map(),
+        queued: new Set([
+          bandTileKey(5, 0, 0, 0),
+          bandTileKey(5, 1, 0, 0),
+          bandTileKey(5, 2, 0, 0),
+          bandTileKey(5, 3, 0, 0)
+        ])
+      }
+    };
+
+    const plan = buildPyramidPrefetchPlan(ds, 5, 0, 1, 128, 128, 8, 2);
+    expect(plan.length).toBeGreaterThan(0);
+    expect(plan[0].band).toBe(5);
+    expect(plan[0].radius).toBe(1);
+    expect(plan[0].tx).toBeLessThanOrEqual(1);
+    expect(plan[0].ty).toBeLessThanOrEqual(1);
+    expect(plan.some((task) => task.band === 4 || task.band === 6)).toBe(true);
   });
 
   test("controller manages inflight and dispose lifecycle", () => {

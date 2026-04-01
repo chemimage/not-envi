@@ -62,6 +62,13 @@
     min-height: 30px;
   }
 
+  .slot-btn.slot-both {
+    width: 42px;
+    min-width: 42px;
+    padding: 0 4px;
+    letter-spacing: 0.02em;
+  }
+
   .slot-btn.active {
     color: rgb(17 24 39);
   }
@@ -98,6 +105,12 @@
     background: rgb(196 181 253);
     border-color: rgb(221 214 254);
     color: rgb(76 29 149);
+  }
+
+  .slot-btn.overlay-active {
+    background: linear-gradient(90deg, rgb(103 232 249) 0 50%, rgb(251 146 60) 50% 100%);
+    border-color: rgb(251 191 36);
+    color: rgb(15 23 42);
   }
 
   .slot-btn.slot-close {

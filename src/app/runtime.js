@@ -9,6 +9,8 @@ import {
   computeDisplayPanelLayout,
   createDisplayPanels,
   ensureDisplayPanels,
+  DISPLAY_COMPOSITION_OVERLAY,
+  DISPLAY_COMPOSITION_SPLIT,
   getActiveDisplayPanel,
   getLinkedDisplayPanels,
   resolveDisplayPanelBand,
@@ -161,6 +163,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     activeId: null,
     displayPanels: createDisplayPanels(),
     activePanelSlot: 1,
+    displayCompositionMode: DISPLAY_COMPOSITION_SPLIT,
     nextLinkGroupId: 1,
     ioParallel: APP_CONFIG.io.parallelEnabledByDefault,
 
@@ -249,11 +252,15 @@ import { pointInPolygon } from "./draw-geometry.js";
 
   function getDisplayPanelLayoutCss() {
     const rect = getMainRect();
-    return computeDisplayPanelLayout(getVisibleDisplayPanels(state), rect.width, rect.height);
+    return computeDisplayPanelLayout(getVisibleDisplayPanels(state), rect.width, rect.height, {
+      composition: state.displayCompositionMode
+    });
   }
 
   function getDisplayPanelLayoutDevice() {
-    return computeDisplayPanelLayout(getVisibleDisplayPanels(state), els.cpuCanvas.width || 1, els.cpuCanvas.height || 1);
+    return computeDisplayPanelLayout(getVisibleDisplayPanels(state), els.cpuCanvas.width || 1, els.cpuCanvas.height || 1, {
+      composition: state.displayCompositionMode
+    });
   }
 
   function getPanelRectCss(slot = null) {
@@ -345,6 +352,12 @@ import { pointInPolygon } from "./draw-geometry.js";
   }
 
   function resolvePanelAtClientPoint(clientX, clientY) {
+    if (state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY && getVisibleDatasetPanels().length > 1) {
+      const activePanel = getActiveDisplayPanel(state);
+      if (activePanel?.datasetId) {
+        return getDisplayPanelRect(getDisplayPanelLayoutCss(), activePanel.slot);
+      }
+    }
     const rect = getMainRect();
     const localX = Number(clientX) - rect.left;
     const localY = Number(clientY) - rect.top;
@@ -845,7 +858,10 @@ import { pointInPolygon } from "./draw-geometry.js";
     overlayRenderer.clearOverlay();
     const layout = getDisplayPanelLayoutDevice();
     const activeSlot = Number(getActivePanel()?.slot) || 1;
-    for (const entry of getVisibleDatasetPanels()) {
+    const visibleEntries = getVisibleDatasetPanels();
+    const overlayMode = state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY && visibleEntries.length > 1;
+    for (let index = 0; index < visibleEntries.length; index += 1) {
+      const entry = visibleEntries[index];
       const { panel, dataset: ds } = entry;
       const viewport = layout.find((rect) => Number(rect.slot) === Number(panel.slot));
       if (!viewport || !ds) continue;
@@ -860,13 +876,17 @@ import { pointInPolygon } from "./draw-geometry.js";
             : null,
           active: Number(panel.slot) === activeSlot,
           showScaleBar: Number(panel.slot) === activeSlot,
-          borderColor: ({
-            amber: "rgba(253,224,71,0.9)",
-            cyan: "rgba(103,232,249,0.9)",
-            emerald: "rgba(134,239,172,0.9)",
-            violet: "rgba(221,214,254,0.9)"
-          })[resolveDisplayLinkColorName(state, panel.slot)] || "rgba(226,232,240,0.55)",
-          label: panel.slot
+          borderColor: overlayMode
+            ? (Number(panel.slot) === 1 ? "rgba(103,232,249,0.92)" : "rgba(251,146,60,0.92)")
+            : (({
+              amber: "rgba(253,224,71,0.9)",
+              cyan: "rgba(103,232,249,0.9)",
+              emerald: "rgba(134,239,172,0.9)",
+              violet: "rgba(221,214,254,0.9)"
+            })[resolveDisplayLinkColorName(state, panel.slot)] || "rgba(226,232,240,0.55)"),
+          label: Number(panel.slot) === 2 ? "R" : "L",
+          labelIndex: overlayMode ? index : 0,
+          composition: overlayMode ? DISPLAY_COMPOSITION_OVERLAY : DISPLAY_COMPOSITION_SPLIT
         });
       } finally {
         ds.view = prevView;
@@ -928,6 +948,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     renderThumbnail,
     updateHud,
     ensureViewHistogram,
+    getDisplayCompositionMode: () => state.displayCompositionMode
   });
 
   // ========= Thumbnail / magnifier =========

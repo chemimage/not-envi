@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createDatasetRuntime } from "../../src/app/dataset-runtime.js";
-import { getDisplayPanel } from "../../src/app/display-panels.js";
+import { DISPLAY_COMPOSITION_OVERLAY, getDisplayPanel } from "../../src/app/display-panels.js";
 
 function makeDeps(state) {
   return {
@@ -20,7 +20,10 @@ function makeDeps(state) {
     render: vi.fn(),
     disposePyramid: vi.fn(),
     clearSelection: vi.fn(),
-    onNeedWholeStats: vi.fn()
+    onNeedWholeStats: vi.fn(),
+    syncActiveDatasetView: vi.fn(),
+    captureDisplayViewState: vi.fn(() => new Map()),
+    reflowDisplayViews: vi.fn()
   };
 }
 
@@ -111,5 +114,79 @@ describe("dataset runtime", () => {
     expect(panel2?.annotations).toBe(panel1?.annotations);
     expect(panel2?.view).not.toBe(panel1?.view);
     expect(panel2?.view).toEqual(panel1?.view);
+  });
+
+  test("overlay button assigns a dataset to both panels and links them", () => {
+    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 5, y: 7, scale: 2 }, drawings: [{ id: 1, tool: "rect", points: [{ x: 1, y: 1 }, { x: 3, y: 3 }] }], selectedAreaId: 1 };
+    const state = { datasets: [ds1], activeId: null, activePanelSlot: 1, nextLinkGroupId: 1 };
+    const deps = makeDeps(state);
+    const rt = createDatasetRuntime(deps);
+
+    rt.cycleDatasetPanel("ds1", "both");
+
+    const panel1 = getDisplayPanel(state, 1);
+    const panel2 = getDisplayPanel(state, 2);
+    expect(state.displayCompositionMode).toBe(DISPLAY_COMPOSITION_OVERLAY);
+    expect(panel1?.datasetId).toBe("ds1");
+    expect(panel2?.datasetId).toBe("ds1");
+    expect(panel2?.linkGroupId).toBe(panel1?.linkGroupId);
+    expect(panel2?.annotations).toBe(panel1?.annotations);
+    expect(panel2?.view).not.toBe(panel1?.view);
+    expect(panel2?.view).toEqual(panel1?.view);
+  });
+
+  test("overlaying a dataset already shown in both panels relinks independent panels", () => {
+    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 0, y: 0, scale: 1 }, drawings: [{ id: 1, tool: "rect", points: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }], selectedAreaId: 1 };
+    const state = {
+      datasets: [ds1],
+      activeId: "ds1",
+      activePanelSlot: 2,
+      nextLinkGroupId: 3,
+      displayPanels: [
+        { slot: 1, datasetId: "ds1", linkGroupId: 1, activeBand: 0, annotations: { drawings: [{ id: 10 }], selectedAreaId: 10 }, view: { x: 1, y: 1, scale: 1 } },
+        { slot: 2, datasetId: "ds1", linkGroupId: 2, activeBand: 1, annotations: { drawings: [{ id: 20 }], selectedAreaId: 20 }, view: { x: 9, y: 8, scale: 3 } }
+      ]
+    };
+    const deps = makeDeps(state);
+    const rt = createDatasetRuntime(deps);
+
+    rt.cycleDatasetPanel("ds1", "both");
+
+    const panel1 = getDisplayPanel(state, 1);
+    const panel2 = getDisplayPanel(state, 2);
+    expect(state.displayCompositionMode).toBe(DISPLAY_COMPOSITION_OVERLAY);
+    expect(panel1?.linkGroupId).toBe(panel2?.linkGroupId);
+    expect(panel1?.annotations).toBe(panel2?.annotations);
+    expect(panel2?.view).toEqual(panel1?.view);
+    expect(panel1?.activeBand).toBe(0);
+    expect(panel2?.activeBand).toBe(1);
+  });
+
+  test("overlay mode keeps both layers linked and only changes the active panel", () => {
+    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 0, y: 0, scale: 1 }, drawings: [], selectedAreaId: null };
+    const state = {
+      datasets: [ds1],
+      activeId: "ds1",
+      activePanelSlot: 1,
+      nextLinkGroupId: 2,
+      displayCompositionMode: DISPLAY_COMPOSITION_OVERLAY,
+      displayPanels: [
+        { slot: 1, datasetId: "ds1", linkGroupId: 1, activeBand: 0, annotations: { drawings: [], selectedAreaId: null }, view: { x: 1, y: 2, scale: 3 } },
+        { slot: 2, datasetId: "ds1", linkGroupId: 1, activeBand: 1, annotations: { drawings: [], selectedAreaId: null }, view: { x: 1, y: 2, scale: 3 } }
+      ]
+    };
+    const deps = makeDeps(state);
+    const rt = createDatasetRuntime(deps);
+
+    rt.cycleDatasetPanel("ds1", 2, { preserveBandTreeScroll: true });
+
+    const panel1 = getDisplayPanel(state, 1);
+    const panel2 = getDisplayPanel(state, 2);
+    expect(state.displayCompositionMode).toBe(DISPLAY_COMPOSITION_OVERLAY);
+    expect(state.activePanelSlot).toBe(2);
+    expect(panel1?.datasetId).toBe("ds1");
+    expect(panel2?.datasetId).toBe("ds1");
+    expect(panel1?.linkGroupId).toBe(panel2?.linkGroupId);
+    expect(deps.closeSpectrum).not.toHaveBeenCalled();
   });
 });

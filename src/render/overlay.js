@@ -468,7 +468,7 @@ export function createOverlayRenderer(deps) {
       : null;
   }
 
-  function drawPanelBorder(viewport, dpr, active = false, color = "rgba(226,232,240,0.4)", label = "") {
+  function drawPanelBorder(viewport, dpr, active = false, color = "rgba(226,232,240,0.4)", label = "", opts = {}) {
     overlayCtx.save();
     overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
     overlayCtx.strokeStyle = color;
@@ -477,14 +477,19 @@ export function createOverlayRenderer(deps) {
     if (label) {
       const tagW = 18 * dpr;
       const tagH = 18 * dpr;
+      const tagInset = 6 * dpr;
+      const labelIndex = Math.max(0, Number(opts?.labelIndex) || 0);
+      const stackOffset = (opts?.composition === "overlay") ? (labelIndex * (tagH + (4 * dpr))) : 0;
+      const tagX = viewport.x + viewport.w - tagW - tagInset;
+      const tagY = viewport.y + viewport.h - tagH - tagInset - stackOffset;
       overlayCtx.fillStyle = color;
-      roundRect(overlayCtx, viewport.x + (6 * dpr), viewport.y + (6 * dpr), tagW, tagH, 2 * dpr);
+      roundRect(overlayCtx, tagX, tagY, tagW, tagH, 2 * dpr);
       overlayCtx.fill();
       overlayCtx.fillStyle = "rgba(15,23,42,0.92)";
       overlayCtx.font = `${10 * dpr}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
       overlayCtx.textAlign = "center";
       overlayCtx.textBaseline = "middle";
-      overlayCtx.fillText(String(label), viewport.x + (15 * dpr), viewport.y + (15 * dpr));
+      overlayCtx.fillText(String(label), tagX + (tagW * 0.5), tagY + (tagH * 0.5));
     }
     overlayCtx.restore();
   }
@@ -539,7 +544,7 @@ export function createOverlayRenderer(deps) {
     drawAnnotations(ds, viewport, opts);
     if (opts.showScaleBar) drawScaleBar(ds, viewport);
     overlayCtx.restore();
-    drawPanelBorder(viewport, dpr, !!opts.active, opts.borderColor, opts.label);
+    drawPanelBorder(viewport, dpr, !!opts.active, opts.borderColor, opts.label, opts);
   }
 
   function clearOverlay() {
