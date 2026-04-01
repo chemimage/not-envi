@@ -52,6 +52,7 @@ import { createSpectrumAreaController } from "./spectrum-area-controller.js";
 import { createAreaReductionWorkerClient } from "./area-reduction-worker-client.js";
 import { createSelectionSyncController } from "./selection-sync-controller.js";
 import { getThreeBandAdjustColor, isThreeBandColorMode } from "./three-band-display.js";
+import { annotationsShareImageSpace, remapAnnotationState } from "./linked-annotations.js";
 import { applyNormalizedViewBox, captureNormalizedViewBox, withNormalizedCenter } from "./linked-view.js";
 import {
   resolveSelectionBoundsForSpectrum,
@@ -569,6 +570,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     syncActiveDatasetView,
     captureDisplayViewState,
     reflowDisplayViews,
+    syncLinkedPanelView,
   });
   // ========= Histogram computation & drawing =========
 
@@ -664,25 +666,59 @@ import { pointInPolygon } from "./draw-geometry.js";
     };
   }
 
+  function syncLinkedPanelView(sourcePanel, targetPanel) {
+    if (!sourcePanel?.datasetId || !targetPanel?.datasetId) return false;
+    if (Number(sourcePanel.slot) === Number(targetPanel.slot)) return false;
+    const sourceDs = getPanelDataset(sourcePanel);
+    const targetDs = getPanelDataset(targetPanel);
+    if (!sourceDs?.meta || !targetDs?.meta) return false;
+    const dpr = window.devicePixelRatio || 1;
+    const sourceViewport = fallbackPanelViewport(sourcePanel.slot);
+    const targetViewport = fallbackPanelViewport(targetPanel.slot);
+    const normalized = captureNormalizedViewBox(sourcePanel.view, sourceDs.meta, sourceViewport, dpr);
+    const next = applyNormalizedViewBox(normalized, targetDs.meta, targetViewport, dpr, {
+      minScale: minScaleFor(targetDs, targetPanel.slot),
+      maxScale: 128
+    });
+    targetPanel.view.scale = next.scale;
+    targetPanel.view.x = next.x;
+    targetPanel.view.y = next.y;
+    withPanelDatasetView(targetPanel, targetDs, () => {
+      clampView(targetPanel.slot, targetDs);
+    });
+    return true;
+  }
+
+  function syncLinkedPanelAnnotations(sourcePanel, targetPanel) {
+    if (!sourcePanel?.datasetId || !targetPanel?.datasetId) return false;
+    if (Number(sourcePanel.slot) === Number(targetPanel.slot)) return false;
+    const sourceDs = getPanelDataset(sourcePanel);
+    const targetDs = getPanelDataset(targetPanel);
+    if (!sourceDs?.meta || !targetDs?.meta) return false;
+    if (annotationsShareImageSpace(sourceDs.meta, targetDs.meta)) {
+      targetPanel.annotations = sourcePanel.annotations;
+      return true;
+    }
+    targetPanel.annotations = remapAnnotationState(sourcePanel.annotations, sourceDs.meta, targetDs.meta);
+    return true;
+  }
+
+  function syncLinkedAnnotationsFromActivePanel() {
+    const sourcePanel = getActiveDisplayPanel(state);
+    if (!sourcePanel?.datasetId) return;
+    const entries = listLinkedViewEntries(sourcePanel.slot);
+    if (entries.length < 2) return;
+    for (const entry of entries) {
+      if (Number(entry.panel?.slot) === Number(sourcePanel.slot)) continue;
+      syncLinkedPanelAnnotations(sourcePanel, entry.panel);
+    }
+  }
+
   function syncLinkedPanelsFromSource(entries, sourceEntry) {
     if (!sourceEntry?.panel || !sourceEntry?.dataset) return;
-    const dpr = window.devicePixelRatio || 1;
-    const sourceViewport = fallbackPanelViewport(sourceEntry.panel.slot);
-    const normalized = captureNormalizedViewBox(sourceEntry.panel.view, sourceEntry.dataset.meta, sourceViewport, dpr);
     for (const entry of entries) {
       if (Number(entry.panel?.slot) === Number(sourceEntry.panel.slot)) continue;
-      const { panel, dataset: ds } = entry;
-      const viewport = fallbackPanelViewport(panel.slot);
-      const next = applyNormalizedViewBox(normalized, ds.meta, viewport, dpr, {
-        minScale: minScaleFor(ds, panel.slot),
-        maxScale: 128
-      });
-      panel.view.scale = next.scale;
-      panel.view.x = next.x;
-      panel.view.y = next.y;
-      withPanelDatasetView(panel, ds, () => {
-        clampView(panel.slot, ds);
-      });
+      syncLinkedPanelView(sourceEntry.panel, entry.panel);
     }
   }
 
@@ -938,7 +974,10 @@ import { pointInPolygon } from "./draw-geometry.js";
   function resizeCanvases(){ if (renderer) renderer.resizeCanvases(); }
   function schedulePreviewRender(){ if (renderer) renderer.schedulePreview(); }
   function scheduleRender(){ if (renderer) renderer.scheduleRender(); }
-  async function render(opts = {}){ if (renderer) await renderer.render(opts); }
+  async function render(opts = {}){
+    syncLinkedAnnotationsFromActivePanel();
+    if (renderer) await renderer.render(opts);
+  }
 
   renderer = createRenderer({
     state,

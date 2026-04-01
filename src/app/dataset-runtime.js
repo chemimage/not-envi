@@ -3,6 +3,7 @@ import {
   clearDisplayPanel,
   createDisplayAnnotationState,
   cloneDisplayView,
+  datasetsShareDisplaySize,
   DISPLAY_COMPOSITION_OVERLAY,
   DISPLAY_COMPOSITION_SPLIT,
   ensureDisplayPanels,
@@ -13,6 +14,7 @@ import {
   getVisibleDisplayPanels,
   panelHasLinkedPeers
 } from "./display-panels.js";
+import { remapAnnotationState } from "./linked-annotations.js";
 import { APP_CONFIG } from "./config.js";
 
 export function createDatasetRuntime(deps) {
@@ -36,7 +38,8 @@ export function createDatasetRuntime(deps) {
     onNeedWholeStats,
     syncActiveDatasetView,
     captureDisplayViewState,
-    reflowDisplayViews
+    reflowDisplayViews,
+    syncLinkedPanelView
   } = deps;
 
   let nextDatasetId = 1;
@@ -205,8 +208,16 @@ export function createDatasetRuntime(deps) {
 
   function setPanelLinkToSource(panel, sourcePanel) {
     if (!panel || !sourcePanel) return;
+    const panelDataset = findDatasetById(panel.datasetId);
+    const sourceDataset = findDatasetById(sourcePanel.datasetId);
     panel.linkGroupId = Number(sourcePanel.linkGroupId) || allocateDisplayLinkGroupId(state);
-    panel.annotations = sourcePanel.annotations || createDisplayAnnotationState();
+    if (panelDataset && sourceDataset && datasetsShareDisplaySize(panelDataset, sourceDataset)) {
+      panel.annotations = sourcePanel.annotations || createDisplayAnnotationState();
+    } else if (panelDataset?.meta && sourceDataset?.meta) {
+      panel.annotations = remapAnnotationState(sourcePanel.annotations, sourceDataset.meta, panelDataset.meta);
+    } else {
+      panel.annotations = createDisplayAnnotationState(sourcePanel.annotations);
+    }
     panel.view = cloneDisplayView(sourcePanel.view);
   }
 
@@ -247,7 +258,8 @@ export function createDatasetRuntime(deps) {
     if (linkedViewSourceSlot != null) {
       const sourcePanel = getDisplayPanel(state, linkedViewSourceSlot);
       if (sourcePanel?.view && Number(sourcePanel.slot) !== Number(panel.slot)) {
-        panel.view = cloneDisplayView(sourcePanel.view);
+        if (typeof syncLinkedPanelView === "function") syncLinkedPanelView(sourcePanel, panel);
+        else panel.view = cloneDisplayView(sourcePanel.view);
       }
     }
 
@@ -298,6 +310,10 @@ export function createDatasetRuntime(deps) {
       : resolveDisplayPanelBand(sourcePanel || panel1, dataset);
 
     if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
+    if (sourcePanel?.view && typeof syncLinkedPanelView === "function") {
+      if (Number(sourcePanel.slot) !== Number(panel1.slot)) syncLinkedPanelView(sourcePanel, panel1);
+      syncLinkedPanelView(panel1, panel2);
+    }
     setDisplayCompositionMode(DISPLAY_COMPOSITION_OVERLAY);
     if (![1, 2].includes(Number(state.activePanelSlot)) || String(getDisplayPanel(state, state.activePanelSlot)?.datasetId || "") !== String(dataset.id)) {
       state.activePanelSlot = 1;
