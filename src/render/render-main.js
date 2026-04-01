@@ -119,6 +119,76 @@ export function createRenderer(deps) {
     return map && typeof map.get === "function" ? (map.get(slot) || null) : null;
   }
 
+  function getPanelRequestKey(ds, panelSlot) {
+    const slot = Number(panelSlot) || 1;
+    const map = ds?.__panelRenderRequests;
+    return map && typeof map.get === "function" ? (map.get(slot) || null) : null;
+  }
+
+  function setPanelRequestKey(ds, panelSlot, requestKey) {
+    if (!ds) return;
+    if (!ds.__panelRenderRequests || typeof ds.__panelRenderRequests.get !== "function") {
+      ds.__panelRenderRequests = new Map();
+    }
+    const slot = Number(panelSlot) || 1;
+    if (requestKey) ds.__panelRenderRequests.set(slot, requestKey);
+    else ds.__panelRenderRequests.delete(slot);
+  }
+
+  function formatViewCoord(value) {
+    const num = Number(value) || 0;
+    return Number.isFinite(num) ? num.toFixed(4) : "0.0000";
+  }
+
+  function formatViewScale(value) {
+    const num = Number(value) || 0;
+    return Number.isFinite(num) ? num.toFixed(6) : "0.000000";
+  }
+
+  function buildViewportRenderKey(ds, panelSlot, viewportW, viewportH) {
+    return `${Number(panelSlot) || 1}|${formatViewCoord(ds?.view?.x)}|${formatViewCoord(ds?.view?.y)}|${formatViewScale(ds?.view?.scale)}|${Math.round(Number(viewportW) || 0)}x${Math.round(Number(viewportH) || 0)}`;
+  }
+
+  function buildPanelRequestKey(ds, panelSlot, modeKey, viewportW, viewportH) {
+    return `${String(modeKey || "")}|${buildViewportRenderKey(ds, panelSlot, viewportW, viewportH)}`;
+  }
+
+  function isPanelRequestCurrent(ds, panelSlot, requestKey) {
+    return getPanelRequestKey(ds, panelSlot) === requestKey;
+  }
+
+  function getPanelInFlightMap(ds) {
+    if (!ds.__panelInFlightReads || typeof ds.__panelInFlightReads.get !== "function") {
+      ds.__panelInFlightReads = new Map();
+    }
+    return ds.__panelInFlightReads;
+  }
+
+  async function getOrStartPanelRead(ds, panelSlot, requestKey, loader) {
+    const slot = Number(panelSlot) || 1;
+    const inflightMap = getPanelInFlightMap(ds);
+    const existing = inflightMap.get(slot);
+    if (existing && existing.requestKey === requestKey && existing.promise) {
+      return existing.promise;
+    }
+    let promise;
+    try {
+      promise = Promise.resolve(loader());
+    } catch (err) {
+      promise = Promise.reject(err);
+    }
+    const entry = {
+      requestKey,
+      promise
+    };
+    inflightMap.set(slot, entry);
+    try {
+      return await entry.promise;
+    } finally {
+      if (inflightMap.get(slot) === entry) inflightMap.delete(slot);
+    }
+  }
+
   function setStableRenderKey(ds, panelSlot, renderKey) {
     if (!ds) return;
     if (!ds.__stableRenderKeys || typeof ds.__stableRenderKeys.get !== "function") {
@@ -175,7 +245,7 @@ export function createRenderer(deps) {
     const t0 = now();
     let approximate = false;
     const panelSlot = Number(ds.__renderPanelSlot) || 1;
-    const renderKey = `${Number(ds.__renderPanelSlot) || 1}|${Math.round(Number(ds.view?.x) || 0)}|${Math.round(Number(ds.view?.y) || 0)}|${Number(ds.view?.scale || 0).toFixed(6)}|${Math.round(Number(viewportW) || 0)}x${Math.round(Number(viewportH) || 0)}`;
+    const renderKey = buildViewportRenderKey(ds, panelSlot, viewportW, viewportH);
     const stableRenderKey = getStableRenderKey(ds, panelSlot);
     let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
     if (
@@ -351,7 +421,7 @@ export function createRenderer(deps) {
       && ds.ds.supportsCompositeWindow()
     ) {
       const panelSlot = Number(ds.__renderPanelSlot) || 1;
-      const renderKey = `${Number(ds.__renderPanelSlot) || 1}|${Math.round(Number(ds.view?.x) || 0)}|${Math.round(Number(ds.view?.y) || 0)}|${Number(ds.view?.scale || 0).toFixed(6)}|${Math.round(Number(viewportW) || 0)}x${Math.round(Number(viewportH) || 0)}`;
+      const renderKey = buildViewportRenderKey(ds, panelSlot, viewportW, viewportH);
       const stableRenderKey = getStableRenderKey(ds, panelSlot);
       let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
       let approximate = false;
@@ -527,14 +597,15 @@ export function createRenderer(deps) {
   }
 
   async function renderSinglePanel(ds, panel, opts = {}) {
-    const seq = ++state.renderSeq;
+    state.renderSeq += 1;
     resizeCanvases();
     const dpr = window.devicePixelRatio || 1;
     const colorMode = isThreeBandColorMode(ds);
     const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
-      const band = resolvePanelBand(panel, ds);
-      if (band == null) return;
-      ds.__renderPanelSlot = Number(panel?.slot) || 1;
+    const band = resolvePanelBand(panel, ds);
+    if (band == null) return;
+    const panelSlot = Number(panel?.slot) || 1;
+    ds.__renderPanelSlot = panelSlot;
     const modeKey = renderModeKey(ds, band, colorMode, colorRenderMode);
 
     let useGPU = false;
@@ -548,6 +619,8 @@ export function createRenderer(deps) {
     const previewViewport = { x: 0, y: 0, w: els.cpuCanvas.width, h: els.cpuCanvas.height };
     const previewCtx = els.cpuCanvas.getContext("2d", { alpha: false });
     const settings = getBandSettings(ds, band);
+    const requestKey = buildPanelRequestKey(ds, panelSlot, modeKey, previewViewport.w, previewViewport.h);
+    setPanelRequestKey(ds, panelSlot, requestKey);
 
     const reuse = !!opts.reuseRaster;
     let raster = null;
@@ -560,10 +633,10 @@ export function createRenderer(deps) {
       && drawCachedScreenPreview({
         els,
         ds,
-        panelSlot: panel?.slot || 1,
+        panelSlot,
         modeKey,
         eff,
-        viewport: { x: 0, y: 0, w: els.cpuCanvas.width, h: els.cpuCanvas.height }
+        viewport: previewViewport
       })
     ) {
       drawOverlays();
@@ -573,17 +646,18 @@ export function createRenderer(deps) {
       if (reuseComposite) {
         compositeRaster = ds.lastCompositeRaster;
       } else {
-        compositeRaster = await readCompositeRaster(ds, eff, els.cpuCanvas.width, els.cpuCanvas.height, {
-          cancelled: () => seq !== state.renderSeq,
+        compositeRaster = await getOrStartPanelRead(ds, panelSlot, requestKey, () => readCompositeRaster(ds, eff, els.cpuCanvas.width, els.cpuCanvas.height, {
+          cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
           onPartial: async (partialCompositeRaster) => {
-            if (seq !== state.renderSeq) return;
+            if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
             const partialCanvas = buildCompositeCanvas(ds, partialCompositeRaster, { transparentNoData: true });
             if (!partialCanvas) return;
+            updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, previewViewport);
             drawCanvasToViewport(previewCtx, partialCanvas, previewViewport, false);
           }
-        });
+        }));
       }
-      if (!compositeRaster || seq !== state.renderSeq) return;
+      if (!compositeRaster || !isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
       raster = compositeRaster.rasterByBand.get(band) || compositeRaster.rasterByBand.get(0) || null;
     } else {
       if (reuseGray) {
@@ -592,7 +666,7 @@ export function createRenderer(deps) {
         raster = await readRasterForBand(ds, band, eff, els.cpuCanvas.width, els.cpuCanvas.height);
       }
     }
-    if (seq !== state.renderSeq) return;
+    if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
 
     const stableComposite = colorMode ? isStableCompositeRaster(compositeRaster) : false;
     const stableRaster = colorMode ? stableComposite : isStableRaster(raster);
@@ -628,14 +702,13 @@ export function createRenderer(deps) {
         renderedCanvas = cpuRenderGray(raster.dataF32, raster.w, raster.h, params);
       }
       if (renderedCanvas || useGPU) {
-        const slot = panel?.slot || 1;
-        updateScreenPreviewCache(ds, slot, modeKey, eff, renderedCanvas || els.gpuCanvas, previewViewport);
+        updateScreenPreviewCache(ds, panelSlot, modeKey, eff, renderedCanvas || els.gpuCanvas, previewViewport);
       }
       if (stableRaster || stableComposite) {
-        updatePanelRasterCache(ds, panel?.slot || 1, raster, compositeRaster);
-        setStableRenderKey(ds, panel?.slot || 1, raster?.renderKey || compositeRaster?.rasterByBand?.get?.(0)?.renderKey || compositeRaster?.rasterByBand?.get?.(band)?.renderKey || null);
+        updatePanelRasterCache(ds, panelSlot, raster, compositeRaster);
+        setStableRenderKey(ds, panelSlot, raster?.renderKey || compositeRaster?.rasterByBand?.get?.(0)?.renderKey || compositeRaster?.rasterByBand?.get?.(band)?.renderKey || null);
       } else {
-        updatePanelRasterCache(ds, panel?.slot || 1, null, null);
+        updatePanelRasterCache(ds, panelSlot, null, null);
       }
 
       state.lastRenderMs = now() - t0;
@@ -661,7 +734,7 @@ export function createRenderer(deps) {
       }, 180);
     } catch (e) {
       console.error(e);
-      if (seq !== state.renderSeq) return;
+      if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
       setStatus("render error", "err");
     } finally {
       ds.__renderPanelSlot = null;
@@ -715,32 +788,36 @@ export function createRenderer(deps) {
         const band = resolvePanelBand(panel, ds);
         if (!viewport || !ds || band == null) return;
         await withPanelView(ds, panel, async () => {
-          ds.__renderPanelSlot = Number(panel.slot) || 1;
+          const panelSlot = Number(panel.slot) || 1;
+          ds.__renderPanelSlot = panelSlot;
           try {
             clampView(panel.slot, ds);
             const eff = ds.view.scale * dpr;
             const colorMode = isThreeBandColorMode(ds);
             const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
             const modeKey = renderModeKey(ds, band, colorMode, colorRenderMode);
+            const requestKey = buildPanelRequestKey(ds, panelSlot, modeKey, viewport.w, viewport.h);
+            setPanelRequestKey(ds, panelSlot, requestKey);
 
             let raster = null;
             let compositeRaster = null;
             if (colorMode) {
-              compositeRaster = await readCompositeRaster(ds, eff, viewport.w, viewport.h, {
-                cancelled: () => seq !== state.renderSeq,
+              compositeRaster = await getOrStartPanelRead(ds, panelSlot, requestKey, () => readCompositeRaster(ds, eff, viewport.w, viewport.h, {
+                cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
                 onPartial: async (partialCompositeRaster) => {
-                  if (seq !== state.renderSeq) return;
+                  if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
                   const partialCanvas = buildCompositeCanvas(ds, partialCompositeRaster, { transparentNoData: true });
                   if (!partialCanvas) return;
+                  updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, viewport);
                   drawCanvasToViewport(cpuCtx, partialCanvas, viewport, false);
                 }
-              });
-              if (!compositeRaster || seq !== state.renderSeq) return;
+              }));
+              if (!compositeRaster || !isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
               raster = compositeRaster.rasterByBand.get(band) || compositeRaster.rasterByBand.get(0) || null;
             } else {
               raster = await readRasterForBand(ds, band, eff, viewport.w, viewport.h);
             }
-            if (seq !== state.renderSeq) return;
+            if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
 
             const stableComposite = colorMode ? isStableCompositeRaster(compositeRaster) : false;
             const stableRaster = colorMode ? stableComposite : isStableRaster(raster);
@@ -763,13 +840,13 @@ export function createRenderer(deps) {
             }
             drawCanvasToViewport(cpuCtx, renderedCanvas, viewport, false);
             if (renderedCanvas) {
-              updateScreenPreviewCache(ds, panel.slot, modeKey, eff, renderedCanvas, viewport);
+              updateScreenPreviewCache(ds, panelSlot, modeKey, eff, renderedCanvas, viewport);
             }
             if (stableRaster || stableComposite) {
-              updatePanelRasterCache(ds, panel.slot, raster, compositeRaster);
-              setStableRenderKey(ds, panel.slot, raster?.renderKey || compositeRaster?.rasterByBand?.get?.(0)?.renderKey || compositeRaster?.rasterByBand?.get?.(band)?.renderKey || null);
+              updatePanelRasterCache(ds, panelSlot, raster, compositeRaster);
+              setStableRenderKey(ds, panelSlot, raster?.renderKey || compositeRaster?.rasterByBand?.get?.(0)?.renderKey || compositeRaster?.rasterByBand?.get?.(band)?.renderKey || null);
             } else {
-              updatePanelRasterCache(ds, panel.slot, null, null);
+              updatePanelRasterCache(ds, panelSlot, null, null);
             }
 
             if (Number(panel.slot) === activeSlot) {

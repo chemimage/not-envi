@@ -189,9 +189,21 @@ export function createPyramidController(deps) {
     onPerfUpdate,
     onProgressiveRender,
     getActiveDatasetId,
+    getVisibleDatasetIds,
     getViewportSize,
     getIOConcurrency
   } = deps;
+
+  function isDatasetForeground(dsId) {
+    if (typeof getVisibleDatasetIds === "function") {
+      const ids = getVisibleDatasetIds();
+      if (Array.isArray(ids) && ids.length) {
+        const key = String(dsId ?? "");
+        return ids.some((id) => String(id ?? "") === key);
+      }
+    }
+    return getActiveDatasetId() === dsId;
+  }
 
   function resolveMaxInflight(ioConcurrency) {
     return clamp(
@@ -525,13 +537,13 @@ export function createPyramidController(deps) {
   function schedulePyramidWork(ds) {
     const pyr = ds.pyramid;
     if (!pyr || pyr.cancelled) return;
-    if (getActiveDatasetId() !== ds.id) return;
+    if (!isDatasetForeground(ds.id)) return;
     if (pyr._idleHandle) return;
 
     pyr._idleHandle = requestIdle(() => {
       pyr._idleHandle = null;
       if (!ds.pyramid || ds.pyramid.cancelled) return;
-      if (getActiveDatasetId() !== ds.id) return;
+      if (!isDatasetForeground(ds.id)) return;
 
       const maxInflight = pyr.maxInflight || 2;
       while (pyr.inflight && pyr.inflight.size < maxInflight) {

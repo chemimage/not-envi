@@ -364,6 +364,48 @@ describe("render-main", () => {
     await renderPromise;
   });
 
+  test("render does not reuse an in-flight grayscale read across same-view rerenders", async () => {
+    const releases = [];
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: 8, y: 6, scale: 1.5 },
+      meta: { samples: 200, lines: 120, bands: 1, interleave: "bsq" },
+      ds: {},
+      lastRaster: null,
+      lastScreenFrame: {
+        modeKey: "gray:0",
+        eff: 1,
+        viewX: 0,
+        viewY: 0,
+        canvas: { width: 320, height: 180 }
+      }
+    };
+    const readBandWindow = vi.fn(async (_meta, _src, _band, _x0, _y0, outW, outH) => (
+      new Promise((resolve) => {
+        releases.push(() => resolve(new Float32Array(outW * outH)));
+      })
+    ));
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      readBandWindow,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    const firstRender = renderer.render();
+    await Promise.resolve();
+    const secondRender = renderer.render();
+    await Promise.resolve();
+
+    expect(readBandWindow).toHaveBeenCalledTimes(2);
+    expect(releases).toHaveLength(2);
+
+    releases.forEach((release) => release());
+    await Promise.all([firstRender, secondRender]);
+  });
+
   test("render uses each panel active band for the same dataset in multi-panel mode", async () => {
     const ds = {
       id: "ds1",
@@ -542,6 +584,162 @@ describe("render-main", () => {
 
     expect(buildColorCanvas).toHaveBeenCalledTimes(1);
     expect(drawCanvasToViewport).toHaveBeenCalledTimes(2);
+  });
+
+  test("render keeps progressive TIFF panel state across a same-view rerender", async () => {
+    let firstCancelled = null;
+    let releaseFirstComposite = null;
+    let compositeCalls = 0;
+    const makeComposite = (outW, outH, fillOffset = 0) => ({
+      bands: [0, 1, 2].map((band) => {
+        const arr = new Float32Array(outW * outH);
+        arr.fill(band + 1 + fillOffset);
+        return arr;
+      })
+    });
+    const dsEnvi = {
+      id: "envi",
+      activeBand: 0,
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 64, lines: 32, bands: 1, interleave: "bsq", sourceFormat: "envi" },
+      ds: {},
+      lastRaster: null,
+      lastCompositeRaster: null
+    };
+    const dsTiff = {
+      id: "vis",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 64, lines: 32, bands: 3, interleave: "bip", sourceFormat: "tiff" },
+      ds: {
+        supportsCompositeWindow: () => true,
+        readCompositeWindow: vi.fn(async (_meta, _x0, _y0, outW, outH, _step, options) => {
+          compositeCalls += 1;
+          if (compositeCalls === 1) {
+            firstCancelled = options?.cancelled || null;
+            await options?.onProgress?.({
+              bands: [0, 1, 2].map((band) => {
+                const arr = new Float32Array(outW * outH);
+                arr.fill(Number.NaN);
+                arr[0] = band + 1;
+                return arr;
+              })
+            });
+            return new Promise((resolve) => {
+              releaseFirstComposite = () => resolve(makeComposite(outW, outH));
+            });
+          }
+          return makeComposite(outW, outH, 10);
+        })
+      },
+      lastRaster: null,
+      lastCompositeRaster: null,
+      lastScreenFrame: null,
+      bandStatsWhole: new Map()
+    };
+    const panel1 = { slot: 1, datasetId: "envi", activeBand: 0, view: dsEnvi.view };
+    const panel2 = { slot: 2, datasetId: "vis", activeBand: 0, view: dsTiff.view };
+    const deps = makeDeps({
+      getActive: () => dsTiff,
+      getActivePanel: () => panel2,
+      getVisibleDatasetPanels: () => [
+        { panel: panel1, dataset: dsEnvi },
+        { panel: panel2, dataset: dsTiff }
+      ],
+      getPanelLayoutDevice: () => [
+        { slot: 1, x: 0, y: 0, w: 160, h: 180 },
+        { slot: 2, x: 160, y: 0, w: 160, h: 180 }
+      ],
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      readBandWindow: vi.fn(async (_meta, _src, _band, _x0, _y0, outW, outH) => new Float32Array(outW * outH)),
+      buildGrayCanvas: vi.fn(() => ({ width: 64, height: 32 })),
+      buildColorCanvas: vi.fn(() => ({ width: 64, height: 32 })),
+      drawCanvasToViewport: vi.fn(),
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    const firstRender = renderer.render();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(typeof firstCancelled).toBe("function");
+    expect(dsTiff.lastScreenFrame).toBeTruthy();
+
+    const secondRender = renderer.render();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(firstCancelled()).toBe(false);
+    expect(typeof releaseFirstComposite).toBe("function");
+    expect(dsTiff.ds.readCompositeWindow).toHaveBeenCalledTimes(1);
+
+    releaseFirstComposite();
+    await Promise.all([firstRender, secondRender]);
+    expect(dsTiff.ds.readCompositeWindow).toHaveBeenCalledTimes(1);
+  });
+
+  test("render does not collapse nearby panel views into the same in-flight TIFF request", async () => {
+    let releaseFirstComposite = null;
+    let compositeCalls = 0;
+    const ds = {
+      id: "vis",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 64, lines: 32, bands: 3, interleave: "bip", sourceFormat: "tiff" },
+      ds: {
+        supportsCompositeWindow: () => true,
+        readCompositeWindow: vi.fn(async (_meta, _x0, _y0, outW, outH) => {
+          compositeCalls += 1;
+          const composite = {
+            bands: [0, 1, 2].map((band) => {
+              const arr = new Float32Array(outW * outH);
+              arr.fill(band + 1);
+              return arr;
+            })
+          };
+          if (compositeCalls === 1) {
+            return new Promise((resolve) => {
+              releaseFirstComposite = () => resolve(composite);
+            });
+          }
+          return composite;
+        })
+      },
+      lastRaster: null,
+      lastCompositeRaster: null,
+      lastScreenFrame: null,
+      bandStatsWhole: new Map()
+    };
+    const panel = { slot: 1, datasetId: "vis", activeBand: 0, view: ds.view };
+    const deps = makeDeps({
+      getActive: () => ds,
+      getActivePanel: () => panel,
+      getVisibleDatasetPanels: () => [{ panel, dataset: ds }],
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      buildColorCanvas: vi.fn(() => ({ width: 64, height: 32 })),
+      drawCanvasToViewport: vi.fn(),
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    const firstRender = renderer.render();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ds.ds.readCompositeWindow).toHaveBeenCalledTimes(1);
+
+    ds.view.x = 0.25;
+    const secondRender = renderer.render();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ds.ds.readCompositeWindow).toHaveBeenCalledTimes(2);
+    expect(typeof releaseFirstComposite).toBe("function");
+    releaseFirstComposite();
+    await secondRender;
+    await firstRender;
   });
 
   test("render tries the pyramid path even when the view extends outside bounds", async () => {

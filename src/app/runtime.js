@@ -147,6 +147,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     onPerfUpdate: () => updatePerf(),
     onProgressiveRender: () => scheduleRender(),
     getActiveDatasetId: () => state.activeId,
+    getVisibleDatasetIds: () => getVisibleDatasetPanels().map((entry) => entry?.dataset?.id).filter((id) => id != null),
     getDevicePixelRatio: () => window.devicePixelRatio || 1,
     getViewportSize: () => ({ width: els.cpuCanvas.width, height: els.cpuCanvas.height }),
     getIOConcurrency: () => IO_CONCURRENCY

@@ -309,4 +309,64 @@ describe("pyramid-cache", () => {
     expect(Number.isNaN(out.dataF32[4])).toBe(true);
     expect(Array.from(out.dataF32.slice(5, 8))).toEqual([20, 21, 22]);
   });
+
+  test("background pyramid work runs for visible non-active datasets", async () => {
+    let readCalls = 0;
+    let idleUsed = false;
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: (cb) => {
+        if (!idleUsed) {
+          idleUsed = true;
+          cb();
+        }
+        return 1;
+      },
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => {
+        readCalls += 1;
+        const data = new Float32Array(outW * outH);
+        data.fill(3);
+        return data;
+      },
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => "other",
+      getVisibleDatasetIds: () => ["visible-ds"],
+      getViewportSize: () => ({ width: 1024, height: 1024 }),
+      getIOConcurrency: () => 2
+    });
+
+    const ds = {
+      id: "visible-ds",
+      meta: { samples: 2048, lines: 2048, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 1 },
+      activeBand: null,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+    ds.pyramid.maxLevel = 0;
+    const tileData = new Float32Array(128 * 128);
+    tileData.fill(1);
+    ds.pyramid.tiles.set(bandTileKey(0, 0, 0, 0), {
+      band: 0,
+      level: 0,
+      tx: 0,
+      ty: 0,
+      data: tileData,
+      w: 128,
+      h: 128,
+      bytes: tileData.byteLength,
+      t: 0
+    });
+    ds.pyramid.totalBytes = tileData.byteLength;
+
+    const out = await controller.tryRasterFromPyramid(ds, 0, 1, 1024, 1024);
+    await Promise.resolve();
+    expect(out).toBeTruthy();
+    expect(out.partial).toBe(true);
+    expect(readCalls).toBeGreaterThan(0);
+  });
 });
