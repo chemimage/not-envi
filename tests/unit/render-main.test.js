@@ -411,7 +411,7 @@ describe("render-main", () => {
     expect(readBandWindow).not.toHaveBeenCalled();
   });
 
-  test("render does not cache partial pyramid rasters as stable panel state", async () => {
+  test("render keeps partial pyramid rasters out of stable state but refreshes the screen preview", async () => {
     const partialRaster = {
       band: 0,
       w: 160,
@@ -433,6 +433,7 @@ describe("render-main", () => {
       getActive: () => ds,
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
       tryRasterFromPyramid: async () => partialRaster,
+      cpuRenderGray: vi.fn(() => ({ width: 160, height: 90 })),
       readBandWindow: vi.fn(async () => {
         throw new Error("direct read should not run for this progressive render");
       }),
@@ -444,11 +445,11 @@ describe("render-main", () => {
 
     expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
     expect(ds.lastRaster).toBeNull();
-    expect(ds.lastScreenFrame).toBeNull();
+    expect(ds.lastScreenFrame).toBeTruthy();
     expect(ds.lastRastersByPanel.size).toBe(0);
   });
 
-  test("render does not cache approximate pyramid previews as stable panel state", async () => {
+  test("render keeps approximate pyramid rasters out of stable state but refreshes the screen preview", async () => {
     const previewRaster = {
       band: 0,
       w: 160,
@@ -471,6 +472,7 @@ describe("render-main", () => {
       getActive: () => ds,
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
       tryRasterFromPyramid: async () => previewRaster,
+      cpuRenderGray: vi.fn(() => ({ width: 160, height: 90 })),
       readBandWindow: vi.fn(async () => {
         throw new Error("direct read should not run for this preview render");
       }),
@@ -482,7 +484,7 @@ describe("render-main", () => {
 
     expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
     expect(ds.lastRaster).toBeNull();
-    expect(ds.lastScreenFrame).toBeNull();
+    expect(ds.lastScreenFrame).toBeTruthy();
     expect(ds.lastRastersByPanel.size).toBe(0);
   });
 });

@@ -287,7 +287,7 @@ export function createInteractionController(deps) {
     const sy = (ev.clientY - rect.top) * dpr;
 
     const factor = ev.deltaY < 0 ? 1.25 : 0.8;
-    zoomAt(factor, sx, sy);
+    applyScaleAt(ds.view.scale * factor, sx, sy, { interactive: true });
   }
 
   function distance(a, b) {

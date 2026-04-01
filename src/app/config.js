@@ -34,7 +34,9 @@ export const APP_CONFIG = Object.freeze({
     inflightFactor: 0.75,
     inflightBias: 1,
     inflightMin: 2,
-    inflightMax: 8
+    inflightMax: 8,
+    immediateCoarseMaxTiles: 64,
+    immediateVisibleMaxTiles: 32
   }),
   scratch: Object.freeze({
     defaultMaxRetainedBuffers: 2,

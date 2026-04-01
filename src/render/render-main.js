@@ -466,6 +466,7 @@ export function createRenderer(deps) {
 
     clampView(panel?.slot, ds);
     const eff = ds.view.scale * dpr;
+    const previewViewport = { x: 0, y: 0, w: els.cpuCanvas.width, h: els.cpuCanvas.height };
     const settings = getBandSettings(ds, band);
 
     const reuse = !!opts.reuseRaster;
@@ -550,10 +551,7 @@ export function createRenderer(deps) {
       }
       if (renderedCanvas || useGPU) {
         const slot = panel?.slot || 1;
-        const hasPreview = !!ds?.lastScreenFrames?.get?.(Number(slot)) || (Number(slot) === 1 && !!ds?.lastScreenFrame);
-        if (stableRaster || stableComposite || !hasPreview) {
-          updateScreenPreviewCache(ds, slot, modeKey, eff, renderedCanvas || els.gpuCanvas);
-        }
+        updateScreenPreviewCache(ds, slot, modeKey, eff, renderedCanvas || els.gpuCanvas, previewViewport);
       }
       if (stableRaster || stableComposite) {
         updatePanelRasterCache(ds, panel?.slot || 1, raster, compositeRaster);
@@ -665,10 +663,7 @@ export function createRenderer(deps) {
           }
           drawCanvasToViewport(cpuCtx, renderedCanvas, viewport, false);
           if (renderedCanvas) {
-            const hasPreview = !!ds?.lastScreenFrames?.get?.(Number(panel.slot)) || (Number(panel.slot) === 1 && !!ds?.lastScreenFrame);
-            if (stableRaster || stableComposite || !hasPreview) {
-              updateScreenPreviewCache(ds, panel.slot, modeKey, eff, renderedCanvas);
-            }
+            updateScreenPreviewCache(ds, panel.slot, modeKey, eff, renderedCanvas, viewport);
           }
           if (stableRaster || stableComposite) {
             updatePanelRasterCache(ds, panel.slot, raster, compositeRaster);
@@ -756,10 +751,7 @@ export function createRenderer(deps) {
           const renderedCanvas = buildGrayCanvas(raster.dataF32, raster.w, raster.h, params);
 
           if (renderedCanvas) {
-            const hasPreview = !!ds?.lastScreenFrames?.get?.(Number(panel.slot)) || (Number(panel.slot) === 1 && !!ds?.lastScreenFrame);
-            if (stableRaster || !hasPreview) {
-              updateScreenPreviewCache(ds, panel.slot, renderModeKey(ds, band, false, null), eff, renderedCanvas);
-            }
+            updateScreenPreviewCache(ds, panel.slot, renderModeKey(ds, band, false, null), eff, renderedCanvas, viewport);
           }
           if (stableRaster) {
             updatePanelRasterCache(ds, panel.slot, raster, null);

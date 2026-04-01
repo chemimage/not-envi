@@ -87,13 +87,15 @@ export function isStableCompositeRaster(compositeRaster) {
   return !!compositeRaster && !compositeRaster.partial && !compositeRaster.approximate;
 }
 
-export function updateScreenPreviewCache(ds, panelSlot, modeKey, eff, sourceCanvas) {
+export function updateScreenPreviewCache(ds, panelSlot, modeKey, eff, sourceCanvas, viewport = null) {
   if (!ds || !sourceCanvas) return;
   const frame = {
     modeKey,
     eff,
     viewX: ds.view.x,
     viewY: ds.view.y,
+    drawW: Math.max(1, Number(viewport?.w) || Number(sourceCanvas.width) || 1),
+    drawH: Math.max(1, Number(viewport?.h) || Number(sourceCanvas.height) || 1),
     canvas: cloneCanvasImage(sourceCanvas)
   };
   getFrameMap(ds).set(panelSlotValue(panelSlot), frame);
@@ -121,7 +123,13 @@ export function drawCachedScreenPreview({ els, ds, panelSlot, modeKey, eff, view
     Math.max(1, Number(viewport.w) || 1),
     Math.max(1, Number(viewport.h) || 1)
   );
-  cpuCtx.drawImage(frame.canvas, dx, dy, frame.canvas.width * scale, frame.canvas.height * scale);
+  cpuCtx.drawImage(
+    frame.canvas,
+    dx,
+    dy,
+    Math.max(1, Number(frame.drawW) || frame.canvas.width || 1) * scale,
+    Math.max(1, Number(frame.drawH) || frame.canvas.height || 1) * scale
+  );
   cpuCtx.restore();
 
   if (els.cpuCanvas?.style) els.cpuCanvas.style.display = "block";
@@ -179,7 +187,13 @@ export function drawOverlayCachedPreview({
         );
         clearedViewport = true;
       }
-      cpuCtx.drawImage(tinted, dx, dy, tinted.width * scale, tinted.height * scale);
+      cpuCtx.drawImage(
+        tinted,
+        dx,
+        dy,
+        Math.max(1, Number(frame.drawW) || tinted.width || 1) * scale,
+        Math.max(1, Number(frame.drawH) || tinted.height || 1) * scale
+      );
       cpuCtx.restore();
       drewAny = true;
     } finally {

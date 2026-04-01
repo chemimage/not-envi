@@ -52,6 +52,7 @@ import { createSpectrumAreaController } from "./spectrum-area-controller.js";
 import { createAreaReductionWorkerClient } from "./area-reduction-worker-client.js";
 import { createSelectionSyncController } from "./selection-sync-controller.js";
 import { getThreeBandAdjustColor, isThreeBandColorMode } from "./three-band-display.js";
+import { linkedDatasetsShareDisplaySize, scaleViewAboutCurrentCenter } from "./linked-view.js";
 import {
   resolveSelectionBoundsForSpectrum,
   resolveSelectionBoundsList as resolveSelectionBoundsListCore,
@@ -691,17 +692,32 @@ import { pointInPolygon } from "./draw-geometry.js";
     const sourcePanel = slot == null ? getActiveDisplayPanel(state) : getDisplayPanel(state, slot);
     const entries = sourcePanel?.datasetId ? listLinkedViewEntries(sourcePanel.slot) : [];
     if (!sourcePanel?.datasetId || !entries.length) return null;
+    const preserveCursorAnchor = linkedDatasetsShareDisplaySize(entries);
     let activeScale = null;
     for (const entry of entries) {
       const { panel, dataset: ds } = entry;
-      const anchor = resolveLinkedViewportAnchor(sx, sy, sourcePanel.slot, panel.slot);
+      const viewport = getPanelRectDevice(panel.slot) || {
+        w: Math.max(1, Number(els.cpuCanvas.width) || 1),
+        h: Math.max(1, Number(els.cpuCanvas.height) || 1)
+      };
+      const anchor = preserveCursorAnchor
+        ? resolveLinkedViewportAnchor(sx, sy, sourcePanel.slot, panel.slot)
+        : null;
       withPanelDatasetView(panel, ds, () => {
-        const before = screenToImage(anchor.x, anchor.y, panel.slot, ds);
         const minS = minScaleFor(ds, panel.slot);
-        panel.view.scale = clamp(targetScale, minS, 128);
-        const after = screenToImage(anchor.x, anchor.y, panel.slot, ds);
-        panel.view.x += before.x - after.x;
-        panel.view.y += before.y - after.y;
+        const nextScale = clamp(targetScale, minS, 128);
+        if (preserveCursorAnchor && anchor) {
+          const before = screenToImage(anchor.x, anchor.y, panel.slot, ds);
+          panel.view.scale = nextScale;
+          const after = screenToImage(anchor.x, anchor.y, panel.slot, ds);
+          panel.view.x += before.x - after.x;
+          panel.view.y += before.y - after.y;
+        } else {
+          const centered = scaleViewAboutCurrentCenter(panel.view, viewport, nextScale, window.devicePixelRatio || 1);
+          panel.view.scale = centered.scale;
+          panel.view.x = centered.x;
+          panel.view.y = centered.y;
+        }
         clampView(panel.slot, ds);
       });
       if (Number(panel.slot) === Number(sourcePanel.slot)) activeScale = panel.view.scale;

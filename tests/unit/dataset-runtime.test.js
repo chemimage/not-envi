@@ -116,6 +116,24 @@ describe("dataset runtime", () => {
     expect(panel2?.view).toEqual(panel1?.view);
   });
 
+  test("datasets with different display sizes still auto-link across panels", () => {
+    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32 }, view: { x: 0, y: 0, scale: 1 }, drawings: [{ id: 1, tool: "rect", points: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }], selectedAreaId: 1 };
+    const ds2 = { id: "ds2", meta: { samples: 96, lines: 48 }, view: { x: 0, y: 0, scale: 1 } };
+    const state = { datasets: [ds1, ds2], activeId: null, activePanelSlot: 1, nextLinkGroupId: 1 };
+    const deps = makeDeps(state);
+    const rt = createDatasetRuntime(deps);
+
+    rt.setActiveDataset("ds1", { panelSlot: 1 });
+    rt.setActiveDataset("ds2", { panelSlot: 2 });
+
+    const panel1 = getDisplayPanel(state, 1);
+    const panel2 = getDisplayPanel(state, 2);
+    expect(panel1?.datasetId).toBe("ds1");
+    expect(panel2?.datasetId).toBe("ds2");
+    expect(panel2?.linkGroupId).toBe(panel1?.linkGroupId);
+    expect(panel2?.annotations).toBe(panel1?.annotations);
+  });
+
   test("overlay button assigns a dataset to both panels and links them", () => {
     const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 5, y: 7, scale: 2 }, drawings: [{ id: 1, tool: "rect", points: [{ x: 1, y: 1 }, { x: 3, y: 3 }] }], selectedAreaId: 1 };
     const state = { datasets: [ds1], activeId: null, activePanelSlot: 1, nextLinkGroupId: 1 };

@@ -595,14 +595,30 @@ export function createPyramidController(deps) {
     let raster = prefer ? composePyramidRaster(ds, band, lvl, eff, width, height) : null;
     const needImmediateCoarse = !raster || raster.partial;
     if (needImmediateCoarse && pyr.maxLevel > lvl) {
-      const loaded = await ensureViewportLevelCached(ds, band, pyr.maxLevel, eff, width, height, 16);
+      const loaded = await ensureViewportLevelCached(
+        ds,
+        band,
+        pyr.maxLevel,
+        eff,
+        width,
+        height,
+        APP_CONFIG.pyramid.immediateCoarseMaxTiles
+      );
       if (loaded) {
         raster = composePyramidRaster(ds, band, lvl, eff, width, height);
       }
     }
 
-    if (!raster && visible && visible.total <= 16) {
-      const loaded = await ensureViewportLevelCached(ds, band, lvl, eff, width, height, 16);
+    if (!raster && visible && visible.total <= APP_CONFIG.pyramid.immediateVisibleMaxTiles) {
+      const loaded = await ensureViewportLevelCached(
+        ds,
+        band,
+        lvl,
+        eff,
+        width,
+        height,
+        APP_CONFIG.pyramid.immediateVisibleMaxTiles
+      );
       if (loaded) {
         raster = composePyramidRaster(ds, band, lvl, eff, width, height);
       }

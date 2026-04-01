@@ -150,6 +150,57 @@ describe("interaction controller", () => {
     vi.useRealTimers();
   });
 
+  test("mouse wheel uses preview first and schedules a settled render", () => {
+    vi.useFakeTimers();
+    const render = vi.fn();
+    const scheduleRender = vi.fn();
+    const schedulePreviewRender = vi.fn();
+    const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 1000 } };
+    const state = {
+      selection: { enabled: false, drawing: false, imgRect: null },
+      mouse: {}
+    };
+    const els = {
+      selRect: { style: { display: "none" } },
+      main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      zoom: { value: "0" }
+    };
+
+    const controller = createInteractionController({
+      els,
+      state,
+      getActive: () => ds,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      setStatus: () => {},
+      updateHud: () => {},
+      screenToImage: (sx, sy) => ({ x: ds.view.x + sx / ds.view.scale, y: ds.view.y + sy / ds.view.scale }),
+      clampView: () => {},
+      schedulePreviewRender,
+      scheduleRender,
+      render,
+      minScaleFor: () => 1,
+      scaleToSlider: (s) => s,
+      updateZoomLabel: () => {}
+    });
+
+    controller.onWheel({
+      clientX: 100,
+      clientY: 120,
+      deltaY: -1,
+      preventDefault: vi.fn(),
+      target: { closest: () => null }
+    });
+
+    expect(ds.view.scale).toBe(1.25);
+    expect(schedulePreviewRender).toHaveBeenCalledTimes(1);
+    expect(scheduleRender).not.toHaveBeenCalled();
+    expect(render).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(95);
+    expect(scheduleRender).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   test("touch handlers prevent browser defaults and clear touch pointers on up", () => {
     const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 1000 } };
     const state = {

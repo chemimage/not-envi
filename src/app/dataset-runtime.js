@@ -3,7 +3,6 @@ import {
   clearDisplayPanel,
   createDisplayAnnotationState,
   cloneDisplayView,
-  datasetsShareDisplaySize,
   DISPLAY_COMPOSITION_OVERLAY,
   DISPLAY_COMPOSITION_SPLIT,
   ensureDisplayPanels,
@@ -194,14 +193,12 @@ export function createDatasetRuntime(deps) {
       && Number(activePanel.slot) !== exclude
       && activePanel.datasetId
     ) {
-      const activeDataset = findDatasetById(activePanel.datasetId);
-      if (datasetsShareDisplaySize(targetDataset, activeDataset)) return activePanel;
+      return activePanel;
     }
 
     for (const panel of getVisibleDisplayPanels(state)) {
       if (Number(panel.slot) === exclude) continue;
-      const dataset = findDatasetById(panel.datasetId);
-      if (datasetsShareDisplaySize(targetDataset, dataset)) return panel;
+      return panel;
     }
     return null;
   }
