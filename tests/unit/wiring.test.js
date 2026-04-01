@@ -14,6 +14,12 @@ function setupEraserHarness() {
     <div id="drawTools"></div>
     <button id="toolEraser" type="button"></button>
     <div id="main"></div>
+    <aside id="right" data-open="false" data-pinned="false">
+      <div id="rightHeader"><h2>Bands</h2><button id="btnRightPin" type="button"><i></i></button></div>
+    </aside>
+    <aside id="displayPanel" data-open="false" data-pinned="false">
+      <div id="displayHeader"><h2>Display</h2><button id="btnDisplayPin" type="button"><i></i></button></div>
+    </aside>
     <canvas id="thumb"></canvas>
     <input id="zoom" />
     <input id="chkGrid" type="checkbox" />
@@ -52,6 +58,12 @@ function setupEraserHarness() {
     drawTools: document.querySelector("#drawTools"),
     toolEraser: document.querySelector("#toolEraser"),
     main: document.querySelector("#main"),
+    right: document.querySelector("#right"),
+    rightHeader: document.querySelector("#rightHeader"),
+    btnRightPin: document.querySelector("#btnRightPin"),
+    displayPanel: document.querySelector("#displayPanel"),
+    displayHeader: document.querySelector("#displayHeader"),
+    btnDisplayPin: document.querySelector("#btnDisplayPin"),
     thumb: document.querySelector("#thumb"),
     zoom: document.querySelector("#zoom"),
     chkGrid: document.querySelector("#chkGrid"),
@@ -353,6 +365,21 @@ describe("app wiring", () => {
     els.toolEraser.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
     expect(clearAllAnnotations).toHaveBeenCalledTimes(1);
     expect(getActiveTool()).toBe("eraser");
+
+    windowAdd.mockRestore();
+  });
+
+  test("boot wiring attaches flyout behavior to bands and display panels", () => {
+    const { els, windowAdd } = setupEraserHarness();
+
+    expect(els.right.dataset.open).toBe("false");
+    expect(els.displayPanel.dataset.open).toBe("false");
+
+    els.rightHeader.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    els.displayHeader.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(els.right.dataset.open).toBe("true");
+    expect(els.displayPanel.dataset.open).toBe("true");
 
     windowAdd.mockRestore();
   });

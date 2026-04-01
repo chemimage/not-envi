@@ -493,5 +493,15 @@ export function wireApp(deps) {
   updateZoomLabelBoot();
   setIOParallel(state.ioParallel);
   setGpuBadgeAvailable();
+  wireFlyoutPanel({
+    panel: els.right,
+    header: els.rightHeader,
+    btnPin: els.btnRightPin
+  });
+  wireFlyoutPanel({
+    panel: els.displayPanel,
+    header: els.displayHeader,
+    btnPin: els.btnDisplayPin
+  });
 }
 
