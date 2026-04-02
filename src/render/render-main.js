@@ -10,6 +10,7 @@ import {
   drawOverlayCachedPreview,
   isStableCompositeRaster,
   isStableRaster,
+  tintCanvas,
   updatePanelRasterCache,
   updateScreenPreviewCache,
   withPanelView
@@ -261,12 +262,13 @@ export function createRenderer(deps) {
     };
   }
 
-  function resolveTiffPreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH) {
+  function resolveTiffPreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH, options = null) {
     const renderKey = buildViewportRenderKey(ds, panelSlot, viewportW, viewportH);
     const stableRenderKey = getStableRenderKey(ds, panelSlot);
     const work = typeof ds?.ds?.estimateReadWork === "function"
       ? ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step)
       : null;
+    const sparseRawMultiplier = Math.max(1, Math.floor(Number(options?.sparseRawMultiplier) || 1));
     if (
       eff >= 1
       || ds?.meta?.sourceFormat !== "tiff"
@@ -283,8 +285,8 @@ export function createRenderer(deps) {
       return { factor: 1, renderKey, stableRenderKey, stagedLimit, work };
     }
     let factor = 1;
-    if (work?.sparseRaw && Number(work.spanReads) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
-      factor = Math.ceil(Number(work.spanReads) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
+    if (work?.sparseRaw && (Number(work.spanReads) * sparseRawMultiplier) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
+      factor = Math.ceil((Number(work.spanReads) * sparseRawMultiplier) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
     } else if (
       work?.nativeJpeg
       && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)
@@ -296,20 +298,6 @@ export function createRenderer(deps) {
     factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
     if (stagedLimit != null) factor = Math.min(factor, stagedLimit);
     return { factor, renderKey, stableRenderKey, stagedLimit, work };
-  }
-
-  async function tryCompositeFromPyramidOverview(ds, eff, viewportW, viewportH, sourceBands, channelBands, mode, renderKey, refineFactor) {
-    const rasters = await Promise.all(sourceBands.map((band) => tryRasterFromPyramid(ds, band, eff, viewportW, viewportH)));
-    if (rasters.some((raster) => !raster)) return null;
-    return {
-      mode,
-      channelBands,
-      rasterByBand: new Map(rasters.map((raster) => [raster.band, raster])),
-      partial: rasters.some((raster) => !!raster?.partial),
-      approximate: true,
-      renderKey,
-      refineFactor
-    };
   }
 
   function applyApproximateRefineState(ds, panelSlot, raster, compositeRaster) {
@@ -504,26 +492,10 @@ export function createRenderer(deps) {
       let approximate = false;
       const {
         factor: previewFactor,
-        renderKey,
-        work
-      } = resolveTiffPreviewFactor(ds, 0, eff, geom, panelSlot, viewportW, viewportH);
-      const allowRawPyramidApprox = !!work?.sparseRaw
-        && !work?.nativeJpeg
-        && previewFactor >= APP_CONFIG.render.tiffRawPyramidApproxMinFactor;
-      if (previewFactor > 1 && allowRawPyramidApprox) {
-        const pyramidComposite = await tryCompositeFromPyramidOverview(
-          ds,
-          eff,
-          viewportW,
-          viewportH,
-          sourceBands,
-          channelBands,
-          mode,
-          renderKey,
-          previewFactor
-        );
-        if (pyramidComposite) return pyramidComposite;
-      }
+        renderKey
+      } = resolveTiffPreviewFactor(ds, 0, eff, geom, panelSlot, viewportW, viewportH, {
+        sparseRawMultiplier: sourceBands.length
+      });
       if (previewFactor > 1) {
         geom = coarsenSamplingGeometry(geom, previewFactor);
         approximate = true;
@@ -720,14 +692,17 @@ export function createRenderer(deps) {
     const needsFreshRaster = colorMode ? !reuseComposite : !reuseGray;
     if (
       needsFreshRaster
-      && drawCachedScreenPreview({
-        els,
-        ds,
-        panelSlot,
-        modeKey,
-        eff,
-        viewport: previewViewport
-      })
+      && (
+        drawCachedScreenPreview({
+          els,
+          ds,
+          panelSlot,
+          modeKey,
+          eff,
+          viewport: previewViewport
+        })
+        || drawThumbnailOnlyPreview({ els, ds, viewport: previewViewport, eff })
+      )
     ) {
       drawOverlays();
       updateHud();

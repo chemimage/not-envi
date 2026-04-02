@@ -49,8 +49,13 @@ export function shouldUseLitePreviewProfile() {
   return false;
 }
 
-export function resolvePreviewOverviewLongEdge({ deferred = true } = {}) {
+export function resolvePreviewOverviewLongEdge({ deferred = true, bootstrap = false } = {}) {
   const useLite = shouldUseLitePreviewProfile();
+  if (bootstrap) {
+    return useLite
+      ? APP_CONFIG.previewOverview.liteBootstrapLongEdge
+      : APP_CONFIG.previewOverview.standardBootstrapLongEdge;
+  }
   if (deferred) {
     return useLite
       ? APP_CONFIG.previewOverview.liteDeferredLongEdge
@@ -127,9 +132,11 @@ export const APP_CONFIG = Object.freeze({
     })
   }),
   previewOverview: Object.freeze({
+    standardBootstrapLongEdge: 320,
     standardInitialLongEdge: 768,
     standardLongEdge: 1536,
     standardDeferredLongEdge: 1536,
+    liteBootstrapLongEdge: 256,
     liteInitialLongEdge: 512,
     liteLongEdge: 1024,
     liteDeferredLongEdge: 1024,
@@ -139,8 +146,7 @@ export const APP_CONFIG = Object.freeze({
   render: Object.freeze({
     tiffPreviewMaxSparseSpans: 6_000,
     tiffPreviewMaxScaledDecodePixels: 120_000,
-    tiffPreviewMaxFactor: 16,
-    tiffRawPyramidApproxMinFactor: 2
+    tiffPreviewMaxFactor: 16
   }),
   tiff: Object.freeze({
     // `standard` is sized around a current 15-inch MacBook Air base-class machine:

@@ -446,6 +446,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     getActivePanel,
     screenToImage,
     render,
+    drawOverlays,
     getSpectrumOpenForDatasetId: (dsId) => !!(spectrum && spectrum.isOpenForDatasetId(dsId)),
     openSpectrumAt: (ds, ix, iy, opts) => openSpectrumAt(ds, ix, iy, opts),
     positionAnalysisHistogramPanel,

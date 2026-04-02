@@ -61,6 +61,7 @@ describe("config hardware concurrency", () => {
     });
     expect(resolvePreviewOverviewLongEdge()).toBe(APP_CONFIG.previewOverview.standardDeferredLongEdge);
     expect(resolvePreviewOverviewLongEdge({ deferred: false })).toBe(APP_CONFIG.previewOverview.standardInitialLongEdge);
+    expect(resolvePreviewOverviewLongEdge({ deferred: false, bootstrap: true })).toBe(APP_CONFIG.previewOverview.standardBootstrapLongEdge);
   });
 
   test("resolvePreviewOverviewLongEdge uses lite initial/deferred sizes on lite hardware", () => {
@@ -74,5 +75,6 @@ describe("config hardware concurrency", () => {
     });
     expect(resolvePreviewOverviewLongEdge()).toBe(APP_CONFIG.previewOverview.liteDeferredLongEdge);
     expect(resolvePreviewOverviewLongEdge({ deferred: false })).toBe(APP_CONFIG.previewOverview.liteInitialLongEdge);
+    expect(resolvePreviewOverviewLongEdge({ deferred: false, bootstrap: true })).toBe(APP_CONFIG.previewOverview.liteBootstrapLongEdge);
   });
 });

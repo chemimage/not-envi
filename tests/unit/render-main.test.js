@@ -282,7 +282,7 @@ describe("render-main", () => {
     expect(deps.cpuRenderColor).toHaveBeenCalledTimes(1);
   });
 
-  test("render uses pyramid approximation for expensive raw TIFF overviews", async () => {
+  test("render coarsens expensive raw TIFF composite reads on first paint", async () => {
     const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
       bands: [0, 1, 2].map((band) => {
         const arr = new Float32Array(outW * outH);
@@ -305,27 +305,18 @@ describe("render-main", () => {
       lastCompositeRaster: null,
       bandStatsWhole: new Map()
     };
-    const tryRasterFromPyramid = vi.fn(async (_ds, band) => ({
-      band,
-      w: 64,
-      h: 36,
-      dataF32: new Float32Array(64 * 36).fill(band + 1),
-      partial: false,
-      approximate: true
-    }));
     const deps = makeDeps({
       getActive: () => ds,
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
-      tryRasterFromPyramid,
       clampView: () => {}
     });
     const renderer = createRenderer(deps);
 
     await renderer.render();
 
-    expect(tryRasterFromPyramid).toHaveBeenCalledTimes(3);
-    expect(compositeWindow).not.toHaveBeenCalled();
-    expect(ds.lastCompositeRaster).toBeNull();
+    expect(compositeWindow).toHaveBeenCalledTimes(1);
+    expect(compositeWindow.mock.calls[0][3]).toBeLessThan(100);
+    expect(compositeWindow.mock.calls[0][4]).toBeLessThan(60);
   });
 
   test("render uses direct TIFF composite overview reads when native overviews are available", async () => {
@@ -335,14 +326,6 @@ describe("render-main", () => {
         arr.fill(band + 1);
         return arr;
       })
-    }));
-    const tryRasterFromPyramid = vi.fn(async (_ds, band) => ({
-      band,
-      w: 64,
-      h: 36,
-      dataF32: new Float32Array(64 * 36).fill(band + 1),
-      partial: false,
-      approximate: true
     }));
     const ds = {
       id: "ds-vis-native-overview",
@@ -363,7 +346,6 @@ describe("render-main", () => {
     const deps = makeDeps({
       getActive: () => ds,
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
-      tryRasterFromPyramid,
       clampView: () => {}
     });
     const renderer = createRenderer(deps);
@@ -372,7 +354,6 @@ describe("render-main", () => {
 
     expect(compositeWindow).toHaveBeenCalledTimes(1);
     expect(compositeWindow.mock.calls[0][5]).toBeGreaterThan(1);
-    expect(tryRasterFromPyramid).not.toHaveBeenCalled();
   });
 
   test("render skips pyramid-overview TIFF preview path when native overviews are unavailable", async () => {
@@ -382,14 +363,6 @@ describe("render-main", () => {
         arr.fill(band + 1);
         return arr;
       })
-    }));
-    const tryRasterFromPyramid = vi.fn(async (_ds, band) => ({
-      band,
-      w: 64,
-      h: 36,
-      dataF32: new Float32Array(64 * 36).fill(band + 1),
-      partial: false,
-      approximate: true
     }));
     const ds = {
       id: "ds-vis-no-overview",
@@ -410,7 +383,6 @@ describe("render-main", () => {
     const deps = makeDeps({
       getActive: () => ds,
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
-      tryRasterFromPyramid,
       clampView: () => {}
     });
     const renderer = createRenderer(deps);
@@ -418,7 +390,6 @@ describe("render-main", () => {
     await renderer.render();
 
     expect(compositeWindow).toHaveBeenCalledTimes(1);
-    expect(tryRasterFromPyramid).not.toHaveBeenCalled();
   });
 
   test("render stages raw TIFF composite refinement across same-view rerenders", async () => {
@@ -428,14 +399,6 @@ describe("render-main", () => {
         arr.fill(band + 1);
         return arr;
       })
-    }));
-    const tryRasterFromPyramid = vi.fn(async (_ds, band) => ({
-      band,
-      w: 64,
-      h: 36,
-      dataF32: new Float32Array(64 * 36).fill(band + 1),
-      partial: false,
-      approximate: true
     }));
     const ds = {
       id: "ds-he-refine",
@@ -456,30 +419,85 @@ describe("render-main", () => {
     const deps = makeDeps({
       getActive: () => ds,
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
-      tryRasterFromPyramid,
       clampView: () => {}
     });
     const renderer = createRenderer(deps);
     const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
 
     await renderer.render();
-    expect(tryRasterFromPyramid).toHaveBeenCalledTimes(3);
-    expect(compositeWindow).not.toHaveBeenCalled();
+    expect(compositeWindow).toHaveBeenCalledTimes(1);
+    expect(compositeWindow.mock.calls[0][3]).toBeLessThanOrEqual(20);
+    expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 8 }));
+
+    await renderer.render();
+    expect(compositeWindow).toHaveBeenCalledTimes(2);
+    expect(compositeWindow.mock.calls[1][3]).toBeGreaterThan(compositeWindow.mock.calls[0][3]);
     expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 4 }));
 
     await renderer.render();
-    expect(tryRasterFromPyramid).toHaveBeenCalledTimes(6);
-    expect(compositeWindow).not.toHaveBeenCalled();
+    expect(compositeWindow).toHaveBeenCalledTimes(3);
+    expect(compositeWindow.mock.calls[2][3]).toBeGreaterThan(compositeWindow.mock.calls[1][3]);
     expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 2 }));
 
     await renderer.render();
-    expect(tryRasterFromPyramid).toHaveBeenCalledTimes(9);
-    expect(compositeWindow).not.toHaveBeenCalled();
+    expect(compositeWindow).toHaveBeenCalledTimes(4);
+    expect(compositeWindow.mock.calls[3][3]).toBeGreaterThan(compositeWindow.mock.calls[2][3]);
     expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 1 }));
 
     await renderer.render();
-    expect(compositeWindow).toHaveBeenCalledTimes(1);
+    expect(compositeWindow).toHaveBeenCalledTimes(5);
+    expect(compositeWindow.mock.calls[4][3]).toBeGreaterThan(compositeWindow.mock.calls[3][3]);
     raf.mockRestore();
+  });
+
+  test("render draws thumbnail-only preview while a first raw TIFF composite read is loading", async () => {
+    let releaseRead = null;
+    const compositeWindow = vi.fn(async () => (
+      new Promise((resolve) => {
+        releaseRead = () => resolve({
+          bands: [0, 1, 2].map((band) => new Float32Array(10).fill(band + 1))
+        });
+      })
+    ));
+    const ds = {
+      id: "ds-he-preview",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 100, lines: 50, bands: 3, interleave: "bip", sourceFormat: "tiff" },
+      ds: {
+        supportsCompositeWindow: () => true,
+        hasNativeOverviews: () => false,
+        readCompositeWindow: compositeWindow
+      },
+      thumb: {
+        base: { width: 100, height: 50 },
+        baseW: 100,
+        baseH: 50,
+        ready: true,
+        x0: 0,
+        y0: 0,
+        w: 320,
+        h: 180
+      },
+      lastRaster: null,
+      lastCompositeRaster: null,
+      bandStatsWhole: new Map()
+    };
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    const renderPromise = renderer.render();
+    await Promise.resolve();
+
+    expect(deps.els.cpuCanvas.getContext().drawImage).toHaveBeenCalledTimes(1);
+    expect(typeof releaseRead).toBe("function");
+    releaseRead();
+    await renderPromise;
   });
 
   test("render draws cached screen preview while a fresh raster is loading", async () => {
@@ -667,6 +685,85 @@ describe("render-main", () => {
 
     expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(1, ds, 0, 2, 180, 180);
     expect(tryRasterFromPyramid).toHaveBeenNthCalledWith(2, ds, 0, 2, 140, 180);
+  });
+
+  test("render overlay mode tints both layers without throwing", async () => {
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName) => {
+      if (String(tagName).toLowerCase() === "canvas") {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            drawImage: vi.fn(),
+            fillRect: vi.fn(),
+            setTransform: vi.fn(),
+            clearRect: vi.fn(),
+            beginPath: vi.fn(),
+            rect: vi.fn(),
+            clip: vi.fn(),
+            save: vi.fn(),
+            restore: vi.fn(),
+            imageSmoothingEnabled: false,
+            globalCompositeOperation: "source-over",
+            fillStyle: ""
+          })
+        };
+      }
+      return originalCreateElement(tagName);
+    });
+
+    try {
+      const dsLeft = {
+        id: "left",
+        activeBand: 0,
+        view: { x: 0, y: 0, scale: 1 },
+        meta: { samples: 64, lines: 32, bands: 1, interleave: "bsq", sourceFormat: "envi" },
+        ds: {},
+        lastRaster: null,
+        lastCompositeRaster: null
+      };
+      const dsRight = {
+        id: "right",
+        activeBand: 0,
+        view: { x: 0, y: 0, scale: 1 },
+        meta: { samples: 64, lines: 32, bands: 1, interleave: "bsq", sourceFormat: "tiff" },
+        ds: {},
+        lastRaster: null,
+        lastCompositeRaster: null
+      };
+      const panel1 = { slot: 1, datasetId: "left", activeBand: 0, view: dsLeft.view };
+      const panel2 = { slot: 2, datasetId: "right", activeBand: 0, view: dsRight.view };
+      const readBandWindow = vi.fn(async (_meta, _src, _band, _x0, _y0, outW, outH) => new Float32Array(outW * outH));
+      const buildGrayCanvas = vi.fn(() => ({ width: 64, height: 32 }));
+      const drawCanvasToViewport = vi.fn();
+      const deps = makeDeps({
+        getActive: () => dsLeft,
+        getActivePanel: () => panel1,
+        getVisibleDatasetPanels: () => [
+          { panel: panel1, dataset: dsLeft },
+          { panel: panel2, dataset: dsRight }
+        ],
+        getDisplayCompositionMode: () => "overlay",
+        getPanelLayoutDevice: () => [
+          { slot: 1, x: 0, y: 0, w: 320, h: 180 },
+          { slot: 2, x: 0, y: 0, w: 320, h: 180 }
+        ],
+        getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+        readBandWindow,
+        buildGrayCanvas,
+        drawCanvasToViewport,
+        clampView: () => {}
+      });
+      const renderer = createRenderer(deps);
+
+      await renderer.render();
+
+      expect(buildGrayCanvas).toHaveBeenCalledTimes(2);
+      expect(drawCanvasToViewport).toHaveBeenCalledTimes(2);
+    } finally {
+      createElementSpy.mockRestore();
+    }
   });
 
   test("render prioritizes ENVI panel draws ahead of slower TIFF panel work", async () => {

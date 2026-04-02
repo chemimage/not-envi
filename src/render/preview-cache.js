@@ -100,7 +100,7 @@ function cloneCanvasImage(sourceCanvas) {
   }
 }
 
-function tintCanvas(sourceCanvas, color) {
+export function tintCanvas(sourceCanvas, color) {
   if (!sourceCanvas) return null;
   if (typeof document === "undefined" || typeof document.createElement !== "function") {
     return sourceCanvas;

@@ -38,6 +38,7 @@ function makeBase() {
     }
   };
   const render = vi.fn();
+  const drawOverlays = vi.fn();
   const deps = {
     state,
     els,
@@ -45,6 +46,7 @@ function makeBase() {
     getActive: () => ds,
     screenToImage: (sx, sy) => ({ x: sx, y: sy }),
     render,
+    drawOverlays,
     getSpectrumOpenForDatasetId: () => false,
     openSpectrumAt: async () => {},
     positionAnalysisHistogramPanel: () => {},
@@ -55,7 +57,7 @@ function makeBase() {
     isAnalysisHistogramOpen: () => false,
     isDatasetActive: (target) => target?.id === state.activeId
   };
-  return { state, ds, deps, render };
+  return { state, ds, deps, render, drawOverlays };
 }
 
 describe("annotation-controller", () => {
@@ -199,6 +201,21 @@ describe("annotation-controller", () => {
     const created = ds.drawings[ds.drawings.length - 1];
     expect(created.tool).toBe("shape");
     expect(created.points.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("draft drawing repaints overlays immediately before final commit", () => {
+    const { deps, render, drawOverlays } = makeBase();
+    const ann = createAnnotationController(deps);
+
+    ann.setDrawTool("rect");
+    expect(ann.beginDrawingAtPointer({ pointerId: 88, pointerType: "mouse", clientX: 10, clientY: 10 })).toBe(true);
+    ann.updateDrawingAtPointer({ pointerId: 88, pointerType: "mouse", clientX: 30, clientY: 24 });
+
+    expect(drawOverlays).toHaveBeenCalledTimes(2);
+    expect(render).not.toHaveBeenCalled();
+
+    ann.finishDrawingAtPointer({ pointerId: 88, pointerType: "mouse", clientX: 30, clientY: 24 });
+    expect(render).toHaveBeenCalledTimes(1);
   });
 
   test("rect tool allows dragging an area from interior", () => {

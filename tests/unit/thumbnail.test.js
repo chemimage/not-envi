@@ -302,4 +302,137 @@ describe("thumbnail controller", () => {
     }
   });
 
+  test("ensureDatasetPreviewOverview uses bootstrap size for raw TIFF without native overviews", async () => {
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+    });
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName) => {
+      if (String(tagName).toLowerCase() === "canvas") {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            putImageData: vi.fn()
+          })
+        };
+      }
+      return originalCreateElement(tagName);
+    });
+
+    try {
+      const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
+        bands: [0, 1, 2].map((band) => new Float32Array(outW * outH).fill(band + 1))
+      }));
+      const ds = {
+        id: "ds-he",
+        activeBand: 0,
+        displayMode: "rgb",
+        meta: { samples: 4096, lines: 2048, interleave: "bip", sourceFormat: "tiff" },
+        ds: {
+          supportsCompositeWindow: () => true,
+          hasNativeOverviews: () => false,
+          readCompositeWindow: compositeWindow
+        },
+        view: { x: 0, y: 0, scale: 1 },
+        thumb: { ready: false }
+      };
+      const ctrl = createThumbnailController({
+        els: {
+          thumbWrap: { style: { display: "block", width: "", height: "" } },
+          main: { getBoundingClientRect: () => ({ width: 800, height: 400 }) },
+          thumb: { width: 200, height: 120, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+          cpuCanvas: { width: 800, height: 600 }
+        },
+        thumbCtx: makeThumbCtx(),
+        toFloat32: (x) => x,
+        tone01: () => 0.5,
+        resolveDisplayRange: () => ({ minVal: 0, maxVal: 2 }),
+        getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+        readBandWindow: async () => new Float32Array(0),
+        readBandWindowBIP: async () => new Float32Array(0),
+        getActive: () => ds,
+        render: vi.fn(),
+        getDevicePixelRatio: () => 1,
+        isThreeBandColorMode: () => true
+      });
+
+      ctrl.ensureDatasetPreviewOverview(ds);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(compositeWindow).toHaveBeenCalledTimes(1);
+      expect(compositeWindow.mock.calls[0][3]).toBeLessThan(APP_CONFIG.previewOverview.standardInitialLongEdge);
+      expect(compositeWindow.mock.calls[0][3]).toBeLessThanOrEqual(APP_CONFIG.previewOverview.standardBootstrapLongEdge);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
+
+  test("ensureDatasetPreviewOverview uses bootstrap size for ENVI before stable raster exists", async () => {
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+    });
+
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName) => {
+      if (String(tagName).toLowerCase() === "canvas") {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            putImageData: vi.fn()
+          })
+        };
+      }
+      return originalCreateElement(tagName);
+    });
+
+    try {
+      const readBandWindow = vi.fn(async (_meta, _src, _band, _x0, _y0, outW, outH, _step, out) => {
+        const target = out || new Float32Array(outW * outH);
+        target.fill(1);
+        return target;
+      });
+      const ds = {
+        id: "ds-envi",
+        activeBand: 0,
+        meta: { samples: 4096, lines: 2048, interleave: "bsq", sourceFormat: "envi" },
+        ds: {},
+        view: { x: 0, y: 0, scale: 1 },
+        thumb: { ready: false }
+      };
+      const ctrl = createThumbnailController({
+        els: {
+          thumbWrap: { style: { display: "block", width: "", height: "" } },
+          main: { getBoundingClientRect: () => ({ width: 800, height: 400 }) },
+          thumb: { width: 200, height: 120, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+          cpuCanvas: { width: 800, height: 600 }
+        },
+        thumbCtx: makeThumbCtx(),
+        toFloat32: (x) => x,
+        tone01: () => 0.5,
+        resolveDisplayRange: () => ({ minVal: 0, maxVal: 2 }),
+        getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+        readBandWindow,
+        readBandWindowBIP: async () => new Float32Array(0),
+        getActive: () => ds,
+        render: vi.fn(),
+        getDevicePixelRatio: () => 1
+      });
+
+      ctrl.ensureDatasetPreviewOverview(ds);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(readBandWindow).toHaveBeenCalledTimes(1);
+      expect(readBandWindow.mock.calls[0][5]).toBeLessThan(APP_CONFIG.previewOverview.standardInitialLongEdge);
+      expect(readBandWindow.mock.calls[0][5]).toBeLessThanOrEqual(APP_CONFIG.previewOverview.standardBootstrapLongEdge);
+      expect(ds.previewOverview?.ready).toBe(true);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
+
 });

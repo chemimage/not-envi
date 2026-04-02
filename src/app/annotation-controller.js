@@ -9,6 +9,7 @@ export function createAnnotationController(deps) {
     getActivePanel,
     screenToImage,
     render,
+    drawOverlays,
     getSpectrumOpenForDatasetId,
     openSpectrumAt,
     positionAnalysisHistogramPanel,
@@ -19,6 +20,18 @@ export function createAnnotationController(deps) {
     isAnalysisHistogramOpen,
     isDatasetActive
   } = deps;
+
+  function renderWithRasterReuse() {
+    render({ reuseRaster: true });
+  }
+
+  function refreshOverlayOnly() {
+    if (typeof drawOverlays === "function") {
+      drawOverlays();
+      return;
+    }
+    renderWithRasterReuse();
+  }
 
   function normalizeShapeMode(mode) {
     return (mode === "1:1" || mode === "3:4" || mode === "9:16" || mode === "polygon")
@@ -105,7 +118,7 @@ export function createAnnotationController(deps) {
         state.draw.rulerProfileHover = null;
         state.draw.rulerHover = null;
         state.draw.areaMove = null;
-        render({ reuseRaster: true });
+        renderWithRasterReuse();
       }
     }
     return enabled;
@@ -137,7 +150,7 @@ export function createAnnotationController(deps) {
       state.draw.rulerProfileHover = null;
       state.draw.rulerHover = null;
       state.draw.areaMove = null;
-      if (hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerProfileHover || hadRulerHover || hadAreaMove) render({ reuseRaster: true });
+      if (hadDraft || hadRulerDrag || hadRulerMove || hadRulerProfileDrag || hadRulerProfileHover || hadRulerHover || hadAreaMove) renderWithRasterReuse();
     }
     return state.draw.tool;
   }
@@ -492,7 +505,7 @@ export function createAnnotationController(deps) {
       move.lastPoint = p;
       move.moved = true;
       refreshSelectionProductsForManipulation(ds, ev, move);
-      render({ reuseRaster: true });
+      refreshOverlayOnly();
       return true;
     }
 
@@ -535,7 +548,7 @@ export function createAnnotationController(deps) {
     move.lastPoint = p;
     move.moved = true;
     refreshSelectionProductsForManipulation(ds, ev, move);
-    render({ reuseRaster: true });
+    refreshOverlayOnly();
     return true;
   }
 
@@ -584,7 +597,7 @@ export function createAnnotationController(deps) {
     move.lastPoint = p;
     move.moved = true;
     refreshSelectionProductsForManipulation(ds, ev, move);
-    render({ reuseRaster: true });
+    refreshOverlayOnly();
     return true;
   }
 
@@ -599,7 +612,7 @@ export function createAnnotationController(deps) {
       ensureMarqueeTicker();
       refreshAreaSpectrumIfOpen(ds, ev, false);
     }
-    render({ reuseRaster: true });
+    renderWithRasterReuse();
     return true;
   }
 
@@ -607,7 +620,7 @@ export function createAnnotationController(deps) {
     if (!state.draw.areaMove) return false;
     if (Number.isFinite(pointerId) && state.draw.areaMove.activePointerId !== pointerId) return false;
     state.draw.areaMove = null;
-    render({ reuseRaster: true });
+    refreshOverlayOnly();
     return true;
   }
 
@@ -1008,14 +1021,14 @@ export function createAnnotationController(deps) {
   function setRulerHover(nextHover) {
     if (sameRulerHandle(state.draw.rulerHover, nextHover)) return false;
     state.draw.rulerHover = nextHover;
-    render({ reuseRaster: true });
+    refreshOverlayOnly();
     return true;
   }
 
   function setRulerProfileHover(nextHover) {
     if (sameRulerProfileHover(state.draw.rulerProfileHover, nextHover)) return false;
     state.draw.rulerProfileHover = nextHover;
-    render({ reuseRaster: true });
+    refreshOverlayOnly();
     return true;
   }
 
@@ -1149,7 +1162,7 @@ export function createAnnotationController(deps) {
           state.draw.rulerMove = null;
           state.draw.rulerHover = null;
           state.draw.draft = null;
-          render({ reuseRaster: true });
+          refreshOverlayOnly();
           return true;
         }
       }
@@ -1169,7 +1182,7 @@ export function createAnnotationController(deps) {
           pointIndex: hit.pointIndex
         };
         state.draw.draft = null;
-        render({ reuseRaster: true });
+        refreshOverlayOnly();
         return true;
       }
       const bodyHit = findRulerBodyHit(ds, pointer, ev.pointerType);
@@ -1184,7 +1197,7 @@ export function createAnnotationController(deps) {
         state.draw.rulerDrag = null;
         state.draw.rulerHover = null;
         state.draw.draft = null;
-        render({ reuseRaster: true });
+        refreshOverlayOnly();
         return true;
       }
       state.draw.rulerHover = null;
@@ -1198,7 +1211,7 @@ export function createAnnotationController(deps) {
       color: state.draw.color,
       points: [p]
     };
-    render({ reuseRaster: true });
+    refreshOverlayOnly();
     return true;
   }
 
@@ -1229,9 +1242,9 @@ export function createAnnotationController(deps) {
         }
         if (Math.abs(next - cur) > 1e-4) {
           item.profileScale = next;
-          render({ reuseRaster: true });
+          refreshOverlayOnly();
         } else if (hoverChanged) {
-          render({ reuseRaster: true });
+          refreshOverlayOnly();
         }
         return;
       }
@@ -1262,7 +1275,7 @@ export function createAnnotationController(deps) {
           }
         }
         rulerMove.lastPoint = p;
-        render({ reuseRaster: true });
+        refreshOverlayOnly();
         return;
       }
       state.draw.rulerMove = null;
@@ -1278,7 +1291,7 @@ export function createAnnotationController(deps) {
         const p = pointerToImagePoint(ev, ds);
         const pointIndex = clamp(rulerDrag.pointIndex, 0, item.points.length - 1);
         item.points[pointIndex] = p;
-        render({ reuseRaster: true });
+        refreshOverlayOnly();
         return;
       }
       state.draw.rulerDrag = null;
@@ -1303,7 +1316,7 @@ export function createAnnotationController(deps) {
       const dy = p.y - last.y;
       if ((dx * dx + dy * dy) >= (minStep * minStep)) draft.points.push(p);
     }
-    render({ reuseRaster: true });
+    refreshOverlayOnly();
   }
 
   function finishDrawingAtPointer(ev) {
@@ -1326,7 +1339,7 @@ export function createAnnotationController(deps) {
       state.draw.rulerProfileDrag = null;
       state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
-      render({ reuseRaster: true });
+      renderWithRasterReuse();
       return;
     }
     if (rulerMove && rulerMove.dsId === ds.id) {
@@ -1336,7 +1349,7 @@ export function createAnnotationController(deps) {
       state.draw.rulerProfileDrag = null;
       state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
-      render({ reuseRaster: true });
+      renderWithRasterReuse();
       return;
     }
     if (rulerDrag && rulerDrag.dsId === ds.id) {
@@ -1347,7 +1360,7 @@ export function createAnnotationController(deps) {
       state.draw.rulerProfileDrag = null;
       state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
-      render({ reuseRaster: true });
+      renderWithRasterReuse();
       return;
     }
 
@@ -1400,7 +1413,7 @@ export function createAnnotationController(deps) {
     state.draw.rulerProfileHover = null;
     state.draw.areaMove = null;
     ensureMarqueeTicker();
-    render({ reuseRaster: true });
+    renderWithRasterReuse();
   }
 
   function cancelDrawing() {
@@ -1411,7 +1424,7 @@ export function createAnnotationController(deps) {
     state.draw.rulerProfileDrag = null;
     state.draw.rulerProfileHover = null;
     state.draw.areaMove = null;
-    render({ reuseRaster: true });
+    refreshOverlayOnly();
   }
 
   return {

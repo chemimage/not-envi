@@ -127,10 +127,15 @@ export function createThumbnailController(deps) {
     return !!(ds?.lastScreenFrame || ds?.lastRaster || ds?.lastCompositeRaster);
   }
 
-  function shouldBuildDeferredPreviewOverview(ds) {
+  function shouldBootstrapPreviewOverview(ds) {
     const isTiff = ds?.meta?.sourceFormat === "tiff";
     const hasNativeOverviews = typeof ds?.ds?.hasNativeOverviews === "function" && ds.ds.hasNativeOverviews();
-    if (isTiff && hasNativeOverviews && !hasRenderablePreviewSource(ds)) return false;
+    return !isTiff || !hasNativeOverviews;
+  }
+
+  function shouldBuildDeferredPreviewOverview(ds) {
+    const isTiff = ds?.meta?.sourceFormat === "tiff";
+    if (isTiff) return hasRenderablePreviewSource(ds);
     return true;
   }
 
@@ -337,7 +342,8 @@ export function createThumbnailController(deps) {
     const overview = ensurePreviewOverviewState(ds);
     const signature = previewSignature(ds);
     const deferred = options.deferred !== false;
-    const { ow, oh } = calcPreviewOverviewPixels(ds, { deferred });
+    const bootstrap = options.bootstrap === true;
+    const { ow, oh } = calcPreviewOverviewPixels(ds, { deferred, bootstrap });
     const buildKey = `${signature}:${ow}x${oh}`;
     if (overview.buildPendingKey === buildKey) return false;
     if (overview.ready && overview.buildKey === buildKey && overview.base) return true;
@@ -415,7 +421,6 @@ export function createThumbnailController(deps) {
     const ds = getActive();
     els.thumbWrap.style.display = "block";
     if (!ds) return;
-    ensureDatasetPreviewOverview(ds);
     const { tw, th, dpr } = calcThumbPixels();
     ensureThumbCanvasSize(tw, th);
 
@@ -505,9 +510,8 @@ export function createThumbnailController(deps) {
 
   function ensureDatasetPreviewOverview(ds) {
     if (!ds) return;
-    const isTiff = ds?.meta?.sourceFormat === "tiff";
-    const hasNativeOverviews = typeof ds?.ds?.hasNativeOverviews === "function" && ds.ds.hasNativeOverviews();
-    if (isTiff && !hasNativeOverviews && !hasRenderablePreviewSource(ds)) {
+    if (!hasRenderablePreviewSource(ds)) {
+      void buildPreviewOverview(ds, { deferred: false, bootstrap: shouldBootstrapPreviewOverview(ds) });
       return;
     }
     void buildPreviewOverview(ds, { deferred: shouldBuildDeferredPreviewOverview(ds) });
