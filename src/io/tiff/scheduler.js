@@ -1,10 +1,10 @@
-import { Pool } from "geotiff";
 import { APP_CONFIG, resolveHardwareConcurrencyLimit } from "../../app/config.js";
 import {
   resolveSharedTaskConcurrency,
   resetSharedSchedulerForTests,
   scheduleSharedTask
 } from "../../core/shared-scheduler.js";
+import { createGeotiffDecodePool, destroyGeotiffDecodePool } from "./backend/geotiff-pool.js";
 
 export function resolveTiffWorkerPoolSize(requested = null, maxWorkers = APP_CONFIG.tiff.standardWorkerPoolMax) {
   const configured = resolveHardwareConcurrencyLimit({
@@ -25,7 +25,7 @@ let sharedPool = null;
 export function getSharedTiffDecodePool(requestedSize = null) {
   const size = (typeof Worker !== "undefined") ? resolveTiffWorkerPoolSize(requestedSize) : 0;
   if (!sharedPool) {
-    sharedPool = new Pool(size);
+    sharedPool = createGeotiffDecodePool(size);
   }
   return sharedPool;
 }
@@ -36,7 +36,7 @@ export function scheduleTiffTask(ownerId, task) {
 
 export function resetTiffConcurrencyForTests() {
   if (sharedPool) {
-    try { sharedPool.destroy(); } catch (_err) {}
+    try { destroyGeotiffDecodePool(sharedPool); } catch (_err) {}
   }
   sharedPool = null;
   resetSharedSchedulerForTests();

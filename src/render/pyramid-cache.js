@@ -46,6 +46,9 @@ export function pyramidLevelForEff(ds, eff) {
 }
 
 export function levelInfo(ds, pyr, level) {
+  if (!ds?.meta || !pyr || !Number.isFinite(Number(pyr.tileSize)) || Number(pyr.tileSize) <= 0) {
+    return null;
+  }
   const step = 1 << level;
   const downW = Math.ceil(ds.meta.samples / step);
   const downH = Math.ceil(ds.meta.lines / step);
@@ -56,6 +59,7 @@ export function levelInfo(ds, pyr, level) {
 
 export function viewTileBounds(ds, pyr, level, eff, viewportW, viewportH) {
   const info = levelInfo(ds, pyr, level);
+  if (!info || !ds?.view) return null;
   const viewW = viewportW / eff;
   const viewH = viewportH / eff;
   const step = info.step;
@@ -333,6 +337,7 @@ export function createPyramidController(deps) {
   }
 
   function collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH) {
+    if (!pyr) return null;
     const bounds = viewTileBounds(ds, pyr, level, eff, viewportW, viewportH);
     if (!bounds) return null;
     const tasks = [];
@@ -371,6 +376,7 @@ export function createPyramidController(deps) {
     const tasks = [];
     for (const level of getPinnedOverviewLevels(pyr)) {
       const info = levelInfo(ds, pyr, level);
+      if (!info) continue;
       for (let ty = 0; ty < info.tilesY; ty += 1) {
         for (let tx = 0; tx < info.tilesX; tx += 1) {
           tasks.push({
@@ -401,13 +407,14 @@ export function createPyramidController(deps) {
     if (!missing.length) return true;
     if (missing.length > Math.max(1, Number(maxTiles) || 1)) return false;
     await Promise.all(missing.map((task) => getBandTile(ds, band, task.level, task.tx, task.ty).catch(() => null)));
-    return true;
+    return !!ds?.pyramid && !ds.pyramid.cancelled;
   }
 
   function updatePyramidFocus(ds, band, minLevel, eff, viewportW, viewportH) {
     const pyr = ds.pyramid;
     if (!pyr) return;
     const bounds = viewTileBounds(ds, pyr, minLevel, eff, viewportW, viewportH);
+    if (!bounds) return;
     const key = [
       Math.floor(Number(band) || 0),
       Math.floor(Number(minLevel) || 0),
@@ -431,6 +438,7 @@ export function createPyramidController(deps) {
 
   async function ensureViewportLevelCached(ds, band, level, eff, viewportW, viewportH, maxTiles = 16) {
     const pyr = ds.pyramid;
+    if (!pyr || pyr.cancelled) return false;
     const info = collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH);
     if (!info || !info.total) return false;
     const missing = info.tasks.filter((task) => !pyr.tiles.has(task.key));
@@ -439,11 +447,12 @@ export function createPyramidController(deps) {
     await Promise.all(missing.map((task) => (
       getBandTile(ds, band, task.level, task.tx, task.ty).catch(() => null)
     )));
-    return true;
+    return !!ds?.pyramid && !ds.pyramid.cancelled;
   }
 
   function composePyramidRaster(ds, band, idealLevel, eff, viewportW, viewportH) {
     const pyr = ds.pyramid;
+    if (!pyr || pyr.cancelled) return null;
     const composeStart = perfNow();
     const ideal = collectViewportLevel(ds, pyr, band, idealLevel, eff, viewportW, viewportH);
     if (!ideal) return null;

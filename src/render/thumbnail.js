@@ -1,7 +1,7 @@
 import { clamp } from "../core/utils.js";
 import { resolveThreeBandChannelOrder } from "../app/three-band-display.js";
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
-import { APP_CONFIG } from "../app/config.js";
+import { APP_CONFIG, resolvePreviewOverviewLongEdge } from "../app/config.js";
 
 export function createThumbnailController(deps) {
   const {
@@ -61,6 +61,22 @@ export function createThumbnailController(deps) {
     return { width, height, data: new Uint8ClampedArray(width * height * 4) };
   }
 
+  function createCanvasSurface(width, height) {
+    const OffscreenCanvasCtor = (typeof globalThis !== "undefined")
+      ? globalThis.OffscreenCanvas
+      : undefined;
+    if (typeof OffscreenCanvasCtor !== "undefined") {
+      return new OffscreenCanvasCtor(width, height);
+    }
+    if (typeof document !== "undefined" && typeof document.createElement === "function") {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      return canvas;
+    }
+    return null;
+  }
+
   function isJsdomRuntime() {
     return typeof navigator !== "undefined" && /jsdom/i.test(String(navigator.userAgent || ""));
   }
@@ -83,6 +99,67 @@ export function createThumbnailController(deps) {
   function thumbBuildKey(ds, tw, th) {
     const mode = isThreeBandColorMode && isThreeBandColorMode(ds) ? (ds.displayMode || "rgb") : "gray";
     return `${ds.id || "ds"}:${mode}:${ds.activeBand}:${tw}x${th}`;
+  }
+
+  function previewSignature(ds) {
+    const mode = isThreeBandColorMode && isThreeBandColorMode(ds) ? (ds.displayMode || "rgb") : "gray";
+    return `${ds.id || "ds"}:${mode}:${ds.activeBand}`;
+  }
+
+  function ensurePreviewOverviewState(ds) {
+    if (!ds.previewOverview || typeof ds.previewOverview !== "object") {
+      ds.previewOverview = {
+        ready: false,
+        scale: 1,
+        x0: 0,
+        y0: 0,
+        w: 0,
+        h: 0,
+        base: null,
+        baseW: 0,
+        baseH: 0
+      };
+    }
+    return ds.previewOverview;
+  }
+
+  function hasRenderablePreviewSource(ds) {
+    return !!(ds?.lastScreenFrame || ds?.lastRaster || ds?.lastCompositeRaster);
+  }
+
+  function shouldBuildDeferredPreviewOverview(ds) {
+    const isTiff = ds?.meta?.sourceFormat === "tiff";
+    const hasNativeOverviews = typeof ds?.ds?.hasNativeOverviews === "function" && ds.ds.hasNativeOverviews();
+    if (isTiff && hasNativeOverviews && !hasRenderablePreviewSource(ds)) return false;
+    return true;
+  }
+
+  function calcPreviewOverviewPixels(ds, options = {}) {
+    const samples = Math.max(1, Number(ds?.meta?.samples) || 1);
+    const lines = Math.max(1, Number(ds?.meta?.lines) || 1);
+    const longEdge = Math.max(256, Number(resolvePreviewOverviewLongEdge(options)) || 1024);
+    if (samples >= lines) {
+      return {
+        ow: longEdge,
+        oh: Math.max(1, Math.round((longEdge * lines) / samples))
+      };
+    }
+    return {
+      ow: Math.max(1, Math.round((longEdge * samples) / lines)),
+      oh: longEdge
+    };
+  }
+
+  function syncPreviewOverviewPlacement(ds) {
+    const overview = ensurePreviewOverviewState(ds);
+    if (!overview.base) return false;
+    overview.ready = true;
+    overview.scale = 1;
+    overview.x0 = 0;
+    overview.y0 = 0;
+    overview.w = overview.baseW || overview.base.width || 0;
+    overview.h = overview.baseH || overview.base.height || 0;
+    return true;
   }
 
   async function readWindowF32(ds, band, x0, y0, outW, outH, step) {
@@ -227,10 +304,13 @@ export function createThumbnailController(deps) {
       const dx = (tw - dw) / 2;
       const dy = (th - dh) / 2;
 
-      const off = document.createElement("canvas");
-      off.width = outW;
-      off.height = outH;
-      off.getContext("2d", { alpha: false }).putImageData(img, 0, 0);
+      const off = createCanvasSurface(outW, outH);
+      const offCtx = off?.getContext?.("2d", { alpha: false }) || null;
+      if (!off || !offCtx || typeof offCtx.putImageData !== "function") {
+        if (ds.thumb.buildSeq === seq) ds.thumb.buildPendingKey = null;
+        return;
+      }
+      offCtx.putImageData(img, 0, 0);
       thumbCtx.drawImage(off, 0, 0, outW, outH, dx, dy, dw, dh);
       thumbCtx.restore();
 
@@ -251,15 +331,97 @@ export function createThumbnailController(deps) {
     }
   }
 
+  async function buildPreviewOverview(ds, options = {}) {
+    if (!ds) return false;
+    if (isJsdomRuntime()) return false;
+    const overview = ensurePreviewOverviewState(ds);
+    const signature = previewSignature(ds);
+    const deferred = options.deferred !== false;
+    const { ow, oh } = calcPreviewOverviewPixels(ds, { deferred });
+    const buildKey = `${signature}:${ow}x${oh}`;
+    if (overview.buildPendingKey === buildKey) return false;
+    if (overview.ready && overview.buildKey === buildKey && overview.base) return true;
+
+    overview.buildPendingKey = buildKey;
+    const seq = (overview.buildSeq || 0) + 1;
+    overview.buildSeq = seq;
+    try {
+      const stepX = Math.ceil(ds.meta.samples / ow);
+      const stepY = Math.ceil(ds.meta.lines / oh);
+      const step = Math.max(1, Math.max(stepX, stepY));
+      const outW = Math.min(ow, Math.max(1, Math.ceil(ds.meta.samples / step)));
+      const outH = Math.min(oh, Math.max(1, Math.ceil(ds.meta.lines / step)));
+      const img = (isThreeBandColorMode && isThreeBandColorMode(ds))
+        ? await renderCompositeWindowToImageData(ds, 0, 0, outW, outH, step)
+        : await renderWindowToImageData(ds, ds.activeBand, 0, 0, outW, outH, step);
+      if (overview.buildSeq !== seq) return false;
+
+      const off = createCanvasSurface(outW, outH);
+      const offCtx = off?.getContext?.("2d", { alpha: false }) || null;
+      if (!off || !offCtx || typeof offCtx.putImageData !== "function") {
+        if (overview.buildSeq === seq) overview.buildPendingKey = null;
+        return false;
+      }
+      offCtx.putImageData(img, 0, 0);
+      overview.base = off;
+      overview.baseW = outW;
+      overview.baseH = outH;
+      overview.buildKey = buildKey;
+      overview.signature = signature;
+      overview.deferred = deferred;
+      overview.buildPendingKey = null;
+      const becameReady = syncPreviewOverviewPlacement(ds);
+      if (becameReady) {
+        const active = typeof getActive === "function" ? getActive() : null;
+        if (active && active.id === ds.id && typeof render === "function") {
+          Promise.resolve().then(() => {
+            if ((typeof getActive === "function" ? getActive() : null)?.id === ds.id) {
+              render();
+            }
+          });
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn("preview overview error", e);
+      if (overview.buildSeq === seq) overview.buildPendingKey = null;
+      return false;
+    }
+  }
+
+  function applyPreviewOverviewToThumb(ds, buildKey, tw, th) {
+    const overview = ensurePreviewOverviewState(ds);
+    if (!overview.ready || !overview.base || overview.signature !== previewSignature(ds)) return false;
+    const scale = Math.min(tw / overview.baseW, th / overview.baseH);
+    const dw = overview.baseW * scale;
+    const dh = overview.baseH * scale;
+    const dx = (tw - dw) / 2;
+    const dy = (th - dh) / 2;
+    ds.thumb.base = overview.base;
+    ds.thumb.baseW = overview.baseW;
+    ds.thumb.baseH = overview.baseH;
+    ds.thumb.ready = true;
+    ds.thumb.scale = scale;
+    ds.thumb.x0 = dx;
+    ds.thumb.y0 = dy;
+    ds.thumb.w = dw;
+    ds.thumb.h = dh;
+    ds.thumb.buildKey = buildKey;
+    ds.thumb.buildPendingKey = null;
+    return true;
+  }
+
   function renderThumbnail() {
     const ds = getActive();
     els.thumbWrap.style.display = "block";
     if (!ds) return;
+    ensureDatasetPreviewOverview(ds);
     const { tw, th, dpr } = calcThumbPixels();
     ensureThumbCanvasSize(tw, th);
 
     const key = thumbBuildKey(ds, tw, th);
     const needsBuild = !ds.thumb.ready || ds.thumb.buildKey !== key;
+    if (needsBuild) applyPreviewOverviewToThumb(ds, key, tw, th);
     const deferTiffBuild = ds?.meta?.sourceFormat === "tiff"
       && !ds.thumb.base
       && !ds.lastRaster
@@ -341,9 +503,20 @@ export function createThumbnailController(deps) {
     render();
   }
 
+  function ensureDatasetPreviewOverview(ds) {
+    if (!ds) return;
+    const isTiff = ds?.meta?.sourceFormat === "tiff";
+    const hasNativeOverviews = typeof ds?.ds?.hasNativeOverviews === "function" && ds.ds.hasNativeOverviews();
+    if (isTiff && !hasNativeOverviews && !hasRenderablePreviewSource(ds)) {
+      return;
+    }
+    void buildPreviewOverview(ds, { deferred: shouldBuildDeferredPreviewOverview(ds) });
+  }
+
   return {
     renderWindowToImageData,
     renderThumbnail,
-    onThumbClick
+    onThumbClick,
+    ensureDatasetPreviewOverview
   };
 }

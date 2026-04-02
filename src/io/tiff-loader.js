@@ -1,5 +1,5 @@
-import { fromBlob } from "geotiff";
 import { APP_CONFIG } from "../app/config.js";
+import { openTiffBackend } from "./tiff/backend/index.js";
 import { describeTiffDataset } from "./tiff/describe.js";
 import { TIFF_EXT_RE, yieldToEventLoop } from "./tiff/shared.js";
 
@@ -37,7 +37,7 @@ export async function addDatasetFromFile(file, deps = {}) {
 
   deps?.setStatus?.("opening TIFF…", "warn");
   await yieldToEventLoop();
-  const tiff = await fromBlob(file);
+  const tiff = await openTiffBackend(file, deps);
   await yieldToEventLoop();
 
   const desc = await describeTiffDataset(tiff, file, deps);

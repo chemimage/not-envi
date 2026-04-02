@@ -9,18 +9,28 @@ export function createSelectionSyncController(deps) {
     getSpectrumOpenForDatasetId,
     openSpectrumForEffectiveArea,
     refreshAreaSpectrumIfOpen,
-    drawOverlays
+    drawOverlays,
+    shouldAnimateMarquee
   } = deps;
 
   let marqueeTimer = null;
 
   function ensureMarqueeTicker() {
     const active = getActive();
-    const shouldRun = getHistogramSelectionItems(active).length > 0;
+    const hasSelections = getHistogramSelectionItems(active).length > 0;
+    const shouldRun = hasSelections && (
+      typeof shouldAnimateMarquee === "function"
+        ? !!shouldAnimateMarquee(active)
+        : true
+    );
     if (shouldRun && marqueeTimer == null) {
       marqueeTimer = window.setInterval(() => {
         const ds = getActive();
-        if (getHistogramSelectionItems(ds).length === 0) {
+        const stillHasSelections = getHistogramSelectionItems(ds).length > 0;
+        const canAnimate = typeof shouldAnimateMarquee === "function"
+          ? !!shouldAnimateMarquee(ds)
+          : true;
+        if (!stillHasSelections || !canAnimate) {
           clearInterval(marqueeTimer);
           marqueeTimer = null;
           return;

@@ -36,8 +36,17 @@ function drawOverviewImage(ctx, image, ds, viewport, eff) {
   return true;
 }
 
+function getOverviewBase(ds) {
+  const mode = String(ds?.displayMode || "gray");
+  const signature = `${ds?.id || "ds"}:${mode}:${Number(ds?.activeBand) || 0}`;
+  if (ds?.previewOverview?.base && ds?.previewOverview?.signature === signature) {
+    return ds.previewOverview.base;
+  }
+  return ds?.thumb?.base || null;
+}
+
 export function drawThumbnailOverview(ctx, ds, viewport, eff) {
-  const base = ds?.thumb?.base;
+  const base = getOverviewBase(ds);
   return drawOverviewImage(ctx, base, ds, viewport, eff);
 }
 
@@ -53,7 +62,8 @@ function drawPreviewBackground(cpuCtx, viewport) {
 
 export function drawThumbnailOnlyPreview({ els, ds, viewport, eff, tint = null, composite = "source-over" }) {
   const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
-  const source = tint ? tintCanvas(ds?.thumb?.base, tint) : ds?.thumb?.base;
+  const sourceBase = getOverviewBase(ds);
+  const source = tint ? tintCanvas(sourceBase, tint) : sourceBase;
   if (!source) return false;
   cpuCtx.save();
   cpuCtx.setTransform(1, 0, 0, 1, 0, 0);

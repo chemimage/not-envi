@@ -282,7 +282,7 @@ describe("render-main", () => {
     expect(deps.cpuRenderColor).toHaveBeenCalledTimes(1);
   });
 
-  test("render coarsens raw TIFF composite reads for expensive zoomed-out previews", async () => {
+  test("render uses pyramid approximation for expensive raw TIFF overviews", async () => {
     const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
       bands: [0, 1, 2].map((band) => {
         const arr = new Float32Array(outW * outH);
@@ -305,9 +305,65 @@ describe("render-main", () => {
       lastCompositeRaster: null,
       bandStatsWhole: new Map()
     };
+    const tryRasterFromPyramid = vi.fn(async (_ds, band) => ({
+      band,
+      w: 64,
+      h: 36,
+      dataF32: new Float32Array(64 * 36).fill(band + 1),
+      partial: false,
+      approximate: true
+    }));
     const deps = makeDeps({
       getActive: () => ds,
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      tryRasterFromPyramid,
+      clampView: () => {}
+    });
+    const renderer = createRenderer(deps);
+
+    await renderer.render();
+
+    expect(tryRasterFromPyramid).toHaveBeenCalledTimes(3);
+    expect(compositeWindow).not.toHaveBeenCalled();
+    expect(ds.lastCompositeRaster).toBeNull();
+  });
+
+  test("render uses direct TIFF composite overview reads when native overviews are available", async () => {
+    const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH) => ({
+      bands: [0, 1, 2].map((band) => {
+        const arr = new Float32Array(outW * outH);
+        arr.fill(band + 1);
+        return arr;
+      })
+    }));
+    const tryRasterFromPyramid = vi.fn(async (_ds, band) => ({
+      band,
+      w: 64,
+      h: 36,
+      dataF32: new Float32Array(64 * 36).fill(band + 1),
+      partial: false,
+      approximate: true
+    }));
+    const ds = {
+      id: "ds-vis-native-overview",
+      activeBand: 0,
+      displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 0.5 },
+      meta: { samples: 1280, lines: 720, bands: 3, interleave: "bip", sourceFormat: "tiff" },
+      ds: {
+        supportsCompositeWindow: () => true,
+        hasNativeOverviews: () => true,
+        estimateReadWork: () => ({ sparseRaw: false, nativeJpeg: true, blockCount: 400, scaledDecodePixels: 800_000 }),
+        readCompositeWindow: compositeWindow
+      },
+      lastRaster: null,
+      lastCompositeRaster: null,
+      bandStatsWhole: new Map()
+    };
+    const deps = makeDeps({
+      getActive: () => ds,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      tryRasterFromPyramid,
       clampView: () => {}
     });
     const renderer = createRenderer(deps);
@@ -315,9 +371,8 @@ describe("render-main", () => {
     await renderer.render();
 
     expect(compositeWindow).toHaveBeenCalledTimes(1);
-    expect(compositeWindow.mock.calls[0][3]).toBeLessThan(320);
-    expect(compositeWindow.mock.calls[0][4]).toBeLessThan(180);
-    expect(ds.lastCompositeRaster).toBeNull();
+    expect(compositeWindow.mock.calls[0][5]).toBeGreaterThan(1);
+    expect(tryRasterFromPyramid).not.toHaveBeenCalled();
   });
 
   test("render skips pyramid-overview TIFF preview path when native overviews are unavailable", async () => {
@@ -390,7 +445,7 @@ describe("render-main", () => {
       meta: { samples: 1280, lines: 720, bands: 3, interleave: "bip", sourceFormat: "tiff" },
       ds: {
         supportsCompositeWindow: () => true,
-        hasNativeOverviews: () => true,
+        hasNativeOverviews: () => false,
         estimateReadWork: () => ({ sparseRaw: true, nativeJpeg: false, blockCount: 400, spanReads: 48_000 }),
         readCompositeWindow: compositeWindow
       },
@@ -413,11 +468,17 @@ describe("render-main", () => {
     expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 4 }));
 
     await renderer.render();
-    expect(compositeWindow).toHaveBeenCalledTimes(1);
-    const secondCall = compositeWindow.mock.calls[0];
-    expect(secondCall[3]).toBeLessThan(320);
-    expect(secondCall[4]).toBeLessThan(180);
+    expect(tryRasterFromPyramid).toHaveBeenCalledTimes(6);
+    expect(compositeWindow).not.toHaveBeenCalled();
     expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 2 }));
+
+    await renderer.render();
+    expect(tryRasterFromPyramid).toHaveBeenCalledTimes(9);
+    expect(compositeWindow).not.toHaveBeenCalled();
+    expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 1 }));
+
+    await renderer.render();
+    expect(compositeWindow).toHaveBeenCalledTimes(1);
     raf.mockRestore();
   });
 

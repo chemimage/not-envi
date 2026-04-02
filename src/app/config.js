@@ -37,6 +37,30 @@ export function resolveHardwareConcurrencyLimit({
   return clamp(Math.max(1, scaled || 1), Math.max(1, Number(min) || 1), Math.max(1, Number(max) || 1));
 }
 
+export function shouldUseLitePreviewProfile() {
+  const deviceMemoryGiB = detectDeviceMemoryGiB(0);
+  const hardwareCores = detectHardwareCores(0);
+  if (deviceMemoryGiB > 0 && deviceMemoryGiB <= APP_CONFIG.previewOverview.liteProfileMaxDeviceMemoryGiB) {
+    return true;
+  }
+  if (hardwareCores > 0 && hardwareCores <= APP_CONFIG.previewOverview.liteProfileMaxHardwareCores) {
+    return true;
+  }
+  return false;
+}
+
+export function resolvePreviewOverviewLongEdge({ deferred = true } = {}) {
+  const useLite = shouldUseLitePreviewProfile();
+  if (deferred) {
+    return useLite
+      ? APP_CONFIG.previewOverview.liteDeferredLongEdge
+      : APP_CONFIG.previewOverview.standardDeferredLongEdge;
+  }
+  return useLite
+    ? APP_CONFIG.previewOverview.liteInitialLongEdge
+    : APP_CONFIG.previewOverview.standardInitialLongEdge;
+}
+
 export const APP_CONFIG = Object.freeze({
   io: Object.freeze({
     parallelEnabledByDefault: true,
@@ -102,10 +126,21 @@ export const APP_CONFIG = Object.freeze({
       maxRetainedElements: 1_048_576
     })
   }),
+  previewOverview: Object.freeze({
+    standardInitialLongEdge: 768,
+    standardLongEdge: 1536,
+    standardDeferredLongEdge: 1536,
+    liteInitialLongEdge: 512,
+    liteLongEdge: 1024,
+    liteDeferredLongEdge: 1024,
+    liteProfileMaxDeviceMemoryGiB: 12,
+    liteProfileMaxHardwareCores: 9
+  }),
   render: Object.freeze({
     tiffPreviewMaxSparseSpans: 6_000,
     tiffPreviewMaxScaledDecodePixels: 120_000,
-    tiffPreviewMaxFactor: 16
+    tiffPreviewMaxFactor: 16,
+    tiffRawPyramidApproxMinFactor: 2
   }),
   tiff: Object.freeze({
     // `standard` is sized around a current 15-inch MacBook Air base-class machine:

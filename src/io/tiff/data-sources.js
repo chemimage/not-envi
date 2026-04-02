@@ -984,8 +984,10 @@ export class TiffBlockIndexedDataSource {
         return {
           kind: "raw",
           view: new DataView(raw.buffer, raw.byteOffset, raw.byteLength),
-          storageWidth: block.w,
-          storageHeight: block.h,
+          storageWidth: spec.table.blockWidth,
+          storageHeight: spec.table.blockHeight,
+          sourceWidth: block.w,
+          sourceHeight: block.h,
           bytes: raw.byteLength
         };
       }
@@ -1001,6 +1003,9 @@ export class TiffBlockIndexedDataSource {
         buffer: decodedBuffer,
         view: new DataView(decodedBuffer),
         storageWidth: spec.table.blockWidth,
+        storageHeight: spec.table.blockHeight,
+        sourceWidth: block.w,
+        sourceHeight: block.h,
         bytes: decodedBuffer.byteLength
       };
     });
@@ -1323,9 +1328,11 @@ export class TiffBlockIndexedDataSource {
               + spec.sampleByteOffset;
             await this.rawSource.readInto(readOffset, span, 0, spanBytes);
             const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+            const maxByteOffset = Math.max(0, spanBytes - spec.bytesPerSample);
             for (let col = colStart; col < colEnd; col += 1) {
               const srcX = x0 + (col * step);
               const byteOffset = (srcX - block.x0 - firstLocalX) * spec.bytesPerPixel;
+              if (byteOffset < 0 || byteOffset > maxByteOffset) continue;
               target[rowBase + col] = readDataViewValue(dv, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
             }
           }
@@ -1402,13 +1409,16 @@ export class TiffBlockIndexedDataSource {
                 + (firstLocalX * spec.bytesPerPixel);
               await this.rawSource.readInto(readOffset, span, 0, spanBytes);
               const dv = new DataView(span.buffer, span.byteOffset, spanBytes);
+              const maxByteOffset = Math.max(0, spanBytes - spec.bytesPerPixel);
               for (let col = colStart; col < colEnd; col += 1) {
                 const srcX = x0 + (col * step);
                 const baseByteOffset = (srcX - anchor.x0 - firstLocalX) * spec.bytesPerPixel;
                 for (let channel = 0; channel < specs.length; channel += 1) {
+                  const channelByteOffset = baseByteOffset + specs[channel].sampleByteOffset;
+                  if (channelByteOffset < 0 || channelByteOffset > maxByteOffset) continue;
                   outputs[channel][rowBase + col] = readDataViewValue(
                     dv,
-                    baseByteOffset + specs[channel].sampleByteOffset,
+                    channelByteOffset,
                     this.meta.dataTypeInfo,
                     this.meta.littleEndian
                   );
@@ -1439,9 +1449,12 @@ export class TiffBlockIndexedDataSource {
                 const spec = specs[channel];
                 const dv = views[channel];
                 if (!dv) continue;
+                const byteOffset = localX * spec.bytesPerPixel;
+                const maxByteOffset = Math.max(0, dv.byteLength - spec.bytesPerSample);
+                if (byteOffset < 0 || byteOffset > maxByteOffset) continue;
                 outputs[channel][rowBase + col] = readDataViewValue(
                   dv,
-                  localX * spec.bytesPerPixel,
+                  byteOffset,
                   this.meta.dataTypeInfo,
                   this.meta.littleEndian
                 );
@@ -1567,7 +1580,7 @@ export class TiffBlockIndexedDataSource {
     if (decoded.kind === "native-rgba") {
       return decoded.data[((storageY * decoded.storageWidth) + storageX) * 4 + spec.channel];
     }
-    const byteOffset = (((localY * decoded.storageWidth) + localX) * spec.bytesPerPixel) + spec.sampleByteOffset;
+    const byteOffset = (((storageY * decoded.storageWidth) + storageX) * spec.bytesPerPixel) + spec.sampleByteOffset;
     return readDataViewValue(decoded.view, byteOffset, this.meta.dataTypeInfo, this.meta.littleEndian);
   }
 

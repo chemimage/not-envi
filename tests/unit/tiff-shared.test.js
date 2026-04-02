@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "vitest";
-import { resolveTiffCacheBudgets } from "../../src/io/tiff/shared.js";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { loadImageSummaries, readDataViewValue, resolveTiffCacheBudgets } from "../../src/io/tiff/shared.js";
 import { APP_CONFIG } from "../../src/app/config.js";
 
 const originalUserAgent = navigator.userAgent;
@@ -22,6 +22,23 @@ afterEach(() => {
   setNavigatorValue("hardwareConcurrency", originalHardwareConcurrency);
   setNavigatorValue("deviceMemory", originalDeviceMemory);
 });
+
+function makeFakeImage() {
+  return {
+    getWidth: () => 2,
+    getHeight: () => 1,
+    getSamplesPerPixel: () => 1,
+    getBitsPerSample: () => 8,
+    getSampleFormat: () => 1,
+    getFileDirectory: () => ({
+      Compression: 1,
+      RowsPerStrip: 1,
+      StripOffsets: [0],
+      StripByteCounts: [2],
+      PhotometricInterpretation: 1
+    })
+  };
+}
 
 describe("resolveTiffCacheBudgets", () => {
   test("uses standard profile for MacBook Air class hardware", () => {
@@ -64,5 +81,49 @@ describe("resolveTiffCacheBudgets", () => {
     expect(budgets.profileName).toBe("lite");
     expect(budgets.rawCacheBytes).toBe(APP_CONFIG.tiff.liteRawCacheBytes);
     expect(budgets.decodedCacheBytes).toBe(APP_CONFIG.tiff.liteDecodedCacheBytes);
+  });
+});
+
+describe("readDataViewValue", () => {
+  test("returns NaN instead of throwing when the offset exceeds the DataView bounds", () => {
+    const dv = new DataView(new ArrayBuffer(2));
+
+    expect(readDataViewValue(dv, 2, { bytes: 1, dv: "getUint8" }, true)).toBeNaN();
+    expect(readDataViewValue(dv, 1, { bytes: 2, dv: "getUint16" }, true)).toBeNaN();
+  });
+});
+
+describe("loadImageSummaries", () => {
+  test("uses geotiff image count when available instead of probing past the last image", async () => {
+    const image = makeFakeImage();
+    const tiff = {
+      getImageCount: vi.fn(async () => 1),
+      getImage: vi.fn(async (index) => {
+        if (index !== 0) throw new Error(`unexpected image index ${index}`);
+        return image;
+      })
+    };
+
+    const summaries = await loadImageSummaries(tiff);
+
+    expect(summaries).toHaveLength(1);
+    expect(tiff.getImageCount).toHaveBeenCalledTimes(1);
+    expect(tiff.getImage).toHaveBeenCalledTimes(1);
+    expect(tiff.getImage).toHaveBeenCalledWith(0);
+  });
+
+  test("stops probing when geotiff throws a range error after the last readable image", async () => {
+    const image = makeFakeImage();
+    const tiff = {
+      getImage: vi.fn(async (index) => {
+        if (index === 0) return image;
+        throw new RangeError("Offset is outside the bounds of the DataView");
+      })
+    };
+
+    const summaries = await loadImageSummaries(tiff);
+
+    expect(summaries).toHaveLength(1);
+    expect(tiff.getImage).toHaveBeenCalledTimes(2);
   });
 });

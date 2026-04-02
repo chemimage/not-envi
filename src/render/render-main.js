@@ -50,6 +50,7 @@ export function createRenderer(deps) {
     drawOverlays,
     updatePerf,
     renderThumbnail,
+    ensureDatasetPreviewOverview,
     updateHud,
     ensureViewHistogram
   } = deps;
@@ -263,23 +264,24 @@ export function createRenderer(deps) {
   function resolveTiffPreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH) {
     const renderKey = buildViewportRenderKey(ds, panelSlot, viewportW, viewportH);
     const stableRenderKey = getStableRenderKey(ds, panelSlot);
+    const work = typeof ds?.ds?.estimateReadWork === "function"
+      ? ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step)
+      : null;
     if (
       eff >= 1
       || ds?.meta?.sourceFormat !== "tiff"
       || stableRenderKey === renderKey
-      || typeof ds?.ds?.estimateReadWork !== "function"
+      || !work
     ) {
-      return { factor: 1, renderKey, stableRenderKey };
+      return { factor: 1, renderKey, stableRenderKey, work };
     }
     const stagedRefine = getTiffRefineState(ds, panelSlot);
     const stagedLimit = stagedRefine && stagedRefine.renderKey === renderKey
       ? Math.max(1, Math.floor(Number(stagedRefine.maxFactor) || 1))
       : null;
     if (ds.__forceFullRenderKey === renderKey && stagedLimit == null) {
-      return { factor: 1, renderKey, stableRenderKey, stagedLimit };
+      return { factor: 1, renderKey, stableRenderKey, stagedLimit, work };
     }
-
-    const work = ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
     let factor = 1;
     if (work?.sparseRaw && Number(work.spanReads) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
       factor = Math.ceil(Number(work.spanReads) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
@@ -293,7 +295,7 @@ export function createRenderer(deps) {
     }
     factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
     if (stagedLimit != null) factor = Math.min(factor, stagedLimit);
-    return { factor, renderKey, stableRenderKey, stagedLimit };
+    return { factor, renderKey, stableRenderKey, stagedLimit, work };
   }
 
   async function tryCompositeFromPyramidOverview(ds, eff, viewportW, viewportH, sourceBands, channelBands, mode, renderKey, refineFactor) {
@@ -503,14 +505,12 @@ export function createRenderer(deps) {
       const {
         factor: previewFactor,
         renderKey,
-        stagedLimit
+        work
       } = resolveTiffPreviewFactor(ds, 0, eff, geom, panelSlot, viewportW, viewportH);
-      if (
-        previewFactor > 1
-        && stagedLimit == null
-        && typeof ds?.ds?.hasNativeOverviews === "function"
-        && ds.ds.hasNativeOverviews()
-      ) {
+      const allowRawPyramidApprox = !!work?.sparseRaw
+        && !work?.nativeJpeg
+        && previewFactor >= APP_CONFIG.render.tiffRawPyramidApproxMinFactor;
+      if (previewFactor > 1 && allowRawPyramidApprox) {
         const pyramidComposite = await tryCompositeFromPyramidOverview(
           ds,
           eff,
@@ -657,6 +657,7 @@ export function createRenderer(deps) {
       const prevView = ds.view;
       ds.view = panel.view || prevView;
       try {
+        if (typeof ensureDatasetPreviewOverview === "function") ensureDatasetPreviewOverview(ds);
         clampView(panel.slot, ds);
         const eff = ds.view.scale * dpr;
         const colorMode = isThreeBandColorMode(ds);
@@ -709,6 +710,7 @@ export function createRenderer(deps) {
     const settings = getBandSettings(ds, band);
     const requestKey = buildPanelRequestKey(ds, panelSlot, modeKey, previewViewport.w, previewViewport.h);
     setPanelRequestKey(ds, panelSlot, requestKey);
+    if (typeof ensureDatasetPreviewOverview === "function") ensureDatasetPreviewOverview(ds);
 
     const reuse = !!opts.reuseRaster;
     let raster = null;
@@ -852,6 +854,7 @@ export function createRenderer(deps) {
         const prevView = ds.view;
         ds.view = panel.view || prevView;
         try {
+          if (typeof ensureDatasetPreviewOverview === "function") ensureDatasetPreviewOverview(ds);
           clampView(panel.slot, ds);
           const eff = ds.view.scale * dpr;
           const colorMode = isThreeBandColorMode(ds);
@@ -874,6 +877,7 @@ export function createRenderer(deps) {
           const panelSlot = Number(panel.slot) || 1;
           ds.__renderPanelSlot = panelSlot;
           try {
+            if (typeof ensureDatasetPreviewOverview === "function") ensureDatasetPreviewOverview(ds);
             clampView(panel.slot, ds);
             const eff = ds.view.scale * dpr;
             const colorMode = isThreeBandColorMode(ds);

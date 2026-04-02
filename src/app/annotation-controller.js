@@ -14,6 +14,7 @@ export function createAnnotationController(deps) {
     positionAnalysisHistogramPanel,
     updateSelectionHistogramForDataset,
     ensureMarqueeTicker,
+    shouldAnimateMarquee,
     refreshAnalysisHistogram,
     isAnalysisHistogramOpen,
     isDatasetActive
@@ -656,7 +657,10 @@ export function createAnnotationController(deps) {
     const selectionIds = selectionItems
       .map((item) => item.id)
       .filter((id) => Number.isFinite(id));
-    const marqueeOffset = selectionIds.length ? ((performance.now() / 110) % 14) : 0;
+    const animateMarquee = typeof shouldAnimateMarquee === "function"
+      ? shouldAnimateMarquee(ds, annotationState)
+      : true;
+    const marqueeOffset = selectionIds.length && animateMarquee ? ((performance.now() / 110) % 14) : 0;
     return { items, draft, rulerHover, rulerProfileHover, selectionIds, marqueeOffset };
   }
 

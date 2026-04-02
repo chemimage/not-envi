@@ -451,6 +451,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     positionAnalysisHistogramPanel,
     updateSelectionHistogramForDataset,
     ensureMarqueeTicker,
+    shouldAnimateMarquee: () => getVisibleDatasetPanels().length < 2,
     refreshAnalysisHistogram,
     isAnalysisHistogramOpen: () => !!state.analysisHist.open,
     isDatasetActive: (ds) => !!(ds && ds.id === state.activeId)
@@ -933,6 +934,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   });
 
   function drawOverlays(){
+    selectionSync?.ensureMarqueeTicker?.();
     overlayRenderer.clearOverlay();
     const layout = getDisplayPanelLayoutDevice();
     const activeSlot = Number(getActivePanel()?.slot) || 1;
@@ -982,7 +984,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     getSpectrumOpenForDatasetId: (dsId) => !!(spectrum && spectrum.isOpenForDatasetId(dsId)),
     openSpectrumForEffectiveArea,
     refreshAreaSpectrumIfOpen,
-    drawOverlays
+    drawOverlays,
+    shouldAnimateMarquee: () => getVisibleDatasetPanels().length < 2
   });
 
   function ensureMarqueeTicker() {
@@ -1027,6 +1030,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     drawOverlays,
     updatePerf,
     renderThumbnail,
+    ensureDatasetPreviewOverview,
     updateHud,
     ensureViewHistogram,
     getDisplayCompositionMode: () => state.displayCompositionMode
@@ -1059,6 +1063,10 @@ import { pointInPolygon } from "./draw-geometry.js";
 
   function renderThumbnail(){
     thumbnails.renderThumbnail();
+  }
+
+  function ensureDatasetPreviewOverview(ds){
+    thumbnails.ensureDatasetPreviewOverview(ds);
   }
 
   function onThumbClick(ev){

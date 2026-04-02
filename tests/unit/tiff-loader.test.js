@@ -366,6 +366,58 @@ describe("tiff loader", () => {
     }
   });
 
+  test("reads padded edge tiles from raw planar RGB TIFF without overrunning or misaligning rows", async () => {
+    const fakeImage = {
+      getWidth: () => 3,
+      getHeight: () => 2,
+      getSamplesPerPixel: () => 3,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        TileWidth: 4,
+        TileLength: 2,
+        TileOffsets: [0, 8, 16],
+        TileByteCounts: [8, 8, 8],
+        PlanarConfiguration: 2,
+        PhotometricInterpretation: 2
+      }),
+      readRGB: vi.fn(async () => {
+        throw new Error("raw planar padded edge tiles should not call geotiff RGB decode");
+      }),
+      tiles: {}
+    };
+    const close = vi.fn();
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+      getImageCount: async () => 1,
+      getImage: async (index = 0) => {
+        if (index === 0) return fakeImage;
+        throw new Error(`No image at index ${index}`);
+      },
+      littleEndian: true,
+      bigTiff: false,
+      close
+    }));
+
+    try {
+      const file = new File([new Uint8Array([
+        1, 2, 3, 99, 4, 5, 6, 99,
+        11, 12, 13, 99, 14, 15, 16, 99,
+        21, 22, 23, 99, 24, 25, 26, 99
+      ])], "raw-planar-padded-edge.tif", { type: "image/tiff" });
+      const ds = await addDatasetFromMockedTiff(file, { createDataset, ioConcurrency: 2, cacheBytes: 16 * 1024 * 1024 });
+      const composite = await ds.ds.readCompositeWindow(ds.meta, 0, 0, 3, 2, 1);
+
+      expect(Array.from(composite.bands[0])).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(Array.from(composite.bands[1])).toEqual([11, 12, 13, 14, 15, 16]);
+      expect(Array.from(composite.bands[2])).toEqual([21, 22, 23, 24, 25, 26]);
+      expect(fakeImage.readRGB).not.toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("geotiff");
+      vi.resetModules();
+    }
+  });
+
   test("reads progressive TIFF composite windows center-first and stops after cancellation", async () => {
     const fakeImage = {
       getWidth: () => 3,

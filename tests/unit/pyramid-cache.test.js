@@ -405,4 +405,38 @@ describe("pyramid-cache", () => {
     expect(out.partial).toBe(true);
     expect(readCalls).toBeGreaterThan(0);
   });
+
+  test("tryRasterFromPyramid tolerates pyramid disposal during async overview fills", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => {
+        const data = new Float32Array(outW * outH);
+        data.fill(2);
+        controller.disposePyramid(ds.pyramid);
+        ds.pyramid = null;
+        return data;
+      },
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getViewportSize: () => ({ width: 128, height: 128 }),
+      getIOConcurrency: () => 2
+    });
+
+    const ds = {
+      id: 1,
+      meta: { samples: 1024, lines: 1024, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 0.25 },
+      activeBand: null,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+
+    const out = await controller.tryRasterFromPyramid(ds, 0, 0.25, 128, 128);
+    expect(out).toBeNull();
+  });
 });

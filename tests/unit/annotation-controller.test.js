@@ -50,6 +50,7 @@ function makeBase() {
     positionAnalysisHistogramPanel: () => {},
     updateSelectionHistogramForDataset: vi.fn(),
     ensureMarqueeTicker: vi.fn(),
+    shouldAnimateMarquee: () => true,
     refreshAnalysisHistogram: async () => {},
     isAnalysisHistogramOpen: () => false,
     isDatasetActive: (target) => target?.id === state.activeId
@@ -85,6 +86,17 @@ describe("annotation-controller", () => {
 
     ann.setDrawTool("rect");
     expect(ann.getDrawTool()).toBe("none");
+  });
+
+  test("getDrawData disables marquee animation when the current layout should stay static", () => {
+    const { ds, deps } = makeBase();
+    deps.shouldAnimateMarquee = () => false;
+    const ann = createAnnotationController(deps);
+
+    const drawData = ann.getDrawData(ds);
+
+    expect(drawData.selectionIds).toEqual([2]);
+    expect(drawData.marqueeOffset).toBe(0);
   });
 
   test("changing shape mode updates active shape tool between rect and polygon", () => {

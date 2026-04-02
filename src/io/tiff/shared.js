@@ -2,7 +2,6 @@ import {
   readBandWindow as readBandWindowCore,
   readBandWindowBIP as readBandWindowBIPCore
 } from "../../core/raster-io.js";
-import { GeoTIFFImage } from "geotiff";
 import { DATA_TYPES } from "../../core/envi-types.js";
 import { APP_CONFIG, detectDeviceMemoryGiB } from "../../app/config.js";
 import { resolveTiffWorkerPoolSize } from "./scheduler.js";
@@ -161,19 +160,6 @@ function arraysEqualNumeric(a, b) {
   return true;
 }
 
-function buildImageFromParsedIfd(tiff, parsed) {
-  if (parsed?.image) return parsed.image;
-  if (!parsed?.fileDirectory || !tiff?.source) return null;
-  return new GeoTIFFImage(
-    parsed.fileDirectory,
-    parsed.geoKeyDirectory || null,
-    tiff.dataView || null,
-    !!tiff.littleEndian,
-    !!tiff.cache,
-    tiff.source
-  );
-}
-
 function isCompatibleOverviewSummary(base, candidate) {
   if (!base || !candidate) return false;
   if (!(Number(candidate.width) > 0) || !(Number(candidate.height) > 0)) return false;
@@ -196,7 +182,7 @@ export async function loadSubIfdOverviewSummaries(tiff, baseSummary, deps = {}) 
     try {
       const offset = offsets[index];
       const parsed = await tiff.parseFileDirectoryAt(offset);
-      const image = buildImageFromParsedIfd(tiff, parsed);
+      const image = parsed?.image || null;
       if (!image) continue;
       const summary = summarizeImage(image);
       if (!isCompatibleOverviewSummary(baseSummary, summary)) continue;
@@ -425,8 +411,34 @@ function isMissingImageIndexError(err, index) {
   return String(err?.message || err || "").includes(`No image at index ${Number(index)}`);
 }
 
+function isImageEnumerationRangeError(err) {
+  if (!err) return false;
+  if (err instanceof RangeError) return true;
+  const message = String(err?.message || err || "");
+  return message.includes("Offset is outside the bounds of the DataView")
+    || message.includes("Cannot read properties of undefined")
+    || message.includes("Cannot read property");
+}
+
 export async function loadImageSummaries(tiff, deps = {}) {
   const images = [];
+  let imageCount = null;
+  if (typeof tiff?.getImageCount === "function") {
+    try {
+      const count = Number(await tiff.getImageCount());
+      if (Number.isFinite(count) && count > 0) imageCount = Math.max(1, Math.floor(count));
+    } catch (_err) {}
+  }
+  if (imageCount != null) {
+    for (let index = 0; index < imageCount; index += 1) {
+      images.push(summarizeImage(await tiff.getImage(index)));
+      if ((index + 1) % APP_CONFIG.tiff.indexScanYieldEvery === 0) {
+        deps?.setStatus?.(`indexing TIFF… (${index + 1} pages)`, "warn");
+        await yieldToEventLoop();
+      }
+    }
+    return images;
+  }
   for (let index = 0; ; index += 1) {
     try {
       images.push(summarizeImage(await tiff.getImage(index)));
@@ -436,7 +448,7 @@ export async function loadImageSummaries(tiff, deps = {}) {
       }
     } catch (err) {
       if (!images.length) throw err;
-      if (isMissingImageIndexError(err, index)) break;
+      if (isMissingImageIndexError(err, index) || isImageEnumerationRangeError(err)) break;
       throw err;
     }
   }
@@ -445,17 +457,22 @@ export async function loadImageSummaries(tiff, deps = {}) {
 }
 
 export function readDataViewValue(dv, byteOffset, info, littleEndian) {
+  const offset = Math.floor(Number(byteOffset) || 0);
+  const width = Math.max(1, Number(info?.bytes) || 1);
+  if (!dv || offset < 0 || (offset + width) > dv.byteLength) {
+    return Number.NaN;
+  }
   switch (info?.dv) {
-    case "getUint8": return dv.getUint8(byteOffset);
-    case "getInt16": return dv.getInt16(byteOffset, littleEndian);
-    case "getUint16": return dv.getUint16(byteOffset, littleEndian);
-    case "getInt32": return dv.getInt32(byteOffset, littleEndian);
-    case "getUint32": return dv.getUint32(byteOffset, littleEndian);
-    case "getFloat32": return dv.getFloat32(byteOffset, littleEndian);
-    case "getFloat64": return dv.getFloat64(byteOffset, littleEndian);
-    case "getBigInt64": return Number(dv.getBigInt64(byteOffset, littleEndian));
-    case "getBigUint64": return Number(dv.getBigUint64(byteOffset, littleEndian));
-    default: return dv.getFloat32(byteOffset, littleEndian);
+    case "getUint8": return dv.getUint8(offset);
+    case "getInt16": return dv.getInt16(offset, littleEndian);
+    case "getUint16": return dv.getUint16(offset, littleEndian);
+    case "getInt32": return dv.getInt32(offset, littleEndian);
+    case "getUint32": return dv.getUint32(offset, littleEndian);
+    case "getFloat32": return dv.getFloat32(offset, littleEndian);
+    case "getFloat64": return dv.getFloat64(offset, littleEndian);
+    case "getBigInt64": return Number(dv.getBigInt64(offset, littleEndian));
+    case "getBigUint64": return Number(dv.getBigUint64(offset, littleEndian));
+    default: return dv.getFloat32(offset, littleEndian);
   }
 }
 

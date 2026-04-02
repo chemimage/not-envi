@@ -421,6 +421,7 @@ export function createDatasetRuntime(deps) {
       drawings: [],
       selectedAreaId: null,
       thumb: { ready: false, _t: 0, scale: 1, x0: 0, y0: 0, w: 0, h: 0 },
+      previewOverview: { ready: false, scale: 1, x0: 0, y0: 0, w: 0, h: 0, base: null, baseW: 0, baseH: 0 },
       treeExpanded: true,
       displayMode: meta.defaultDisplayMode || "gray",
       displayAdjustColor: meta.defaultAdjustColor || "red",
@@ -462,6 +463,7 @@ export function createDatasetRuntime(deps) {
     }
     ds.lastRaster = null;
     ds.lastCompositeRaster = null;
+    ds.previewOverview = { ready: false, scale: 1, x0: 0, y0: 0, w: 0, h: 0, base: null, baseW: 0, baseH: 0 };
     if (ds.lastRastersByPanel && typeof ds.lastRastersByPanel.clear === "function") ds.lastRastersByPanel.clear();
     if (ds.lastCompositeRastersByPanel && typeof ds.lastCompositeRastersByPanel.clear === "function") ds.lastCompositeRastersByPanel.clear();
     ds.lastScreenFrame = null;
