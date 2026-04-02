@@ -663,9 +663,15 @@ export function createAnnotationController(deps) {
     if (!ds) return null;
     const annotationState = resolveAnnotationState(ds, explicitState);
     const items = Array.isArray(annotationState.drawings) ? annotationState.drawings : [];
-    const draft = (state.draw.draft && state.draw.draft.dsId === ds.id) ? state.draw.draft : null;
-    const rulerHover = (state.draw.rulerHover && state.draw.rulerHover.dsId === ds.id) ? state.draw.rulerHover : null;
-    const rulerProfileHover = (state.draw.rulerProfileHover && state.draw.rulerProfileHover.dsId === ds.id) ? state.draw.rulerProfileHover : null;
+    const draft = (explicitState && Object.prototype.hasOwnProperty.call(explicitState, "draft"))
+      ? explicitState.draft
+      : ((state.draw.draft && state.draw.draft.dsId === ds.id) ? state.draw.draft : null);
+    const rulerHover = (explicitState && Object.prototype.hasOwnProperty.call(explicitState, "rulerHover"))
+      ? explicitState.rulerHover
+      : ((state.draw.rulerHover && state.draw.rulerHover.dsId === ds.id) ? state.draw.rulerHover : null);
+    const rulerProfileHover = (explicitState && Object.prototype.hasOwnProperty.call(explicitState, "rulerProfileHover"))
+      ? explicitState.rulerProfileHover
+      : ((state.draw.rulerProfileHover && state.draw.rulerProfileHover.dsId === ds.id) ? state.draw.rulerProfileHover : null);
     const selectionItems = getHistogramSelectionItems(ds, annotationState);
     const selectionIds = selectionItems
       .map((item) => item.id)

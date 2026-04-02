@@ -321,12 +321,15 @@ export async function withPanelView(ds, panel, fn) {
   }
 }
 
-export function clearBaseCanvases(els) {
+export function clearBaseCanvases(els, options = {}) {
   const gpuCtx = (els.gpuCanvas && typeof els.gpuCanvas.getContext === "function")
     ? els.gpuCanvas.getContext("2d", { alpha: false })
     : null;
   const cpuCtx = els.cpuCanvas.getContext("2d", { alpha: false });
-  const overlayCtx = els.overlayCanvas.getContext("2d", { alpha: true });
+  const clearOverlay = options?.clearOverlay === true;
+  const overlayCtx = clearOverlay
+    ? els.overlayCanvas.getContext("2d", { alpha: true })
+    : null;
   if (els.gpuCanvas && els.gpuCanvas.style) els.gpuCanvas.style.display = "none";
   if (els.cpuCanvas && els.cpuCanvas.style) els.cpuCanvas.style.display = "block";
   if (gpuCtx) {
@@ -337,6 +340,8 @@ export function clearBaseCanvases(els) {
   cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
   cpuCtx.fillStyle = "#000";
   cpuCtx.fillRect(0, 0, els.cpuCanvas.width, els.cpuCanvas.height);
-  overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
-  overlayCtx.clearRect(0, 0, els.overlayCanvas.width, els.overlayCanvas.height);
+  if (overlayCtx) {
+    overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+    overlayCtx.clearRect(0, 0, els.overlayCanvas.width, els.overlayCanvas.height);
+  }
 }

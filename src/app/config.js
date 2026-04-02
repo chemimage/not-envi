@@ -70,39 +70,39 @@ export const APP_CONFIG = Object.freeze({
   io: Object.freeze({
     parallelEnabledByDefault: true,
     defaultChunkSizeBytes: 1 << 20,
-    defaultDatasetCacheBytes: 128 * MIB,
-    defaultConcurrency: 2,
+    defaultDatasetCacheBytes: 256 * MIB,
+    defaultConcurrency: 3,
     minConcurrency: 1,
-    maxConcurrency: 8,
-    hardwareCoreFraction: 0.5,
+    maxConcurrency: 12,
+    hardwareCoreFraction: 0.75,
     hardwareParallelDivisor: 2,
     hardwareParallelBias: 1,
-    hardwareParallelMin: 2
+    hardwareParallelMin: 3
   }),
   scheduler: Object.freeze({
-    coreFraction: 0.5,
-    minConcurrency: 2,
-    maxConcurrency: 8,
+    coreFraction: 0.75,
+    minConcurrency: 3,
+    maxConcurrency: 12,
     fairShareMinPerOwner: 1
   }),
   dataSource: Object.freeze({
     minChunkSizeBytes: 64 * KIB,
     defaultChunkSizeBytes: 1 << 20,
-    defaultMaxBytes: 256 * MIB
+    defaultMaxBytes: 512 * MIB
   }),
   cache: Object.freeze({
-    maxSystemMemoryFraction: 0.50,
+    maxSystemMemoryFraction: 0.60,
     minBytes: 256 * MIB,
-    maxBytes: 3 * GIB,
-    minChunkBudgetChunks: 8,
+    maxBytes: 4 * GIB,
+    minChunkBudgetChunks: 12,
     minPyramidBytes: 64 * MIB,
     hiddenMinChunkBudgetChunks: 2,
-    hiddenMinPyramidBytes: 16 * MIB,
-    activeDatasetWeight: 1.5,
+    hiddenMinPyramidBytes: 8 * MIB,
+    activeDatasetWeight: 2.0,
     visibleDatasetWeight: 1.0,
-    hiddenDatasetWeight: 0.2,
-    fracChunk: 0.60,
-    fracPyramid: 0.40
+    hiddenDatasetWeight: 0.1,
+    fracChunk: 0.70,
+    fracPyramid: 0.30
   }),
   pyramid: Object.freeze({
     tileSize: 128,

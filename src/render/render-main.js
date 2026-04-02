@@ -642,7 +642,7 @@ export function createRenderer(deps) {
     const visible = listVisiblePanels();
     if (!visible.length) {
       resizeCanvases();
-      clearBaseCanvases(els);
+      clearBaseCanvases(els, { clearOverlay: true });
       return false;
     }
 
@@ -1131,7 +1131,7 @@ export function createRenderer(deps) {
     const visible = listVisiblePanels();
     if (!visible.length) {
       resizeCanvases();
-      clearBaseCanvases(els);
+      clearBaseCanvases(els, { clearOverlay: true });
       return;
     }
 
@@ -1140,7 +1140,7 @@ export function createRenderer(deps) {
     const activeDs = activeEntry?.dataset || getActive();
     if (!activeDs || resolvePanelBand(activeEntry?.panel || null, activeDs) == null) {
       resizeCanvases();
-      clearBaseCanvases(els);
+      clearBaseCanvases(els, { clearOverlay: true });
       return;
     }
 

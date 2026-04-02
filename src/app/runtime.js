@@ -52,7 +52,7 @@ import { createSpectrumAreaController } from "./spectrum-area-controller.js";
 import { createAreaReductionWorkerClient } from "./area-reduction-worker-client.js";
 import { createSelectionSyncController } from "./selection-sync-controller.js";
 import { getThreeBandAdjustColor, isThreeBandColorMode } from "./three-band-display.js";
-import { annotationsShareImageSpace, remapAnnotationState } from "./linked-annotations.js";
+import { annotationsShareImageSpace, remapAnnotationItem, remapAnnotationState } from "./linked-annotations.js";
 import { applyNormalizedViewBox, captureNormalizedViewBox, withNormalizedCenter } from "./linked-view.js";
 import {
   resolveSelectionBoundsForSpectrum,
@@ -728,6 +728,40 @@ import { pointInPolygon } from "./draw-geometry.js";
     }
   }
 
+  function resolveLinkedDraftForPanel(sourcePanel, sourceDs, targetPanel, targetDs) {
+    const draft = state.draw?.draft || null;
+    if (!draft || !sourcePanel?.datasetId || !sourceDs?.meta || !targetPanel?.datasetId || !targetDs?.meta) return null;
+    if (String(draft.dsId || "") !== String(sourceDs.id || "")) return null;
+    if (Number(sourcePanel.linkGroupId) !== Number(targetPanel.linkGroupId)) return null;
+    if (Number(sourcePanel.slot) === Number(targetPanel.slot)) return draft;
+    const remapped = annotationsShareImageSpace(sourceDs.meta, targetDs.meta)
+      ? {
+        ...draft,
+        points: Array.isArray(draft?.points)
+          ? draft.points.map((point) => ({
+            x: Number(point?.x) || 0,
+            y: Number(point?.y) || 0
+          }))
+          : []
+      }
+      : remapAnnotationItem(draft, sourceDs.meta, targetDs.meta);
+    return {
+      ...remapped,
+      dsId: targetDs.id
+    };
+  }
+
+  function resolveOverlayAnnotationState(sourcePanel, sourceDs, targetPanel, targetDs) {
+    const base = targetPanel?.annotations || { drawings: [], selectedAreaId: null };
+    const draft = resolveLinkedDraftForPanel(sourcePanel, sourceDs, targetPanel, targetDs);
+    if (!draft) return base;
+    return {
+      drawings: Array.isArray(base.drawings) ? base.drawings : [],
+      selectedAreaId: Number.isFinite(Number(base.selectedAreaId)) ? Number(base.selectedAreaId) : null,
+      draft
+    };
+  }
+
   function syncLinkedPanelsFromSource(entries, sourceEntry) {
     if (!sourceEntry?.panel || !sourceEntry?.dataset) return;
     for (const entry of entries) {
@@ -966,11 +1000,14 @@ import { pointInPolygon } from "./draw-geometry.js";
 
   function drawOverlays(){
     selectionSync?.ensureMarqueeTicker?.();
+    syncLinkedAnnotationsFromActivePanel();
     overlayRenderer.clearOverlay();
     const layout = getDisplayPanelLayoutDevice();
     const activeSlot = Number(getActivePanel()?.slot) || 1;
     const visibleEntries = getVisibleDatasetPanels();
     const overlayMode = state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY && visibleEntries.length > 1;
+    const sourcePanel = getActiveDisplayPanel(state);
+    const sourceDs = getPanelDataset(sourcePanel);
     for (let index = 0; index < visibleEntries.length; index += 1) {
       const entry = visibleEntries[index];
       const { panel, dataset: ds } = entry;
@@ -980,7 +1017,7 @@ import { pointInPolygon } from "./draw-geometry.js";
       ds.view = panel.view || prevView;
       try {
         overlayRenderer.drawOverlaysForPanel(ds, viewport, {
-          annotations: panel.annotations || null,
+          annotations: resolveOverlayAnnotationState(sourcePanel, sourceDs, panel, ds),
           activeBand: resolveDisplayPanelBand(panel, ds),
           raster: ds.lastRastersByPanel && typeof ds.lastRastersByPanel.get === "function"
             ? (ds.lastRastersByPanel.get(Number(panel.slot)) || null)
