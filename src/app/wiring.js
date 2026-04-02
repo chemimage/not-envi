@@ -95,6 +95,8 @@ export function wireApp(deps) {
     setGpuBadgeAvailable
   } = deps;
 
+  const resolveCurrentDisplayBand = resolveDisplayControlBand;
+
   function runExportWithErrorHandling() {
     return runExportFromDialog().catch((err) => {
       console.error(err);

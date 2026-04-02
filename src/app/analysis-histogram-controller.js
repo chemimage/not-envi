@@ -8,6 +8,7 @@ export function createAnalysisHistogramController(deps) {
     fmtNoGroup,
     formatNumber,
     getActive,
+    getDisplayBand,
     getHistogramSelectionItems,
     histogramSelectionKeyFromItems,
     updateSelectionHistogram,
@@ -18,6 +19,19 @@ export function createAnalysisHistogramController(deps) {
     listHistogramSelectionItems,
     setStatus
   } = deps;
+
+  function resolveHistogramBand(ds) {
+    if (!ds) return null;
+    return (typeof getDisplayBand === "function") ? getDisplayBand(ds) : ds.activeBand;
+  }
+
+  function resolveViewRaster(ds, band) {
+    if (!ds || band == null) return null;
+    const compositeRaster = ds.lastCompositeRaster?.rasterByBand?.get?.(band) || null;
+    if (compositeRaster?.dataF32?.length) return compositeRaster;
+    if (ds.lastRaster?.band === band && ds.lastRaster?.dataF32?.length) return ds.lastRaster;
+    return null;
+  }
 
   function getCanvasPlotRect(canvasWidth, canvasHeight) {
     return {
@@ -168,21 +182,23 @@ export function createAnalysisHistogramController(deps) {
   }
 
   function resolveStatsForPanel(ds) {
-    if (!ds || ds.activeBand == null) return null;
+    const band = resolveHistogramBand(ds);
+    if (!ds || band == null) return null;
     const selections = getHistogramSelectionItems(ds);
     if (selections.length) {
       const selectionKey = histogramSelectionKeyFromItems(selections);
       const selectionStats = ds.bandStatsSelection;
-      if (selectionStats && selectionStats.band === ds.activeBand && selectionStats.selectionKey === selectionKey && selectionStats.stats?.bins) {
+      if (selectionStats && selectionStats.band === band && selectionStats.selectionKey === selectionKey && selectionStats.stats?.bins) {
         return selectionStats.stats;
       }
     }
-    const wholeStats = ds.bandStatsWhole.get(ds.activeBand) || null;
+    const wholeStats = ds.bandStatsWhole.get(band) || null;
     if (wholeStats && wholeStats.bins && wholeStats.count > 0) return wholeStats;
-    if (ds.lastRaster && ds.lastRaster.band === ds.activeBand && ds.lastRaster.dataF32?.length) {
+    const raster = resolveViewRaster(ds, band);
+    if (raster) {
       return {
-        ...computeHistogram(ds.lastRaster.dataF32, 256),
-        sampleStep: Number.isFinite(ds.lastRaster.step) ? ds.lastRaster.step : 1,
+        ...computeHistogram(raster.dataF32, 256),
+        sampleStep: Number.isFinite(raster.step) ? raster.step : 1,
         trueRawSamples: false,
         samplingMode: "view-raster"
       };
@@ -191,15 +207,16 @@ export function createAnalysisHistogramController(deps) {
   }
 
   async function ensureStatsForPanel(ds) {
-    if (!ds || ds.activeBand == null) return null;
+    const band = resolveHistogramBand(ds);
+    if (!ds || band == null) return null;
     const selections = getHistogramSelectionItems(ds);
     if (selections.length) {
       const selectionKey = histogramSelectionKeyFromItems(selections);
       const selStats = ds.bandStatsSelection;
-      const ready = !!(selStats && selStats.band === ds.activeBand && selStats.selectionKey === selectionKey && selStats.stats);
+      const ready = !!(selStats && selStats.band === band && selStats.selectionKey === selectionKey && selStats.stats);
       if (!ready) await updateSelectionHistogram(ds, selections);
-    } else if (!ds.bandStatsWhole.has(ds.activeBand)) {
-      await buildBandStatsWhole(ds, ds.activeBand);
+    } else if (!ds.bandStatsWhole.has(band)) {
+      await buildBandStatsWhole(ds, band);
     }
     return resolveStatsForPanel(ds);
   }

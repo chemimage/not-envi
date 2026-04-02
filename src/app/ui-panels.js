@@ -242,6 +242,7 @@ export function createUIPanels(deps) {
 
     syncRangeInputsFromSettings(ds, { force });
     drawHistogram(ds);
+    if (!resolveStats(ds)) requestWholeStatsIfNeeded(ds, b);
   }
 
   function rebuildBandTree({ preserveScroll = false } = {}) {

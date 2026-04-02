@@ -626,6 +626,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     fmtNoGroup,
     formatNumber,
     getActive,
+    getDisplayBand: resolveDisplayControlBand,
     getHistogramSelectionItems,
     histogramSelectionKeyFromItems,
     updateSelectionHistogram,

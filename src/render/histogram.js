@@ -36,6 +36,22 @@ export function createHistogramController(deps) {
     return (typeof getDisplayBand === "function") ? getDisplayBand(ds) : ds.activeBand;
   }
 
+  function getWholeStatsPendingMap(ds) {
+    if (!ds) return null;
+    if (!ds.__wholeStatsPending || typeof ds.__wholeStatsPending.get !== "function") {
+      ds.__wholeStatsPending = new Map();
+    }
+    return ds.__wholeStatsPending;
+  }
+
+  function resolveHistogramViewRaster(ds, band) {
+    if (!ds || band == null) return null;
+    const compositeRaster = ds.lastCompositeRaster?.rasterByBand?.get?.(band) || null;
+    if (compositeRaster?.dataF32?.length) return compositeRaster;
+    if (ds.lastRaster?.band === band && ds.lastRaster?.dataF32?.length) return ds.lastRaster;
+    return null;
+  }
+
   function decorateHistogramStats(stats, metadata = {}) {
     if (!stats) return null;
     return {
@@ -226,6 +242,12 @@ export function createHistogramController(deps) {
   async function buildBandStatsWhole(ds, band) {
     if (!ds || band == null) return;
     if (ds.bandStatsWhole.has(band)) return;
+    const pending = getWholeStatsPendingMap(ds);
+    const existing = pending?.get(band);
+    if (existing) {
+      await existing;
+      return;
+    }
 
     const target = 512;
     const stepX = Math.ceil(ds.meta.samples / target);
@@ -233,45 +255,51 @@ export function createHistogramController(deps) {
     const step = Math.max(1, Math.max(stepX, stepY));
     const outW = Math.min(target, Math.ceil(ds.meta.samples / step));
     const outH = Math.min(target, Math.ceil(ds.meta.lines / step));
-
-    try {
-      setStatus("histogram…", "warn");
-      const window = await readWindowF32(ds, band, 0, 0, outW, outH, step);
+    const task = (async () => {
       try {
-        const stats = decorateHistogramStats(
-          computeHistogram(window.data, 256),
-          {
-            band,
-            sampleStep: step,
-            trueRawSamples: step === 1,
-            samplingMode: step === 1 ? "whole-raw" : "whole-subsampled"
-          }
-        );
-        ds.bandStatsWhole.set(band, stats);
+        setStatus("histogram…", "warn");
+        const window = await readWindowF32(ds, band, 0, 0, outW, outH, step);
+        try {
+          const stats = decorateHistogramStats(
+            computeHistogram(window.data, 256),
+            {
+              band,
+              sampleStep: step,
+              trueRawSamples: step === 1,
+              samplingMode: step === 1 ? "whole-raw" : "whole-subsampled"
+            }
+          );
+          ds.bandStatsWhole.set(band, stats);
 
-        if (ds.id === state.activeId && ds.activeBand === band && state.histMode === "whole") {
-          syncRangeInputsFromSettings(ds, { force: true });
-          drawHistogram(ds);
+          if (ds.id === state.activeId && resolveDisplayBand(ds) === band && state.histMode === "whole") {
+            syncRangeInputsFromSettings(ds, { force: true });
+            drawHistogram(ds);
+          }
+        } finally {
+          window.release();
         }
+        setStatus("ready", "ok");
+      } catch (e) {
+        console.warn("Histogram build failed", e);
+        setStatus("ready", "ok");
       } finally {
-        window.release();
+        pending?.delete(band);
       }
-      setStatus("ready", "ok");
-    } catch (e) {
-      console.warn("Histogram build failed", e);
-      setStatus("ready", "ok");
-    }
+    })();
+    pending?.set(band, task);
+    await task;
   }
 
   function ensureViewHistogram(ds) {
-    if (!ds || !ds.lastRaster) return;
-    const b = ds.activeBand;
-    if (b == null || ds.lastRaster.band !== b) return;
+    if (!ds) return;
+    const b = resolveDisplayBand(ds);
+    const raster = resolveHistogramViewRaster(ds, b);
+    if (!raster) return;
     const stats = decorateHistogramStats(
-      computeHistogram(ds.lastRaster.dataF32, 256),
+      computeHistogram(raster.dataF32, 256),
       {
         band: b,
-        sampleStep: Number.isFinite(ds.lastRaster.step) ? ds.lastRaster.step : 1,
+        sampleStep: Number.isFinite(raster.step) ? raster.step : 1,
         trueRawSamples: false,
         samplingMode: "view-raster"
       }
@@ -283,7 +311,7 @@ export function createHistogramController(deps) {
 
   async function updateSelectionHistogram(ds, selections) {
     if (!ds) return;
-    const band = ds.activeBand;
+    const band = resolveDisplayBand(ds);
     const list = Array.isArray(selections) ? selections.filter((item) => isHistogramSelection(item)) : [];
     const selectionKey = selectionKeyFromItems(list);
     const token = (ds.__selectionHistToken || 0) + 1;
