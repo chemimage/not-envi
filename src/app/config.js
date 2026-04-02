@@ -109,7 +109,13 @@ export const APP_CONFIG = Object.freeze({
     pinnedOverviewLevels: 3,
     immediateOverviewMaxTiles: 24,
     immediateCoarseMaxTiles: 64,
-    immediateVisibleMaxTiles: 32
+    immediateVisibleMaxTiles: 32,
+    backgroundQueueSoftMax: 48,
+    backgroundPrefetchPlanLimit: 48,
+    directionalIntentMaxAgeMs: 220,
+    directionalIntentMinImageDelta: 8,
+    directionalBiasFactor: 7,
+    directionalLateralPenalty: 1.5
   }),
   scratch: Object.freeze({
     defaultMaxRetainedBuffers: 2,
@@ -144,9 +150,14 @@ export const APP_CONFIG = Object.freeze({
     liteProfileMaxHardwareCores: 9
   }),
   render: Object.freeze({
+    previewMaxReadBytes: 24 * MIB,
     tiffPreviewMaxSparseSpans: 6_000,
     tiffPreviewMaxScaledDecodePixels: 120_000,
     tiffPreviewMaxFactor: 16
+  }),
+  histogram: Object.freeze({
+    autoWholeStatsMaxPixels: 20_000_000,
+    autoWholeStatsMaxReadBytes: 24 * MIB
   }),
   tiff: Object.freeze({
     // `standard` is sized around a current 15-inch MacBook Air base-class machine:

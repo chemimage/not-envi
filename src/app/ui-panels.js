@@ -16,6 +16,7 @@ import {
   isThreeBandColorMode,
   isThreeBandDataset
 } from "./three-band-display.js";
+import { APP_CONFIG } from "./config.js";
 
 export function createUIPanels(deps) {
   const {
@@ -84,11 +85,27 @@ export function createUIPanels(deps) {
     return resolveThreeBandAdjustBand(ds);
   }
 
+  function estimateWholeStatsWork(ds) {
+    if (!ds?.meta || typeof ds?.ds?.estimateReadWork !== "function") return null;
+    const band = resolveDisplayControlBand(ds);
+    if (band == null) return null;
+    const target = 512;
+    const stepX = Math.ceil(Number(ds.meta.samples || 0) / target);
+    const stepY = Math.ceil(Number(ds.meta.lines || 0) / target);
+    const step = Math.max(1, Math.max(stepX, stepY));
+    const outW = Math.min(target, Math.ceil(Number(ds.meta.samples || 0) / step));
+    const outH = Math.min(target, Math.ceil(Number(ds.meta.lines || 0) / step));
+    return ds.ds.estimateReadWork(ds.meta, band, 0, 0, outW, outH, step);
+  }
+
   function shouldAutoWholeStats(ds) {
     if (!ds?.meta) return true;
-    if (ds.meta.sourceFormat !== "tiff") return true;
+    const estimated = estimateWholeStatsWork(ds);
+    if (Number(estimated?.estimatedBytes) > Number(APP_CONFIG.histogram.autoWholeStatsMaxReadBytes || 0)) {
+      return false;
+    }
     const pixels = Number(ds.meta.samples || 0) * Number(ds.meta.lines || 0);
-    return pixels <= 20_000_000;
+    return pixels <= Number(APP_CONFIG.histogram.autoWholeStatsMaxPixels || 0);
   }
 
   function requestWholeStatsIfNeeded(ds, band, opts = {}) {

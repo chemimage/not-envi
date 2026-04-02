@@ -123,7 +123,8 @@ export function normalizeMeta(raw) {
     wlUnits,
     desc,
     mapInfo,
-    scale
+    scale,
+    sourceFormat: "envi"
   };
 }
 

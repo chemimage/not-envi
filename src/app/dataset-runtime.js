@@ -426,6 +426,7 @@ export function createDatasetRuntime(deps) {
       displayMode: meta.defaultDisplayMode || "gray",
       displayAdjustColor: meta.defaultAdjustColor || "red",
       pyramid: null,
+      prefetchMotion: null,
       lastRaster: null,
       lastCompositeRaster: null,
       lastRastersByPanel: new Map(),

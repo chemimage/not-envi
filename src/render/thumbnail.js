@@ -217,7 +217,7 @@ export function createThumbnailController(deps) {
   }
 
   async function renderCompositeWindowToImageData(ds, x0, y0, outW, outH, step) {
-    if (ds?.meta?.sourceFormat === "tiff" && typeof ds?.ds?.supportsCompositeWindow === "function" && ds.ds.supportsCompositeWindow()) {
+    if (typeof ds?.ds?.supportsCompositeWindow === "function" && ds.ds.supportsCompositeWindow() && typeof ds?.ds?.readCompositeWindow === "function") {
       const composite = await ds.ds.readCompositeWindow(ds.meta, x0, y0, outW, outH, step);
       if (composite?.bands?.length === 3) {
         const channelBands = resolveThreeBandChannelOrder(ds.displayMode || "rgb");

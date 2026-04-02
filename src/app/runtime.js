@@ -727,19 +727,38 @@ import { pointInPolygon } from "./draw-geometry.js";
     }
   }
 
+  function setPrefetchMotionForEntries(entries, dx = 0, dy = 0) {
+    const stamp = now();
+    for (const entry of entries) {
+      if (!entry?.dataset) continue;
+      entry.dataset.prefetchMotion = {
+        dx: Number(dx) || 0,
+        dy: Number(dy) || 0,
+        at: stamp
+      };
+    }
+  }
+
   function panLinkedPanelsByPixels(dx, dy, slot = null) {
     const entries = listLinkedViewEntries(slot);
     if (!entries.length) return false;
     const sourceSlot = slot == null ? Number(getActiveDisplayPanel(state)?.slot) || 1 : Number(slot);
     const sourceEntry = entries.find((entry) => Number(entry.panel?.slot) === sourceSlot) || entries[0];
     if (!sourceEntry) return false;
+    let deltaX = 0;
+    let deltaY = 0;
     withPanelDatasetView(sourceEntry.panel, sourceEntry.dataset, () => {
       const scale = Math.max(1e-9, Number(sourceEntry.panel.view?.scale) || 1);
+      const prevX = Number(sourceEntry.panel.view?.x) || 0;
+      const prevY = Number(sourceEntry.panel.view?.y) || 0;
       sourceEntry.panel.view.x -= (Number(dx) || 0) / scale;
       sourceEntry.panel.view.y -= (Number(dy) || 0) / scale;
       clampView(sourceEntry.panel.slot, sourceEntry.dataset);
+      deltaX = (Number(sourceEntry.panel.view?.x) || 0) - prevX;
+      deltaY = (Number(sourceEntry.panel.view?.y) || 0) - prevY;
     });
     syncLinkedPanelsFromSource(entries, sourceEntry);
+    setPrefetchMotionForEntries(entries, deltaX, deltaY);
     return true;
   }
 
@@ -761,6 +780,7 @@ import { pointInPolygon } from "./draw-geometry.js";
       activeScale = sourceEntry.panel.view.scale;
     });
     syncLinkedPanelsFromSource(entries, sourceEntry);
+    setPrefetchMotionForEntries(entries, 0, 0);
     return activeScale;
   }
 
@@ -785,6 +805,7 @@ import { pointInPolygon } from "./draw-geometry.js";
       clampView(sourceEntry.panel.slot, sourceEntry.dataset);
     });
     syncLinkedPanelsFromSource(entries, sourceEntry);
+    setPrefetchMotionForEntries(entries, 0, 0);
     return true;
   }
 

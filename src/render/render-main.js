@@ -262,16 +262,18 @@ export function createRenderer(deps) {
     };
   }
 
-  function resolveTiffPreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH, options = null) {
+  function resolveAdaptivePreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH, options = null) {
     const renderKey = buildViewportRenderKey(ds, panelSlot, viewportW, viewportH);
     const stableRenderKey = getStableRenderKey(ds, panelSlot);
-    const work = typeof ds?.ds?.estimateReadWork === "function"
-      ? ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step)
-      : null;
+    const work = options?.work || (
+      typeof ds?.ds?.estimateReadWork === "function"
+        ? ds.ds.estimateReadWork(ds.meta, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step)
+        : null
+    );
     const sparseRawMultiplier = Math.max(1, Math.floor(Number(options?.sparseRawMultiplier) || 1));
+    const readMultiplier = Math.max(1, Math.floor(Number(options?.readMultiplier) || 1));
     if (
       eff >= 1
-      || ds?.meta?.sourceFormat !== "tiff"
       || stableRenderKey === renderKey
       || !work
     ) {
@@ -285,15 +287,32 @@ export function createRenderer(deps) {
       return { factor: 1, renderKey, stableRenderKey, stagedLimit, work };
     }
     let factor = 1;
+    if (Number(work?.previewFactor) > 1) {
+      factor = Math.max(factor, Math.ceil(Number(work.previewFactor) || 1));
+    }
     if (work?.sparseRaw && (Number(work.spanReads) * sparseRawMultiplier) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
-      factor = Math.ceil((Number(work.spanReads) * sparseRawMultiplier) / APP_CONFIG.render.tiffPreviewMaxSparseSpans);
-    } else if (
+      factor = Math.max(
+        factor,
+        Math.ceil((Number(work.spanReads) * sparseRawMultiplier) / APP_CONFIG.render.tiffPreviewMaxSparseSpans)
+      );
+    }
+    if (
       work?.nativeJpeg
       && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)
     ) {
-      factor = Math.ceil(Math.sqrt(
+      factor = Math.max(factor, Math.ceil(Math.sqrt(
         Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
-      ));
+      )));
+    }
+    if (
+      Number(APP_CONFIG.render.previewMaxReadBytes) > 0
+      && Number(work?.estimatedBytes) > 0
+      && (Number(work.estimatedBytes) * readMultiplier) > Number(APP_CONFIG.render.previewMaxReadBytes)
+    ) {
+      factor = Math.max(
+        factor,
+        Math.ceil((Number(work.estimatedBytes) * readMultiplier) / Number(APP_CONFIG.render.previewMaxReadBytes))
+      );
     }
     factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
     if (stagedLimit != null) factor = Math.min(factor, stagedLimit);
@@ -314,7 +333,7 @@ export function createRenderer(deps) {
       return false;
     }
 
-    if (ds?.meta?.sourceFormat === "tiff" && currentRenderKey && currentFactor > 1) {
+    if (currentRenderKey && currentFactor > 1) {
       const nextFactor = Math.max(1, Math.ceil(currentFactor / 2));
       setTiffRefineState(ds, panelSlot, {
         renderKey: currentRenderKey,
@@ -333,7 +352,7 @@ export function createRenderer(deps) {
     let approximate = false;
     const panelSlot = Number(ds.__renderPanelSlot) || 1;
     let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
-    const { factor: previewFactor, renderKey } = resolveTiffPreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH);
+    const { factor: previewFactor, renderKey } = resolveAdaptivePreviewFactor(ds, band, eff, geom, panelSlot, viewportW, viewportH);
     if (previewFactor > 1) {
       geom = coarsenSamplingGeometry(geom, previewFactor);
       approximate = true;
@@ -482,19 +501,27 @@ export function createRenderer(deps) {
     const channelBands = resolveThreeBandChannelOrder(mode);
     let rasters = null;
     if (
-      ds?.meta?.sourceFormat === "tiff"
-      && typeof ds?.ds?.readCompositeWindow === "function"
+      typeof ds?.ds?.readCompositeWindow === "function"
       && typeof ds?.ds?.supportsCompositeWindow === "function"
       && ds.ds.supportsCompositeWindow()
     ) {
       const panelSlot = Number(ds.__renderPanelSlot) || 1;
       let geom = resolveRasterSampling(ds, viewportW, viewportH, eff);
       let approximate = false;
+      const compositeWork = typeof ds?.ds?.estimateCompositeReadWork === "function"
+        ? ds.ds.estimateCompositeReadWork(ds.meta, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step, sourceBands)
+        : (
+          typeof ds?.ds?.estimateReadWork === "function"
+            ? ds.ds.estimateReadWork(ds.meta, 0, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step)
+            : null
+        );
       const {
         factor: previewFactor,
         renderKey
-      } = resolveTiffPreviewFactor(ds, 0, eff, geom, panelSlot, viewportW, viewportH, {
-        sparseRawMultiplier: sourceBands.length
+      } = resolveAdaptivePreviewFactor(ds, 0, eff, geom, panelSlot, viewportW, viewportH, {
+        work: compositeWork,
+        sparseRawMultiplier: sourceBands.length,
+        readMultiplier: (typeof ds?.ds?.estimateCompositeReadWork === "function") ? 1 : sourceBands.length
       });
       if (previewFactor > 1) {
         geom = coarsenSamplingGeometry(geom, previewFactor);

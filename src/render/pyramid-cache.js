@@ -103,6 +103,29 @@ function isPinnedOverviewLevel(pyr, level) {
   return getPinnedOverviewLevels(pyr).includes(Math.max(0, Math.floor(Number(level) || 0)));
 }
 
+function resolveDirectionalIntent(ds) {
+  const motion = ds?.prefetchMotion || null;
+  if (!motion) return null;
+  const age = perfNow() - (Number(motion.at) || 0);
+  if (age > Number(APP_CONFIG.pyramid.directionalIntentMaxAgeMs || 0)) return null;
+  const dx = Number(motion.dx) || 0;
+  const dy = Number(motion.dy) || 0;
+  const magnitude = Math.hypot(dx, dy);
+  if (magnitude < Number(APP_CONFIG.pyramid.directionalIntentMinImageDelta || 0)) return null;
+  return {
+    dx: dx / magnitude,
+    dy: dy / magnitude
+  };
+}
+
+function resolveDirectionalBucket(ds) {
+  const intent = resolveDirectionalIntent(ds);
+  if (!intent) return "0:0";
+  const bucketX = Math.abs(intent.dx) < 0.35 ? 0 : (intent.dx > 0 ? 1 : -1);
+  const bucketY = Math.abs(intent.dy) < 0.35 ? 0 : (intent.dy > 0 ? 1 : -1);
+  return `${bucketX}:${bucketY}`;
+}
+
 function collectRingTasks(bounds, band, level, radius) {
   const tasks = [];
   const tilesX = Math.max(1, Number(bounds?.info?.tilesX) || 1);
@@ -132,7 +155,11 @@ function collectRingTasks(bounds, band, level, radius) {
         ty,
         key: bandTileKey(band, level, tx, ty),
         radius: ring,
-        centerDistance: Math.abs(tx - centerX) + Math.abs(ty - centerY)
+        centerDistance: Math.abs(tx - centerX) + Math.abs(ty - centerY),
+        tileCenterX: tx + 0.5,
+        tileCenterY: ty + 0.5,
+        viewportCenterX: centerX + 0.5,
+        viewportCenterY: centerY + 0.5
       });
     }
   }
@@ -149,6 +176,7 @@ export function buildPyramidPrefetchPlan(ds, focusBand, minLevel, eff, viewportW
   const width = Math.max(1, Number(viewportW) || 1);
   const height = Math.max(1, Number(viewportH) || 1);
   const spectralBands = buildBandProximityOrder(band, bandCount, Math.min(maxSpectralDistance, bandCount - 1));
+  const intent = resolveDirectionalIntent(ds);
   const levelInfos = [];
   for (let level = startLevel; level <= pyr.maxLevel; level += 1) {
     const bounds = viewTileBounds(ds, pyr, level, eff, width, height);
@@ -175,10 +203,23 @@ export function buildPyramidPrefetchPlan(ds, focusBand, minLevel, eff, viewportW
         const ringTasks = collectRingTasks(info.bounds, targetBand, info.level, radius);
         for (const task of ringTasks) {
           if (pyr.tiles.has(task.key) || pyr.pending.has(task.key) || pyr.queued.has(task.key)) continue;
+          const offsetX = Number(task.tileCenterX || 0) - Number(task.viewportCenterX || 0);
+          const offsetY = Number(task.tileCenterY || 0) - Number(task.viewportCenterY || 0);
+          const forward = intent
+            ? ((offsetX * intent.dx) + (offsetY * intent.dy))
+            : 0;
+          const lateral = intent
+            ? Math.abs((-intent.dy * offsetX) + (intent.dx * offsetY))
+            : 0;
           candidates.push({
             ...task,
             bandDistance,
-            score: (task.radius * 8) + (bandDistance * 10) + (info.levelIndex * 3) + (task.centerDistance * 0.25)
+            score: (task.radius * 8)
+              + (bandDistance * 10)
+              + (info.levelIndex * 3)
+              + (task.centerDistance * 0.25)
+              - (Math.max(-2, Math.min(4, forward)) * Number(APP_CONFIG.pyramid.directionalBiasFactor || 0))
+              + (Math.max(0, Math.min(4, lateral)) * Number(APP_CONFIG.pyramid.directionalLateralPenalty || 0))
           });
           if (candidates.length >= maxCandidates) break;
         }
@@ -415,6 +456,7 @@ export function createPyramidController(deps) {
     if (!pyr) return;
     const bounds = viewTileBounds(ds, pyr, minLevel, eff, viewportW, viewportH);
     if (!bounds) return;
+    const directionKey = resolveDirectionalBucket(ds);
     const key = [
       Math.floor(Number(band) || 0),
       Math.floor(Number(minLevel) || 0),
@@ -423,7 +465,8 @@ export function createPyramidController(deps) {
       Math.floor(Number(bounds?.tx1) || 0),
       Math.floor(Number(bounds?.ty1) || 0),
       Math.round(Number(viewportW) || 0),
-      Math.round(Number(viewportH) || 0)
+      Math.round(Number(viewportH) || 0),
+      directionKey
     ].join("|");
     if (pyr.focus?.key !== key) clearLowPriorityQueue(pyr);
     pyr.focus = {
@@ -432,7 +475,8 @@ export function createPyramidController(deps) {
       minLevel: Math.floor(Number(minLevel) || 0),
       eff,
       viewportW,
-      viewportH
+      viewportH,
+      directionKey
     };
   }
 
@@ -550,8 +594,14 @@ export function createPyramidController(deps) {
     if (!pyr || pyr.cancelled) return;
     const focus = pyr.focus;
     if (!focus) return;
-    if (pyr.qLo.length >= 96) return;
-    const plan = buildPyramidPrefetchPlan(ds, focus.band, focus.minLevel, focus.eff, focus.viewportW, focus.viewportH, 128, 6);
+    const queueSoftMax = Math.max(1, Number(APP_CONFIG.pyramid.backgroundQueueSoftMax) || 1);
+    if (pyr.qLo.length >= queueSoftMax) return;
+    const remaining = Math.max(1, queueSoftMax - pyr.qLo.length);
+    const planLimit = Math.min(
+      remaining,
+      Math.max(1, Number(APP_CONFIG.pyramid.backgroundPrefetchPlanLimit) || remaining)
+    );
+    const plan = buildPyramidPrefetchPlan(ds, focus.band, focus.minLevel, focus.eff, focus.viewportW, focus.viewportH, planLimit, 6);
     for (const task of plan) enqueueBandTask(ds, task.band, task.level, task.tx, task.ty, false);
   }
 

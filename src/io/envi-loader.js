@@ -1,6 +1,7 @@
 import { BlobDataSource, ChunkCacheDataSource } from "../core/data-source.js";
 import { normalizeMeta, parseEnviHeader } from "../core/envi-parser.js";
 import { APP_CONFIG } from "../app/config.js";
+import { EnviDataSource } from "./envi-data-source.js";
 
 const COMMON_ENVI_DATA_EXTS = [
   ".dat", "", ".img", ".raw", ".bin", ".bip", ".bil", ".bsq"
@@ -91,11 +92,12 @@ export async function addDatasetFromFiles(hdrFile, dataFile, deps) {
 
   deps?.setStatus?.("opening data…", "warn");
   const base = new BlobDataSource(dataFile);
-  const cached = new ChunkCacheDataSource(base, {
+  const source = new ChunkCacheDataSource(base, {
     chunkSize: deps?.chunkSize ?? APP_CONFIG.io.defaultChunkSizeBytes,
     maxBytes: deps?.cacheBytes ?? APP_CONFIG.io.defaultDatasetCacheBytes,
     concurrency: deps?.ioConcurrency ?? APP_CONFIG.io.defaultConcurrency
   });
+  const cached = new EnviDataSource(source, meta);
 
   const ds = deps.createDataset({
     hdrFile,
