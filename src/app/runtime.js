@@ -392,6 +392,15 @@ import { pointInPolygon } from "./draw-geometry.js";
     updatePerf: () => updatePerf(),
     updatePyramidInflight: (ds) => pyramid.updateInflightForIO(ds),
     getIOConcurrencyMax: () => IO_CONCURRENCY_MAX,
+    getActiveDatasetId: () => state.activeId,
+    getVisibleDatasetIds: () => {
+      const ids = new Set();
+      for (const entry of getVisibleDatasetPanels()) {
+        const id = entry?.dataset?.id;
+        if (id != null) ids.add(String(id));
+      }
+      return Array.from(ids);
+    }
   });
 
   function setIOParallel(enabled){

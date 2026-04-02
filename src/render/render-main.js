@@ -97,10 +97,7 @@ export function createRenderer(deps) {
 
   function renderPriority(entry, activeSlot) {
     const slot = Number(entry?.panel?.slot) || 1;
-    const sourceFormat = String(entry?.dataset?.meta?.sourceFormat || "");
-    const isTiff = sourceFormat === "tiff";
     return {
-      costRank: isTiff ? 1 : 0,
       activeRank: slot === Number(activeSlot) ? 0 : 1,
       slot
     };
@@ -166,23 +163,42 @@ export function createRenderer(deps) {
     return ds.__panelInFlightReads;
   }
 
-  function getTiffRefineState(ds, panelSlot) {
+  function getPanelRefineState(ds, panelSlot) {
     const slot = Number(panelSlot) || 1;
-    const map = ds?.__tiffRefineStates;
+    const map = ds?.__panelRefineStates;
     return map && typeof map.get === "function" ? (map.get(slot) || null) : null;
   }
 
-  function setTiffRefineState(ds, panelSlot, stateValue) {
+  function setPanelRefineState(ds, panelSlot, stateValue) {
     if (!ds) return;
-    if (!stateValue && (!ds.__tiffRefineStates || typeof ds.__tiffRefineStates.get !== "function")) {
+    if (!stateValue && (!ds.__panelRefineStates || typeof ds.__panelRefineStates.get !== "function")) {
       return;
     }
-    if (!ds.__tiffRefineStates || typeof ds.__tiffRefineStates.get !== "function") {
-      ds.__tiffRefineStates = new Map();
+    if (!ds.__panelRefineStates || typeof ds.__panelRefineStates.get !== "function") {
+      ds.__panelRefineStates = new Map();
     }
     const slot = Number(panelSlot) || 1;
-    if (stateValue) ds.__tiffRefineStates.set(slot, stateValue);
-    else ds.__tiffRefineStates.delete(slot);
+    if (stateValue) ds.__panelRefineStates.set(slot, stateValue);
+    else ds.__panelRefineStates.delete(slot);
+  }
+
+  function getForcedFullRenderKey(ds, panelSlot) {
+    const slot = Number(panelSlot) || 1;
+    const map = ds?.__panelForcedFullRenderKeys;
+    return map && typeof map.get === "function" ? (map.get(slot) || null) : null;
+  }
+
+  function setForcedFullRenderKey(ds, panelSlot, renderKey) {
+    if (!ds) return;
+    if (!renderKey && (!ds.__panelForcedFullRenderKeys || typeof ds.__panelForcedFullRenderKeys.get !== "function")) {
+      return;
+    }
+    if (!ds.__panelForcedFullRenderKeys || typeof ds.__panelForcedFullRenderKeys.get !== "function") {
+      ds.__panelForcedFullRenderKeys = new Map();
+    }
+    const slot = Number(panelSlot) || 1;
+    if (renderKey) ds.__panelForcedFullRenderKeys.set(slot, renderKey);
+    else ds.__panelForcedFullRenderKeys.delete(slot);
   }
 
   async function getOrStartPanelRead(ds, panelSlot, requestKey, loader) {
@@ -279,29 +295,29 @@ export function createRenderer(deps) {
     ) {
       return { factor: 1, renderKey, stableRenderKey, work };
     }
-    const stagedRefine = getTiffRefineState(ds, panelSlot);
+    const stagedRefine = getPanelRefineState(ds, panelSlot);
     const stagedLimit = stagedRefine && stagedRefine.renderKey === renderKey
       ? Math.max(1, Math.floor(Number(stagedRefine.maxFactor) || 1))
       : null;
-    if (ds.__forceFullRenderKey === renderKey && stagedLimit == null) {
+    if (getForcedFullRenderKey(ds, panelSlot) === renderKey && stagedLimit == null) {
       return { factor: 1, renderKey, stableRenderKey, stagedLimit, work };
     }
     let factor = 1;
     if (Number(work?.previewFactor) > 1) {
       factor = Math.max(factor, Math.ceil(Number(work.previewFactor) || 1));
     }
-    if (work?.sparseRaw && (Number(work.spanReads) * sparseRawMultiplier) > APP_CONFIG.render.tiffPreviewMaxSparseSpans) {
+    if (work?.sparseRaw && (Number(work.spanReads) * sparseRawMultiplier) > APP_CONFIG.render.previewMaxSparseSpans) {
       factor = Math.max(
         factor,
-        Math.ceil((Number(work.spanReads) * sparseRawMultiplier) / APP_CONFIG.render.tiffPreviewMaxSparseSpans)
+        Math.ceil((Number(work.spanReads) * sparseRawMultiplier) / APP_CONFIG.render.previewMaxSparseSpans)
       );
     }
     if (
       work?.nativeJpeg
-      && Number(work.scaledDecodePixels) > (APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels || 0)
+      && Number(work.scaledDecodePixels) > (APP_CONFIG.render.previewMaxScaledDecodePixels || 0)
     ) {
       factor = Math.max(factor, Math.ceil(Math.sqrt(
-        Number(work.scaledDecodePixels) / APP_CONFIG.render.tiffPreviewMaxScaledDecodePixels
+        Number(work.scaledDecodePixels) / APP_CONFIG.render.previewMaxScaledDecodePixels
       )));
     }
     if (
@@ -314,7 +330,7 @@ export function createRenderer(deps) {
         Math.ceil((Number(work.estimatedBytes) * readMultiplier) / Number(APP_CONFIG.render.previewMaxReadBytes))
       );
     }
-    factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.tiffPreviewMaxFactor);
+    factor = clamp(Math.max(1, factor), 1, APP_CONFIG.render.previewMaxFactor);
     if (stagedLimit != null) factor = Math.min(factor, stagedLimit);
     return { factor, renderKey, stableRenderKey, stagedLimit, work };
   }
@@ -328,22 +344,24 @@ export function createRenderer(deps) {
     );
     const approximate = !!(raster?.approximate || compositeRaster?.approximate);
     if (!approximate) {
-      if (currentRenderKey && ds.__forceFullRenderKey === currentRenderKey) ds.__forceFullRenderKey = null;
-      setTiffRefineState(ds, panelSlot, null);
+      if (currentRenderKey && getForcedFullRenderKey(ds, panelSlot) === currentRenderKey) {
+        setForcedFullRenderKey(ds, panelSlot, null);
+      }
+      setPanelRefineState(ds, panelSlot, null);
       return false;
     }
 
     if (currentRenderKey && currentFactor > 1) {
       const nextFactor = Math.max(1, Math.ceil(currentFactor / 2));
-      setTiffRefineState(ds, panelSlot, {
+      setPanelRefineState(ds, panelSlot, {
         renderKey: currentRenderKey,
         maxFactor: nextFactor
       });
-      ds.__forceFullRenderKey = null;
+      setForcedFullRenderKey(ds, panelSlot, null);
       return true;
     }
 
-    if (currentRenderKey) ds.__forceFullRenderKey = currentRenderKey;
+    if (currentRenderKey) setForcedFullRenderKey(ds, panelSlot, currentRenderKey);
     return true;
   }
 
@@ -839,7 +857,6 @@ export function createRenderer(deps) {
     const ordered = visible.slice().sort((a, b) => {
       const pa = renderPriority(a, activeSlot);
       const pb = renderPriority(b, activeSlot);
-      if (pa.costRank !== pb.costRank) return pa.costRank - pb.costRank;
       if (pa.activeRank !== pb.activeRank) return pa.activeRank - pb.activeRank;
       return pa.slot - pb.slot;
     });

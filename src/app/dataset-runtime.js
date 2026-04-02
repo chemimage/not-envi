@@ -84,6 +84,7 @@ export function createDatasetRuntime(deps) {
     const nextId = panel?.datasetId || null;
     state.activeId = nextId;
     if (typeof syncActiveDatasetView === "function") syncActiveDatasetView();
+    recomputeCacheBudgets();
     if (closeSpectrumOnChange) closeSpectrum();
     onAfterDatasetUIUpdate({ preserveBandTreeScroll });
     const ds = getActive();

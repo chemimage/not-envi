@@ -96,6 +96,11 @@ export const APP_CONFIG = Object.freeze({
     maxBytes: 3 * GIB,
     minChunkBudgetChunks: 8,
     minPyramidBytes: 64 * MIB,
+    hiddenMinChunkBudgetChunks: 2,
+    hiddenMinPyramidBytes: 16 * MIB,
+    activeDatasetWeight: 1.5,
+    visibleDatasetWeight: 1.0,
+    hiddenDatasetWeight: 0.2,
     fracChunk: 0.60,
     fracPyramid: 0.40
   }),
@@ -151,9 +156,9 @@ export const APP_CONFIG = Object.freeze({
   }),
   render: Object.freeze({
     previewMaxReadBytes: 24 * MIB,
-    tiffPreviewMaxSparseSpans: 6_000,
-    tiffPreviewMaxScaledDecodePixels: 120_000,
-    tiffPreviewMaxFactor: 16
+    previewMaxSparseSpans: 6_000,
+    previewMaxScaledDecodePixels: 120_000,
+    previewMaxFactor: 16
   }),
   histogram: Object.freeze({
     autoWholeStatsMaxPixels: 20_000_000,

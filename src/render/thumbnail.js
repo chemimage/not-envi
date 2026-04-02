@@ -127,16 +127,12 @@ export function createThumbnailController(deps) {
     return !!(ds?.lastScreenFrame || ds?.lastRaster || ds?.lastCompositeRaster);
   }
 
-  function shouldBootstrapPreviewOverview(ds) {
-    const isTiff = ds?.meta?.sourceFormat === "tiff";
-    const hasNativeOverviews = typeof ds?.ds?.hasNativeOverviews === "function" && ds.ds.hasNativeOverviews();
-    return !isTiff || !hasNativeOverviews;
+  function hasNativeOverviewSource(ds) {
+    return typeof ds?.ds?.hasNativeOverviews === "function" && ds.ds.hasNativeOverviews();
   }
 
-  function shouldBuildDeferredPreviewOverview(ds) {
-    const isTiff = ds?.meta?.sourceFormat === "tiff";
-    if (isTiff) return hasRenderablePreviewSource(ds);
-    return true;
+  function shouldDeferInitialPreviewBuild(ds) {
+    return hasNativeOverviewSource(ds) && !hasRenderablePreviewSource(ds);
   }
 
   function calcPreviewOverviewPixels(ds, options = {}) {
@@ -427,11 +423,8 @@ export function createThumbnailController(deps) {
     const key = thumbBuildKey(ds, tw, th);
     const needsBuild = !ds.thumb.ready || ds.thumb.buildKey !== key;
     if (needsBuild) applyPreviewOverviewToThumb(ds, key, tw, th);
-    const deferTiffBuild = ds?.meta?.sourceFormat === "tiff"
-      && !ds.thumb.base
-      && !ds.lastRaster
-      && !ds.lastCompositeRaster;
-    if (needsBuild && ds.thumb.buildPendingKey !== key && !deferTiffBuild) {
+    const deferInitialBuild = !ds.thumb.base && shouldDeferInitialPreviewBuild(ds);
+    if (needsBuild && ds.thumb.buildPendingKey !== key && !deferInitialBuild) {
       void buildThumbnail(ds, key, tw, th);
     }
 
@@ -511,10 +504,11 @@ export function createThumbnailController(deps) {
   function ensureDatasetPreviewOverview(ds) {
     if (!ds) return;
     if (!hasRenderablePreviewSource(ds)) {
-      void buildPreviewOverview(ds, { deferred: false, bootstrap: shouldBootstrapPreviewOverview(ds) });
+      if (shouldDeferInitialPreviewBuild(ds)) return;
+      void buildPreviewOverview(ds, { deferred: false, bootstrap: true });
       return;
     }
-    void buildPreviewOverview(ds, { deferred: shouldBuildDeferredPreviewOverview(ds) });
+    void buildPreviewOverview(ds, { deferred: true });
   }
 
   return {

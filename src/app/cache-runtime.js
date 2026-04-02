@@ -7,20 +7,32 @@ export function createCacheRuntime(deps) {
     appConfig,
     updatePerf,
     updatePyramidInflight,
-    getIOConcurrencyMax
+    getIOConcurrencyMax,
+    getActiveDatasetId,
+    getVisibleDatasetIds
   } = deps;
+
+  function resolveFiniteNumber(value, fallback) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  }
 
   const configuredFraction = Number(appConfig?.cache?.maxSystemMemoryFraction);
   const cacheFraction = Number.isFinite(configuredFraction) ? clamp(configuredFraction, 0.05, 0.80) : 0.20;
 
   const cacheBudget = {
     fracOfAvailable: cacheFraction,
-    minBytes: Number(appConfig?.cache?.minBytes) || APP_CONFIG.cache.minBytes,
-    maxBytes: Number(appConfig?.cache?.maxBytes) || APP_CONFIG.cache.maxBytes,
-    minChunkBudgetChunks: Number(appConfig?.cache?.minChunkBudgetChunks) || APP_CONFIG.cache.minChunkBudgetChunks,
-    minPyramidBytes: Number(appConfig?.cache?.minPyramidBytes) || APP_CONFIG.cache.minPyramidBytes,
-    fracChunk: Number(appConfig?.cache?.fracChunk) || APP_CONFIG.cache.fracChunk,
-    fracPyramid: Number(appConfig?.cache?.fracPyramid) || APP_CONFIG.cache.fracPyramid,
+    minBytes: resolveFiniteNumber(appConfig?.cache?.minBytes, APP_CONFIG.cache.minBytes),
+    maxBytes: resolveFiniteNumber(appConfig?.cache?.maxBytes, APP_CONFIG.cache.maxBytes),
+    minChunkBudgetChunks: Math.max(1, Math.floor(resolveFiniteNumber(appConfig?.cache?.minChunkBudgetChunks, APP_CONFIG.cache.minChunkBudgetChunks))),
+    minPyramidBytes: Math.max(0, Math.floor(resolveFiniteNumber(appConfig?.cache?.minPyramidBytes, APP_CONFIG.cache.minPyramidBytes))),
+    hiddenMinChunkBudgetChunks: Math.max(1, Math.floor(resolveFiniteNumber(appConfig?.cache?.hiddenMinChunkBudgetChunks, APP_CONFIG.cache.hiddenMinChunkBudgetChunks))),
+    hiddenMinPyramidBytes: Math.max(0, Math.floor(resolveFiniteNumber(appConfig?.cache?.hiddenMinPyramidBytes, APP_CONFIG.cache.hiddenMinPyramidBytes))),
+    activeDatasetWeight: resolveFiniteNumber(appConfig?.cache?.activeDatasetWeight, APP_CONFIG.cache.activeDatasetWeight),
+    visibleDatasetWeight: resolveFiniteNumber(appConfig?.cache?.visibleDatasetWeight, APP_CONFIG.cache.visibleDatasetWeight),
+    hiddenDatasetWeight: resolveFiniteNumber(appConfig?.cache?.hiddenDatasetWeight, APP_CONFIG.cache.hiddenDatasetWeight),
+    fracChunk: resolveFiniteNumber(appConfig?.cache?.fracChunk, APP_CONFIG.cache.fracChunk),
+    fracPyramid: resolveFiniteNumber(appConfig?.cache?.fracPyramid, APP_CONFIG.cache.fracPyramid),
     detectedHeapLimitBytes: 0,
     detectedDeviceMemoryBytes: 0,
     detectedBudgetBasisBytes: 0,
@@ -47,24 +59,77 @@ export function createCacheRuntime(deps) {
     return budget;
   }
 
+  function normalizeDatasetKey(id) {
+    const key = String(id || "");
+    return key || null;
+  }
+
+  function resolveDatasetWeights() {
+    const visibleKeys = new Set();
+    const visibleIds = (typeof getVisibleDatasetIds === "function") ? getVisibleDatasetIds() : [];
+    for (const id of visibleIds || []) {
+      const key = normalizeDatasetKey(id);
+      if (key) visibleKeys.add(key);
+    }
+
+    const activeKey = normalizeDatasetKey(
+      (typeof getActiveDatasetId === "function") ? getActiveDatasetId() : state.activeId
+    );
+    const activeWeight = Math.max(0, Number(cacheBudget.activeDatasetWeight) || 0);
+    const visibleWeight = Math.max(0, Number(cacheBudget.visibleDatasetWeight) || 0);
+    const hiddenWeight = Math.max(0, Number(cacheBudget.hiddenDatasetWeight) || 0);
+    const weights = new Map();
+    let totalWeight = 0;
+
+    for (const ds of state.datasets) {
+      const key = normalizeDatasetKey(ds?.id);
+      if (!key) continue;
+      let weight = hiddenWeight;
+      if (visibleKeys.has(key)) weight = Math.max(weight, visibleWeight);
+      if (activeKey && key === activeKey) weight = Math.max(weight, activeWeight);
+      weights.set(key, weight);
+      totalWeight += weight;
+    }
+
+    if (totalWeight <= 0) {
+      for (const ds of state.datasets) {
+        const key = normalizeDatasetKey(ds?.id);
+        if (!key) continue;
+        weights.set(key, 1);
+      }
+      totalWeight = Math.max(1, weights.size);
+    }
+    return { weights, totalWeight, activeKey, visibleKeys };
+  }
+
   function recomputeCacheBudgets() {
     if (!cacheBudget.totalBytes) {
       cacheBudget.totalBytes = estimateTotalCacheBudgetBytes();
     }
-    const n = Math.max(1, state.datasets.length);
-    const per = cacheBudget.totalBytes / n;
+    const { weights, totalWeight, activeKey, visibleKeys } = resolveDatasetWeights();
 
     for (const ds of state.datasets) {
+      const key = normalizeDatasetKey(ds?.id);
+      const weight = key ? (weights.get(key) || 0) : 0;
+      const share = totalWeight > 0 ? (weight / totalWeight) : 0;
+      const budgetBytes = Math.floor(cacheBudget.totalBytes * share);
+      const hiddenDataset = !!key && key !== activeKey && !visibleKeys.has(key);
+      const minChunkBudgetChunks = hiddenDataset
+        ? cacheBudget.hiddenMinChunkBudgetChunks
+        : cacheBudget.minChunkBudgetChunks;
+      const minPyramidBytes = hiddenDataset
+        ? cacheBudget.hiddenMinPyramidBytes
+        : cacheBudget.minPyramidBytes;
       const chunkSize = (ds.ds && ds.ds.chunkSize)
         ? ds.ds.chunkSize
         : (appConfig?.io?.defaultChunkSizeBytes || APP_CONFIG.io.defaultChunkSizeBytes);
       const chunkBytes = Math.max(
-        chunkSize * cacheBudget.minChunkBudgetChunks,
-        Math.floor(per * cacheBudget.fracChunk)
+        chunkSize * minChunkBudgetChunks,
+        Math.floor(budgetBytes * cacheBudget.fracChunk)
       );
       const pyramidBytes = Math.max(
-        cacheBudget.minPyramidBytes,
-        Math.floor(per * cacheBudget.fracPyramid)
+        minPyramidBytes,
+        Math.floor(budgetBytes * cacheBudget.fracPyramid)
       );
 
       ds.chunkBudgetBytes = chunkBytes;

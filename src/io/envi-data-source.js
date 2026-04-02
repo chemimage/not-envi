@@ -129,7 +129,7 @@ function computePreviewFactor(estimatedBytes) {
   return clamp(
     Math.ceil(estimatedBytes / maxBytes),
     1,
-    Math.max(1, Number(APP_CONFIG.render.tiffPreviewMaxFactor) || 1)
+    Math.max(1, Number(APP_CONFIG.render.previewMaxFactor) || 1)
   );
 }
 
