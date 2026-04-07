@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { fromArrayBuffer } from "geotiff";
-import { encodeRawMultipageTiff, encodeRenderedTiff } from "../../src/export/tiff-backend.js";
+import { encodeRawMultipageTiff, encodeRenderedMultipageTiff, encodeRenderedTiff } from "../../src/export/tiff-backend.js";
 
 async function blobToArrayBuffer(blob) {
   if (blob && typeof blob.arrayBuffer === "function") return blob.arrayBuffer();
@@ -38,6 +38,25 @@ describe("tiff backend", () => {
     const meta = { dataType: 4, dataTypeInfo: { bytes: 4 } };
     const pages = [new Float32Array([1, 2, 3, 4]), new Float32Array([5, 6, 7, 8])];
     const blob = encodeRawMultipageTiff({ meta, width: 2, height: 2, pages });
+    const ab = await blobToArrayBuffer(blob);
+    const tiff = await fromArrayBuffer(ab);
+    expect(await tiff.getImageCount()).toBe(2);
+  });
+
+  test("encodeRenderedMultipageTiff creates multiple rendered pages", async () => {
+    const pages = [
+      {
+        width: 2,
+        height: 1,
+        data: Uint8ClampedArray.from([255, 0, 0, 255, 0, 255, 0, 255])
+      },
+      {
+        width: 2,
+        height: 1,
+        data: Uint8ClampedArray.from([0, 0, 255, 255, 255, 255, 0, 255])
+      }
+    ];
+    const blob = encodeRenderedMultipageTiff({ pages });
     const ab = await blobToArrayBuffer(blob);
     const tiff = await fromArrayBuffer(ab);
     expect(await tiff.getImageCount()).toBe(2);

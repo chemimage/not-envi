@@ -45,13 +45,33 @@
     width: var(--tool-rail-w);
   }
 
-  #brandLogo {
-    display: block;
+  #brandBadge {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  #brandLogo {
+    display: block;
+    width: 100%;
     height: auto;
+  }
+
+  #brandVersion {
+    width: 100%;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: rgb(209 213 219 / 0.95);
+    text-shadow: 0 1px 1px rgb(3 7 18 / 0.9);
+    font-variant-numeric: tabular-nums;
   }
 
   #drawTools {

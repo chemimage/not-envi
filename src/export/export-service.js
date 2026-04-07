@@ -1,57 +1,11 @@
-import { encodeRawMultipageTiff, encodeRenderedTiff } from "./tiff-backend.js";
+import { encodeRawMultipageTiff, encodeRenderedMultipageTiff, encodeRenderedTiff } from "./tiff-backend.js";
 import { buildEnviHeaderText, encodeEnviBandBytes } from "./envi-backend.js";
+import { createOverlayRenderer } from "../render/overlay.js";
 import { resolveRasterSampling } from "../render/raster-geometry.js";
 
 export function createExportService(deps) {
   const RAW_ENVI_INTERLEAVE = "bsq";
   const RAW_ENVI_LITTLE_ENDIAN = true;
-
-  function parseHexColor(color, alpha = 0.95) {
-    const raw = String(color || "").trim();
-    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(raw);
-    if (!m) return `rgba(255,45,45,${alpha})`;
-    let hex = m[1];
-    if (hex.length === 3) hex = `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-
-  function listRulerDrawings(ds) {
-    if (!ds || !Array.isArray(ds.drawings)) return [];
-    return ds.drawings.filter((item) => {
-      if (!item || (item.tool !== "ruler" && item.tool !== "line")) return false;
-      if (!Array.isArray(item.points) || item.points.length < 2) return false;
-      return !!(item.points[0] && item.points[item.points.length - 1]);
-    });
-  }
-
-  function drawRulersOnRenderedContext(ctx, ds, rect, opts = {}) {
-    if (!ctx || !ds || !rect) return;
-    const rulers = listRulerDrawings(ds);
-    if (!rulers.length) return;
-    const outW = Math.max(1, Number(opts?.outputW || rect.w || 1));
-    const outH = Math.max(1, Number(opts?.outputH || rect.h || 1));
-    const scaleX = outW / Math.max(1, Number(rect.w) || 1);
-    const scaleY = outH / Math.max(1, Number(rect.h) || 1);
-    ctx.save();
-    ctx.lineWidth = 2;
-    for (const item of rulers) {
-      const a = item.points[0];
-      const b = item.points[item.points.length - 1];
-      const ax = (a.x - rect.x0) * scaleX;
-      const ay = (a.y - rect.y0) * scaleY;
-      const bx = (b.x - rect.x0) * scaleX;
-      const by = (b.y - rect.y0) * scaleY;
-      ctx.strokeStyle = parseHexColor(item.color, 0.95);
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
 
   function pointInPolygon(x, y, points) {
     let inside = false;
@@ -67,6 +21,91 @@ export function createExportService(deps) {
 
   function sanitizeFilePart(s) {
     return String(s || "").replace(/[\\/:*?"<>|]+/g, "_").trim() || "band";
+  }
+
+  function selectedKindFromDialog() {
+    if (deps.els.expFormatPng?.checked) return "png";
+    if (deps.els.expFormatEnvi?.checked) return "envi";
+    return "tiff";
+  }
+
+  function selectedModeFromDialog(kind = selectedKindFromDialog()) {
+    if (kind === "png") return "rendered";
+    if (kind === "envi") return "raw";
+    return deps.els.expModeRaw?.checked ? "raw" : "rendered";
+  }
+
+  function selectedScopeFromDialog() {
+    return deps.els.expScopeSel?.checked ? "sel" : "view";
+  }
+
+  function selectedBandIndices(ds, kind = selectedKindFromDialog()) {
+    if (!ds || ds.activeBand == null) return [];
+    if (kind === "png") return [ds.activeBand];
+    if (deps.els.expBandAll?.checked) {
+      return Array.from({ length: Math.max(1, Number(ds.meta?.bands) || 1) }, (_v, i) => i);
+    }
+    return [ds.activeBand];
+  }
+
+  function includeAnnotationsFromDialog(kind = selectedKindFromDialog(), mode = selectedModeFromDialog(kind)) {
+    return mode === "rendered" && !!deps.els.expIncludeAnnotations?.checked;
+  }
+
+  function bandExportToken(ds, bandIndices) {
+    if (Array.isArray(bandIndices) && bandIndices.length === 1) {
+      return sanitizeFilePart(deps.bandLabel(ds, bandIndices[0]));
+    }
+    return "all-bands";
+  }
+
+  function normalizeAnnotationState(ds) {
+    return {
+      drawings: Array.isArray(ds?.drawings) ? ds.drawings : [],
+      selectedAreaId: Number.isFinite(Number(ds?.selectedAreaId)) ? Number(ds.selectedAreaId) : null,
+      draft: null,
+      rulerHover: null,
+      rulerProfileHover: null
+    };
+  }
+
+  function drawAnnotationsOnRenderedContext(ctx, ds, rect, opts = {}) {
+    if (!ctx || !ds || !rect || typeof deps.getDrawData !== "function") return;
+    const outputW = Math.max(1, Number(opts.outputW || rect.w || 1));
+    const outputH = Math.max(1, Number(opts.outputH || rect.h || 1));
+    const scale = outputW / Math.max(1, Number(rect.w) || 1);
+    const overlayRenderer = createOverlayRenderer({
+      els: { overlayCanvas: { width: outputW, height: outputH }, btnGrid: null, chkGrid: null },
+      overlayCtx: ctx,
+      getDevicePixelRatio: () => 1,
+      getDrawData: (dataset, explicitState = null) => deps.getDrawData(dataset, explicitState)
+    });
+    const exportDataset = {
+      ...ds,
+      view: {
+        ...(ds.view || {}),
+        x: Number(rect.x0) || 0,
+        y: Number(rect.y0) || 0,
+        scale
+      }
+    };
+    overlayRenderer.drawOverlaysForPanel(exportDataset, { x: 0, y: 0, w: outputW, h: outputH }, {
+      active: false,
+      showScaleBar: false,
+      borderColor: "rgba(0,0,0,0)",
+      label: "",
+      annotations: normalizeAnnotationState(ds)
+    });
+  }
+
+  function subsetMetaForBandIndices(meta, bandIndices) {
+    const safe = Array.isArray(bandIndices) && bandIndices.length ? bandIndices : [0];
+    return {
+      ...meta,
+      bands: safe.length,
+      bandNames: Array.isArray(meta?.bandNames) ? safe.map((idx) => meta.bandNames[idx]).filter((v) => v != null) : undefined,
+      wavelengths: Array.isArray(meta?.wavelengths) ? safe.map((idx) => meta.wavelengths[idx]).filter((v) => v != null) : undefined
+    };
   }
 
   function viewRect(ds) {
@@ -318,7 +357,6 @@ export function createExportService(deps) {
   }
 
   function resolveExportRect(ds, scope) {
-    if (scope === "whole") return wholeRect(ds);
     if (scope === "view") return viewRect(ds);
 
     if (scope === "sel") {
@@ -399,9 +437,116 @@ export function createExportService(deps) {
     };
   }
 
-  async function exportRenderedSelectionJobs(ds, kind, jobs) {
-    const band = ds.activeBand;
-    if (band == null || !Array.isArray(jobs) || !jobs.length) return;
+  function selectionBaseName(ds, bandIndices, job, suffix = "") {
+    const stem = `${ds.name}_${bandExportToken(ds, bandIndices)}`;
+    const core = Number.isFinite(job.serial)
+      ? String(job.serial).padStart(3, "0")
+      : `${job.x0}_${job.y0}_${job.w}x${job.h}`;
+    return suffix ? `${stem}_${core}_${suffix}` : `${stem}_${core}`;
+  }
+
+  function rectBaseName(ds, bandIndices, rect, suffix = "", scope = "window", outputW = rect.w, outputH = rect.h) {
+    const stem = `${ds.name}_${bandExportToken(ds, bandIndices)}`;
+    if (scope === "view") {
+      return suffix ? `${stem}_view_${outputW}x${outputH}_${suffix}` : `${stem}_view_${outputW}x${outputH}`;
+    }
+    return suffix ? `${stem}_${rect.x0}_${rect.y0}_${rect.w}x${rect.h}_${suffix}` : `${stem}_${rect.x0}_${rect.y0}_${rect.w}x${rect.h}`;
+  }
+
+  async function readBandExportData(ds, bandIndex, x0, y0, w, h) {
+    if (ds.meta.interleave === "bip") {
+      return deps.readBandWindowBIP(ds.meta, ds.ds, bandIndex, x0, y0, w, h, 1);
+    }
+    return deps.readBandWindow(ds.meta, ds.ds, bandIndex, x0, y0, w, h, 1);
+  }
+
+  function imageDataFromCanvas(canvas) {
+    const ctx = canvas.getContext("2d", { alpha: false });
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  }
+
+  function finalizeRenderedImage(ds, rect, imageData, opts = {}) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Number(opts.outputW || imageData?.width || rect?.w || 1));
+    canvas.height = Math.max(1, Number(opts.outputH || imageData?.height || rect?.h || 1));
+    const ctx = canvas.getContext("2d", { alpha: false });
+    ctx.putImageData(imageData, 0, 0);
+    if (opts.includeAnnotations) {
+      drawAnnotationsOnRenderedContext(ctx, ds, rect, { outputW: canvas.width, outputH: canvas.height });
+    }
+    return imageDataFromCanvas(canvas);
+  }
+
+  async function buildSelectionRenderedImageData(ds, bandIndex, job, opts = {}) {
+    const srcWin = sourceWindowForJob(ds, job);
+    const mask = buildSelectionMask(ds, job);
+    const outCanvas = document.createElement("canvas");
+    outCanvas.width = job.w;
+    outCanvas.height = job.h;
+    const outCtx = outCanvas.getContext("2d", { alpha: false });
+    const outImg = outCtx.createImageData(job.w, job.h);
+    const outData = outImg.data;
+    for (let px = 0; px < job.w * job.h; px += 1) {
+      outData[(px * 4) + 3] = 255;
+    }
+
+    if (srcWin.w > 0 && srcWin.h > 0) {
+      const src = await deps.renderWindowToImageData(ds, bandIndex, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
+      for (let row = 0; row < srcWin.h; row += 1) {
+        const outRow = row + srcWin.offY;
+        for (let col = 0; col < srcWin.w; col += 1) {
+          const outCol = col + srcWin.offX;
+          const outPixel = outRow * job.w + outCol;
+          if (!mask[outPixel]) continue;
+          const srcPixel = row * srcWin.w + col;
+          const si = srcPixel * 4;
+          const oi = outPixel * 4;
+          outData[oi] = src.data[si];
+          outData[oi + 1] = src.data[si + 1];
+          outData[oi + 2] = src.data[si + 2];
+          outData[oi + 3] = 255;
+        }
+      }
+    }
+
+    return finalizeRenderedImage(ds, { x0: job.x0, y0: job.y0, w: job.w, h: job.h }, outImg, {
+      outputW: job.w,
+      outputH: job.h,
+      includeAnnotations: !!opts.includeAnnotations
+    });
+  }
+
+  async function buildRenderedImageData(ds, bandIndex, rect, scope = "window", opts = {}) {
+    const target = resolveRenderedExportTarget(ds, scope, rect);
+    const rendered = target.mode === "viewport"
+      ? await renderViewportToImageData(ds, bandIndex, target.rect)
+      : {
+          imageData: await deps.renderWindowToImageData(ds, bandIndex, target.rect.x0, target.rect.y0, target.outputW, target.outputH, 1),
+          outputW: target.outputW,
+          outputH: target.outputH,
+          rect: target.rect
+        };
+    const finalImage = finalizeRenderedImage(ds, target.rect, rendered.imageData, {
+      outputW: target.outputW,
+      outputH: target.outputH,
+      includeAnnotations: !!opts.includeAnnotations
+    });
+    return {
+      imageData: finalImage,
+      outputW: target.outputW,
+      outputH: target.outputH,
+      rect: target.rect,
+      mode: target.mode
+    };
+  }
+
+  async function maybeConfirmLargeRawExport(totalBytes, label = "raw export") {
+    if (totalBytes <= (1024 * 1024 * 1024)) return true;
+    return deps.confirmFn(`This ${label} is about ${deps.humanBytes(totalBytes)} and may crash the browser. Continue?`);
+  }
+
+  async function exportRenderedSelectionJobs(ds, kind, jobs, bandIndices = [ds.activeBand], opts = {}) {
+    if (!Array.isArray(jobs) || !jobs.length || !Array.isArray(bandIndices) || !bandIndices.length) return;
     const maxPix = 20_000_000;
     for (const job of jobs) {
       if (job.w * job.h > maxPix) {
@@ -412,270 +557,173 @@ export function createExportService(deps) {
 
     for (let i = 0; i < jobs.length; i += 1) {
       const job = jobs[i];
-      deps.setStatus(jobs.length > 1 ? `export… ${i + 1}/${jobs.length}` : "export…", "warn");
-      const srcWin = sourceWindowForJob(ds, job);
-      const mask = buildSelectionMask(ds, job);
-
-      const outCanvas = document.createElement("canvas");
-      outCanvas.width = job.w;
-      outCanvas.height = job.h;
-      const outCtx = outCanvas.getContext("2d", { alpha: false });
-      const outImg = outCtx.createImageData(job.w, job.h);
-      const outData = outImg.data;
-      for (let px = 0; px < job.w * job.h; px += 1) {
-        outData[px * 4 + 3] = 255;
+      const pages = [];
+      for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
+        const bandIndex = bandIndices[bandPos];
+        deps.setStatus(
+          bandIndices.length > 1
+            ? `export… ${i + 1}/${jobs.length} (${bandPos + 1}/${bandIndices.length})`
+            : (jobs.length > 1 ? `export… ${i + 1}/${jobs.length}` : "export…"),
+          "warn"
+        );
+        pages.push(await buildSelectionRenderedImageData(ds, bandIndex, job, opts));
       }
 
-      if (srcWin.w > 0 && srcWin.h > 0) {
-        const src = await deps.renderWindowToImageData(ds, band, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
-        for (let row = 0; row < srcWin.h; row += 1) {
-          const outRow = row + srcWin.offY;
-          for (let col = 0; col < srcWin.w; col += 1) {
-            const outCol = col + srcWin.offX;
-            const outPixel = outRow * job.w + outCol;
-            if (!mask[outPixel]) continue;
-            const srcPixel = row * srcWin.w + col;
-            const si = srcPixel * 4;
-            const oi = outPixel * 4;
-            outData[oi] = src.data[si];
-            outData[oi + 1] = src.data[si + 1];
-            outData[oi + 2] = src.data[si + 2];
-            outData[oi + 3] = 255;
-          }
-        }
-      }
-
-      outCtx.putImageData(outImg, 0, 0);
-      drawRulersOnRenderedContext(outCtx, ds, { x0: job.x0, y0: job.y0, w: job.w, h: job.h }, { outputW: job.w, outputH: job.h });
-      const base = selectionBaseName(ds, band, job, false);
       if (kind === "png") {
-        const blob = await new Promise((res) => outCanvas.toBlob(res, "image/png"));
-        deps.downloadBlob(blob, `${base}.png`);
+        const canvas = imageDataToCanvas(pages[0]);
+        const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+        deps.downloadBlob(blob, `${selectionBaseName(ds, bandIndices, job)}.png`);
       } else {
-        const finalImg = outCtx.getImageData(0, 0, job.w, job.h);
-        const blob = encodeRenderedTiff({ imageData: finalImg });
+        const base = selectionBaseName(ds, bandIndices, job, bandIndices.length > 1 ? "renderedstack" : "rendered");
+        const blob = bandIndices.length > 1
+          ? encodeRenderedMultipageTiff({ pages })
+          : encodeRenderedTiff({ imageData: pages[0] });
         deps.downloadBlob(blob, `${base}.tiff`);
       }
     }
     deps.setStatus("ready", "ok");
   }
 
-  async function exportRendered(ds, kind, rect, scope = "view") {
-    const band = ds.activeBand;
-    if (band == null) return;
+  async function exportRendered(ds, kind, rect, scope = "window", bandIndices = [ds.activeBand], opts = {}) {
+    if (!Array.isArray(bandIndices) || !bandIndices.length) return;
     const target = resolveRenderedExportTarget(ds, scope, rect);
     const w = target.outputW;
     const h = target.outputH;
     const maxPix = 20_000_000;
-    if (w * h > maxPix) {
+    if ((w * h) > maxPix) {
       deps.alertFn(`Export too large (${deps.fmt(w * h)} pixels). Please select a smaller region.`);
       return;
     }
 
-    deps.setStatus("export…", "warn");
-    const rendered = target.mode === "viewport"
-      ? await renderViewportToImageData(ds, band, target.rect)
-      : { imageData: await deps.renderWindowToImageData(ds, band, target.rect.x0, target.rect.y0, w, h, 1), outputW: w, outputH: h, rect: target.rect };
-    const base = target.mode === "viewport"
-      ? `${ds.name}_${sanitizeFilePart(deps.bandLabel(ds, band))}_viewport_${w}x${h}`
-      : `${ds.name}_${sanitizeFilePart(deps.bandLabel(ds, band))}_${target.rect.x0}_${target.rect.y0}_${w}x${h}`;
-    const c = document.createElement("canvas");
-    c.width = w;
-    c.height = h;
-    const outCtx = c.getContext("2d", { alpha: false });
-    outCtx.putImageData(rendered.imageData, 0, 0);
-    drawRulersOnRenderedContext(outCtx, ds, target.rect, { outputW: w, outputH: h });
+    const pages = [];
+    for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
+      const bandIndex = bandIndices[bandPos];
+      deps.setStatus(
+        bandIndices.length > 1 ? `export… ${bandPos + 1}/${bandIndices.length}` : "export…",
+        "warn"
+      );
+      const rendered = await buildRenderedImageData(ds, bandIndex, rect, scope, opts);
+      pages.push(rendered.imageData);
+    }
 
+    const base = rectBaseName(ds, bandIndices, target.rect, bandIndices.length > 1 ? "renderedstack" : "rendered", scope, w, h);
     if (kind === "png") {
-      const blob = await new Promise((res) => c.toBlob(res, "image/png"));
-      deps.downloadBlob(blob, `${base}.png`);
+      const canvas = imageDataToCanvas(pages[0]);
+      const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+      deps.downloadBlob(blob, `${rectBaseName(ds, bandIndices, target.rect, "", scope, w, h)}.png`);
       deps.setStatus("ready", "ok");
       return;
     }
 
-    if (kind === "tiff") {
-      const finalImg = outCtx.getImageData(0, 0, w, h);
-      const blob = encodeRenderedTiff({ imageData: finalImg });
-      deps.downloadBlob(blob, `${base}.tiff`);
-      deps.setStatus("ready", "ok");
-    }
-  }
-
-  async function exportRawSelectionJobs(ds, jobs) {
-    if (!Array.isArray(jobs) || !jobs.length) return;
-    const bpp = ds.meta.dataTypeInfo.bytes;
-    const totalBytes = jobs.reduce((sum, job) => sum + (job.w * job.h * ds.meta.bands * bpp), 0);
-    if (totalBytes > (1024 * 1024 * 1024)) {
-      const ok = deps.confirmFn(`This raw stack export is about ${deps.humanBytes(totalBytes)} and may crash the browser. Continue?`);
-      if (!ok) return;
-    }
-
-    for (let jobIdx = 0; jobIdx < jobs.length; jobIdx += 1) {
-      const job = jobs[jobIdx];
-      const srcWin = sourceWindowForJob(ds, job);
-      const mask = buildSelectionMask(ds, job);
-      const pages = [];
-      for (let b = 0; b < ds.meta.bands; b += 1) {
-        deps.setStatus(
-          jobs.length > 1
-            ? `export raw… ${jobIdx + 1}/${jobs.length} (${b + 1}/${ds.meta.bands})`
-            : `export raw… ${b + 1}/${ds.meta.bands}`,
-          "warn"
-        );
-        let src = null;
-        if (srcWin.w > 0 && srcWin.h > 0) {
-          if (ds.meta.interleave === "bip") {
-            src = await deps.readBandWindowBIP(ds.meta, ds.ds, b, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
-          } else {
-            src = await deps.readBandWindow(ds.meta, ds.ds, b, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
-          }
-        }
-        const Ctor = src ? src.constructor : (ds.meta.dataTypeInfo.ctor || Float64Array);
-        const out = new Ctor(job.w * job.h);
-        if (src && srcWin.w > 0 && srcWin.h > 0) {
-          for (let row = 0; row < srcWin.h; row += 1) {
-            const outRow = row + srcWin.offY;
-            for (let col = 0; col < srcWin.w; col += 1) {
-              const outCol = col + srcWin.offX;
-              const outIndex = outRow * job.w + outCol;
-              if (!mask[outIndex]) continue;
-              out[outIndex] = src[row * srcWin.w + col];
-            }
-          }
-        }
-        pages.push(out);
-      }
-      const blob = encodeRawMultipageTiff({ meta: ds.meta, width: job.w, height: job.h, pages });
-      const base = selectionBaseName(ds, ds.activeBand, job, true);
-      deps.downloadBlob(blob, `${base}.tiff`);
-    }
-    deps.setStatus("ready", "ok");
-  }
-
-  async function exportRawSelectionJobsENVI(ds, jobs) {
-    if (!Array.isArray(jobs) || !jobs.length) return;
-    const bpp = ds.meta.dataTypeInfo.bytes;
-    const totalBytes = jobs.reduce((sum, job) => sum + (job.w * job.h * ds.meta.bands * bpp), 0);
-    if (totalBytes > (1024 * 1024 * 1024)) {
-      const ok = deps.confirmFn(`This raw stack export is about ${deps.humanBytes(totalBytes)} and may crash the browser. Continue?`);
-      if (!ok) return;
-    }
-
-    for (let jobIdx = 0; jobIdx < jobs.length; jobIdx += 1) {
-      const job = jobs[jobIdx];
-      const srcWin = sourceWindowForJob(ds, job);
-      const mask = buildSelectionMask(ds, job);
-      const parts = [];
-      for (let b = 0; b < ds.meta.bands; b += 1) {
-        deps.setStatus(
-          jobs.length > 1
-            ? `export raw… ${jobIdx + 1}/${jobs.length} (${b + 1}/${ds.meta.bands})`
-            : `export raw… ${b + 1}/${ds.meta.bands}`,
-          "warn"
-        );
-        let src = null;
-        if (srcWin.w > 0 && srcWin.h > 0) {
-          if (ds.meta.interleave === "bip") {
-            src = await deps.readBandWindowBIP(ds.meta, ds.ds, b, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
-          } else {
-            src = await deps.readBandWindow(ds.meta, ds.ds, b, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
-          }
-        }
-        const Ctor = src ? src.constructor : (ds.meta.dataTypeInfo.ctor || Float64Array);
-        const out = new Ctor(job.w * job.h);
-        if (src && srcWin.w > 0 && srcWin.h > 0) {
-          for (let row = 0; row < srcWin.h; row += 1) {
-            const outRow = row + srcWin.offY;
-            for (let col = 0; col < srcWin.w; col += 1) {
-              const outCol = col + srcWin.offX;
-              const outIndex = outRow * job.w + outCol;
-              if (!mask[outIndex]) continue;
-              out[outIndex] = src[row * srcWin.w + col];
-            }
-          }
-        }
-        parts.push(encodeEnviBandBytes(ds.meta, out, RAW_ENVI_LITTLE_ENDIAN));
-      }
-
-      const base = selectionBaseName(ds, ds.activeBand, job, true);
-      const datName = `${base}.dat`;
-      const dataBlob = new Blob(parts, { type: "application/octet-stream" });
-      const hdrText = buildEnviHeaderText({
-        meta: ds.meta,
-        width: job.w,
-        height: job.h,
-        bands: ds.meta.bands,
-        interleave: RAW_ENVI_INTERLEAVE,
-        littleEndian: RAW_ENVI_LITTLE_ENDIAN,
-        dataFileName: datName
-      });
-      deps.downloadBlob(dataBlob, datName);
-      deps.downloadBlob(new Blob([hdrText], { type: "text/plain;charset=utf-8" }), `${base}.hdr`);
-    }
-    deps.setStatus("ready", "ok");
-  }
-
-  async function exportRawStackTIFF(ds, rect) {
-    const w = rect.w;
-    const h = rect.h;
-    const bpp = ds.meta.dataTypeInfo.bytes;
-    const totalBytes = w * h * ds.meta.bands * bpp;
-
-    if (totalBytes > (1024 * 1024 * 1024)) {
-      const ok = deps.confirmFn(`This raw stack is about ${deps.humanBytes(totalBytes)} and may crash the browser. Continue?`);
-      if (!ok) return;
-    }
-
-    deps.setStatus("export raw…", "warn");
-    const pages = [];
-    for (let b = 0; b < ds.meta.bands; b += 1) {
-      deps.setStatus(`export raw… ${b + 1}/${ds.meta.bands}`, "warn");
-      let data;
-      if (ds.meta.interleave === "bip") {
-        data = await deps.readBandWindowBIP(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
-      } else {
-        data = await deps.readBandWindow(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
-      }
-      pages.push(data);
-    }
-
-    const blob = encodeRawMultipageTiff({ meta: ds.meta, width: w, height: h, pages });
-    const base = `${ds.name}_${rect.x0}_${rect.y0}_${w}x${h}_rawstack`;
+    const blob = bandIndices.length > 1
+      ? encodeRenderedMultipageTiff({ pages })
+      : encodeRenderedTiff({ imageData: pages[0] });
     deps.downloadBlob(blob, `${base}.tiff`);
     deps.setStatus("ready", "ok");
   }
 
-  async function exportRawStackENVI(ds, rect) {
+  async function buildRawSelectionPages(ds, job, bandIndices) {
+    const srcWin = sourceWindowForJob(ds, job);
+    const mask = buildSelectionMask(ds, job);
+    const pages = [];
+    for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
+      const bandIndex = bandIndices[bandPos];
+      deps.setStatus(`export raw… ${bandPos + 1}/${bandIndices.length}`, "warn");
+      let src = null;
+      if (srcWin.w > 0 && srcWin.h > 0) {
+        src = await readBandExportData(ds, bandIndex, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h);
+      }
+      const Ctor = src ? src.constructor : (ds.meta.dataTypeInfo.ctor || Float64Array);
+      const out = new Ctor(job.w * job.h);
+      if (src && srcWin.w > 0 && srcWin.h > 0) {
+        for (let row = 0; row < srcWin.h; row += 1) {
+          const outRow = row + srcWin.offY;
+          for (let col = 0; col < srcWin.w; col += 1) {
+            const outCol = col + srcWin.offX;
+            const outIndex = outRow * job.w + outCol;
+            if (!mask[outIndex]) continue;
+            out[outIndex] = src[row * srcWin.w + col];
+          }
+        }
+      }
+      pages.push(out);
+    }
+    return pages;
+  }
+
+  async function exportRawSelectionJobs(ds, jobs, bandIndices = [ds.activeBand], kind = "tiff") {
+    if (!Array.isArray(jobs) || !jobs.length || !Array.isArray(bandIndices) || !bandIndices.length) return;
+    const bpp = ds.meta.dataTypeInfo.bytes;
+    const totalBytes = jobs.reduce((sum, job) => sum + (job.w * job.h * bandIndices.length * bpp), 0);
+    if (!(await maybeConfirmLargeRawExport(totalBytes))) return;
+
+    for (let jobIdx = 0; jobIdx < jobs.length; jobIdx += 1) {
+      const job = jobs[jobIdx];
+      const pages = await buildRawSelectionPages(ds, job, bandIndices);
+      const base = selectionBaseName(ds, bandIndices, job, bandIndices.length > 1 ? "rawstack" : "raw");
+      if (kind === "envi") {
+        const meta = subsetMetaForBandIndices(ds.meta, bandIndices);
+        const datName = `${base}.dat`;
+        const parts = pages.map((page) => encodeEnviBandBytes(meta, page, RAW_ENVI_LITTLE_ENDIAN));
+        const hdrText = buildEnviHeaderText({
+          meta,
+          width: job.w,
+          height: job.h,
+          bands: bandIndices.length,
+          interleave: RAW_ENVI_INTERLEAVE,
+          littleEndian: RAW_ENVI_LITTLE_ENDIAN,
+          dataFileName: datName
+        });
+        deps.downloadBlob(new Blob(parts, { type: "application/octet-stream" }), datName);
+        deps.downloadBlob(new Blob([hdrText], { type: "text/plain;charset=utf-8" }), `${base}.hdr`);
+      } else {
+        const blob = encodeRawMultipageTiff({ meta: ds.meta, width: job.w, height: job.h, pages });
+        deps.downloadBlob(blob, `${base}.tiff`);
+      }
+    }
+    deps.setStatus("ready", "ok");
+  }
+
+  async function exportRawStackTIFF(ds, rect, bandIndices = [ds.activeBand]) {
     const w = rect.w;
     const h = rect.h;
-    const bpp = ds.meta.dataTypeInfo.bytes;
-    const totalBytes = w * h * ds.meta.bands * bpp;
-
-    if (totalBytes > (1024 * 1024 * 1024)) {
-      const ok = deps.confirmFn(`This raw stack is about ${deps.humanBytes(totalBytes)} and may crash the browser. Continue?`);
-      if (!ok) return;
-    }
+    const totalBytes = w * h * bandIndices.length * ds.meta.dataTypeInfo.bytes;
+    if (!(await maybeConfirmLargeRawExport(totalBytes, "raw export"))) return;
 
     deps.setStatus("export raw…", "warn");
-    const parts = [];
-    for (let b = 0; b < ds.meta.bands; b += 1) {
-      deps.setStatus(`export raw… ${b + 1}/${ds.meta.bands}`, "warn");
-      let data;
-      if (ds.meta.interleave === "bip") {
-        data = await deps.readBandWindowBIP(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
-      } else {
-        data = await deps.readBandWindow(ds.meta, ds.ds, b, rect.x0, rect.y0, w, h, 1);
-      }
-      parts.push(encodeEnviBandBytes(ds.meta, data, RAW_ENVI_LITTLE_ENDIAN));
+    const pages = [];
+    for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
+      deps.setStatus(`export raw… ${bandPos + 1}/${bandIndices.length}`, "warn");
+      pages.push(await readBandExportData(ds, bandIndices[bandPos], rect.x0, rect.y0, w, h));
     }
 
-    const base = `${ds.name}_${rect.x0}_${rect.y0}_${w}x${h}_rawstack`;
+    const blob = encodeRawMultipageTiff({ meta: ds.meta, width: w, height: h, pages });
+    deps.downloadBlob(blob, `${rectBaseName(ds, bandIndices, rect, bandIndices.length > 1 ? "rawstack" : "raw")}.tiff`);
+    deps.setStatus("ready", "ok");
+  }
+
+  async function exportRawStackENVI(ds, rect, bandIndices = [ds.activeBand]) {
+    const w = rect.w;
+    const h = rect.h;
+    const totalBytes = w * h * bandIndices.length * ds.meta.dataTypeInfo.bytes;
+    if (!(await maybeConfirmLargeRawExport(totalBytes, "raw export"))) return;
+
+    deps.setStatus("export raw…", "warn");
+    const meta = subsetMetaForBandIndices(ds.meta, bandIndices);
+    const parts = [];
+    for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
+      deps.setStatus(`export raw… ${bandPos + 1}/${bandIndices.length}`, "warn");
+      const data = await readBandExportData(ds, bandIndices[bandPos], rect.x0, rect.y0, w, h);
+      parts.push(encodeEnviBandBytes(meta, data, RAW_ENVI_LITTLE_ENDIAN));
+    }
+
+    const base = rectBaseName(ds, bandIndices, rect, bandIndices.length > 1 ? "rawstack" : "raw");
     const datName = `${base}.dat`;
     const hdrText = buildEnviHeaderText({
-      meta: ds.meta,
+      meta,
       width: w,
       height: h,
-      bands: ds.meta.bands,
+      bands: bandIndices.length,
       interleave: RAW_ENVI_INTERLEAVE,
       littleEndian: RAW_ENVI_LITTLE_ENDIAN,
       dataFileName: datName
@@ -688,39 +736,37 @@ export function createExportService(deps) {
   async function runExportFromDialog() {
     const ds = deps.getActive();
     if (!ds || ds.activeBand == null) return;
-    const kind = deps.els.expFormatPng.checked ? "png" : (deps.els.expFormatEnvi?.checked ? "envi" : "tiff");
+    const kind = selectedKindFromDialog();
+    const mode = selectedModeFromDialog(kind);
+    const scope = selectedScopeFromDialog();
+    const bandIndices = selectedBandIndices(ds, kind);
+    const includeAnnotations = includeAnnotationsFromDialog(kind, mode);
     deps.state.exportKind = kind;
     const selections = collectAreaSelections(ds);
-    const multiSel = selections.length > 1;
-    const separateMulti = !!(multiSel && deps.els.expSelModeSeparate && deps.els.expSelModeSeparate.checked);
 
     try {
       deps.els.exportDlg.close();
     } catch {}
 
-    const rawMode = deps.els.expModeRaw.checked && kind !== "png";
-    if (rawMode) {
-      const scope = deps.els.expRawScopeWhole.checked ? "whole" : "sel";
+    if (mode === "raw") {
       if (scope === "sel" && selections.length) {
-        const plan = resolveSelectionExportPlan(ds, selections, separateMulti);
-        if (kind === "envi") await exportRawSelectionJobsENVI(ds, plan.jobs);
-        else await exportRawSelectionJobs(ds, plan.jobs);
+        const plan = resolveSelectionExportPlan(ds, selections, false);
+        await exportRawSelectionJobs(ds, plan.jobs, bandIndices, kind);
         return;
       }
-      const rect = resolveExportRect(ds, scope);
-      if (kind === "envi") await exportRawStackENVI(ds, rect);
-      else await exportRawStackTIFF(ds, rect);
+      const rect = resolveExportRect(ds, "view");
+      if (kind === "envi") await exportRawStackENVI(ds, rect, bandIndices);
+      else await exportRawStackTIFF(ds, rect, bandIndices);
       return;
     }
 
-    const scope = deps.els.expRenScopeWhole.checked ? "whole" : (deps.els.expRenScopeSel.checked ? "sel" : "view");
     if (scope === "sel" && selections.length) {
-      const plan = resolveSelectionExportPlan(ds, selections, separateMulti);
-      await exportRenderedSelectionJobs(ds, kind, plan.jobs);
+      const plan = resolveSelectionExportPlan(ds, selections, false);
+      await exportRenderedSelectionJobs(ds, kind, plan.jobs, bandIndices, { includeAnnotations });
       return;
     }
-    const rect = resolveExportRect(ds, scope);
-    await exportRendered(ds, kind, rect, scope);
+    const rect = resolveExportRect(ds, "view");
+    await exportRendered(ds, kind, rect, "view", bandIndices, { includeAnnotations });
   }
 
   return {

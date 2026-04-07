@@ -5,20 +5,22 @@ function makeEls() {
   return {
     expTitle: { textContent: "" },
     expInfo: { textContent: "" },
+    expFormatHint: { textContent: "" },
     expFormatPng: { checked: false },
     expFormatTiff: { checked: true },
     expFormatEnvi: { checked: false },
-    expModeRaw: { disabled: false, checked: false },
+    expModeWrap: { style: { display: "" } },
+    expModeRaw: { checked: false },
     expModeRendered: { checked: false },
-    expLblRawSel: { textContent: "" },
-    expLblRenSel: { textContent: "" },
-    expRenScopeSel: { disabled: false, checked: false },
-    expRenScopeView: { checked: false },
-    expRenScopeWhole: { checked: false },
-    expRawScopeWhole: { checked: false },
-    expRawScopeSel: { checked: true },
-    expRawOptions: { style: { display: "" } },
-    expRenderedOptions: { style: { display: "" } },
+    expScopeSel: { disabled: false, checked: false },
+    expScopeView: { checked: false },
+    expLblScopeSel: { textContent: "" },
+    expBandWrap: { style: { display: "" } },
+    expBandCurrent: { checked: true },
+    expBandAll: { checked: false },
+    expIncludeAnnotationsWrap: { style: { display: "" } },
+    expIncludeAnnotations: { checked: true },
+    expShapeWarn: { style: { display: "" } },
     expEstimate: { textContent: "" },
     expNote: { textContent: "", innerHTML: "" },
     expWarning: { style: { display: "" } },
@@ -62,21 +64,25 @@ describe("export dialog controller", () => {
 
     ctrl.openExportDialog();
     expect(state.exportKind).toBe("tiff");
-    expect(els.expModeRaw.disabled).toBe(false);
-    expect(els.expEstimate.textContent).toContain("8000 B");
+    expect(els.expModeWrap.style.display).toBe("block");
+    expect(els.expEstimate.textContent).toContain("800 B");
 
     els.expFormatPng.checked = true;
     els.expFormatTiff.checked = false;
     ctrl.updateExportDialogUI();
     expect(state.exportKind).toBe("png");
-    expect(els.expModeRaw.disabled).toBe(true);
+    expect(els.expModeWrap.style.display).toBe("none");
     expect(els.expModeRendered.checked).toBe(true);
+    expect(els.expFormatHint.textContent).toContain("PNG can only export rendered result");
     expect(els.expEstimate.textContent).toContain("800 B");
 
     els.expFormatPng.checked = false;
+    els.expFormatTiff.checked = false;
     els.expFormatEnvi.checked = true;
     ctrl.updateExportDialogUI();
     expect(state.exportKind).toBe("envi");
-    expect(els.expModeRaw.disabled).toBe(false);
+    expect(els.expModeRaw.checked).toBe(true);
+    expect(els.expModeWrap.style.display).toBe("none");
+    expect(els.expIncludeAnnotationsWrap.style.display).toBe("none");
   });
 });

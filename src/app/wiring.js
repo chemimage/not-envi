@@ -273,23 +273,21 @@ export function wireApp(deps) {
     els.btnExport.onclick = () => triggerSaveExport();
   }
 
-  els.expFormatPng.oninput = () => updateExportDialogUI();
-  els.expFormatTiff.oninput = () => updateExportDialogUI();
+  if (els.expFormatPng) els.expFormatPng.oninput = () => updateExportDialogUI();
+  if (els.expFormatTiff) els.expFormatTiff.oninput = () => updateExportDialogUI();
   if (els.expFormatEnvi) els.expFormatEnvi.oninput = () => updateExportDialogUI();
-  els.expModeRaw.oninput = () => updateExportDialogUI();
-  els.expModeRendered.oninput = () => updateExportDialogUI();
-  els.expRawScopeSel.oninput = () => updateExportEstimate();
-  els.expRawScopeWhole.oninput = () => updateExportEstimate();
-  els.expRenScopeSel.oninput = () => updateExportEstimate();
-  els.expRenScopeView.oninput = () => updateExportEstimate();
-  els.expRenScopeWhole.oninput = () => updateExportEstimate();
-  if (els.expSelModeTogether) els.expSelModeTogether.oninput = () => updateExportEstimate();
-  if (els.expSelModeSeparate) els.expSelModeSeparate.oninput = () => updateExportEstimate();
+  if (els.expModeRaw) els.expModeRaw.oninput = () => updateExportDialogUI();
+  if (els.expModeRendered) els.expModeRendered.oninput = () => updateExportDialogUI();
+  if (els.expScopeSel) els.expScopeSel.oninput = () => updateExportEstimate();
+  if (els.expScopeView) els.expScopeView.oninput = () => updateExportEstimate();
+  if (els.expBandCurrent) els.expBandCurrent.oninput = () => updateExportEstimate();
+  if (els.expBandAll) els.expBandAll.oninput = () => updateExportEstimate();
+  if (els.expIncludeAnnotations) els.expIncludeAnnotations.oninput = () => updateExportEstimate();
 
-  els.btnExpCancel.onclick = () => {
+  if (els.btnExpCancel) els.btnExpCancel.onclick = () => {
     try { els.exportDlg.close(); } catch { els.exportDlg.open = false; }
   };
-  els.btnExpGo.onclick = () => {
+  if (els.btnExpGo) els.btnExpGo.onclick = () => {
     runExportWithErrorHandling();
   };
 

@@ -46,21 +46,29 @@ describe("export service", () => {
       name: "demo",
       activeBand: 0,
       meta: { samples: 64, lines: 64 },
-      drawings: [
-        { id: 21, tool: "ruler", color: "#22c55e", points: [{ x: 2, y: 3 }, { x: 20, y: 10 }] }
-      ]
+      drawings: []
     };
     const deps = baseDeps();
     deps.downloadBlob = vi.fn();
+    deps.getDrawData = vi.fn(() => ({
+      items: [],
+      draft: null,
+      rulerHover: null,
+      rulerProfileHover: null,
+      selectionIds: [],
+      marqueeOffset: 0
+    }));
     const ctx = {
       putImageData: vi.fn(),
       getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(400), width: 10, height: 10 })),
       save: vi.fn(),
       restore: vi.fn(),
       beginPath: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      stroke: vi.fn(),
+      rect: vi.fn(),
+      clip: vi.fn(),
+      strokeRect: vi.fn(),
+      clearRect: vi.fn(),
+      setTransform: vi.fn(),
       set strokeStyle(v) { this._strokeStyle = v; },
       set lineWidth(v) { this._lineWidth = v; }
     };
@@ -77,8 +85,8 @@ describe("export service", () => {
     });
     try {
       const service = createExportService(deps);
-      await service.exportRendered(ds, "png", { x0: 0, y0: 0, w: 10, h: 10 });
-      expect(ctx.stroke).toHaveBeenCalled();
+      await service.exportRendered(ds, "png", { x0: 0, y0: 0, w: 10, h: 10 }, "window", [0], { includeAnnotations: true });
+      expect(deps.getDrawData).toHaveBeenCalled();
       expect(deps.downloadBlob).toHaveBeenCalledTimes(1);
     } finally {
       createEl.mockRestore();

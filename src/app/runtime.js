@@ -1265,6 +1265,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     renderWindowToImageData,
     readBandWindow,
     readBandWindowBIP,
+    getDrawData,
     getActiveViewportCss: () => getActiveViewportCss(),
     getActiveViewportDevice: () => getActiveViewportDevice(),
     downloadBlob,

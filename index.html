@@ -14,7 +14,10 @@
     <canvas id="cpuCanvas"></canvas>
     <canvas id="overlayCanvas"></canvas>
     <div id="leftToolRail">
-      <img id="brandLogo" src="./images/Illinois_logo_fullcolor_rgb.png" alt="Illinois logo" />
+      <div id="brandBadge">
+        <img id="brandLogo" src="./images/Illinois_logo_fullcolor_rgb.png" alt="Illinois logo" />
+        <div id="brandVersion" aria-label="Application version"></div>
+      </div>
       <div id="drawTools" aria-label="Drawing tools">
         <div class="draw-color-anchor">
           <button class="draw-color-wrap" id="drawColorPreview" type="button" title="Drawing color swatches" aria-label="Drawing color swatches" aria-expanded="false" aria-haspopup="true">
@@ -284,66 +287,61 @@
 
   <div class="divider"></div>
 
-  <div class="row" style="flex-wrap:wrap;">
-    <label class="toggle" title="Raw export writes original numeric samples (TIFF or ENVI)">
-      <input type="radio" id="expModeRaw" name="expMode" value="raw" checked />
-      <span>Raw data</span>
+  <div class="hint tiny" id="expFormatHint">—</div>
+
+  <div id="expModeWrap" style="margin-top:10px;">
+    <label class="small">Output</label>
+    <div class="row" style="margin-top:6px; flex-wrap:wrap;">
+      <label class="toggle" title="Raw export writes original numeric samples">
+        <input type="radio" id="expModeRaw" name="expMode" value="raw" checked />
+        <span>Raw data</span>
+      </label>
+      <label class="toggle" title="Rendered export saves what you see (tone-mapped)">
+        <input type="radio" id="expModeRendered" name="expMode" value="rendered" />
+        <span>Rendered view</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="row" id="expOptionsGrid" style="margin-top:10px; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+    <div id="expScopeWrap" style="flex:1 1 220px;">
+      <label class="small">Region</label>
+      <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
+        <label class="toggle">
+          <input type="radio" id="expScopeSel" name="expScope" value="sel" checked />
+          <span id="expLblScopeSel">Selection</span>
+        </label>
+        <label class="toggle">
+          <input type="radio" id="expScopeView" name="expScope" value="view" />
+          <span>Whole view</span>
+        </label>
+      </div>
+    </div>
+
+    <div id="expBandWrap" style="flex:1 1 180px;">
+      <label class="small">Bands</label>
+      <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
+        <label class="toggle">
+          <input type="radio" id="expBandCurrent" name="expBands" value="current" checked />
+          <span>Current band</span>
+        </label>
+        <label class="toggle">
+          <input type="radio" id="expBandAll" name="expBands" value="all" />
+          <span>All bands</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div id="expIncludeAnnotationsWrap" style="margin-top:10px;">
+    <label class="toggle" title="Burn current annotations into rendered exports">
+      <input type="checkbox" id="expIncludeAnnotations" checked />
+      <span>Include annotations</span>
     </label>
-    <label class="toggle" title="Rendered export saves what you see (tone-mapped)">
-      <input type="radio" id="expModeRendered" name="expMode" value="rendered" />
-      <span>Rendered view</span>
-    </label>
+  </div>
+
+  <div style="margin-top:10px;">
     <span class="badge" id="expWarning" style="display:none; border-color:#6b7280; color:#d1d5db;">Large export</span>
-  </div>
-
-  <div id="expRawOptions" style="margin-top:10px;">
-    <div class="hint tiny">Exports a <b>stack</b> (all bands) as raw numeric values. TIFF writes a multi-page stack; ENVI writes <code>.hdr</code> + <code>.dat</code>.</div>
-    <div style="height:8px"></div>
-    <label class="small">What to export</label>
-    <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
-      <label class="toggle">
-        <input type="radio" id="expRawScopeSel" name="expRawScope" value="sel" checked />
-        <span id="expLblRawSel">Selected stack (all bands)</span>
-      </label>
-      <label class="toggle">
-        <input type="radio" id="expRawScopeWhole" name="expRawScope" value="whole" />
-        <span>Whole dataset stack (all bands)</span>
-      </label>
-    </div>
-  </div>
-
-  <div id="expRenderedOptions" style="margin-top:10px; display:none;">
-    <div class="hint tiny">Exports the current band as an 8-bit grayscale image after applying your histogram range, contrast, brightness, and gain.</div>
-    <div style="height:8px"></div>
-    <label class="small">Region</label>
-    <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
-      <label class="toggle">
-        <input type="radio" id="expRenScopeSel" name="expRenScope" value="sel" checked />
-        <span id="expLblRenSel">Selection</span>
-      </label>
-      <label class="toggle">
-        <input type="radio" id="expRenScopeView" name="expRenScope" value="view" />
-        <span>Current viewport</span>
-      </label>
-      <label class="toggle">
-        <input type="radio" id="expRenScopeWhole" name="expRenScope" value="whole" />
-        <span>Whole dataset</span>
-      </label>
-    </div>
-  </div>
-
-  <div id="expSelModeWrap" style="margin-top:10px; display:none;">
-    <label class="small">Multiple selections</label>
-    <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
-      <label class="toggle">
-        <input type="radio" id="expSelModeTogether" name="expSelMode" value="together" checked />
-        <span>Export together (fill unselected with 0)</span>
-      </label>
-      <label class="toggle">
-        <input type="radio" id="expSelModeSeparate" name="expSelMode" value="separate" />
-        <span>Export each region independently</span>
-      </label>
-    </div>
   </div>
 
   <div class="hint tiny" id="expShapeWarn" style="display:none; margin-top:8px;">

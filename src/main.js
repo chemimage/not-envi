@@ -9,9 +9,14 @@ import { createThumbnailController } from "./render/thumbnail.js";
 import { bindCoreEvents } from "./ui/events.js";
 import "./app/runtime.js";
 
+const APP_VERSION = __APP_VERSION__;
+
 // Bootstraps modular seams for progressive migration while preserving current behavior.
 const appState = createAppState();
 const els = collectElements();
+if (els.brandVersion) {
+  els.brandVersion.textContent = `v${APP_VERSION}`;
+}
 void appState;
 void els;
 void createRenderer;
