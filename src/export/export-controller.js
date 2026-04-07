@@ -8,6 +8,7 @@ export function createExportDialogController(deps) {
     bandLabel,
     humanBytes,
     resolveExportRect,
+    resolveRenderedExportTarget,
     alertFn
   } = deps;
 
@@ -76,7 +77,7 @@ export function createExportDialogController(deps) {
       els.expLblRawSel.textContent = "Selected regions stack (all bands)";
       els.expLblRenSel.textContent = "Selected regions";
     } else {
-      els.expLblRawSel.textContent = hasSel ? "Selection stack (all bands)" : "Current view stack (all bands)";
+      els.expLblRawSel.textContent = hasSel ? "Selected stack (all bands)" : "Current view stack (all bands)";
       els.expLblRenSel.textContent = hasSel ? "Selection" : "Selection (none)";
     }
     els.expRenScopeSel.disabled = !hasSel;
@@ -167,10 +168,16 @@ export function createExportDialogController(deps) {
           els.expNote.innerHTML = `Rendered view: <b>${one.w}×${one.h}</b> pixels from the current band.`;
         }
       } else {
-        rect = resolveExportRect(ds, scope);
-        estBytes = rect.w * rect.h * 4;
-        warnByPixels = (rect.w * rect.h > 20_000_000);
-        els.expNote.innerHTML = `Rendered view: <b>${rect.w}×${rect.h}</b> pixels from the current band.`;
+        const fallbackRect = resolveExportRect(ds, scope);
+        const target = (typeof resolveRenderedExportTarget === "function")
+          ? resolveRenderedExportTarget(ds, scope)
+          : { rect: fallbackRect, outputW: fallbackRect.w, outputH: fallbackRect.h, mode: "window" };
+        rect = target.rect;
+        estBytes = target.outputW * target.outputH * 4;
+        warnByPixels = ((target.outputW * target.outputH) > 20_000_000);
+        els.expNote.innerHTML = target.mode === "viewport"
+          ? `Rendered viewport: <b>${target.outputW}×${target.outputH}</b> pixels from the current browser view.`
+          : `Rendered view: <b>${target.outputW}×${target.outputH}</b> pixels from the current band.`;
       }
       if (kind === "png") {
         els.expNote.innerHTML += ` <span class="badge">PNG is rendered only</span> (use TIFF for raw).`;

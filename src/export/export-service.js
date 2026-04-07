@@ -1,5 +1,6 @@
 import { encodeRawMultipageTiff, encodeRenderedTiff } from "./tiff-backend.js";
 import { buildEnviHeaderText, encodeEnviBandBytes } from "./envi-backend.js";
+import { resolveRasterSampling } from "../render/raster-geometry.js";
 
 export function createExportService(deps) {
   const RAW_ENVI_INTERLEAVE = "bsq";
@@ -26,19 +27,23 @@ export function createExportService(deps) {
     });
   }
 
-  function drawRulersOnRenderedContext(ctx, ds, rect) {
+  function drawRulersOnRenderedContext(ctx, ds, rect, opts = {}) {
     if (!ctx || !ds || !rect) return;
     const rulers = listRulerDrawings(ds);
     if (!rulers.length) return;
+    const outW = Math.max(1, Number(opts?.outputW || rect.w || 1));
+    const outH = Math.max(1, Number(opts?.outputH || rect.h || 1));
+    const scaleX = outW / Math.max(1, Number(rect.w) || 1);
+    const scaleY = outH / Math.max(1, Number(rect.h) || 1);
     ctx.save();
     ctx.lineWidth = 2;
     for (const item of rulers) {
       const a = item.points[0];
       const b = item.points[item.points.length - 1];
-      const ax = a.x - rect.x0;
-      const ay = a.y - rect.y0;
-      const bx = b.x - rect.x0;
-      const by = b.y - rect.y0;
+      const ax = (a.x - rect.x0) * scaleX;
+      const ay = (a.y - rect.y0) * scaleY;
+      const bx = (b.x - rect.x0) * scaleX;
+      const by = (b.y - rect.y0) * scaleY;
       ctx.strokeStyle = parseHexColor(item.color, 0.95);
       ctx.beginPath();
       ctx.moveTo(ax, ay);
@@ -78,6 +83,16 @@ export function createExportService(deps) {
       x1: Math.ceil(ds.view.x + viewW),
       y1: Math.ceil(ds.view.y + viewH)
     });
+  }
+
+  function viewportCssSize() {
+    const viewport = (typeof deps.getActiveViewportCss === "function")
+      ? deps.getActiveViewportCss()
+      : null;
+    return {
+      width: Math.max(1, Math.round(Number(viewport?.width || viewport?.w || deps.els.main?.getBoundingClientRect?.().width || 1))),
+      height: Math.max(1, Math.round(Number(viewport?.height || viewport?.h || deps.els.main?.getBoundingClientRect?.().height || 1)))
+    };
   }
 
   function wholeRect(ds) {
@@ -320,6 +335,70 @@ export function createExportService(deps) {
     return viewRect(ds);
   }
 
+  function resolveRenderedExportTarget(ds, scope, rect = null) {
+    const targetRect = rect || resolveExportRect(ds, scope);
+    if (scope === "view") {
+      const viewport = viewportCssSize();
+      return {
+        rect: targetRect,
+        outputW: viewport.width,
+        outputH: viewport.height,
+        mode: "viewport"
+      };
+    }
+    return {
+      rect: targetRect,
+      outputW: targetRect.w,
+      outputH: targetRect.h,
+      mode: "window"
+    };
+  }
+
+  function imageDataToCanvas(img) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Number(img?.width) || 1);
+    canvas.height = Math.max(1, Number(img?.height) || 1);
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (ctx && img) ctx.putImageData(img, 0, 0);
+    return canvas;
+  }
+
+  async function renderViewportToImageData(ds, band, rect) {
+    const viewport = viewportCssSize();
+    const geom = resolveRasterSampling(ds, viewport.width, viewport.height, Number(ds?.view?.scale) || 1);
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (geom.validW > 0 && geom.validH > 0) {
+      const src = await deps.renderWindowToImageData(ds, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
+      const srcCanvas = imageDataToCanvas(src);
+      const displayRect = geom.displayRect || { x: 0, y: 0, w: canvas.width, h: canvas.height };
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        srcCanvas,
+        0,
+        0,
+        srcCanvas.width,
+        srcCanvas.height,
+        Number(displayRect.x) || 0,
+        Number(displayRect.y) || 0,
+        Math.max(1, Number(displayRect.w) || 1),
+        Math.max(1, Number(displayRect.h) || 1)
+      );
+    }
+
+    return {
+      imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+      outputW: canvas.width,
+      outputH: canvas.height,
+      rect
+    };
+  }
+
   async function exportRenderedSelectionJobs(ds, kind, jobs) {
     const band = ds.activeBand;
     if (band == null || !Array.isArray(jobs) || !jobs.length) return;
@@ -367,7 +446,7 @@ export function createExportService(deps) {
       }
 
       outCtx.putImageData(outImg, 0, 0);
-      drawRulersOnRenderedContext(outCtx, ds, { x0: job.x0, y0: job.y0, w: job.w, h: job.h });
+      drawRulersOnRenderedContext(outCtx, ds, { x0: job.x0, y0: job.y0, w: job.w, h: job.h }, { outputW: job.w, outputH: job.h });
       const base = selectionBaseName(ds, band, job, false);
       if (kind === "png") {
         const blob = await new Promise((res) => outCanvas.toBlob(res, "image/png"));
@@ -381,11 +460,12 @@ export function createExportService(deps) {
     deps.setStatus("ready", "ok");
   }
 
-  async function exportRendered(ds, kind, rect) {
+  async function exportRendered(ds, kind, rect, scope = "view") {
     const band = ds.activeBand;
     if (band == null) return;
-    const w = rect.w;
-    const h = rect.h;
+    const target = resolveRenderedExportTarget(ds, scope, rect);
+    const w = target.outputW;
+    const h = target.outputH;
     const maxPix = 20_000_000;
     if (w * h > maxPix) {
       deps.alertFn(`Export too large (${deps.fmt(w * h)} pixels). Please select a smaller region.`);
@@ -393,14 +473,18 @@ export function createExportService(deps) {
     }
 
     deps.setStatus("export…", "warn");
-    const img = await deps.renderWindowToImageData(ds, band, rect.x0, rect.y0, w, h, 1);
-    const base = `${ds.name}_${sanitizeFilePart(deps.bandLabel(ds, band))}_${rect.x0}_${rect.y0}_${w}x${h}`;
+    const rendered = target.mode === "viewport"
+      ? await renderViewportToImageData(ds, band, target.rect)
+      : { imageData: await deps.renderWindowToImageData(ds, band, target.rect.x0, target.rect.y0, w, h, 1), outputW: w, outputH: h, rect: target.rect };
+    const base = target.mode === "viewport"
+      ? `${ds.name}_${sanitizeFilePart(deps.bandLabel(ds, band))}_viewport_${w}x${h}`
+      : `${ds.name}_${sanitizeFilePart(deps.bandLabel(ds, band))}_${target.rect.x0}_${target.rect.y0}_${w}x${h}`;
     const c = document.createElement("canvas");
     c.width = w;
     c.height = h;
     const outCtx = c.getContext("2d", { alpha: false });
-    outCtx.putImageData(img, 0, 0);
-    drawRulersOnRenderedContext(outCtx, ds, rect);
+    outCtx.putImageData(rendered.imageData, 0, 0);
+    drawRulersOnRenderedContext(outCtx, ds, target.rect, { outputW: w, outputH: h });
 
     if (kind === "png") {
       const blob = await new Promise((res) => c.toBlob(res, "image/png"));
@@ -636,7 +720,7 @@ export function createExportService(deps) {
       return;
     }
     const rect = resolveExportRect(ds, scope);
-    await exportRendered(ds, kind, rect);
+    await exportRendered(ds, kind, rect, scope);
   }
 
   return {
@@ -648,6 +732,7 @@ export function createExportService(deps) {
     hasNonRectSelections,
     resolveSelectionExportPlan,
     resolveExportRect,
+    resolveRenderedExportTarget,
     exportRendered,
     exportRawStackTIFF,
     exportRawStackENVI,

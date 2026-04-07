@@ -1265,6 +1265,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     renderWindowToImageData,
     readBandWindow,
     readBandWindowBIP,
+    getActiveViewportCss: () => getActiveViewportCss(),
     getActiveViewportDevice: () => getActiveViewportDevice(),
     downloadBlob,
     alertFn: (msg) => alert(msg),
@@ -1280,6 +1281,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     hasNonRectSelections: (selections) => exportService.hasNonRectSelections(selections),
     resolveSelectionExportPlan: (ds, selections, separate) => exportService.resolveSelectionExportPlan(ds, selections, separate),
     resolveExportRect: (ds, scope) => exportService.resolveExportRect(ds, scope),
+    resolveRenderedExportTarget: (ds, scope) => exportService.resolveRenderedExportTarget(ds, scope),
     alertFn: (msg) => alert(msg),
   });
 
