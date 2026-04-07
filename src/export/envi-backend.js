@@ -62,7 +62,7 @@ export function buildEnviHeaderText({
 }) {
   const lines = [];
   lines.push("ENVI");
-  lines.push("description = {Exported by not-envi}");
+  lines.push("description = {Exported by Hyve}");
   lines.push(`samples = ${Math.max(1, Math.floor(width || 1))}`);
   lines.push(`lines = ${Math.max(1, Math.floor(height || 1))}`);
   lines.push(`bands = ${Math.max(1, Math.floor(bands || 1))}`);
@@ -84,4 +84,3 @@ export function buildEnviHeaderText({
 
   return `${lines.join("\n")}\n`;
 }
-

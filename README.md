@@ -1,4 +1,6 @@
-# not-envi
+# Hyve
+
+Versioning follows SemVer, starting at `1.0.0`.
 
 ## Development
 
