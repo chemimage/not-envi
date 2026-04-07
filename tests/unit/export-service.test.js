@@ -46,12 +46,17 @@ describe("export service", () => {
       name: "demo",
       activeBand: 0,
       meta: { samples: 64, lines: 64 },
-      drawings: []
+      selectedAreaId: 21,
+      drawings: [
+        { id: 21, tool: "rect", points: [{ x: 1, y: 1 }, { x: 8, y: 8 }] },
+        { id: 22, tool: "ruler", color: "#22c55e", points: [{ x: 2, y: 3 }, { x: 20, y: 10 }] }
+      ]
     };
     const deps = baseDeps();
     deps.downloadBlob = vi.fn();
-    deps.getDrawData = vi.fn(() => ({
-      items: [],
+    deps.getEffectiveAreaSelections = vi.fn(() => [ds.drawings[0]]);
+    deps.getDrawData = vi.fn((_dataset, explicitState) => ({
+      items: explicitState?.drawings || [],
       draft: null,
       rulerHover: null,
       rulerProfileHover: null,
@@ -64,6 +69,17 @@ describe("export service", () => {
       save: vi.fn(),
       restore: vi.fn(),
       beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      fill: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 24 })),
+      setLineDash: vi.fn(),
+      arcTo: vi.fn(),
+      closePath: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
       rect: vi.fn(),
       clip: vi.fn(),
       strokeRect: vi.fn(),
@@ -85,8 +101,15 @@ describe("export service", () => {
     });
     try {
       const service = createExportService(deps);
-      await service.exportRendered(ds, "png", { x0: 0, y0: 0, w: 10, h: 10 }, "window", [0], { includeAnnotations: true });
+      await service.exportRendered(ds, "png", { x0: 0, y0: 0, w: 10, h: 10 }, "window", [0], {
+        includeAnnotations: true,
+        omitSelectionOverlay: true
+      });
       expect(deps.getDrawData).toHaveBeenCalled();
+      const explicitState = deps.getDrawData.mock.calls[0][1];
+      expect(explicitState.drawings).toHaveLength(1);
+      expect(explicitState.drawings[0].id).toBe(22);
+      expect(explicitState.selectedAreaId).toBeNull();
       expect(deps.downloadBlob).toHaveBeenCalledTimes(1);
     } finally {
       createEl.mockRestore();

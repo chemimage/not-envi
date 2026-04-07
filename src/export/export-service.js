@@ -59,10 +59,29 @@ export function createExportService(deps) {
     return "all-bands";
   }
 
-  function normalizeAnnotationState(ds) {
+  function effectiveSelectionIdSet(ds) {
+    const items = (typeof deps.getEffectiveAreaSelections === "function")
+      ? deps.getEffectiveAreaSelections(ds)
+      : [];
+    const ids = new Set();
+    for (const item of (Array.isArray(items) ? items : [])) {
+      if (Number.isFinite(Number(item?.id))) ids.add(Number(item.id));
+    }
+    if (!ids.size && Number.isFinite(Number(ds?.selectedAreaId))) {
+      ids.add(Number(ds.selectedAreaId));
+    }
+    return ids;
+  }
+
+  function normalizeAnnotationState(ds, opts = {}) {
+    const omitSelectionOverlay = !!opts.omitSelectionOverlay;
+    const selectionIds = omitSelectionOverlay ? effectiveSelectionIdSet(ds) : new Set();
+    const drawings = Array.isArray(ds?.drawings) ? ds.drawings : [];
     return {
-      drawings: Array.isArray(ds?.drawings) ? ds.drawings : [],
-      selectedAreaId: Number.isFinite(Number(ds?.selectedAreaId)) ? Number(ds.selectedAreaId) : null,
+      drawings: selectionIds.size
+        ? drawings.filter((item) => !selectionIds.has(Number(item?.id)))
+        : drawings,
+      selectedAreaId: omitSelectionOverlay ? null : (Number.isFinite(Number(ds?.selectedAreaId)) ? Number(ds.selectedAreaId) : null),
       draft: null,
       rulerHover: null,
       rulerProfileHover: null
@@ -94,7 +113,7 @@ export function createExportService(deps) {
       showScaleBar: false,
       borderColor: "rgba(0,0,0,0)",
       label: "",
-      annotations: normalizeAnnotationState(ds)
+      annotations: normalizeAnnotationState(ds, { omitSelectionOverlay: !!opts.omitSelectionOverlay })
     });
   }
 
@@ -472,7 +491,11 @@ export function createExportService(deps) {
     const ctx = canvas.getContext("2d", { alpha: false });
     ctx.putImageData(imageData, 0, 0);
     if (opts.includeAnnotations) {
-      drawAnnotationsOnRenderedContext(ctx, ds, rect, { outputW: canvas.width, outputH: canvas.height });
+      drawAnnotationsOnRenderedContext(ctx, ds, rect, {
+        outputW: canvas.width,
+        outputH: canvas.height,
+        omitSelectionOverlay: !!opts.omitSelectionOverlay
+      });
     }
     return imageDataFromCanvas(canvas);
   }
@@ -512,7 +535,8 @@ export function createExportService(deps) {
     return finalizeRenderedImage(ds, { x0: job.x0, y0: job.y0, w: job.w, h: job.h }, outImg, {
       outputW: job.w,
       outputH: job.h,
-      includeAnnotations: !!opts.includeAnnotations
+      includeAnnotations: !!opts.includeAnnotations,
+      omitSelectionOverlay: !!opts.omitSelectionOverlay
     });
   }
 
@@ -529,7 +553,8 @@ export function createExportService(deps) {
     const finalImage = finalizeRenderedImage(ds, target.rect, rendered.imageData, {
       outputW: target.outputW,
       outputH: target.outputH,
-      includeAnnotations: !!opts.includeAnnotations
+      includeAnnotations: !!opts.includeAnnotations,
+      omitSelectionOverlay: !!opts.omitSelectionOverlay
     });
     return {
       imageData: finalImage,
@@ -762,7 +787,10 @@ export function createExportService(deps) {
 
     if (scope === "sel" && selections.length) {
       const plan = resolveSelectionExportPlan(ds, selections, false);
-      await exportRenderedSelectionJobs(ds, kind, plan.jobs, bandIndices, { includeAnnotations });
+      await exportRenderedSelectionJobs(ds, kind, plan.jobs, bandIndices, {
+        includeAnnotations,
+        omitSelectionOverlay: true
+      });
       return;
     }
     const rect = resolveExportRect(ds, "view");
