@@ -18,6 +18,19 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+      - name: Verify tag matches package version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "This workflow only supports tag pushes."
+            exit 1
+          fi
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          EXPECTED_TAG="v${PACKAGE_VERSION}"
+          if [ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${PACKAGE_VERSION}."
+            echo "Expected tag: ${EXPECTED_TAG}"
+            exit 1
+          fi
       - run: npm install
       - run: npm run build
       - name: Create or update release
