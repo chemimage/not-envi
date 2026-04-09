@@ -439,4 +439,43 @@ describe("pyramid-cache", () => {
     const out = await controller.tryRasterFromPyramid(ds, 0, 0.25, 128, 128);
     expect(out).toBeNull();
   });
+
+  test("tryRasterFromPyramid drops stale queued focus tiles when the zoom target changes", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => new Float32Array(outW * outH),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getViewportSize: () => ({ width: 128, height: 128 }),
+      getIOConcurrency: () => 2
+    });
+
+    const ds = {
+      id: 1,
+      meta: { samples: 2048, lines: 2048, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 0.25 },
+      activeBand: null,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+    ds.pyramid.focus = { key: "stale-focus" };
+    ds.pyramid.qHi.push({ key: "stale-hi", band: 0, level: 1, tx: 0, ty: 0 });
+    ds.pyramid.qLo.push({ key: "stale-lo", band: 0, level: 1, tx: 1, ty: 0 });
+    ds.pyramid.queued.add("stale-hi");
+    ds.pyramid.queued.add("stale-lo");
+
+    ds.view = { x: 1024, y: 1024, scale: 0.25 };
+    await controller.tryRasterFromPyramid(ds, 0, 0.25, 128, 128);
+
+    expect(ds.pyramid.focus?.key).not.toBe("stale-focus");
+    expect(ds.pyramid.qHi.some((task) => task.key === "stale-hi")).toBe(false);
+    expect(ds.pyramid.qLo.some((task) => task.key === "stale-lo")).toBe(false);
+    expect(ds.pyramid.queued.has("stale-hi")).toBe(false);
+    expect(ds.pyramid.queued.has("stale-lo")).toBe(false);
+  });
 });

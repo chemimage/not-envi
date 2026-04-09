@@ -76,14 +76,18 @@ export function viewTileBounds(ds, pyr, level, eff, viewportW, viewportH) {
   return { info, step, x0, y0, lx0, ly0, lx1, ly1, tx0, ty0, tx1, ty1 };
 }
 
-function clearLowPriorityQueue(pyr) {
-  if (!pyr?.qLo?.length) return;
-  const hiKeys = new Set(Array.isArray(pyr.qHi) ? pyr.qHi.map((task) => task.key) : []);
-  for (const task of pyr.qLo) {
-    if (!task?.key || hiKeys.has(task.key)) continue;
-    pyr.queued.delete(task.key);
+function clearTaskQueue(pyr, queueName) {
+  const queue = pyr?.[queueName];
+  if (!Array.isArray(queue) || !queue.length) return;
+  for (const task of queue) {
+    if (task?.key) pyr.queued.delete(task.key);
   }
-  pyr.qLo.length = 0;
+  queue.length = 0;
+}
+
+function clearQueuedFocusTasks(pyr) {
+  clearTaskQueue(pyr, "qHi");
+  clearTaskQueue(pyr, "qLo");
 }
 
 function getPinnedOverviewLevels(pyr) {
@@ -468,7 +472,7 @@ export function createPyramidController(deps) {
       Math.round(Number(viewportH) || 0),
       directionKey
     ].join("|");
-    if (pyr.focus?.key !== key) clearLowPriorityQueue(pyr);
+    if (pyr.focus?.key !== key) clearQueuedFocusTasks(pyr);
     pyr.focus = {
       key,
       band: Math.floor(Number(band) || 0),
@@ -723,13 +727,13 @@ export function createPyramidController(deps) {
       : null;
     const width = Math.max(1, Number(viewportW ?? fallbackViewport?.width) || 1);
     const height = Math.max(1, Number(viewportH ?? fallbackViewport?.height) || 1);
+    updatePyramidFocus(ds, band, lvl, eff, width, height);
     enqueueOverviewTasks(ds, band, true);
     const levels = enqueueViewportTasks(ds, band, lvl, eff, width, height);
     const visible = levels.find((info) => info.level === lvl) || null;
     const visibleCached = levels.reduce((sum, info) => sum + info.cached, 0);
     const prefer = ds.__pyrPreferImmediate || visibleCached > 0;
 
-    updatePyramidFocus(ds, band, lvl, eff, width, height);
     refillBackgroundTasks(ds);
     schedulePyramidWork(ds);
 
