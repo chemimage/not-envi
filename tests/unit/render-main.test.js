@@ -427,22 +427,22 @@ describe("render-main", () => {
     await renderer.render();
     expect(compositeWindow).toHaveBeenCalledTimes(1);
     expect(compositeWindow.mock.calls[0][3]).toBeLessThanOrEqual(20);
-    expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 8 }));
+    expect(ds.__panelRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 8 }));
 
     await renderer.render();
     expect(compositeWindow).toHaveBeenCalledTimes(2);
     expect(compositeWindow.mock.calls[1][3]).toBeGreaterThan(compositeWindow.mock.calls[0][3]);
-    expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 4 }));
+    expect(ds.__panelRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 4 }));
 
     await renderer.render();
     expect(compositeWindow).toHaveBeenCalledTimes(3);
     expect(compositeWindow.mock.calls[2][3]).toBeGreaterThan(compositeWindow.mock.calls[1][3]);
-    expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 2 }));
+    expect(ds.__panelRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 2 }));
 
     await renderer.render();
     expect(compositeWindow).toHaveBeenCalledTimes(4);
     expect(compositeWindow.mock.calls[3][3]).toBeGreaterThan(compositeWindow.mock.calls[2][3]);
-    expect(ds.__tiffRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 1 }));
+    expect(ds.__panelRefineStates?.get(1)).toEqual(expect.objectContaining({ maxFactor: 1 }));
 
     await renderer.render();
     expect(compositeWindow).toHaveBeenCalledTimes(5);

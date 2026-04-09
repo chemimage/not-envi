@@ -302,7 +302,7 @@ describe("thumbnail controller", () => {
     }
   });
 
-  test("ensureDatasetPreviewOverview uses bootstrap size for raw TIFF without native overviews", async () => {
+  test("ensureDatasetPreviewOverview defers raw TIFF preview overview until a stable raster exists", async () => {
     Object.defineProperty(navigator, "userAgent", {
       configurable: true,
       value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
@@ -362,15 +362,23 @@ describe("thumbnail controller", () => {
       ctrl.ensureDatasetPreviewOverview(ds);
       await new Promise((resolve) => setTimeout(resolve, 0));
 
+      expect(compositeWindow).not.toHaveBeenCalled();
+      expect(ds.previewOverview?.ready).not.toBe(true);
+
+      ds.lastCompositeRaster = { mode: "rgb" };
+      ctrl.ensureDatasetPreviewOverview(ds);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       expect(compositeWindow).toHaveBeenCalledTimes(1);
-      expect(compositeWindow.mock.calls[0][3]).toBeLessThan(APP_CONFIG.previewOverview.standardInitialLongEdge);
-      expect(compositeWindow.mock.calls[0][3]).toBeLessThanOrEqual(APP_CONFIG.previewOverview.standardBootstrapLongEdge);
+      expect(compositeWindow.mock.calls[0][3]).toBeGreaterThan(APP_CONFIG.previewOverview.standardBootstrapLongEdge);
+      expect(compositeWindow.mock.calls[0][3]).toBeLessThanOrEqual(APP_CONFIG.previewOverview.standardDeferredLongEdge);
+      expect(ds.previewOverview?.ready).toBe(true);
     } finally {
       createElementSpy.mockRestore();
     }
   });
 
-  test("ensureDatasetPreviewOverview uses bootstrap size for ENVI before stable raster exists", async () => {
+  test("ensureDatasetPreviewOverview defers ENVI preview overview until a stable raster exists", async () => {
     Object.defineProperty(navigator, "userAgent", {
       configurable: true,
       value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
@@ -426,9 +434,16 @@ describe("thumbnail controller", () => {
       ctrl.ensureDatasetPreviewOverview(ds);
       await new Promise((resolve) => setTimeout(resolve, 0));
 
+      expect(readBandWindow).not.toHaveBeenCalled();
+      expect(ds.previewOverview?.ready).not.toBe(true);
+
+      ds.lastRaster = { band: 0 };
+      ctrl.ensureDatasetPreviewOverview(ds);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       expect(readBandWindow).toHaveBeenCalledTimes(1);
-      expect(readBandWindow.mock.calls[0][5]).toBeLessThan(APP_CONFIG.previewOverview.standardInitialLongEdge);
-      expect(readBandWindow.mock.calls[0][5]).toBeLessThanOrEqual(APP_CONFIG.previewOverview.standardBootstrapLongEdge);
+      expect(readBandWindow.mock.calls[0][5]).toBeGreaterThan(APP_CONFIG.previewOverview.standardBootstrapLongEdge);
+      expect(readBandWindow.mock.calls[0][5]).toBeLessThanOrEqual(APP_CONFIG.previewOverview.standardDeferredLongEdge);
       expect(ds.previewOverview?.ready).toBe(true);
     } finally {
       createElementSpy.mockRestore();

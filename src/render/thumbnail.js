@@ -131,10 +131,6 @@ export function createThumbnailController(deps) {
     return typeof ds?.ds?.hasNativeOverviews === "function" && ds.ds.hasNativeOverviews();
   }
 
-  function shouldDeferInitialPreviewBuild(ds) {
-    return hasNativeOverviewSource(ds) && !hasRenderablePreviewSource(ds);
-  }
-
   function calcPreviewOverviewPixels(ds, options = {}) {
     const samples = Math.max(1, Number(ds?.meta?.samples) || 1);
     const lines = Math.max(1, Number(ds?.meta?.lines) || 1);
@@ -391,6 +387,16 @@ export function createThumbnailController(deps) {
     }
   }
 
+  function requestPreviewOverview(ds) {
+    if (!ds) return null;
+    const hasRenderable = hasRenderablePreviewSource(ds);
+    if (!hasRenderable && !hasNativeOverviewSource(ds)) return null;
+    return buildPreviewOverview(ds, {
+      deferred: hasRenderable,
+      bootstrap: !hasRenderable
+    });
+  }
+
   function applyPreviewOverviewToThumb(ds, buildKey, tw, th) {
     const overview = ensurePreviewOverviewState(ds);
     if (!overview.ready || !overview.base || overview.signature !== previewSignature(ds)) return false;
@@ -423,9 +429,15 @@ export function createThumbnailController(deps) {
     const key = thumbBuildKey(ds, tw, th);
     const needsBuild = !ds.thumb.ready || ds.thumb.buildKey !== key;
     if (needsBuild) applyPreviewOverviewToThumb(ds, key, tw, th);
-    const deferInitialBuild = !ds.thumb.base && shouldDeferInitialPreviewBuild(ds);
-    if (needsBuild && ds.thumb.buildPendingKey !== key && !deferInitialBuild) {
-      void buildThumbnail(ds, key, tw, th);
+    const overview = ensurePreviewOverviewState(ds);
+    if (!ds.thumb.base && !overview.buildPendingKey) {
+      const pendingOverview = requestPreviewOverview(ds);
+      if (pendingOverview) {
+        void pendingOverview.then((ok) => {
+          if (ok || ds.thumb.base || ds.thumb.buildKey === key || ds.thumb.buildPendingKey === key) return;
+          void buildThumbnail(ds, key, tw, th);
+        });
+      }
     }
 
     if (!ds.thumb.base) {
@@ -502,13 +514,7 @@ export function createThumbnailController(deps) {
   }
 
   function ensureDatasetPreviewOverview(ds) {
-    if (!ds) return;
-    if (!hasRenderablePreviewSource(ds)) {
-      if (shouldDeferInitialPreviewBuild(ds)) return;
-      void buildPreviewOverview(ds, { deferred: false, bootstrap: true });
-      return;
-    }
-    void buildPreviewOverview(ds, { deferred: true });
+    void requestPreviewOverview(ds);
   }
 
   return {
