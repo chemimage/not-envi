@@ -249,6 +249,83 @@ describe("spectrum controller", () => {
     }
   });
 
+  test("hovering the draggable band handle uses a drag cursor", async () => {
+    globalThis.requestAnimationFrame = (cb) => {
+      cb();
+      return 1;
+    };
+
+    const handlers = new Map();
+    const specCtx = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      setLineDash: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
+      textAlign: "",
+      textBaseline: "",
+      lineWidth: 1,
+      strokeStyle: "",
+      fillStyle: "",
+      font: ""
+    };
+    const specCanvas = {
+      width: 0,
+      height: 0,
+      style: { cursor: "" },
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 300, height: 180 }),
+      addEventListener: (type, handler) => { handlers.set(type, handler); },
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn()
+    };
+    const els = {
+      specPanel: { style: { display: "none" } },
+      specCanvas,
+      specSub: { textContent: "" },
+      specWarn: { textContent: "", style: { display: "none" } },
+      specFoot: { textContent: "" }
+    };
+    const ds = {
+      id: 21,
+      name: "cursor-demo",
+      activeBand: 1,
+      meta: { bands: 3, wlUnits: "nm", scale: null, bandNames: ["a", "b", "c"] }
+    };
+
+    const ctrl = createSpectrumController({
+      els,
+      specCtx,
+      getActive: () => ds,
+      bandLabel: (_ds, b) => `B${b}`,
+      updatePerf: vi.fn(),
+      sanitizeFilePart: (s) => s,
+      downloadBlob: vi.fn(),
+      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
+      readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
+      wavelengthArrayOrNull: () => [500, 600, 700]
+    });
+
+    await ctrl.openSpectrumAt(ds, 0, 0);
+
+    handlers.get("pointermove")?.({
+      clientX: 170,
+      clientY: 80,
+      pointerId: 1,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn()
+    });
+
+    expect(specCanvas.style.cursor).toBe("grab");
+  });
+
   test("pending spectrum state renders placeholder without reading data", async () => {
     globalThis.requestAnimationFrame = (cb) => {
       cb();

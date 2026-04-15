@@ -107,6 +107,7 @@ export function createSpectrumController(deps) {
     specState.stdVals = null;
     specState.plot = null;
     specState.activeBandX = null;
+    if (els.specCanvas?.style) els.specCanvas.style.cursor = "";
   }
 
   function resetSpectrumRangeOverrides() {
@@ -741,6 +742,29 @@ export function createSpectrumController(deps) {
     return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
   }
 
+  function isSpectrumHandleHit(clientX, clientY) {
+    if (!els.specCanvas || !specState.plot) return false;
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY) || !Number.isFinite(specState.activeBandX)) return false;
+    const rect = els.specCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const x = (clientX - rect.left) * dpr;
+    const y = (clientY - rect.top) * dpr;
+    const plot = specState.plot;
+    const withinPlot = (x >= plot.x0 && x <= plot.x1 && y >= plot.y0 && y <= plot.y1);
+    if (!withinPlot) return false;
+    const handleTol = Math.max(8 * dpr, 10);
+    return Math.abs(x - specState.activeBandX) <= handleTol;
+  }
+
+  function syncSpectrumCanvasCursor(clientX = Number.NaN, clientY = Number.NaN) {
+    if (!els.specCanvas?.style) return;
+    if (specState.bandDragPointerId != null && specState.bandDragByHandle) {
+      els.specCanvas.style.cursor = "grabbing";
+      return;
+    }
+    els.specCanvas.style.cursor = isSpectrumHandleHit(clientX, clientY) ? "grab" : "";
+  }
+
   function applyActiveBandFromIndex(idx) {
     const ds = getActive();
     if (!ds || ds.id !== specState.dsId || !Number.isFinite(idx)) return false;
@@ -834,18 +858,10 @@ export function createSpectrumController(deps) {
   if (els.specCanvas && typeof els.specCanvas.addEventListener === "function") {
     els.specCanvas.addEventListener("pointerdown", (ev) => {
       if (!specState.open || !specState.plot) return;
-      const rect = els.specCanvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const x = (ev.clientX - rect.left) * dpr;
-      const y = (ev.clientY - rect.top) * dpr;
-      const plot = specState.plot;
-      const withinPlot = (x >= plot.x0 && x <= plot.x1 && y >= plot.y0 && y <= plot.y1);
-      if (!withinPlot) return;
-      const handleTol = Math.max(8 * dpr, 10);
-      const onHandle = Number.isFinite(specState.activeBandX) && Math.abs(x - specState.activeBandX) <= handleTol;
-      if (!onHandle) return;
+      if (!isSpectrumHandleHit(ev.clientX, ev.clientY)) return;
       specState.bandDragPointerId = ev.pointerId;
       specState.bandDragByHandle = true;
+      syncSpectrumCanvasCursor(ev.clientX, ev.clientY);
       try { els.specCanvas.setPointerCapture(ev.pointerId); } catch (_err) {}
       const idx = bandFromClientX(ev.clientX);
       if (idx != null) applyActiveBandFromIndex(idx);
@@ -854,7 +870,11 @@ export function createSpectrumController(deps) {
     });
 
     els.specCanvas.addEventListener("pointermove", (ev) => {
-      if (specState.bandDragPointerId == null || ev.pointerId !== specState.bandDragPointerId) return;
+      if (specState.bandDragPointerId == null || ev.pointerId !== specState.bandDragPointerId) {
+        syncSpectrumCanvasCursor(ev.clientX, ev.clientY);
+        return;
+      }
+      syncSpectrumCanvasCursor(ev.clientX, ev.clientY);
       const idx = bandFromClientX(ev.clientX);
       if (idx != null) applyActiveBandFromIndex(idx);
       ev.preventDefault();
@@ -866,11 +886,15 @@ export function createSpectrumController(deps) {
       try { els.specCanvas.releasePointerCapture(ev.pointerId); } catch (_err) {}
       specState.bandDragPointerId = null;
       specState.bandDragByHandle = false;
+      syncSpectrumCanvasCursor(ev.clientX, ev.clientY);
       ev.preventDefault();
       ev.stopPropagation();
     };
     els.specCanvas.addEventListener("pointerup", endBandDrag);
     els.specCanvas.addEventListener("pointercancel", endBandDrag);
+    els.specCanvas.addEventListener("pointerleave", () => {
+      if (specState.bandDragPointerId == null) syncSpectrumCanvasCursor();
+    });
 
     els.specCanvas.addEventListener("dblclick", (ev) => {
       if (!specState.open || !specState.plot) return;
