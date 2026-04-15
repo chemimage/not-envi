@@ -164,6 +164,9 @@ export const APP_CONFIG = Object.freeze({
     autoWholeStatsMaxPixels: 20_000_000,
     autoWholeStatsMaxReadBytes: 24 * MIB
   }),
+  spectrum: Object.freeze({
+    discreteBarMaxBands: 20
+  }),
   tiff: Object.freeze({
     // `standard` is sized around a current 15-inch MacBook Air base-class machine:
     // 10-core CPU and 16GB unified memory.

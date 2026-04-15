@@ -27,6 +27,7 @@ export function createSpectrumController(deps) {
     sanitizeFilePart,
     downloadBlob,
     setActiveBand,
+    discreteBarMaxBands = 0,
     readSpectrumAtPixel,
     wavelengthArrayOrNull
   } = deps;
@@ -341,7 +342,10 @@ export function createSpectrumController(deps) {
     const ciScale = (Number.isFinite(sampleCount) && sampleCount > 1) ? (1.96 / Math.sqrt(sampleCount)) : 0;
     const useCI = !!(stdVals && stdVals.length && ciScale > 0);
     const unit = resolveSpectralUnit(ds);
-    const useBarPlot = !!(xVals && shouldUseBarSpectrumPlot(xVals, unit));
+    const useBarPlot = shouldUseBarSpectrumPlot(xVals, unit, {
+      bandCount: yVals.length,
+      discreteBandCountThreshold: discreteBarMaxBands
+    });
     for (let i = 0; i < yVals.length; i++) {
       const xv = xVals ? xVals[i] : i;
       const yv = yVals[i];

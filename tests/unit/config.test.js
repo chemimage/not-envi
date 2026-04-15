@@ -39,7 +39,7 @@ describe("config hardware concurrency", () => {
       fraction: APP_CONFIG.io.hardwareCoreFraction,
       min: APP_CONFIG.io.hardwareParallelMin,
       max: APP_CONFIG.io.maxConcurrency
-    })).toBe(6);
+    })).toBe(9);
   });
 
   test("detectDeviceMemoryGiB reads navigator.deviceMemory", () => {
@@ -76,5 +76,9 @@ describe("config hardware concurrency", () => {
     expect(resolvePreviewOverviewLongEdge()).toBe(APP_CONFIG.previewOverview.liteDeferredLongEdge);
     expect(resolvePreviewOverviewLongEdge({ deferred: false })).toBe(APP_CONFIG.previewOverview.liteInitialLongEdge);
     expect(resolvePreviewOverviewLongEdge({ deferred: false, bootstrap: true })).toBe(APP_CONFIG.previewOverview.liteBootstrapLongEdge);
+  });
+
+  test("spectrum discrete bar threshold is configurable in app config", () => {
+    expect(APP_CONFIG.spectrum.discreteBarMaxBands).toBe(20);
   });
 });

@@ -66,8 +66,14 @@ export function hasApproximatelyUniformBandIntervals(
 }
 
 export function shouldUseBarSpectrumPlot(xVals, wlUnits, options = undefined) {
-  if (!isCmInverseUnit(wlUnits)) return false;
-  return !hasApproximatelyUniformBandIntervals(xVals, options);
+  const bandCount = Number.isFinite(options?.bandCount)
+    ? Math.max(0, Math.floor(options.bandCount))
+    : (xVals && Number.isFinite(xVals.length) ? Math.max(0, Math.floor(xVals.length)) : 0);
+  const discreteBandCountThreshold = Number.isFinite(options?.discreteBandCountThreshold)
+    ? Math.max(0, Math.floor(options.discreteBandCountThreshold))
+    : 0;
+  void wlUnits;
+  return discreteBandCountThreshold > 0 && bandCount > 0 && bandCount <= discreteBandCountThreshold;
 }
 
 function inferCmInverseUnitFromEntries(entries) {

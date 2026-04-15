@@ -1165,6 +1165,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     sanitizeFilePart,
     downloadBlob,
     setActiveBand,
+    discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
     readSpectrumAtPixel: (ds, ix, iy) => readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY),
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });

@@ -6,6 +6,7 @@ import {
   medianBandInterval,
   shouldUseBarSpectrumPlot
 } from "../../src/render/spectrum.js";
+import { APP_CONFIG } from "../../src/app/config.js";
 
 describe("spectrum controller", () => {
   const originalRAF = globalThis.requestAnimationFrame;
@@ -33,6 +34,7 @@ describe("spectrum controller", () => {
       fill: vi.fn(),
       setLineDash: vi.fn(),
       fillText: vi.fn(),
+      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
       textAlign: "",
       textBaseline: "",
       lineWidth: 1,
@@ -66,6 +68,7 @@ describe("spectrum controller", () => {
       updatePerf: vi.fn(),
       sanitizeFilePart: (s) => s,
       downloadBlob: vi.fn(),
+      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
       readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
       wavelengthArrayOrNull: () => [500, 600, 700]
     });
@@ -79,7 +82,7 @@ describe("spectrum controller", () => {
     expect(els.specPanel.style.display).toBe("none");
   });
 
-  test("bar-plot mode keeps the cm-1 unit gate and treats irregular spacing as discrete", () => {
+  test("bar-plot mode depends only on the configured band-count threshold", () => {
     expect(isCmInverseUnit("cm-1")).toBe(true);
     expect(isCmInverseUnit("cm^-1")).toBe(true);
     expect(isCmInverseUnit("Wavenumber")).toBe(true);
@@ -92,10 +95,20 @@ describe("spectrum controller", () => {
     expect(hasApproximatelyUniformBandIntervals([4000, 3990.2, 3980.1, 3970.3], {})).toBe(true);
     expect(hasApproximatelyUniformBandIntervals([4000, 3988, 3979, 3960], {})).toBe(false);
 
-    expect(shouldUseBarSpectrumPlot([4000, 3990, 3980, 3970], "cm-1")).toBe(false);
-    expect(shouldUseBarSpectrumPlot([4000, 3990.2, 3980.1, 3970.3], "cm^-1")).toBe(false);
-    expect(shouldUseBarSpectrumPlot([4000, 3988, 3979, 3960], "cm-1")).toBe(true);
-    expect(shouldUseBarSpectrumPlot([500, 509, 518], "nm")).toBe(false);
+    expect(shouldUseBarSpectrumPlot([500, 509, 518], "nm", {
+      discreteBandCountThreshold: APP_CONFIG.spectrum.discreteBarMaxBands
+    })).toBe(true);
+    expect(shouldUseBarSpectrumPlot(
+      Array.from({ length: 21 }, (_v, i) => 500 + i),
+      "nm",
+      { discreteBandCountThreshold: APP_CONFIG.spectrum.discreteBarMaxBands }
+    )).toBe(false);
+    expect(shouldUseBarSpectrumPlot([4000, 3988, 3979, 3960], "cm-1", {
+      discreteBandCountThreshold: APP_CONFIG.spectrum.discreteBarMaxBands
+    })).toBe(true);
+    expect(shouldUseBarSpectrumPlot(Array.from({ length: 21 }, (_v, i) => 4000 - (i * (i % 2 === 0 ? 7 : 13))), "cm-1", {
+      discreteBandCountThreshold: APP_CONFIG.spectrum.discreteBarMaxBands
+    })).toBe(false);
   });
 
   test("spectrum header can render with only coordinates", async () => {
@@ -117,6 +130,7 @@ describe("spectrum controller", () => {
       fill: vi.fn(),
       setLineDash: vi.fn(),
       fillText: vi.fn(),
+      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
       textAlign: "",
       textBaseline: "",
       lineWidth: 1,
@@ -150,6 +164,7 @@ describe("spectrum controller", () => {
       updatePerf: vi.fn(),
       sanitizeFilePart: (s) => s,
       downloadBlob: vi.fn(),
+      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
       readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
       wavelengthArrayOrNull: () => [500, 600, 700]
     });
@@ -177,6 +192,7 @@ describe("spectrum controller", () => {
       fill: vi.fn(),
       setLineDash: vi.fn(),
       fillText: vi.fn(),
+      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
       textAlign: "",
       textBaseline: "",
       lineWidth: 1,
@@ -210,6 +226,7 @@ describe("spectrum controller", () => {
       updatePerf: vi.fn(),
       sanitizeFilePart: (s) => s,
       downloadBlob: vi.fn(),
+      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
       readSpectrumAtPixel: async () => new Float32Array([2, 3, 1.5, 2.5]),
       wavelengthArrayOrNull: () => [1081, 1140, 1237, 1275]
     });
@@ -252,6 +269,7 @@ describe("spectrum controller", () => {
       fill: vi.fn(),
       setLineDash: vi.fn(),
       fillText: vi.fn(),
+      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
       textAlign: "",
       textBaseline: "",
       lineWidth: 1,
@@ -285,6 +303,7 @@ describe("spectrum controller", () => {
       updatePerf: vi.fn(),
       sanitizeFilePart: (s) => s,
       downloadBlob: vi.fn(),
+      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
       readSpectrumAtPixel,
       wavelengthArrayOrNull: () => [500, 600, 700]
     });
@@ -321,6 +340,7 @@ describe("spectrum controller", () => {
       fill: vi.fn(),
       setLineDash: vi.fn(),
       fillText: vi.fn(),
+      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
       textAlign: "",
       textBaseline: "",
       lineWidth: 1,
@@ -354,6 +374,7 @@ describe("spectrum controller", () => {
       updatePerf: vi.fn(),
       sanitizeFilePart: (s) => s,
       downloadBlob: vi.fn(),
+      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
       readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
       wavelengthArrayOrNull: () => [500, 600, 700]
     });
@@ -389,6 +410,7 @@ describe("spectrum controller", () => {
       fill: vi.fn(),
       setLineDash: vi.fn(),
       fillText: vi.fn(),
+      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
       textAlign: "",
       textBaseline: "",
       lineWidth: 1,
@@ -427,6 +449,7 @@ describe("spectrum controller", () => {
       updatePerf: vi.fn(),
       sanitizeFilePart: (s) => s,
       downloadBlob: vi.fn(),
+      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
       readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
       wavelengthArrayOrNull: () => [500, 600, 700]
     });
