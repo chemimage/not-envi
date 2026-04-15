@@ -13,7 +13,8 @@
   }
 
   .ds-item {
-    @apply grid cursor-pointer grid-cols-[1fr_auto] items-center gap-2 rounded-sm border border-gray-700 bg-gray-800/75 px-2.5 py-2;
+    @apply grid cursor-pointer items-center gap-2 rounded-sm border border-gray-700 bg-gray-800/75 px-2.5 py-2;
+    grid-template-columns: minmax(0, 1fr) auto;
     min-height: 52px;
     transition: min-height 140ms ease, border-color 140ms ease, background-color 140ms ease;
   }
@@ -31,12 +32,40 @@
     @apply border-gray-400 ring-2 ring-gray-500/30;
   }
 
+  .ds-item:focus-visible {
+    @apply border-gray-400 ring-2 ring-gray-500/30;
+    outline: none;
+  }
+
+  .ds-item .body {
+    min-width: 0;
+    overflow: hidden;
+  }
+
   .ds-item .title {
-    @apply text-sm font-semibold text-gray-100;
+    @apply block overflow-hidden whitespace-nowrap text-sm font-semibold text-gray-100;
+    --title-marquee-distance: 0px;
+    --title-marquee-duration: 6s;
+    min-width: 0;
+    text-overflow: clip;
+    -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 28px), transparent 100%);
+  }
+
+  .ds-item .title-text {
+    display: inline-block;
+    min-width: 100%;
+    will-change: transform;
+  }
+
+  .ds-item:hover .title.overflowing .title-text,
+  .ds-item:focus .title.overflowing .title-text,
+  .ds-item:focus-within .title.overflowing .title-text {
+    animation: dataset-title-marquee var(--title-marquee-duration) ease-in-out infinite alternate;
   }
 
   .ds-item .meta {
-    @apply font-mono text-xs text-gray-400;
+    @apply overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-gray-400;
     max-height: 0;
     opacity: 0;
     overflow: hidden;
@@ -53,6 +82,19 @@
 
   .ds-item .actions {
     @apply flex items-center self-center gap-1.5;
+    flex: 0 0 auto;
+    justify-self: end;
+  }
+
+  @keyframes dataset-title-marquee {
+    0%,
+    14% {
+      transform: translateX(0);
+    }
+    86%,
+    100% {
+      transform: translateX(calc(-1 * var(--title-marquee-distance)));
+    }
   }
 
   .slot-btn {

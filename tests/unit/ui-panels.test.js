@@ -278,6 +278,8 @@ describe("ui-panels", () => {
     ui.rebuildDatasetList();
 
     const ds1Row = document.querySelector('.ds-item[data-dsid="ds1"]');
+    expect(ds1Row?.querySelector(".body")).not.toBeNull();
+    expect(ds1Row?.querySelector(".title")?.textContent).toBe("A");
     const buttons = ds1Row?.querySelectorAll(".slot-btn");
     expect(buttons?.[0]?.textContent).toBe("L");
     expect(buttons?.[0]?.className).toContain("slot-link-amber");
@@ -285,6 +287,50 @@ describe("ui-panels", () => {
     expect(buttons?.[1]?.className).toContain("slot-link-amber");
     expect(buttons?.[2]?.textContent).toBe("L|R");
     expect(buttons?.[2]?.className).toContain("overlay-active");
+  });
+
+  test("dataset title enables marquee styling on focus when overflowed", () => {
+    document.body.innerHTML = `
+      <div id="datasetList"></div>
+      <div id="datasetCount"></div>
+    `;
+
+    const deps = makeDeps();
+    const ds1 = {
+      id: "ds1",
+      name: "Extremely long dataset name that should scroll when focused on touch or keyboard",
+      meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq", dataType: 4, dataTypeInfo: { name: "f32" }, littleEndian: true },
+      treeExpanded: true
+    };
+    deps.state.datasets = [ds1];
+    deps.state.activeId = "ds1";
+    deps.els = {
+      datasetList: document.querySelector("#datasetList"),
+      datasetCount: document.querySelector("#datasetCount")
+    };
+
+    const ui = createUIPanels(deps);
+    ui.rebuildDatasetList();
+
+    const ds1Row = document.querySelector('.ds-item[data-dsid="ds1"]');
+    const title = ds1Row?.querySelector(".title");
+    const titleText = ds1Row?.querySelector(".title-text");
+    expect(ds1Row?.tabIndex).toBe(0);
+    expect(titleText?.textContent).toContain("Extremely long dataset name");
+
+    Object.defineProperty(title, "clientWidth", {
+      configurable: true,
+      value: 80
+    });
+    Object.defineProperty(titleText, "scrollWidth", {
+      configurable: true,
+      value: 180
+    });
+
+    ds1Row?.onfocus?.();
+
+    expect(title?.classList.contains("overflowing")).toBe(true);
+    expect(title?.style.getPropertyValue("--title-marquee-distance")).toBe("124px");
   });
 
   test("perf tooltip includes detected hardware and chosen budgets", () => {

@@ -466,6 +466,24 @@ export function createUIPanels(deps) {
     if (hidePanel) hideMetaHover();
   }
 
+  function syncDatasetTitleOverflow(rowEl) {
+    const titleEl = rowEl?.querySelector?.(".title");
+    const textEl = rowEl?.querySelector?.(".title-text");
+    if (!titleEl || !textEl) return;
+    const containerWidth = Number(titleEl.clientWidth) || 0;
+    const textWidth = Number(textEl.scrollWidth) || 0;
+    const overflow = Math.max(0, Math.ceil(textWidth - containerWidth));
+    const isOverflowing = overflow > 2;
+    titleEl.classList.toggle("overflowing", isOverflowing);
+    if (isOverflowing) {
+      titleEl.style.setProperty("--title-marquee-distance", `${overflow + 24}px`);
+      titleEl.style.setProperty("--title-marquee-duration", `${Math.max(4, Math.min(14, (overflow + 24) / 32))}s`);
+    } else {
+      titleEl.style.removeProperty("--title-marquee-distance");
+      titleEl.style.removeProperty("--title-marquee-duration");
+    }
+  }
+
   function showPinnedMetaPanel(ds, rowEl = null) {
     if (!ds || !els.metaHoverPanel) return;
     metaPinnedDatasetId = ds.id;
@@ -498,12 +516,18 @@ export function createUIPanels(deps) {
       const div = document.createElement("div");
       div.className = `ds-item${ds.id === state.activeId ? " active" : ""}`;
       div.dataset.dsid = ds.id;
+      div.tabIndex = 0;
       div.onclick = () => setActiveDataset(ds.id);
 
       const left = document.createElement("div");
+      left.className = "body";
       const title = document.createElement("div");
       title.className = "title";
-      title.textContent = ds.name;
+      title.title = ds.name;
+      const titleText = document.createElement("span");
+      titleText.className = "title-text";
+      titleText.textContent = ds.name;
+      title.appendChild(titleText);
       const meta = document.createElement("div");
       meta.className = "meta";
       const dsInfo = `${fmt(ds.meta.samples)}×${fmt(ds.meta.lines)}  bands:${fmt(ds.meta.bands)}`;
@@ -585,6 +609,7 @@ export function createUIPanels(deps) {
       div.appendChild(actions);
       div.onmouseenter = () => {
         if (metaPinnedDatasetId && metaPinnedDatasetId !== ds.id) return;
+        syncDatasetTitleOverflow(div);
         metaHoverDatasetId = ds.id;
         refreshDatasetRowExpansion();
       };
@@ -597,11 +622,31 @@ export function createUIPanels(deps) {
         ev.stopPropagation();
         showPinnedMetaPanel(ds, div);
       };
+      div.onfocus = () => {
+        syncDatasetTitleOverflow(div);
+        if (metaPinnedDatasetId && metaPinnedDatasetId !== ds.id) return;
+        metaHoverDatasetId = ds.id;
+        refreshDatasetRowExpansion();
+      };
+      div.onblur = () => {
+        if (metaPinnedDatasetId === ds.id) return;
+        if (metaHoverDatasetId === ds.id) metaHoverDatasetId = null;
+        refreshDatasetRowExpansion();
+      };
+      div.onkeydown = (ev) => {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        ev.preventDefault();
+        setActiveDataset(ds.id);
+      };
       div.onpointerdown = (ev) => {
+        if (ev.pointerType === "touch") {
+          try { div.focus({ preventScroll: true }); } catch (_err) { div.focus(); }
+        }
         if (ev.pointerType !== "touch") return;
         showPinnedMetaPanel(ds, div);
       };
       els.datasetList.appendChild(div);
+      syncDatasetTitleOverflow(div);
       if (metaPinnedDatasetId === ds.id) metaPinnedRowEl = div;
     }
     refreshDatasetRowExpansion();
