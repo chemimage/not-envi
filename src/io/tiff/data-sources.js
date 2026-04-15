@@ -686,7 +686,7 @@ export class TiffBlockIndexedDataSource {
         this.#resolveBlockLoadConcurrency(first),
         async (block) => ({
           block,
-          decoded: await this.#schedule(() => this.#loadDecodedBlock(first, block, step))
+          decoded: await this.#loadDecodedBlockWithScheduling(first, block, step)
         }),
         async (_batch, results) => {
           for (const result of results) {
@@ -784,7 +784,7 @@ export class TiffBlockIndexedDataSource {
       this.#resolveBlockLoadConcurrency(spec),
       async (block) => ({
         block,
-        decoded: await this.#schedule(() => this.#loadDecodedBlock(spec, block, step))
+        decoded: await this.#loadDecodedBlockWithScheduling(spec, block, step)
       }),
       async (_batch, results) => {
         for (const result of results) {
@@ -814,7 +814,7 @@ export class TiffBlockIndexedDataSource {
     if (!spec) return null;
     const block = spec.blocks[(Math.floor(iy / spec.table.blockHeight) * spec.table.numBlocksX) + Math.floor(ix / spec.table.blockWidth)];
     if (!block) return null;
-    const decoded = await this.#schedule(() => this.#loadDecodedBlock(spec, block, 1));
+    const decoded = await this.#loadDecodedBlockWithScheduling(spec, block, 1);
     return this.#readBlockValue(spec, decoded, ix - block.x0, iy - block.y0);
   }
 
@@ -1140,7 +1140,7 @@ export class TiffBlockIndexedDataSource {
       blocks.length,
       this.#resolveBlockLoadConcurrency(spec),
       async (index) => {
-        decoded[index] = await this.#schedule(() => this.#loadDecodedBlock(spec, blocks[index], step));
+        decoded[index] = await this.#loadDecodedBlockWithScheduling(spec, blocks[index], step);
       }
     );
     return decoded;
@@ -1211,6 +1211,19 @@ export class TiffBlockIndexedDataSource {
       && specs.every((spec) => this.#shouldUseSparseRawSampling(spec, step, blockCount));
   }
 
+  #shouldScheduleDecodedBlock(spec) {
+    return spec?.kind === "rgb"
+      || spec?.kind === "window"
+      || spec?.kind === "native-rgb-jpeg";
+  }
+
+  async #loadDecodedBlockWithScheduling(spec, block, step = 1) {
+    if (!this.#shouldScheduleDecodedBlock(spec)) {
+      return this.#loadDecodedBlock(spec, block, step);
+    }
+    return this.#schedule(() => this.#loadDecodedBlock(spec, block, step));
+  }
+
   async #readRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY, progress = null, cancelled = null, totalUnits = 0) {
     const table = specs[0].table;
     const blockCount = (maxBx - minBx + 1) * (maxBy - minBy + 1);
@@ -1242,14 +1255,14 @@ export class TiffBlockIndexedDataSource {
       this.#resolveCompositeEntryConcurrency(),
       async (entry) => ({
         entry,
-        decodedBlocks: await this.#schedule(async () => {
+        decodedBlocks: await (async () => {
           const blocks = new Array(entry.blocks.length);
           for (let specIndex = 0; specIndex < entry.blocks.length; specIndex += 1) {
             const block = entry.blocks[specIndex];
             blocks[specIndex] = block ? await this.#loadDecodedBlock(specs[specIndex], block, step) : null;
           }
           return blocks;
-        })
+        })()
       }),
       async (_batch, results) => {
         for (const result of results) {
@@ -1302,7 +1315,7 @@ export class TiffBlockIndexedDataSource {
     const completed = await processInBatches(
       rowBatches,
       this.#resolveRawRowConcurrency(),
-      async (batchIndex) => this.#schedule(async () => {
+      async (batchIndex) => {
         const scratch = new Uint8Array(storageRowBytes);
         const rowStart = batchIndex * batchRows;
         const rowEnd = Math.min(safeOutH, rowStart + batchRows);
@@ -1337,7 +1350,7 @@ export class TiffBlockIndexedDataSource {
             }
           }
         }
-      }),
+      },
       async (_batch) => {
         completedUnits += _batch.length;
         if (progress) await progress(completedUnits, completedUnits >= batchCount);
@@ -1377,7 +1390,7 @@ export class TiffBlockIndexedDataSource {
     const completed = await processInBatches(
       rowBatches,
       this.#resolveRawRowConcurrency(),
-      async (batchIndex) => this.#schedule(async () => {
+      async (batchIndex) => {
         const scratch = specs.map((spec) => new Uint8Array(table.blockWidth * spec.bytesPerPixel));
         const views = new Array(specs.length);
         const rowStart = batchIndex * batchRows;
@@ -1462,7 +1475,7 @@ export class TiffBlockIndexedDataSource {
             }
           }
         }
-      }),
+      },
       async (_batch) => {
         completedUnits += _batch.length;
         if (progress) await progress(completedUnits, completedUnits >= batchCount);
