@@ -54,6 +54,7 @@ import { createSelectionSyncController } from "./selection-sync-controller.js";
 import { getThreeBandAdjustColor, isThreeBandColorMode } from "./three-band-display.js";
 import { annotationsShareImageSpace, remapAnnotationItem, remapAnnotationState } from "./linked-annotations.js";
 import { applyNormalizedViewBox, captureNormalizedViewBox, withNormalizedCenter } from "./linked-view.js";
+import { clampLinkedSourceScale } from "./linked-scale.js";
 import {
   resolveSelectionBoundsForSpectrum,
   resolveSelectionBoundsList as resolveSelectionBoundsListCore,
@@ -812,11 +813,18 @@ import { pointInPolygon } from "./draw-geometry.js";
     if (!sourcePanel?.datasetId || !entries.length) return null;
     const sourceEntry = entries.find((entry) => Number(entry.panel?.slot) === Number(sourcePanel.slot)) || entries[0];
     if (!sourceEntry) return null;
+    const scaleBounds = clampLinkedSourceScale(
+      targetScale,
+      sourceEntry,
+      entries,
+      minScaleFor,
+      fallbackPanelViewport,
+      128
+    );
     let activeScale = null;
     withPanelDatasetView(sourceEntry.panel, sourceEntry.dataset, () => {
       const before = screenToImage(sx, sy, sourceEntry.panel.slot, sourceEntry.dataset);
-      const minS = minScaleFor(sourceEntry.dataset, sourceEntry.panel.slot);
-      sourceEntry.panel.view.scale = clamp(targetScale, minS, 128);
+      sourceEntry.panel.view.scale = scaleBounds.scale;
       const after = screenToImage(sx, sy, sourceEntry.panel.slot, sourceEntry.dataset);
       sourceEntry.panel.view.x += before.x - after.x;
       sourceEntry.panel.view.y += before.y - after.y;
