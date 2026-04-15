@@ -1,12 +1,12 @@
 export function createSpectralDragController(deps) {
   const {
     els,
-    clamp,
     getActive,
     screenToImage,
     getEffectiveAreaSelectionKey,
     getSpectrumPickEnabled,
-    openSpectrumAt
+    openSpectrumAt,
+    closeSpectrum
   } = deps;
 
   const drag = {
@@ -22,7 +22,15 @@ export function createSpectralDragController(deps) {
   function stop() {
     drag.activePointerId = null;
     drag.pending = null;
+    drag.lastDatasetId = null;
+    drag.lastIx = null;
+    drag.lastIy = null;
     drag.lastAreaKey = "";
+  }
+
+  function dismissSelection() {
+    stop();
+    if (typeof closeSpectrum === "function") closeSpectrum();
   }
 
   function eventToTarget(ev) {
@@ -33,16 +41,36 @@ export function createSpectralDragController(deps) {
     const sx = (ev.clientX - rect.left) * dpr;
     const sy = (ev.clientY - rect.top) * dpr;
     const img = screenToImage(sx, sy);
-    const ix = clamp(Math.floor(img.x), 0, ds.meta.samples - 1);
-    const iy = clamp(Math.floor(img.y), 0, ds.meta.lines - 1);
     const areaKey = getEffectiveAreaSelectionKey ? String(getEffectiveAreaSelectionKey(ds) || "") : "";
     const pointerType = ev.pointerType
       || ((ev.sourceCapabilities && ev.sourceCapabilities.firesTouchEvents) ? "touch" : "mouse");
+    const rawX = Number(img?.x);
+    const rawY = Number(img?.y);
+    if (
+      !Number.isFinite(rawX)
+      || !Number.isFinite(rawY)
+      || rawX < 0
+      || rawY < 0
+      || rawX >= ds.meta.samples
+      || rawY >= ds.meta.lines
+    ) {
+      return { ds, outOfBounds: true, areaKey, clientX: ev.clientX, clientY: ev.clientY, pointerType };
+    }
+    const ix = Math.floor(rawX);
+    const iy = Math.floor(rawY);
     return { ds, ix, iy, areaKey, clientX: ev.clientX, clientY: ev.clientY, pointerType };
   }
 
   function enqueueUpdate(target) {
     if (!target || !target.ds) return;
+    if (target.outOfBounds) {
+      if (drag.inFlight) {
+        drag.pending = target;
+        return;
+      }
+      dismissSelection();
+      return;
+    }
     const sameTarget = target.areaKey
       ? (drag.lastDatasetId === target.ds.id && drag.lastAreaKey === target.areaKey)
       : (drag.lastDatasetId === target.ds.id && drag.lastIx === target.ix && drag.lastIy === target.iy);
@@ -72,9 +100,18 @@ export function createSpectralDragController(deps) {
     });
   }
 
+  function previewFromEvent(ev) {
+    const target = eventToTarget(ev);
+    return !!(target && !target.outOfBounds);
+  }
+
   function beginFromEvent(ev) {
     const target = eventToTarget(ev);
     if (!target) return false;
+    if (target.outOfBounds) {
+      dismissSelection();
+      return true;
+    }
     drag.activePointerId = ev.pointerId;
     enqueueUpdate(target);
     return true;
@@ -84,6 +121,10 @@ export function createSpectralDragController(deps) {
     if (drag.activePointerId == null || ev.pointerId !== drag.activePointerId) return false;
     const target = eventToTarget(ev);
     if (!target) return false;
+    if (target.outOfBounds) {
+      dismissSelection();
+      return true;
+    }
     enqueueUpdate(target);
     return true;
   }
@@ -96,6 +137,7 @@ export function createSpectralDragController(deps) {
 
   return {
     stop,
+    previewFromEvent,
     beginFromEvent,
     updateFromEvent,
     endFromEvent

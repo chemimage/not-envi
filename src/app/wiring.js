@@ -115,12 +115,12 @@ export function wireApp(deps) {
 
   const spectralDrag = createSpectralDragController({
     els,
-    clamp,
     getActive,
     screenToImage,
     getEffectiveAreaSelectionKey,
     getSpectrumPickEnabled,
-    openSpectrumAt
+    openSpectrumAt,
+    closeSpectrum
   });
 
   const { resolveActiveViewportCenter } = wireDrawToolInteractions({
