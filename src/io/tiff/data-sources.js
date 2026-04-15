@@ -1225,29 +1225,6 @@ export class TiffBlockIndexedDataSource {
   }
 
   async #readRawCompositeWindow(specs, outputs, x0, y0, safeOutW, safeOutH, outW, step, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY, progress = null, cancelled = null, totalUnits = 0) {
-    const table = specs[0].table;
-    const blockCount = (maxBx - minBx + 1) * (maxBy - minBy + 1);
-    if (this.#shouldUseSparseRawCompositeSampling(specs, step, blockCount)) {
-      return this.#readSparseRawCompositeWindow(
-        specs,
-        outputs,
-        x0,
-        y0,
-        safeOutW,
-        safeOutH,
-        outW,
-        step,
-        minBx,
-        maxBx,
-        centerX,
-        centerY,
-        spanX,
-        spanY,
-        progress,
-        cancelled
-      );
-    }
-
     const blockEntries = this.#orderedCompositeEntries(specs, minBx, maxBx, minBy, maxBy, centerX, centerY, spanX, spanY);
     let completedUnits = 0;
     const completed = await processInBatches(
@@ -1491,6 +1468,7 @@ export class TiffBlockIndexedDataSource {
   }
 
   #compositeRawCompositeBlocks(specs, block, decodedBlocks, outputs, x0, y0, safeOutW, safeOutH, outW, step) {
+    const sampleSpan = Math.max(1, Math.floor(Number(step) || 1));
     const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
     const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
     const rowStart = Math.max(0, Math.ceil((block.y0 - y0) / step));
@@ -1505,7 +1483,9 @@ export class TiffBlockIndexedDataSource {
         for (let channel = 0; channel < specs.length; channel += 1) {
           const decoded = decodedBlocks[channel];
           if (!decoded) continue;
-          outputs[channel][baseOut + col] = this.#readBlockValue(specs[channel], decoded, localX, localY);
+          outputs[channel][baseOut + col] = sampleSpan > 1
+            ? this.#averageBlockValue(specs[channel], decoded, localX, localY, sampleSpan)
+            : this.#readBlockValue(specs[channel], decoded, localX, localY);
         }
       }
     }
@@ -1580,6 +1560,30 @@ export class TiffBlockIndexedDataSource {
         Math.floor((Math.max(0, localY) * Math.max(1, Number(decoded.storageHeight) || 1)) / srcH)
       ))
     };
+  }
+
+  #averageBlockValue(spec, decoded, localX, localY, sampleSpan = 1) {
+    const width = Math.max(1, Number(decoded?.sourceWidth) || Number(decoded?.storageWidth) || 1);
+    const height = Math.max(1, Number(decoded?.sourceHeight) || Number(decoded?.storageHeight) || 1);
+    const startX = Math.max(0, Math.floor(Number(localX) || 0));
+    const startY = Math.max(0, Math.floor(Number(localY) || 0));
+    const endX = Math.min(width, startX + Math.max(1, Math.floor(Number(sampleSpan) || 1)));
+    const endY = Math.min(height, startY + Math.max(1, Math.floor(Number(sampleSpan) || 1)));
+    if (startX >= endX || startY >= endY) {
+      return Number.NaN;
+    }
+
+    let sum = 0;
+    let count = 0;
+    for (let y = startY; y < endY; y += 1) {
+      for (let x = startX; x < endX; x += 1) {
+        const value = this.#readBlockValue(spec, decoded, x, y);
+        if (!Number.isFinite(value)) continue;
+        sum += value;
+        count += 1;
+      }
+    }
+    return count > 0 ? (sum / count) : Number.NaN;
   }
 
   #readBlockValue(spec, decoded, localX, localY) {

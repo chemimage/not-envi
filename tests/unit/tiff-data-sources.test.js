@@ -122,4 +122,50 @@ describe("tiff block indexed data source", () => {
       source.close();
     }
   });
+
+  test("raw tiled composite preview averages coarse RGB samples instead of nearest-picking one column", async () => {
+    const meta = {
+      samples: 4,
+      lines: 1,
+      bands: 3,
+      interleave: "bip",
+      littleEndian: true,
+      dataType: 1,
+      dataTypeInfo: DATA_TYPES.get(1)
+    };
+    const table = {
+      blockWidth: 2,
+      blockHeight: 1,
+      numBlocksX: 2,
+      numBlocksY: 1,
+      summary: { compression: 1 }
+    };
+    const blocks = [
+      { key: "b0", x0: 0, y0: 0, w: 2, h: 1, offset: 0, byteCount: 6 },
+      { key: "b1", x0: 2, y0: 0, w: 2, h: 1, offset: 6, byteCount: 6 }
+    ];
+    const bytes = [
+      255, 0, 0, 0, 255, 0,
+      255, 0, 0, 0, 255, 0
+    ];
+    const bandSpecs = [0, 1, 2].map((channel) => ({
+      kind: "raw",
+      table,
+      blocks,
+      sampleByteOffset: channel,
+      bytesPerSample: 1,
+      bytesPerPixel: 3,
+      channel
+    }));
+    const source = createRawBlockSource({ bytes, meta, bandSpecs });
+
+    try {
+      const result = await source.readCompositeWindow(meta, 0, 0, 2, 1, 2);
+      expect(Array.from(result.bands[0])).toEqual([127.5, 127.5]);
+      expect(Array.from(result.bands[1])).toEqual([127.5, 127.5]);
+      expect(Array.from(result.bands[2])).toEqual([0, 0]);
+    } finally {
+      source.close();
+    }
+  });
 });
