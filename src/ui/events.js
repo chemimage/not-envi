@@ -141,8 +141,8 @@ export function createInteractionController(deps) {
       if (touchPoints.size === 2) {
         const pts = Array.from(touchPoints.values());
         touchGesture.pinch = {
-          startDist: distance(pts[0], pts[1]),
-          startScale: ds.view.scale
+          lastDist: distance(pts[0], pts[1]),
+          lastScale: Number(ds.view?.scale) || 1
         };
       }
     }
@@ -162,12 +162,21 @@ export function createInteractionController(deps) {
       if (touchPoints.size === 2 && touchGesture.pinch && ds && !state.selection.drawing) {
         const pts = Array.from(touchPoints.values());
         const dist = distance(pts[0], pts[1]);
-        if (dist > 0 && touchGesture.pinch.startDist > 0) {
-          const factor = dist / touchGesture.pinch.startDist;
+        const prevDist = Number(touchGesture.pinch.lastDist) || 0;
+        const prevScale = Number(touchGesture.pinch.lastScale) || Number(ds.view?.scale) || 1;
+        if (dist > 0 && prevDist > 0) {
+          const factor = dist / prevDist;
           const midX = (pts[0].x + pts[1].x) * 0.5;
           const midY = (pts[0].y + pts[1].y) * 0.5;
           const dpr = window.devicePixelRatio || 1;
-          applyScaleAt(touchGesture.pinch.startScale * factor, (midX - rect.left) * dpr, (midY - rect.top) * dpr, { interactive: true });
+          const appliedScale = applyScaleAt(
+            prevScale * factor,
+            (midX - rect.left) * dpr,
+            (midY - rect.top) * dpr,
+            { interactive: true, deferSettled: false }
+          );
+          touchGesture.pinch.lastScale = Number.isFinite(appliedScale) && appliedScale > 0 ? appliedScale : prevScale;
+          touchGesture.pinch.lastDist = dist;
         }
         updateHud();
         return;
@@ -207,7 +216,14 @@ export function createInteractionController(deps) {
     if (ev && ev.pointerType === "touch") {
       ev.preventDefault();
       touchPoints.delete(ev.pointerId);
-      if (touchPoints.size < 2) touchGesture.pinch = null;
+      if (touchPoints.size < 2) {
+        touchGesture.pinch = null;
+        const remaining = Array.from(touchPoints.values())[0];
+        if (remaining) {
+          state.mouse.lastX = remaining.x - (Number(els.main?.getBoundingClientRect?.().left) || 0);
+          state.mouse.lastY = remaining.y - (Number(els.main?.getBoundingClientRect?.().top) || 0);
+        }
+      }
       if (touchPoints.size === 0) flushSettledRender();
       else deferSettledRender();
     }
@@ -223,7 +239,14 @@ export function createInteractionController(deps) {
     if (ev && typeof ev.pointerId === "number") {
       if (ev.pointerType === "touch") ev.preventDefault();
       touchPoints.delete(ev.pointerId);
-      if (touchPoints.size < 2) touchGesture.pinch = null;
+      if (touchPoints.size < 2) {
+        touchGesture.pinch = null;
+        const remaining = Array.from(touchPoints.values())[0];
+        if (remaining) {
+          state.mouse.lastX = remaining.x - (Number(els.main?.getBoundingClientRect?.().left) || 0);
+          state.mouse.lastY = remaining.y - (Number(els.main?.getBoundingClientRect?.().top) || 0);
+        }
+      }
       if (touchPoints.size === 0) flushSettledRender();
       else deferSettledRender();
     } else {
@@ -239,9 +262,9 @@ export function createInteractionController(deps) {
     state.mouse.dragging = false;
   }
 
-  function applyScaleAt(targetScale, sx, sy, { interactive = false } = {}) {
+  function applyScaleAt(targetScale, sx, sy, { interactive = false, deferSettled = interactive } = {}) {
     const ds = getActive();
-    if (!ds) return;
+    if (!ds) return null;
 
     let appliedScale = null;
     if (typeof setScaleAt === "function") {
@@ -263,10 +286,11 @@ export function createInteractionController(deps) {
     updateZoomLabel();
     if (interactive) {
       requestPreview();
-      deferSettledRender();
+      if (deferSettled) deferSettledRender();
     } else {
       requestRender();
     }
+    return appliedScale || ds.view.scale;
   }
 
   function zoomAt(factor, sx, sy) {

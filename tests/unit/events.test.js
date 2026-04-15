@@ -150,6 +150,58 @@ describe("interaction controller", () => {
     vi.useRealTimers();
   });
 
+  test("touch pinch does not trigger settled full renders while the gesture is still active", () => {
+    vi.useFakeTimers();
+    const render = vi.fn();
+    const scheduleRender = vi.fn();
+    const schedulePreviewRender = vi.fn();
+    const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 1000 } };
+    const state = {
+      selection: { enabled: false, drawing: false, imgRect: null },
+      mouse: {}
+    };
+    const els = {
+      selRect: { style: { display: "none" } },
+      main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      zoom: { value: "0" }
+    };
+
+    const controller = createInteractionController({
+      els,
+      state,
+      getActive: () => ds,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      setStatus: () => {},
+      updateHud: () => {},
+      screenToImage: (sx, sy) => ({ x: ds.view.x + sx / ds.view.scale, y: ds.view.y + sy / ds.view.scale }),
+      clampView: () => {},
+      schedulePreviewRender,
+      scheduleRender,
+      render,
+      minScaleFor: () => 0.25,
+      scaleToSlider: (s) => s,
+      updateZoomLabel: () => {}
+    });
+
+    controller.onPointerDown({ pointerType: "touch", pointerId: 1, clientX: 20, clientY: 20, preventDefault: vi.fn() });
+    controller.onPointerDown({ pointerType: "touch", pointerId: 2, clientX: 100, clientY: 20, preventDefault: vi.fn() });
+    controller.onPointerMove({ pointerType: "touch", pointerId: 2, clientX: 60, clientY: 20, preventDefault: vi.fn() });
+
+    vi.advanceTimersByTime(120);
+    expect(schedulePreviewRender).toHaveBeenCalledTimes(1);
+    expect(scheduleRender).not.toHaveBeenCalled();
+
+    controller.onPointerUp({ pointerType: "touch", pointerId: 1, preventDefault: vi.fn() });
+    vi.advanceTimersByTime(95);
+    expect(scheduleRender).toHaveBeenCalledTimes(1);
+
+    controller.onPointerUp({ pointerType: "touch", pointerId: 2, preventDefault: vi.fn() });
+    expect(scheduleRender).toHaveBeenCalledTimes(2);
+
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
   test("mouse wheel uses preview first and schedules a settled render", () => {
     vi.useFakeTimers();
     const render = vi.fn();
