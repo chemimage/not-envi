@@ -41,6 +41,7 @@ export function wireApp(deps) {
     rebuildBandTree,
     resetDisplay,
     autoDisplay,
+    toggleSharedDisplayRange,
     resolveDisplayControlBand,
     cycleDisplayAdjustColor,
     getBandSettings,
@@ -311,6 +312,13 @@ export function wireApp(deps) {
     if (!ds) return;
     autoDisplay(ds);
   };
+  if (els.btnHistRangeLock) {
+    els.btnHistRangeLock.onclick = () => {
+      const ds = getActive();
+      if (!ds || !toggleSharedDisplayRange) return;
+      toggleSharedDisplayRange(ds);
+    };
+  }
 
   els.slContrast.oninput = () => {
     const ds = getActive();

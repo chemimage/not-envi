@@ -197,6 +197,72 @@ describe("ui-panels", () => {
     expect(deps.els.numMin.value).toBe("3");
   });
 
+  test("shared display range keeps min and max across bands", () => {
+    document.body.innerHTML = `
+      <input id="slContrast" value="1" />
+      <input id="slBrightness" value="0" />
+      <input id="slGain" value="1" />
+      <input id="numContrast" value="1" />
+      <input id="numBrightness" value="0" />
+      <input id="numGain" value="1" />
+      <input id="numMin" value="0" />
+      <input id="numMax" value="0.5" />
+      <button id="btnHistRangeLock" type="button" aria-pressed="false"><i></i></button>
+      <canvas id="hist"></canvas>
+    `;
+
+    const deps = makeDeps();
+    const render = vi.fn();
+    const drawHistogram = vi.fn();
+    const ds = {
+      id: "ds1",
+      meta: { bands: 2 },
+      activeBand: 0,
+      bandSettings: new Map([
+        [0, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 }],
+        [1, { min: null, max: null, brightness: 0.2, gain: 1.2, contrast: 1.4, gamma: 1 }]
+      ]),
+      bandStatsWhole: new Map([
+        [0, { min: 0, max: 2, p1: 0.1, p99: 1.9 }],
+        [1, { min: 0, max: 2, p1: 0.2, p99: 1.8 }]
+      ]),
+      bandStatsView: null
+    };
+    deps.getActive = () => ds;
+    deps.render = render;
+    deps.drawHistogram = drawHistogram;
+    deps.els = {
+      slContrast: document.querySelector("#slContrast"),
+      slBrightness: document.querySelector("#slBrightness"),
+      slGain: document.querySelector("#slGain"),
+      numContrast: document.querySelector("#numContrast"),
+      numBrightness: document.querySelector("#numBrightness"),
+      numGain: document.querySelector("#numGain"),
+      numMin: document.querySelector("#numMin"),
+      numMax: document.querySelector("#numMax"),
+      btnHistRangeLock: document.querySelector("#btnHistRangeLock"),
+      hist: document.querySelector("#hist")
+    };
+
+    const ui = createUIPanels(deps);
+    ui.toggleSharedDisplayRange(ds);
+    expect(ds.sharedDisplayRange).toMatchObject({ enabled: true, min: 0, max: 0.5 });
+    expect(deps.els.btnHistRangeLock.getAttribute("aria-pressed")).toBe("true");
+
+    deps.els.numMin.value = "0.25";
+    deps.els.numMax.value = "0.75";
+    ui.applyRangeFromNumbers(ds);
+    expect(ds.sharedDisplayRange).toMatchObject({ enabled: true, min: 0.25, max: 0.75 });
+
+    ds.activeBand = 1;
+    ui.updateDisplayUI(true);
+    expect(deps.els.numMin.value).toBe("0.25");
+    expect(deps.els.numMax.value).toBe("0.75");
+    expect(ui.getBandSettings(ds, 1).min).toBe(0.25);
+    expect(ui.getBandSettings(ds, 1).max).toBe(0.75);
+    expect(ui.getBandSettings(ds, 1).contrast).toBe(1.4);
+  });
+
   test("band tree and band changes follow the selected panel band", () => {
     document.body.innerHTML = `
       <input id="bandSearch" value="" />

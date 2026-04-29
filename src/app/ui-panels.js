@@ -43,11 +43,60 @@ export function createUIPanels(deps) {
   let metaPinnedRowEl = null;
   let metaHoverDatasetId = null;
 
+  function ensureSharedDisplayRange(ds) {
+    if (!ds.sharedDisplayRange || typeof ds.sharedDisplayRange !== "object") {
+      ds.sharedDisplayRange = { enabled: false, min: null, max: null };
+    }
+    return ds.sharedDisplayRange;
+  }
+
+  function ensureBandSettingsRangeAccessors(ds, settings) {
+    if (!settings || settings.__rangeAccessors) return settings;
+    let ownMin = settings.min ?? null;
+    let ownMax = settings.max ?? null;
+    Object.defineProperty(settings, "__rangeAccessors", {
+      configurable: true,
+      enumerable: false,
+      value: true
+    });
+    Object.defineProperty(settings, "min", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        const shared = ensureSharedDisplayRange(ds);
+        return shared.enabled ? shared.min : ownMin;
+      },
+      set(value) {
+        const next = value == null ? null : Number(value);
+        const normalized = Number.isFinite(next) ? next : null;
+        const shared = ensureSharedDisplayRange(ds);
+        if (shared.enabled) shared.min = normalized;
+        else ownMin = normalized;
+      }
+    });
+    Object.defineProperty(settings, "max", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        const shared = ensureSharedDisplayRange(ds);
+        return shared.enabled ? shared.max : ownMax;
+      },
+      set(value) {
+        const next = value == null ? null : Number(value);
+        const normalized = Number.isFinite(next) ? next : null;
+        const shared = ensureSharedDisplayRange(ds);
+        if (shared.enabled) shared.max = normalized;
+        else ownMax = normalized;
+      }
+    });
+    return settings;
+  }
+
   function getBandSettings(ds, band) {
     if (!ds.bandSettings.has(band)) {
       ds.bandSettings.set(band, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 });
     }
-    return ds.bandSettings.get(band);
+    return ensureBandSettingsRangeAccessors(ds, ds.bandSettings.get(band));
   }
 
   function resolveStats(ds) {
@@ -173,6 +222,44 @@ export function createUIPanels(deps) {
     els.btnHistChannel.ariaLabel = label;
   }
 
+  function syncDisplayRangeLockButton(ds) {
+    if (!els.btnHistRangeLock) return;
+    const shared = ds ? ensureSharedDisplayRange(ds) : null;
+    const active = !!shared?.enabled;
+    els.btnHistRangeLock.disabled = !ds;
+    els.btnHistRangeLock.classList.toggle("active", active);
+    els.btnHistRangeLock.setAttribute("aria-pressed", active ? "true" : "false");
+    els.btnHistRangeLock.title = active
+      ? "Using same min/max for all bands"
+      : "Use same min/max for all bands";
+    els.btnHistRangeLock.ariaLabel = els.btnHistRangeLock.title;
+    const icon = els.btnHistRangeLock.querySelector("i");
+    if (icon) {
+      icon.className = active ? "fa-solid fa-lock" : "fa-solid fa-lock-open";
+    }
+  }
+
+  function toggleSharedDisplayRange(ds) {
+    if (!ds) return;
+    const shared = ensureSharedDisplayRange(ds);
+    if (!shared.enabled) {
+      const minVal = Number(els.numMin?.value);
+      const maxVal = Number(els.numMax?.value);
+      if (Number.isFinite(minVal)) shared.min = minVal;
+      if (Number.isFinite(maxVal)) shared.max = maxVal;
+      if (shared.min != null && shared.max != null && shared.min > shared.max) {
+        const tmp = shared.min;
+        shared.min = shared.max;
+        shared.max = tmp;
+      }
+    }
+    shared.enabled = !shared.enabled;
+    syncDisplayRangeLockButton(ds);
+    syncRangeInputsFromSettings(ds, { force: true });
+    drawHistogram(ds);
+    render({ reuseRaster: true });
+  }
+
   function cycleDisplayAdjustColor(ds) {
     if (!ds || !isThreeBandColorMode(ds)) return;
     ds.displayAdjustColor = cycleThreeBandAdjustColor(getThreeBandAdjustColor(ds));
@@ -258,6 +345,7 @@ export function createUIPanels(deps) {
   function updateDisplayUI(force = false) {
     const ds = getActive();
     syncDisplayAdjustButton(ds);
+    syncDisplayRangeLockButton(ds);
     if (!ds) return;
     const b = resolveDisplayControlBand(ds);
     if (b == null) return;
@@ -903,6 +991,7 @@ export function createUIPanels(deps) {
     applyRangeFromNumbers,
     resetDisplay,
     autoDisplay,
-    cycleDisplayAdjustColor
+    cycleDisplayAdjustColor,
+    toggleSharedDisplayRange
   };
 }

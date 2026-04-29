@@ -553,6 +553,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   function resetDisplay(ds){ uiPanels.resetDisplay(ds); }
   function autoDisplay(ds){ uiPanels.autoDisplay(ds); }
   function cycleDisplayAdjustColor(ds){ uiPanels.cycleDisplayAdjustColor(ds); }
+  function toggleSharedDisplayRange(ds){ uiPanels.toggleSharedDisplayRange(ds); }
 
   datasetRuntime = createDatasetRuntime({
     state,
@@ -1344,6 +1345,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     rebuildBandTree,
     resetDisplay,
     autoDisplay,
+    toggleSharedDisplayRange,
     resolveDisplayControlBand,
     cycleDisplayAdjustColor,
     getBandSettings,

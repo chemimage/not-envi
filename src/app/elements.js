@@ -95,6 +95,7 @@ export function collectElements() {
     btnCollapseAll: $("#btnCollapseAll"),
     bandTree: $("#bandTree"),
     hist: $("#hist"),
+    btnHistRangeLock: $("#btnHistRangeLock"),
     btnHistChannel: $("#btnHistChannel"),
     numMin: $("#numMin"),
     numMax: $("#numMax"),
