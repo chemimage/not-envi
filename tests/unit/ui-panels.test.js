@@ -252,6 +252,63 @@ describe("ui-panels", () => {
     expect(ds.activeBand).toBe(2);
   });
 
+  test("band tree sorts numeric band values while preserving source band selection", () => {
+    document.body.innerHTML = `
+      <input id="bandSearch" value="" />
+      <div id="bandTree"></div>
+      <input id="slContrast" value="1" />
+      <input id="slBrightness" value="0" />
+      <input id="slGain" value="1" />
+      <input id="numContrast" value="1" />
+      <input id="numBrightness" value="0" />
+      <input id="numGain" value="1" />
+      <input id="numMin" value="0" />
+      <input id="numMax" value="1" />
+    `;
+
+    const deps = makeDeps();
+    const ds = {
+      id: "ds1",
+      name: "numeric bands",
+      meta: { bands: 3, wavelengths: [10, 2, 1] },
+      activeBand: 0,
+      bandSettings: new Map(),
+      bandStatsWhole: new Map([
+        [0, { min: 0, max: 10, p1: 1, p99: 9 }],
+        [1, { min: 0, max: 10, p1: 1, p99: 9 }],
+        [2, { min: 0, max: 10, p1: 1, p99: 9 }]
+      ]),
+      bandStatsView: null,
+      treeExpanded: true,
+      treeScrollTop: 0
+    };
+    deps.state.datasets = [ds];
+    deps.state.activeId = ds.id;
+    deps.getActive = () => ds;
+    deps.bandLabel = (dataset, b) => String(dataset.meta.wavelengths[b]);
+    deps.els = {
+      bandSearch: document.querySelector("#bandSearch"),
+      bandTree: document.querySelector("#bandTree"),
+      slContrast: document.querySelector("#slContrast"),
+      slBrightness: document.querySelector("#slBrightness"),
+      slGain: document.querySelector("#slGain"),
+      numContrast: document.querySelector("#numContrast"),
+      numBrightness: document.querySelector("#numBrightness"),
+      numGain: document.querySelector("#numGain"),
+      numMin: document.querySelector("#numMin"),
+      numMax: document.querySelector("#numMax")
+    };
+
+    const ui = createUIPanels(deps);
+    ui.rebuildBandTree();
+
+    const rows = Array.from(document.querySelectorAll(".band-row"));
+    expect(rows.map((row) => row.textContent)).toEqual(["1", "2", "10"]);
+
+    rows[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(ds.activeBand).toBe(2);
+  });
+
   test("dataset panel buttons render L, R, and L|R states", () => {
     document.body.innerHTML = `
       <div id="datasetList"></div>

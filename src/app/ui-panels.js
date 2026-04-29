@@ -124,6 +124,36 @@ export function createUIPanels(deps) {
     return resolveDisplayPanelBand(null, ds);
   }
 
+  function numericBandSortValue(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    const s = String(value ?? "").trim();
+    if (!s) return null;
+    const direct = Number(s);
+    if (Number.isFinite(direct)) return direct;
+    const match = s.match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/i);
+    if (!match) return null;
+    const parsed = Number(match[0]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function sortedBandIndices(ds) {
+    const bandCount = Math.max(0, Math.floor(Number(ds?.meta?.bands) || 0));
+    const entries = [];
+    for (let b = 0; b < bandCount; b += 1) {
+      const wl = Array.isArray(ds?.meta?.wavelengths) ? ds.meta.wavelengths[b] : null;
+      const label = bandLabel(ds, b);
+      const sortValue = numericBandSortValue(wl ?? label);
+      entries.push({ band: b, sortValue });
+    }
+    if (!entries.length || entries.some((entry) => entry.sortValue == null)) {
+      return entries.map((entry) => entry.band);
+    }
+    return entries
+      .slice()
+      .sort((a, b) => (a.sortValue - b.sortValue) || (a.band - b.band))
+      .map((entry) => entry.band);
+  }
+
   function syncDisplayAdjustButton(ds) {
     if (!els.btnHistChannel) return;
     if (!ds || !isThreeBandColorMode(ds)) {
@@ -320,7 +350,7 @@ export function createUIPanels(deps) {
         bandsWrap.addEventListener("scroll", () => {
           ds.treeScrollTop = bandsWrap.scrollTop;
         }, { passive: true });
-        for (let b = 0; b < ds.meta.bands; b++) {
+        for (const b of sortedBandIndices(ds)) {
           const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
           const label = bandLabel(ds, b);
           if (q) {
