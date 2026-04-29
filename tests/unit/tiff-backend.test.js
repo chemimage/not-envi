@@ -32,6 +32,11 @@ describe("tiff backend", () => {
     expect(sig === "II" || sig === "MM").toBe(true);
     const tiff = await fromArrayBuffer(ab);
     expect(await tiff.getImageCount()).toBe(1);
+    const img = await tiff.getImage(0);
+    expect(Array.from(img.fileDirectory.BitsPerSample)).toEqual([8, 8, 8, 8]);
+    expect(img.fileDirectory.StripByteCounts[0]).toBe(8);
+    const raster = await img.readRasters({ interleave: true });
+    expect(Array.from(raster)).toEqual(Array.from(imageData.data));
   });
 
   test("encodeRawMultipageTiff preserves multipage raw stack fallback", async () => {
@@ -72,5 +77,28 @@ describe("tiff backend", () => {
     const sf = img.fileDirectory.SampleFormat;
     const first = Array.isArray(sf) || ArrayBuffer.isView(sf) ? sf[0] : sf;
     expect(first).toBe(3);
+    expect(img.fileDirectory.BitsPerSample[0]).toBe(32);
+    expect(img.fileDirectory.StripByteCounts[0]).toBe(16);
+    expect(ab.byteLength).toBeGreaterThanOrEqual(16);
+
+    const raster = await img.readRasters({ samples: [0] });
+    const values = ArrayBuffer.isView(raster) ? raster : raster[0];
+    expect(Array.from(values)).toEqual([1.5, 2.5, 3.5, 4.5]);
+  });
+
+  test("encodeRawMultipageTiff writes full byte payload for single-page UInt16", async () => {
+    const meta = { dataType: 12, dataTypeInfo: { bytes: 2 } };
+    const pages = [new Uint16Array([1, 258, 4096, 65535])];
+    const blob = encodeRawMultipageTiff({ meta, width: 2, height: 2, pages });
+    const ab = await blobToArrayBuffer(blob);
+    const tiff = await fromArrayBuffer(ab);
+    const img = await tiff.getImage(0);
+
+    expect(img.fileDirectory.BitsPerSample[0]).toBe(16);
+    expect(img.fileDirectory.StripByteCounts[0]).toBe(8);
+
+    const raster = await img.readRasters({ samples: [0] });
+    const values = ArrayBuffer.isView(raster) ? raster : raster[0];
+    expect(Array.from(values)).toEqual([1, 258, 4096, 65535]);
   });
 });

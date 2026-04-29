@@ -8,6 +8,84 @@ export function tiffSampleFormatForEnviType(enviType) {
 export function littleEndianBytes(view, bytesPerSample) {
   const u8 = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
   if (bytesPerSample === 1) return new Uint8Array(u8);
+  if (isHostLittleEndian()) return new Uint8Array(u8);
+  return encodeSampleBytesLittleEndian({ dataType: inferEnviTypeFromView(view), dataTypeInfo: { bytes: bytesPerSample } }, view);
+}
+
+let HOST_LITTLE_ENDIAN = null;
+
+function isHostLittleEndian() {
+  if (HOST_LITTLE_ENDIAN == null) {
+    const probe = new Uint16Array([0x00ff]);
+    HOST_LITTLE_ENDIAN = new Uint8Array(probe.buffer)[0] === 0xff;
+  }
+  return HOST_LITTLE_ENDIAN;
+}
+
+function inferEnviTypeFromView(view) {
+  if (view instanceof Uint8Array || view instanceof Uint8ClampedArray) return 1;
+  if (view instanceof Int16Array) return 2;
+  if (view instanceof Int32Array) return 3;
+  if (view instanceof Float32Array) return 4;
+  if (view instanceof Float64Array) return 5;
+  if (view instanceof Uint16Array) return 12;
+  if (view instanceof Uint32Array) return 13;
+  if (typeof BigInt64Array !== "undefined" && view instanceof BigInt64Array) return 14;
+  if (typeof BigUint64Array !== "undefined" && view instanceof BigUint64Array) return 15;
+  return 4;
+}
+
+function coerceBigInt(v, unsigned) {
+  if (typeof v === "bigint") return v;
+  if (!Number.isFinite(v)) return 0n;
+  const n = Math.trunc(v);
+  if (unsigned && n < 0) return 0n;
+  return BigInt(n);
+}
+
+function encodeSampleBytesLittleEndian(meta, values) {
+  if (!ArrayBuffer.isView(values)) {
+    throw new Error("Raw TIFF page must be a typed array.");
+  }
+
+  const n = Number(values.length) || 0;
+  const type = Number(meta?.dataType);
+  const bytesPerSample = Number(meta?.dataTypeInfo?.bytes) || 0;
+  if (!n || !bytesPerSample) return new Uint8Array(0);
+
+  const buf = new ArrayBuffer(n * bytesPerSample);
+  const dv = new DataView(buf);
+  let o = 0;
+  for (let i = 0; i < n; i += 1) {
+    const v = values[i];
+    switch (type) {
+      case 1: dv.setUint8(o, Number(v) || 0); o += 1; break;
+      case 2: dv.setInt16(o, Number(v) || 0, true); o += 2; break;
+      case 3: dv.setInt32(o, Number(v) || 0, true); o += 4; break;
+      case 4: dv.setFloat32(o, Number(v) || 0, true); o += 4; break;
+      case 5: dv.setFloat64(o, Number(v) || 0, true); o += 8; break;
+      case 12: dv.setUint16(o, Number(v) || 0, true); o += 2; break;
+      case 13: dv.setUint32(o, Number(v) || 0, true); o += 4; break;
+      case 14:
+        if (typeof dv.setBigInt64 !== "function") throw new Error("This browser does not support int64 TIFF export.");
+        dv.setBigInt64(o, coerceBigInt(v, false), true);
+        o += 8;
+        break;
+      case 15:
+        if (typeof dv.setBigUint64 !== "function") throw new Error("This browser does not support uint64 TIFF export.");
+        dv.setBigUint64(o, coerceBigInt(v, true), true);
+        o += 8;
+        break;
+      default:
+        throw new Error(`Unsupported raw TIFF data type for export: ${type}`);
+    }
+  }
+  return new Uint8Array(buf);
+}
+
+function reverseSampleBytes(view, bytesPerSample) {
+  const u8 = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  if (bytesPerSample === 1) return new Uint8Array(u8);
   const out = new Uint8Array(u8.length);
   for (let i = 0; i < u8.length; i += bytesPerSample) {
     for (let j = 0; j < bytesPerSample; j += 1) {
@@ -15,6 +93,21 @@ export function littleEndianBytes(view, bytesPerSample) {
     }
   }
   return out;
+}
+
+function normalizeRawPageBytes(meta, page, expectedSamples) {
+  const bytesPerSample = meta.dataTypeInfo.bytes;
+  const expectedBytes = expectedSamples * bytesPerSample;
+  if (
+    page instanceof Uint8Array
+    && Number(meta.dataType) !== 1
+    && bytesPerSample > 1
+    && page.byteLength === expectedBytes
+    && page.length !== expectedSamples
+  ) {
+    return reverseSampleBytes(page, bytesPerSample);
+  }
+  return encodeSampleBytesLittleEndian(meta, page);
 }
 
 export function encodeTIFF_MultiPage_GrayRaw(meta, w, h, pages) {
@@ -48,7 +141,8 @@ export function encodeTIFF_MultiPage_GrayRaw(meta, w, h, pages) {
 
   for (let i = 0; i < N; i += 1) {
     const page = pages[i];
-    const bytes = page.byteLength;
+    const pixelBytes = normalizeRawPageBytes(meta, page, w * h);
+    const bytes = pixelBytes.byteLength;
     const ifdOff = 8 + i * ifdSize;
     dv.setUint16(ifdOff, numEntries, true);
     let o = ifdOff + 2;
@@ -66,7 +160,7 @@ export function encodeTIFF_MultiPage_GrayRaw(meta, w, h, pages) {
     writeEntry(dv, o, 339, 3, 1, sampleFormat); o += 12;
 
     dv.setUint32(ifdOff + 2 + numEntries * 12, (i === N - 1) ? 0 : (8 + (i + 1) * ifdSize), true);
-    pixelParts.push(littleEndianBytes(page, bytesPerSample));
+    pixelParts.push(pixelBytes);
     pixelCursor += bytes;
   }
 
