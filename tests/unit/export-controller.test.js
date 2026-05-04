@@ -12,6 +12,8 @@ function makeEls() {
     expModeWrap: { style: { display: "" } },
     expModeRaw: { checked: false },
     expModeRendered: { checked: false },
+    expScaled8Wrap: { style: { display: "" } },
+    expScaled8: { checked: false },
     expScopeSel: { disabled: false, checked: false },
     expScopeView: { checked: false },
     expLblScopeSel: { textContent: "" },
@@ -65,7 +67,21 @@ describe("export dialog controller", () => {
     ctrl.openExportDialog();
     expect(state.exportKind).toBe("tiff");
     expect(els.expModeWrap.style.display).toBe("block");
+    expect(els.expScaled8Wrap.style.display).toBe("block");
     expect(els.expEstimate.textContent).toContain("800 B");
+
+    els.expScaled8.checked = true;
+    ctrl.updateExportDialogUI();
+    expect(els.expIncludeAnnotationsWrap.style.display).toBe("none");
+    expect(els.expEstimate.textContent).toContain("200 B");
+    expect(els.expNote.innerHTML).toContain("Scaled 8-bit TIFF export");
+
+    els.expModeRaw.checked = false;
+    els.expModeRendered.checked = true;
+    ctrl.updateExportDialogUI();
+    expect(els.expScaled8Wrap.style.display).toBe("none");
+    expect(els.expScaled8.checked).toBe(false);
+    expect(els.expIncludeAnnotationsWrap.style.display).toBe("block");
 
     els.expFormatPng.checked = true;
     els.expFormatTiff.checked = false;
@@ -73,6 +89,7 @@ describe("export dialog controller", () => {
     expect(state.exportKind).toBe("png");
     expect(els.expModeWrap.style.display).toBe("none");
     expect(els.expModeRendered.checked).toBe(true);
+    expect(els.expScaled8.checked).toBe(false);
     expect(els.expFormatHint.textContent).toContain("PNG can only export rendered result");
     expect(els.expEstimate.textContent).toContain("800 B");
 
@@ -84,5 +101,31 @@ describe("export dialog controller", () => {
     expect(els.expModeRaw.checked).toBe(true);
     expect(els.expModeWrap.style.display).toBe("none");
     expect(els.expIncludeAnnotationsWrap.style.display).toBe("none");
+  });
+
+  test("scaled 8-bit mode is hidden for 8-bit TIFF datasets", () => {
+    const els = makeEls();
+    els.expModeRaw.checked = true;
+    els.expScaled8.checked = true;
+    const ds = {
+      name: "byte",
+      activeBand: 0,
+      meta: { bands: 1, dataTypeInfo: { bytes: 1, name: "uint8" } }
+    };
+    const ctrl = createExportDialogController({
+      state: { selection: { imgRect: null }, exportKind: null },
+      els,
+      getActive: () => ds,
+      bandLabel: () => "b0",
+      humanBytes: (n) => `${n} B`,
+      resolveExportRect: () => ({ w: 5, h: 4 }),
+      alertFn: () => {}
+    });
+
+    ctrl.updateExportDialogUI();
+    expect(els.expScaled8Wrap.style.display).toBe("none");
+    expect(els.expScaled8.checked).toBe(false);
+    expect(els.expModeRaw.checked).toBe(true);
+    expect(els.expEstimate.textContent).toContain("20 B");
   });
 });

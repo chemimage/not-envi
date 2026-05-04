@@ -1,5 +1,19 @@
 import { describe, expect, test, vi } from "vitest";
+import { fromArrayBuffer } from "geotiff";
 import { createExportService } from "../../src/export/export-service.js";
+
+async function blobToArrayBuffer(blob) {
+  if (blob && typeof blob.arrayBuffer === "function") return blob.arrayBuffer();
+  if (typeof FileReader !== "undefined") {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(fr.error || new Error("Failed reading blob"));
+      fr.onload = () => resolve(fr.result);
+      fr.readAsArrayBuffer(blob);
+    });
+  }
+  return new Response(blob).arrayBuffer();
+}
 
 function baseDeps() {
   return {
@@ -114,5 +128,37 @@ describe("export service", () => {
     } finally {
       createEl.mockRestore();
     }
+  });
+
+  test("exportScaled8StackTIFF scales raw samples to an 8-bit grayscale TIFF", async () => {
+    const deps = baseDeps();
+    deps.readBandWindow = vi.fn(async () => new Float32Array([-10, 0, 10, 30]));
+    deps.downloadBlob = vi.fn();
+    const service = createExportService(deps);
+    const ds = {
+      name: "demo",
+      activeBand: 0,
+      ds: {},
+      meta: {
+        samples: 2,
+        lines: 2,
+        bands: 1,
+        interleave: "bsq",
+        dataType: 4,
+        dataTypeInfo: { bytes: 4, name: "float32", ctor: Float32Array }
+      }
+    };
+
+    await service.exportScaled8StackTIFF(ds, { x0: 0, y0: 0, w: 2, h: 2 }, [0]);
+
+    expect(deps.downloadBlob).toHaveBeenCalledTimes(1);
+    const [blob, filename] = deps.downloadBlob.mock.calls[0];
+    expect(filename).toContain("scaled8.tiff");
+    const tiff = await fromArrayBuffer(await blobToArrayBuffer(blob));
+    const img = await tiff.getImage(0);
+    expect(img.fileDirectory.BitsPerSample[0]).toBe(8);
+    const raster = await img.readRasters({ samples: [0] });
+    const values = ArrayBuffer.isView(raster) ? raster : raster[0];
+    expect(Array.from(values)).toEqual([0, 64, 128, 255]);
   });
 });

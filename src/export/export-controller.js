@@ -38,6 +38,18 @@ export function createExportDialogController(deps) {
     return mode === "rendered" && !!els.expIncludeAnnotations?.checked;
   }
 
+  function isEightBitDataset(ds) {
+    return Number(ds?.meta?.dataTypeInfo?.bytes) === 1;
+  }
+
+  function shouldOfferScaled8(ds, kind = selectedKind()) {
+    return kind === "tiff" && selectedMode(kind) === "raw" && !!ds && !isEightBitDataset(ds);
+  }
+
+  function useScaled8(ds, kind = selectedKind(), mode = selectedMode(kind)) {
+    return kind === "tiff" && mode === "raw" && shouldOfferScaled8(ds, kind) && !!els.expScaled8?.checked;
+  }
+
   function getAreaSelections(ds) {
     if (!ds || !deps.collectAreaSelections) return [];
     return deps.collectAreaSelections(ds);
@@ -105,11 +117,13 @@ export function createExportDialogController(deps) {
     if (kind === "png") {
       els.expModeRendered.checked = true;
       els.expModeRaw.checked = false;
+      if (els.expScaled8) els.expScaled8.checked = false;
       if (els.expBandCurrent) els.expBandCurrent.checked = true;
       if (els.expBandAll) els.expBandAll.checked = false;
     } else if (kind === "envi") {
       els.expModeRaw.checked = true;
       els.expModeRendered.checked = false;
+      if (els.expScaled8) els.expScaled8.checked = false;
     } else if (!els.expModeRaw.checked && !els.expModeRendered.checked) {
       els.expModeRaw.checked = true;
     }
@@ -127,12 +141,21 @@ export function createExportDialogController(deps) {
   }
 
   function updateExportDialogUI() {
+    const ds = getActive();
     const kind = selectedKind();
     state.exportKind = kind;
+    const offerScaled8 = shouldOfferScaled8(ds, kind);
+    if (els.expScaled8Wrap) {
+      els.expScaled8Wrap.style.display = offerScaled8 ? "block" : "none";
+    }
+    if (!offerScaled8 && els.expScaled8?.checked) {
+      els.expScaled8.checked = false;
+    }
 
     if (kind === "png") {
       els.expModeRendered.checked = true;
       els.expModeRaw.checked = false;
+      if (els.expScaled8) els.expScaled8.checked = false;
       els.expModeWrap.style.display = "none";
       els.expFormatHint.textContent = "PNG can only export rendered result.";
       if (els.expBandWrap) els.expBandWrap.style.display = "none";
@@ -141,12 +164,15 @@ export function createExportDialogController(deps) {
     } else if (kind === "envi") {
       els.expModeRaw.checked = true;
       els.expModeRendered.checked = false;
+      if (els.expScaled8) els.expScaled8.checked = false;
       els.expModeWrap.style.display = "none";
       els.expFormatHint.textContent = "ENVI exports raw numeric samples only.";
       if (els.expBandWrap) els.expBandWrap.style.display = "block";
     } else {
       els.expModeWrap.style.display = "block";
-      els.expFormatHint.textContent = "TIFF can export raw numeric samples or rendered views.";
+      els.expFormatHint.textContent = offerScaled8
+        ? "TIFF raw export can optionally scale numeric samples to 8-bit data."
+        : "TIFF can export raw numeric samples or rendered views.";
       if (els.expBandWrap) els.expBandWrap.style.display = "block";
     }
 
@@ -176,6 +202,7 @@ export function createExportDialogController(deps) {
     const nonRect = hasNonRect(selections);
     const bandCount = selectedBandCount(ds, kind);
     const annotationsOn = includeAnnotations(kind, mode);
+    const scaled8 = useScaled8(ds, kind, mode);
 
     if (els.expLblScopeSel) {
       els.expLblScopeSel.textContent = describeSelectionLabel(selectionCount);
@@ -192,10 +219,14 @@ export function createExportDialogController(deps) {
     if (scope === "sel" && hasSelection) {
       const plan = resolveSelectionPlan(ds, selections);
       if (mode === "raw") {
-        const bpp = Number(ds.meta?.dataTypeInfo?.bytes) || 0;
+        const bpp = scaled8 ? 1 : (Number(ds.meta?.dataTypeInfo?.bytes) || 0);
         estBytes = plan.jobs.reduce((sum, job) => sum + (job.w * job.h * bandCount * bpp), 0);
         warnByPixels = plan.jobs.some((job) => (job.w * job.h > 20_000_000));
-        if (kind === "envi") {
+        if (scaled8) {
+          note = bandCount > 1
+            ? `Scaled 8-bit TIFF stack from selection: <b>${plan.jobs[0]?.w || 0}×${plan.jobs[0]?.h || 0}</b> × <b>${bandCount}</b> bands.`
+            : `Scaled 8-bit TIFF export from selection: <b>${plan.jobs[0]?.w || 0}×${plan.jobs[0]?.h || 0}</b> for the current band.`;
+        } else if (kind === "envi") {
           note = bandCount > 1
             ? `Raw ENVI stack from selection: <b>${plan.jobs[0]?.w || 0}×${plan.jobs[0]?.h || 0}</b> × <b>${bandCount}</b> bands as <code>.hdr</code> + <code>.dat</code>.`
             : `Raw ENVI export from selection: <b>${plan.jobs[0]?.w || 0}×${plan.jobs[0]?.h || 0}</b> for the current band as <code>.hdr</code> + <code>.dat</code>.`;
@@ -218,10 +249,14 @@ export function createExportDialogController(deps) {
     } else {
       const rect = resolveExportRect(ds, "view");
       if (mode === "raw") {
-        const bpp = Number(ds.meta?.dataTypeInfo?.bytes) || 0;
+        const bpp = scaled8 ? 1 : (Number(ds.meta?.dataTypeInfo?.bytes) || 0);
         estBytes = rect.w * rect.h * bandCount * bpp;
         warnByPixels = (rect.w * rect.h > 20_000_000);
-        if (kind === "envi") {
+        if (scaled8) {
+          note = bandCount > 1
+            ? `Scaled 8-bit TIFF stack from the whole view: <b>${rect.w}×${rect.h}</b> × <b>${bandCount}</b> bands.`
+            : `Scaled 8-bit TIFF export from the whole view: <b>${rect.w}×${rect.h}</b> for the current band.`;
+        } else if (kind === "envi") {
           note = bandCount > 1
             ? `Raw ENVI stack from the whole view: <b>${rect.w}×${rect.h}</b> × <b>${bandCount}</b> bands as <code>.hdr</code> + <code>.dat</code>.`
             : `Raw ENVI export from the whole view: <b>${rect.w}×${rect.h}</b> for the current band as <code>.hdr</code> + <code>.dat</code>.`;

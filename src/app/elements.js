@@ -123,6 +123,8 @@ export function collectElements() {
     expBandWrap: $("#expBandWrap"),
     expBandCurrent: $("#expBandCurrent"),
     expBandAll: $("#expBandAll"),
+    expScaled8Wrap: $("#expScaled8Wrap"),
+    expScaled8: $("#expScaled8"),
     expIncludeAnnotationsWrap: $("#expIncludeAnnotationsWrap"),
     expIncludeAnnotations: $("#expIncludeAnnotations"),
     expShapeWarn: $("#expShapeWarn"),

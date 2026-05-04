@@ -35,6 +35,13 @@ export function createExportService(deps) {
     return deps.els.expModeRaw?.checked ? "raw" : "rendered";
   }
 
+  function useScaled8FromDialog(ds, kind = selectedKindFromDialog(), mode = selectedModeFromDialog(kind)) {
+    return kind === "tiff"
+      && mode === "raw"
+      && Number(ds?.meta?.dataTypeInfo?.bytes) !== 1
+      && !!deps.els.expScaled8?.checked;
+  }
+
   function selectedScopeFromDialog() {
     return deps.els.expScopeSel?.checked ? "sel" : "view";
   }
@@ -479,6 +486,39 @@ export function createExportService(deps) {
     return deps.readBandWindow(ds.meta, ds.ds, bandIndex, x0, y0, w, h, 1);
   }
 
+  function scaled8Meta(meta, bandIndices) {
+    return {
+      ...subsetMetaForBandIndices(meta, bandIndices),
+      dataType: 1,
+      dataTypeInfo: { bytes: 1, name: "uint8", ctor: Uint8Array }
+    };
+  }
+
+  function scalePageToUint8(values) {
+    const n = Number(values?.length) || 0;
+    const out = new Uint8Array(n);
+    if (!n) return out;
+
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < n; i += 1) {
+      const v = Number(values[i]);
+      if (!Number.isFinite(v)) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return out;
+
+    const scale = 255 / (max - min);
+    for (let i = 0; i < n; i += 1) {
+      const v = Number(values[i]);
+      out[i] = Number.isFinite(v)
+        ? deps.clamp(Math.round((v - min) * scale), 0, 255)
+        : 0;
+    }
+    return out;
+  }
+
   function imageDataFromCanvas(canvas) {
     const ctx = canvas.getContext("2d", { alpha: false });
     return ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -709,6 +749,27 @@ export function createExportService(deps) {
     deps.setStatus("ready", "ok");
   }
 
+  async function exportScaled8SelectionJobs(ds, jobs, bandIndices = [ds.activeBand]) {
+    if (!Array.isArray(jobs) || !jobs.length || !Array.isArray(bandIndices) || !bandIndices.length) return;
+    const totalBytes = jobs.reduce((sum, job) => sum + (job.w * job.h * bandIndices.length), 0);
+    if (!(await maybeConfirmLargeRawExport(totalBytes, "scaled 8-bit export"))) return;
+
+    for (let jobIdx = 0; jobIdx < jobs.length; jobIdx += 1) {
+      const job = jobs[jobIdx];
+      const rawPages = await buildRawSelectionPages(ds, job, bandIndices);
+      const pages = rawPages.map(scalePageToUint8);
+      const base = selectionBaseName(ds, bandIndices, job, bandIndices.length > 1 ? "scaled8stack" : "scaled8");
+      const blob = encodeRawMultipageTiff({
+        meta: scaled8Meta(ds.meta, bandIndices),
+        width: job.w,
+        height: job.h,
+        pages
+      });
+      deps.downloadBlob(blob, `${base}.tiff`);
+    }
+    deps.setStatus("ready", "ok");
+  }
+
   async function exportRawStackTIFF(ds, rect, bandIndices = [ds.activeBand]) {
     const w = rect.w;
     const h = rect.h;
@@ -724,6 +785,25 @@ export function createExportService(deps) {
 
     const blob = encodeRawMultipageTiff({ meta: ds.meta, width: w, height: h, pages });
     deps.downloadBlob(blob, `${rectBaseName(ds, bandIndices, rect, bandIndices.length > 1 ? "rawstack" : "raw")}.tiff`);
+    deps.setStatus("ready", "ok");
+  }
+
+  async function exportScaled8StackTIFF(ds, rect, bandIndices = [ds.activeBand]) {
+    const w = rect.w;
+    const h = rect.h;
+    const totalBytes = w * h * bandIndices.length;
+    if (!(await maybeConfirmLargeRawExport(totalBytes, "scaled 8-bit export"))) return;
+
+    deps.setStatus("export scaled 8-bit…", "warn");
+    const pages = [];
+    for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
+      deps.setStatus(`export scaled 8-bit… ${bandPos + 1}/${bandIndices.length}`, "warn");
+      const raw = await readBandExportData(ds, bandIndices[bandPos], rect.x0, rect.y0, w, h);
+      pages.push(scalePageToUint8(raw));
+    }
+
+    const blob = encodeRawMultipageTiff({ meta: scaled8Meta(ds.meta, bandIndices), width: w, height: h, pages });
+    deps.downloadBlob(blob, `${rectBaseName(ds, bandIndices, rect, bandIndices.length > 1 ? "scaled8stack" : "scaled8")}.tiff`);
     deps.setStatus("ready", "ok");
   }
 
@@ -766,6 +846,7 @@ export function createExportService(deps) {
     const scope = selectedScopeFromDialog();
     const bandIndices = selectedBandIndices(ds, kind);
     const includeAnnotations = includeAnnotationsFromDialog(kind, mode);
+    const scaled8 = useScaled8FromDialog(ds, kind, mode);
     deps.state.exportKind = kind;
     const selections = collectAreaSelections(ds);
 
@@ -776,11 +857,13 @@ export function createExportService(deps) {
     if (mode === "raw") {
       if (scope === "sel" && selections.length) {
         const plan = resolveSelectionExportPlan(ds, selections, false);
-        await exportRawSelectionJobs(ds, plan.jobs, bandIndices, kind);
+        if (scaled8) await exportScaled8SelectionJobs(ds, plan.jobs, bandIndices);
+        else await exportRawSelectionJobs(ds, plan.jobs, bandIndices, kind);
         return;
       }
       const rect = resolveExportRect(ds, "view");
-      if (kind === "envi") await exportRawStackENVI(ds, rect, bandIndices);
+      if (scaled8) await exportScaled8StackTIFF(ds, rect, bandIndices);
+      else if (kind === "envi") await exportRawStackENVI(ds, rect, bandIndices);
       else await exportRawStackTIFF(ds, rect, bandIndices);
       return;
     }
@@ -809,6 +892,7 @@ export function createExportService(deps) {
     resolveRenderedExportTarget,
     exportRendered,
     exportRawStackTIFF,
+    exportScaled8StackTIFF,
     exportRawStackENVI,
     runExportFromDialog
   };

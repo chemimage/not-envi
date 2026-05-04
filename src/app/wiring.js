@@ -283,6 +283,7 @@ export function wireApp(deps) {
   if (els.expScopeView) els.expScopeView.oninput = () => updateExportEstimate();
   if (els.expBandCurrent) els.expBandCurrent.oninput = () => updateExportEstimate();
   if (els.expBandAll) els.expBandAll.oninput = () => updateExportEstimate();
+  if (els.expScaled8) els.expScaled8.oninput = () => updateExportEstimate();
   if (els.expIncludeAnnotations) els.expIncludeAnnotations.oninput = () => updateExportEstimate();
 
   if (els.btnExpCancel) els.btnExpCancel.onclick = () => {
