@@ -494,26 +494,42 @@ export function createExportService(deps) {
     };
   }
 
-  function scalePageToUint8(values) {
+  function resolveScaled8Range(ds, bandIndex) {
+    const resolved = (typeof deps.resolveDisplayRange === "function")
+      ? deps.resolveDisplayRange(ds, bandIndex, null)
+      : null;
+    const settings = (typeof deps.getBandSettings === "function")
+      ? deps.getBandSettings(ds, bandIndex)
+      : null;
+    let minVal = Number(resolved?.minVal);
+    let maxVal = Number(resolved?.maxVal);
+    if (!Number.isFinite(minVal)) minVal = Number(settings?.min);
+    if (!Number.isFinite(maxVal)) maxVal = Number(settings?.max);
+    if (!Number.isFinite(minVal)) minVal = 0;
+    if (!Number.isFinite(maxVal)) maxVal = minVal + 1;
+    if (maxVal === minVal) maxVal = minVal + 1e-6;
+    if (maxVal < minVal) {
+      const tmp = minVal;
+      minVal = maxVal;
+      maxVal = tmp;
+    }
+    return { minVal, maxVal };
+  }
+
+  function scalePageToUint8(values, range) {
     const n = Number(values?.length) || 0;
     const out = new Uint8Array(n);
     if (!n) return out;
 
-    let min = Infinity;
-    let max = -Infinity;
-    for (let i = 0; i < n; i += 1) {
-      const v = Number(values[i]);
-      if (!Number.isFinite(v)) continue;
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return out;
+    const minVal = Number(range?.minVal);
+    const maxVal = Number(range?.maxVal);
+    if (!Number.isFinite(minVal) || !Number.isFinite(maxVal) || maxVal <= minVal) return out;
 
-    const scale = 255 / (max - min);
+    const scale = 255 / (maxVal - minVal);
     for (let i = 0; i < n; i += 1) {
       const v = Number(values[i]);
       out[i] = Number.isFinite(v)
-        ? deps.clamp(Math.round((v - min) * scale), 0, 255)
+        ? deps.clamp(Math.round((v - minVal) * scale), 0, 255)
         : 0;
     }
     return out;
@@ -757,7 +773,7 @@ export function createExportService(deps) {
     for (let jobIdx = 0; jobIdx < jobs.length; jobIdx += 1) {
       const job = jobs[jobIdx];
       const rawPages = await buildRawSelectionPages(ds, job, bandIndices);
-      const pages = rawPages.map(scalePageToUint8);
+      const pages = rawPages.map((page, bandPos) => scalePageToUint8(page, resolveScaled8Range(ds, bandIndices[bandPos])));
       const base = selectionBaseName(ds, bandIndices, job, bandIndices.length > 1 ? "scaled8stack" : "scaled8");
       const blob = encodeRawMultipageTiff({
         meta: scaled8Meta(ds.meta, bandIndices),
@@ -799,7 +815,7 @@ export function createExportService(deps) {
     for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
       deps.setStatus(`export scaled 8-bit… ${bandPos + 1}/${bandIndices.length}`, "warn");
       const raw = await readBandExportData(ds, bandIndices[bandPos], rect.x0, rect.y0, w, h);
-      pages.push(scalePageToUint8(raw));
+      pages.push(scalePageToUint8(raw, resolveScaled8Range(ds, bandIndices[bandPos])));
     }
 
     const blob = encodeRawMultipageTiff({ meta: scaled8Meta(ds.meta, bandIndices), width: w, height: h, pages });

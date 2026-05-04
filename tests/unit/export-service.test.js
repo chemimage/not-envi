@@ -25,6 +25,8 @@ function baseDeps() {
     fmt: (n) => String(n),
     clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
     bandLabel: () => "b0",
+    getBandSettings: () => ({ min: null, max: null, brightness: 0, gain: 1, contrast: 1 }),
+    resolveDisplayRange: () => ({ minVal: 0, maxVal: 1 }),
     renderWindowToImageData: async (_ds, _band, _x0, _y0, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
     readBandWindow: async () => new Float32Array(1),
     readBandWindowBIP: async () => new Float32Array(1),
@@ -130,8 +132,9 @@ describe("export service", () => {
     }
   });
 
-  test("exportScaled8StackTIFF scales raw samples to an 8-bit grayscale TIFF", async () => {
+  test("exportScaled8StackTIFF scales raw samples using the current display range", async () => {
     const deps = baseDeps();
+    deps.resolveDisplayRange = vi.fn(() => ({ minVal: 0, maxVal: 20 }));
     deps.readBandWindow = vi.fn(async () => new Float32Array([-10, 0, 10, 30]));
     deps.downloadBlob = vi.fn();
     const service = createExportService(deps);
@@ -159,6 +162,7 @@ describe("export service", () => {
     expect(img.fileDirectory.BitsPerSample[0]).toBe(8);
     const raster = await img.readRasters({ samples: [0] });
     const values = ArrayBuffer.isView(raster) ? raster : raster[0];
-    expect(Array.from(values)).toEqual([0, 64, 128, 255]);
+    expect(deps.resolveDisplayRange).toHaveBeenCalledWith(ds, 0, null);
+    expect(Array.from(values)).toEqual([0, 0, 128, 255]);
   });
 });

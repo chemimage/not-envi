@@ -1272,6 +1272,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     fmt,
     clamp,
     bandLabel,
+    getBandSettings,
+    resolveDisplayRange,
     renderWindowToImageData,
     readBandWindow,
     readBandWindowBIP,
