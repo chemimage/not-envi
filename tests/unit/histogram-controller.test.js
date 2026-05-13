@@ -63,6 +63,141 @@ describe("histogram controller", () => {
     expect(computeHistogram).not.toHaveBeenCalled();
   });
 
+  test("ensureViewHistogram can use an estimated visible raster and labels it", () => {
+    const labels = [];
+    const fakeCtx = {
+      save: () => {},
+      setTransform: () => {},
+      clearRect: () => {},
+      fillRect: () => {},
+      fillText: (text) => { labels.push(text); },
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      stroke: () => {},
+      arc: () => {},
+      fill: () => {},
+      strokeRect: () => {},
+      restore: () => {},
+      lineWidth: 1,
+      fillStyle: "",
+      strokeStyle: "",
+      font: ""
+    };
+    const stats = { bins: new Uint32Array([1, 2, 1]), min: 0, max: 2, p1: 0, p99: 2 };
+    const ctrl = createHistogramController({
+      state: { activeId: 1, histMode: "view" },
+      els: {
+        hist: {
+          width: 100,
+          height: 40,
+          getBoundingClientRect: () => ({ width: 100, height: 40 }),
+          getContext: () => fakeCtx
+        }
+      },
+      setStatus: () => {},
+      readBandWindow: async () => new Float32Array(0),
+      readBandWindowBIP: async () => new Float32Array(0),
+      toFloat32: (x) => x,
+      computeHistogram: vi.fn(() => stats),
+      tone01: () => 0,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      getDisplayBand: () => 2,
+      resolveStats: (ds) => ds.bandStatsView,
+      syncRangeInputsFromSettings: () => {},
+      render: () => {}
+    });
+    const ds = {
+      activeBand: 2,
+      lastRaster: null,
+      bandStatsView: null
+    };
+
+    ctrl.ensureViewHistogram(ds, {
+      band: 2,
+      dataF32: new Float32Array([0, 1, 2]),
+      step: 4,
+      approximate: true
+    });
+
+    expect(ds.bandStatsView?.samplingMode).toBe("view-estimated");
+    expect(ds.bandStatsView?.trueRawSamples).toBe(false);
+    expect(labels).toContain("Estimated");
+  });
+
+  test("buildEstimatedViewHistogram reads a capped visible window and draws estimated placeholder while pending", async () => {
+    let releaseRead = null;
+    const labels = [];
+    const fakeCtx = {
+      save: () => {},
+      setTransform: () => {},
+      clearRect: () => {},
+      fillRect: () => {},
+      fillText: (text) => { labels.push(text); },
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      stroke: () => {},
+      arc: () => {},
+      fill: () => {},
+      strokeRect: () => {},
+      restore: () => {},
+      lineWidth: 1,
+      fillStyle: "",
+      strokeStyle: "",
+      font: ""
+    };
+    const readBandWindow = vi.fn((_meta, _source, _band, _x0, _y0, outW, outH, _step, scratch) => new Promise((resolve) => {
+      releaseRead = () => {
+        scratch.set(new Float32Array(outW * outH).fill(2));
+        resolve(scratch);
+      };
+    }));
+    const ctrl = createHistogramController({
+      state: { activeId: "ds1", histMode: "view" },
+      els: {
+        hist: {
+          width: 100,
+          height: 40,
+          getBoundingClientRect: () => ({ width: 100, height: 40 }),
+          getContext: () => fakeCtx
+        }
+      },
+      setStatus: () => {},
+      readBandWindow,
+      readBandWindowBIP: async () => new Float32Array(0),
+      toFloat32: (x) => x,
+      computeHistogram: vi.fn(() => ({ bins: new Uint32Array([1, 2]), min: 0, max: 2, p1: 0, p99: 2 })),
+      tone01: () => 0,
+      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
+      getDisplayBand: () => 0,
+      resolveStats: (ds) => ds.bandStatsView,
+      syncRangeInputsFromSettings: () => {},
+      render: () => {},
+      getActiveViewportDevice: () => ({ width: 800, height: 600 }),
+      getDevicePixelRatio: () => 1
+    });
+    const ds = {
+      id: "ds1",
+      activeBand: 0,
+      view: { x: 100, y: 50, scale: 1 },
+      meta: { samples: 2000, lines: 1600, interleave: "bsq" },
+      ds: {},
+      bandStatsWhole: new Map(),
+      bandStatsView: null
+    };
+
+    const pending = ctrl.buildEstimatedViewHistogram(ds);
+    ctrl.drawHistogram(ds);
+    expect(labels).toContain("Estimated");
+    expect(readBandWindow).toHaveBeenCalled();
+    releaseRead();
+    await pending;
+
+    expect(ds.bandStatsView?.samplingMode).toBe("view-subsampled");
+    expect(ds.bandStatsView?.trueRawSamples).toBe(false);
+  });
+
   test("drawHistogram colors bars for rgb channel mode and restores grayscale bars otherwise", () => {
     const fillStyles = [];
     let currentFillStyle = "";

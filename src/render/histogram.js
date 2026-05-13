@@ -24,7 +24,9 @@ export function createHistogramController(deps) {
     getDisplayColor,
     resolveStats,
     syncRangeInputsFromSettings,
-    render
+    render,
+    getActiveViewportDevice,
+    getDevicePixelRatio
   } = deps;
   const floatScratchPool = createFloat32ScratchPool({
     maxRetainedBuffers: APP_CONFIG.scratch.histogram.maxRetainedBuffers,
@@ -44,8 +46,9 @@ export function createHistogramController(deps) {
     return ds.__wholeStatsPending;
   }
 
-  function resolveHistogramViewRaster(ds, band) {
+  function resolveHistogramViewRaster(ds, band, rasterOverride = null) {
     if (!ds || band == null) return null;
+    if (rasterOverride?.band === band && rasterOverride?.dataF32?.length) return rasterOverride;
     const compositeRaster = ds.lastCompositeRaster?.rasterByBand?.get?.(band) || null;
     if (compositeRaster?.dataF32?.length) return compositeRaster;
     if (ds.lastRaster?.band === band && ds.lastRaster?.dataF32?.length) return ds.lastRaster;
@@ -290,18 +293,105 @@ export function createHistogramController(deps) {
     await task;
   }
 
-  function ensureViewHistogram(ds) {
+  function estimatedViewKey(ds, band) {
+    if (!ds || band == null) return "";
+    const dpr = typeof getDevicePixelRatio === "function" ? (Number(getDevicePixelRatio()) || 1) : (window.devicePixelRatio || 1);
+    const viewport = typeof getActiveViewportDevice === "function"
+      ? getActiveViewportDevice()
+      : null;
+    const viewW = Math.max(1, Number(viewport?.width || viewport?.w || 0) || 1);
+    const viewH = Math.max(1, Number(viewport?.height || viewport?.h || 0) || 1);
+    return [
+      band,
+      Math.round(Number(ds.view?.x || 0)),
+      Math.round(Number(ds.view?.y || 0)),
+      Math.round((Number(ds.view?.scale || 1) || 1) * 1000),
+      Math.round(viewW),
+      Math.round(viewH),
+      Math.round(dpr * 100)
+    ].join(":");
+  }
+
+  async function buildEstimatedViewHistogram(ds) {
+    if (!ds) return;
+    const band = resolveDisplayBand(ds);
+    if (band == null || ds.bandStatsWhole?.has?.(band)) return;
+    const key = estimatedViewKey(ds, band);
+    if (!key) return;
+    if (!ds.__viewStatsPending || typeof ds.__viewStatsPending.get !== "function") {
+      ds.__viewStatsPending = new Map();
+    }
+    if (ds.__viewStatsPending.has(key)) return;
+
+    const dpr = typeof getDevicePixelRatio === "function" ? (Number(getDevicePixelRatio()) || 1) : (window.devicePixelRatio || 1);
+    const viewport = typeof getActiveViewportDevice === "function"
+      ? getActiveViewportDevice()
+      : null;
+    const viewportW = Math.max(1, Number(viewport?.width || viewport?.w || 0) || 1);
+    const viewportH = Math.max(1, Number(viewport?.height || viewport?.h || 0) || 1);
+    const eff = Math.max(1e-9, (Number(ds.view?.scale) || 1) * dpr);
+    const maxX = Math.max(0, Math.floor(Number(ds.meta?.samples || 1)) - 1);
+    const maxY = Math.max(0, Math.floor(Number(ds.meta?.lines || 1)) - 1);
+    const x0 = Math.max(0, Math.min(maxX, Math.floor(Number(ds.view?.x) || 0)));
+    const y0 = Math.max(0, Math.min(maxY, Math.floor(Number(ds.view?.y) || 0)));
+    const x1 = Math.max(0, Math.min(maxX, Math.ceil((Number(ds.view?.x) || 0) + (viewportW / eff))));
+    const y1 = Math.max(0, Math.min(maxY, Math.ceil((Number(ds.view?.y) || 0) + (viewportH / eff))));
+    const srcW = Math.max(1, x1 - x0 + 1);
+    const srcH = Math.max(1, y1 - y0 + 1);
+    const target = 512;
+    const stepX = Math.ceil(srcW / target);
+    const stepY = Math.ceil(srcH / target);
+    const stepByArea = Math.ceil(Math.sqrt((srcW * srcH) / 700_000));
+    const step = Math.max(1, stepX, stepY, stepByArea);
+    const outW = Math.max(1, Math.ceil(srcW / step));
+    const outH = Math.max(1, Math.ceil(srcH / step));
+
+    const task = (async () => {
+      try {
+        const window = await readWindowF32(ds, band, x0, y0, outW, outH, step);
+        try {
+          if (estimatedViewKey(ds, band) !== key) return;
+          ds.bandStatsView = decorateHistogramStats(
+            computeHistogram(window.data, 256),
+            {
+              band,
+              sampleStep: step,
+              trueRawSamples: false,
+              samplingMode: step === 1 ? "view-estimated" : "view-subsampled"
+            }
+          );
+          if (ds.id === state.activeId && resolveDisplayBand(ds) === band && !ds.bandStatsWhole.has(band)) {
+            syncRangeInputsFromSettings(ds, { force: true });
+            drawHistogram(ds);
+          }
+        } finally {
+          window.release();
+        }
+      } catch (e) {
+        console.warn("Estimated view histogram failed", e);
+      } finally {
+        ds.__viewStatsPending?.delete?.(key);
+      }
+    })();
+    ds.__viewStatsPending.set(key, task);
+    await task;
+  }
+
+  function ensureViewHistogram(ds, rasterOverride = null) {
     if (!ds) return;
     const b = resolveDisplayBand(ds);
-    const raster = resolveHistogramViewRaster(ds, b);
+    const raster = resolveHistogramViewRaster(ds, b, rasterOverride);
     if (!raster) return;
+    const step = Number.isFinite(raster.step) ? raster.step : 1;
     const stats = decorateHistogramStats(
       computeHistogram(raster.dataF32, 256),
       {
         band: b,
-        sampleStep: Number.isFinite(raster.step) ? raster.step : 1,
-        trueRawSamples: false,
-        samplingMode: "view-raster"
+        sampleStep: step,
+        trueRawSamples: step <= 1 && !raster.approximate && !raster.partial && Number(raster.level || 0) <= 0,
+        samplingMode: (raster.approximate || raster.partial || step > 1 || Number(raster.level || 0) > 0)
+          ? "view-estimated"
+          : "view-raster"
       }
     );
     ds.bandStatsView = stats;
@@ -379,7 +469,8 @@ export function createHistogramController(deps) {
     if (!ds || !s || !stats || !stats.bins) {
       ctx.fillStyle = "rgba(209,213,219,0.9)";
       ctx.font = `${12 * dpr}px ${getComputedStyle(document.body).fontFamily}`;
-      ctx.fillText("Histogram not ready", 10 * dpr, 20 * dpr);
+      const hasPendingEstimate = !!(ds && ds.__viewStatsPending && typeof ds.__viewStatsPending.size === "number" && ds.__viewStatsPending.size > 0);
+      ctx.fillText(hasPendingEstimate ? "Estimated" : "Histogram not ready", 10 * dpr, 20 * dpr);
       ctx.restore();
       return;
     }
@@ -439,6 +530,13 @@ export function createHistogramController(deps) {
     ctx.strokeStyle = "rgba(75,85,99,0.85)";
     ctx.lineWidth = 1 * dpr;
     ctx.strokeRect(plotX0, plotY0, plotW, plotH);
+    if (stats.trueRawSamples === false || String(stats.samplingMode || "").includes("estimated") || Number(stats.sampleStep || 1) > 1) {
+      ctx.fillStyle = "rgba(17,24,39,0.72)";
+      ctx.fillRect(plotX0 + (4 * dpr), plotY0 + (4 * dpr), 62 * dpr, 18 * dpr);
+      ctx.fillStyle = "rgba(253,224,71,0.96)";
+      ctx.font = `${11 * dpr}px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.fillText("Estimated", plotX0 + (8 * dpr), plotY0 + (17 * dpr));
+    }
     ctx.restore();
   }
 
@@ -488,6 +586,7 @@ export function createHistogramController(deps) {
 
   return {
     buildBandStatsWhole,
+    buildEstimatedViewHistogram,
     ensureViewHistogram,
     updateSelectionHistogram,
     clearSelectionHistogram,

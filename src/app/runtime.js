@@ -536,6 +536,7 @@ import { pointInPolygon } from "./draw-geometry.js";
     render,
     quickStatsFromArray,
     onNeedWholeStats: (ds, band) => buildBandStatsWhole(ds, band).catch(() => {}),
+    onNeedEstimatedViewStats: (ds) => buildEstimatedViewHistogram(ds).catch(() => {}),
     onBandChanged: (ds) => updateSelectionHistogramForDataset(ds),
   });
 
@@ -611,9 +612,12 @@ import { pointInPolygon } from "./draw-geometry.js";
     resolveStats,
     syncRangeInputsFromSettings,
     render,
+    getActiveViewportDevice,
+    getDevicePixelRatio: () => window.devicePixelRatio || 1,
   });
 
   async function buildBandStatsWhole(ds, band){ await histogram.buildBandStatsWhole(ds, band); }
+  async function buildEstimatedViewHistogram(ds){ await histogram.buildEstimatedViewHistogram(ds); }
   function ensureViewHistogram(ds){ histogram.ensureViewHistogram(ds); }
   async function updateSelectionHistogram(ds, selections){ await histogram.updateSelectionHistogram(ds, selections); }
   function clearSelectionHistogram(ds){ histogram.clearSelectionHistogram(ds); }

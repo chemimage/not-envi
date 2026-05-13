@@ -827,6 +827,7 @@ export function createRenderer(deps) {
       updateHud();
       drawOverlays();
       updatePerf();
+      ensureViewHistogram(ds, raster);
 
       const needsRefine = applyApproximateRefineState(ds, panelSlot, raster, compositeRaster);
       if (needsRefine) scheduleRender();
@@ -959,6 +960,7 @@ export function createRenderer(deps) {
               ds.lastRaster = stableRaster ? raster : null;
               ds.lastCompositeRaster = stableComposite ? compositeRaster : null;
               syncRangeInputsFromSettings(ds);
+              ensureViewHistogram(ds, raster);
             }
 
             if (applyApproximateRefineState(ds, panelSlot, raster, compositeRaster)) {
@@ -1076,6 +1078,7 @@ export function createRenderer(deps) {
               ds.lastRaster = stableRaster ? raster : null;
               ds.lastCompositeRaster = null;
               syncRangeInputsFromSettings(ds);
+              ensureViewHistogram(ds, raster);
             }
             if (applyApproximateRefineState(ds, panel.slot, raster, null)) {
               needsRefineAny = true;

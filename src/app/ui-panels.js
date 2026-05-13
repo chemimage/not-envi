@@ -37,6 +37,7 @@ export function createUIPanels(deps) {
     render,
     quickStatsFromArray,
     onNeedWholeStats,
+    onNeedEstimatedViewStats,
     onBandChanged
   } = deps;
   let metaPinnedDatasetId = null;
@@ -358,9 +359,12 @@ export function createUIPanels(deps) {
     els.numBrightness.value = Number(els.slBrightness.value).toFixed(2);
     els.numGain.value = Number(els.slGain.value).toFixed(2);
 
+    if (!resolveStats(ds)) {
+      if (typeof onNeedEstimatedViewStats === "function") onNeedEstimatedViewStats(ds);
+      requestWholeStatsIfNeeded(ds, b);
+    }
     syncRangeInputsFromSettings(ds, { force });
     drawHistogram(ds);
-    if (!resolveStats(ds)) requestWholeStatsIfNeeded(ds, b);
   }
 
   function fitActiveBandListToPanel() {
