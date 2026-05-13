@@ -419,6 +419,11 @@
     position: static;
   }
 
+  .spec-axis-editor {
+    @apply absolute z-20 rounded-sm border border-blue-400/70 bg-gray-950 px-1 text-[11px] leading-none text-gray-100 shadow-lg outline-none ring-1 ring-blue-400/40;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+
   .spec-foot {
     @apply hidden;
   }

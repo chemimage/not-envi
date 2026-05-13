@@ -355,6 +355,48 @@ export function createOverlayRenderer(deps) {
     else if (item.tool === "shape") drawShape(ds, item, eff, dpr, viewport, isSelection, marqueeOffset);
   }
 
+  function drawSpectrumPointCrosshair(ds, viewport, spectrumPoint, dpr) {
+    if (!ds || !viewport || !spectrumPoint) return;
+    const x = Number(spectrumPoint.x);
+    const y = Number(spectrumPoint.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const eff = ds.view.scale * dpr;
+    const sx = viewport.x + (((x + 0.5) - ds.view.x) * eff);
+    const sy = viewport.y + (((y + 0.5) - ds.view.y) * eff);
+    if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+    if (sx < viewport.x || sx > viewport.x + viewport.w || sy < viewport.y || sy > viewport.y + viewport.h) return;
+
+    const arm = Math.min(viewport.w, viewport.h) * 0.05;
+    const gap = Math.max(1.5 * dpr, arm * 0.12);
+    overlayCtx.save();
+    overlayCtx.lineWidth = Math.max(1.5 * dpr, 1);
+    overlayCtx.strokeStyle = "rgba(0,0,0,0.72)";
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(sx - arm, sy);
+    overlayCtx.lineTo(sx - gap, sy);
+    overlayCtx.moveTo(sx + gap, sy);
+    overlayCtx.lineTo(sx + arm, sy);
+    overlayCtx.moveTo(sx, sy - arm);
+    overlayCtx.lineTo(sx, sy - gap);
+    overlayCtx.moveTo(sx, sy + gap);
+    overlayCtx.lineTo(sx, sy + arm);
+    overlayCtx.stroke();
+
+    overlayCtx.lineWidth = Math.max(1 * dpr, 1);
+    overlayCtx.strokeStyle = "rgba(255,255,255,0.95)";
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(sx - arm, sy);
+    overlayCtx.lineTo(sx - gap, sy);
+    overlayCtx.moveTo(sx + gap, sy);
+    overlayCtx.lineTo(sx + arm, sy);
+    overlayCtx.moveTo(sx, sy - arm);
+    overlayCtx.lineTo(sx, sy - gap);
+    overlayCtx.moveTo(sx, sy + gap);
+    overlayCtx.lineTo(sx, sy + arm);
+    overlayCtx.stroke();
+    overlayCtx.restore();
+  }
+
   function drawAnnotations(ds, viewport, opts = {}) {
     if (!getDrawData) return;
     const drawData = getDrawData(ds, opts.annotations || null);
@@ -373,6 +415,7 @@ export function createOverlayRenderer(deps) {
       drawOneAnnotation(ds, items[i], eff, dpr, viewport, i, rulerProfileHover, selectionIds, marqueeOffset, opts);
     }
     if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, viewport, -1, null, null, 0, opts);
+    drawSpectrumPointCrosshair(ds, viewport, drawData.spectrumPoint || null, dpr);
   }
 
   function snapToDecimal125Step(value) {

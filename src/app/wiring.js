@@ -121,7 +121,11 @@ export function wireApp(deps) {
     getEffectiveAreaSelectionKey,
     getSpectrumPickEnabled,
     openSpectrumAt,
-    closeSpectrum
+    closeSpectrum,
+    onTargetChange: (point) => {
+      state.spectrumPoint = point;
+      render({ reuseRaster: true }).catch(() => {});
+    }
   });
 
   const { resolveActiveViewportCenter } = wireDrawToolInteractions({

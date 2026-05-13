@@ -100,6 +100,7 @@ export function createAnnotationController(deps) {
     const enabled = (typeof next === "boolean") ? next : !state.spectrumPickEnabled;
     if (enabled === state.spectrumPickEnabled) return enabled;
     state.spectrumPickEnabled = enabled;
+    if (!enabled) state.spectrumPoint = null;
     if (enabled) {
       const hadDraft = !!state.draw.draft;
       const hadRulerDrag = !!state.draw.rulerDrag;
@@ -680,7 +681,13 @@ export function createAnnotationController(deps) {
       ? shouldAnimateMarquee(ds, annotationState)
       : true;
     const marqueeOffset = selectionIds.length && animateMarquee ? ((performance.now() / 110) % 14) : 0;
-    return { items, draft, rulerHover, rulerProfileHover, selectionIds, marqueeOffset };
+    const spectrumPoint = (state.spectrumPickEnabled
+      && state.spectrumPoint
+      && state.spectrumPoint.dsId === ds.id
+      && selectionIds.length === 0)
+      ? state.spectrumPoint
+      : null;
+    return { items, draft, rulerHover, rulerProfileHover, selectionIds, marqueeOffset, spectrumPoint };
   }
 
   function findRulerEndpointHit(ds, point, pointerType) {

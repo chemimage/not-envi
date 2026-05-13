@@ -72,4 +72,44 @@ describe("spectral drag controller", () => {
       pointerType: "mouse"
     })).toBe(false);
   });
+
+  test("reports and clears the active single-point spectrum target", async () => {
+    const onTargetChange = vi.fn();
+    const closeSpectrum = vi.fn();
+    const ctrl = createSpectralDragController({
+      els: {
+        main: {
+          getBoundingClientRect: () => ({ left: 0, top: 0 })
+        }
+      },
+      getActive: () => ({
+        id: "ds1",
+        meta: { samples: 10, lines: 8 }
+      }),
+      screenToImage: (sx, sy) => ({ x: sx, y: sy }),
+      getEffectiveAreaSelectionKey: () => "",
+      getSpectrumPickEnabled: () => true,
+      openSpectrumAt: vi.fn(async () => {}),
+      closeSpectrum,
+      onTargetChange
+    });
+
+    ctrl.beginFromEvent({
+      pointerId: 1,
+      clientX: 4.8,
+      clientY: 5.2,
+      pointerType: "mouse"
+    });
+    expect(onTargetChange).toHaveBeenCalledWith({ dsId: "ds1", x: 4, y: 5 });
+    await Promise.resolve();
+
+    ctrl.updateFromEvent({
+      pointerId: 1,
+      clientX: -1,
+      clientY: 5,
+      pointerType: "mouse"
+    });
+    expect(onTargetChange).toHaveBeenLastCalledWith(null);
+    expect(closeSpectrum).toHaveBeenCalledTimes(1);
+  });
 });

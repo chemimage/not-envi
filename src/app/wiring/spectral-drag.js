@@ -6,7 +6,8 @@ export function createSpectralDragController(deps) {
     getEffectiveAreaSelectionKey,
     getSpectrumPickEnabled,
     openSpectrumAt,
-    closeSpectrum
+    closeSpectrum,
+    onTargetChange
   } = deps;
 
   const drag = {
@@ -30,6 +31,7 @@ export function createSpectralDragController(deps) {
 
   function dismissSelection() {
     stop();
+    if (typeof onTargetChange === "function") onTargetChange(null);
     if (typeof closeSpectrum === "function") closeSpectrum();
   }
 
@@ -75,6 +77,13 @@ export function createSpectralDragController(deps) {
       ? (drag.lastDatasetId === target.ds.id && drag.lastAreaKey === target.areaKey)
       : (drag.lastDatasetId === target.ds.id && drag.lastIx === target.ix && drag.lastIy === target.iy);
     if (sameTarget && !drag.inFlight) return;
+    if (!target.areaKey && typeof onTargetChange === "function") {
+      onTargetChange({
+        dsId: target.ds.id,
+        x: target.ix,
+        y: target.iy
+      });
+    }
 
     if (drag.inFlight) {
       drag.pending = target;

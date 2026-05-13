@@ -47,6 +47,9 @@ export function createSpectrumController(deps) {
     bandDragByHandle: false,
     xRangeMin: null,
     xRangeMax: null,
+    yRangeMin: null,
+    yRangeMax: null,
+    rangeEditInput: null,
     source: { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 }
   };
 
@@ -107,12 +110,15 @@ export function createSpectrumController(deps) {
     specState.stdVals = null;
     specState.plot = null;
     specState.activeBandX = null;
+    closeSpectrumRangeEditor(false);
     if (els.specCanvas?.style) els.specCanvas.style.cursor = "";
   }
 
   function resetSpectrumRangeOverrides() {
     specState.xRangeMin = null;
     specState.xRangeMax = null;
+    specState.yRangeMin = null;
+    specState.yRangeMax = null;
   }
 
   function applySpectrumSource(opts = {}) {
@@ -374,13 +380,23 @@ export function createSpectrumController(deps) {
       xmax = dataXMax;
       resetSpectrumRangeOverrides();
     }
-    if (!Number.isFinite(ymin) || !Number.isFinite(ymax) || ymin === ymax) {
-      ymin = Number.isFinite(ymin) ? ymin : 0;
-      ymax = ymin + 1;
+    let dataYMin = ymin;
+    let dataYMax = ymax;
+    if (!Number.isFinite(dataYMin) || !Number.isFinite(dataYMax) || dataYMin === dataYMax) {
+      dataYMin = Number.isFinite(dataYMin) ? dataYMin : 0;
+      dataYMax = dataYMin + 1;
     }
-    const yPad = (ymax - ymin) * 0.06;
-    ymin -= yPad;
-    ymax += yPad;
+    const yPad = (dataYMax - dataYMin) * 0.06;
+    dataYMin -= yPad;
+    dataYMax += yPad;
+    ymin = Number.isFinite(specState.yRangeMin) ? specState.yRangeMin : dataYMin;
+    ymax = Number.isFinite(specState.yRangeMax) ? specState.yRangeMax : dataYMax;
+    if (!Number.isFinite(ymin) || !Number.isFinite(ymax) || ymax <= ymin || ymax <= dataYMin || ymin >= dataYMax) {
+      ymin = dataYMin;
+      ymax = dataYMax;
+      specState.yRangeMin = null;
+      specState.yRangeMax = null;
+    }
 
     const xToPx = (x) => x0 + ((x - xmin) / (xmax - xmin)) * plotW;
     const yToPx = (y) => y1 - ((y - ymin) / (ymax - ymin)) * plotH;
@@ -402,8 +418,14 @@ export function createSpectrumController(deps) {
       dataXMax,
       viewXMin: xmin,
       viewXMax: xmax,
+      dataYMin,
+      dataYMax,
+      viewYMin: ymin,
+      viewYMax: ymax,
       xMinLabelBox: null,
-      xMaxLabelBox: null
+      xMaxLabelBox: null,
+      yMinLabelBox: null,
+      yMaxLabelBox: null
     };
 
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
@@ -537,11 +559,26 @@ export function createSpectrumController(deps) {
     ctx.font = `${Math.round(11 * dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     ctx.textBaseline = "middle";
     ctx.textAlign = "right";
+    const yLabelFontPx = Math.round(11 * dpr);
+    const buildYLabelBox = (text, y) => {
+      const width = ctx.measureText(text).width;
+      const padX = 4 * dpr;
+      const padY = 3 * dpr;
+      return {
+        x0: x0 - (8 * dpr) - width - padX,
+        y0: y - (yLabelFontPx * 0.5) - padY,
+        x1: x0 - (8 * dpr) + padX,
+        y1: y + (yLabelFontPx * 0.5) + padY
+      };
+    };
     for (let i = 0; i <= 4; i++) {
       const t = i / 4;
       const yv = ymin + (1 - t) * (ymax - ymin);
       const py = y0 + t * plotH;
-      ctx.fillText(formatAxisNumber(yv), x0 - 8 * dpr, py);
+      const yLabel = formatAxisNumber(yv);
+      ctx.fillText(yLabel, x0 - 8 * dpr, py);
+      if (i === 0) specState.plot.yMaxLabelBox = buildYLabelBox(yLabel, py);
+      else if (i === 4) specState.plot.yMinLabelBox = buildYLabelBox(yLabel, py);
     }
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
@@ -596,47 +633,131 @@ export function createSpectrumController(deps) {
     if (!specState.plot) return null;
     const point = spectrumPointFromClient(clientX, clientY);
     if (!point) return null;
-    if (boxContainsPoint(specState.plot.xMinLabelBox, point)) return "min";
-    if (boxContainsPoint(specState.plot.xMaxLabelBox, point)) return "max";
+    if (boxContainsPoint(specState.plot.xMinLabelBox, point)) return { axis: "x", bound: "min" };
+    if (boxContainsPoint(specState.plot.xMaxLabelBox, point)) return { axis: "x", bound: "max" };
+    if (boxContainsPoint(specState.plot.yMinLabelBox, point)) return { axis: "y", bound: "min" };
+    if (boxContainsPoint(specState.plot.yMaxLabelBox, point)) return { axis: "y", bound: "max" };
     return null;
   }
 
-  function promptSpectrumXRangeBound(kind) {
+  function getRangeEditMeta(axis, bound) {
+    const plot = specState.plot;
+    if (!plot) return null;
+    const isX = axis === "x";
+    const isMin = bound === "min";
+    if (isX) {
+      return {
+        box: isMin ? plot.xMinLabelBox : plot.xMaxLabelBox,
+        currentValue: isMin ? plot.viewXMin : plot.viewXMax,
+        autoValue: isMin ? plot.dataXMin : plot.dataXMax
+      };
+    }
+    return {
+      box: isMin ? plot.yMinLabelBox : plot.yMaxLabelBox,
+      currentValue: isMin ? plot.viewYMin : plot.viewYMax,
+      autoValue: isMin ? plot.dataYMin : plot.dataYMax
+    };
+  }
+
+  function applySpectrumRangeBound(axis, bound, rawValue) {
     const ds = getActive();
     const plot = specState.plot;
     if (!ds || ds.id !== specState.dsId || !plot) return false;
-    const isMin = kind === "min";
-    const title = isMin ? "left" : "right";
-    const autoValue = isMin ? plot.dataXMin : plot.dataXMax;
-    const currentValue = isMin ? plot.viewXMin : plot.viewXMax;
-    const otherValue = isMin ? plot.viewXMax : plot.viewXMin;
-    const raw = window.prompt(
-      `Set ${title} x-axis bound. Leave blank to reset this side to auto.`,
-      formatAxisNumber(currentValue)
-    );
-    if (raw == null) return false;
-    const trimmed = String(raw).trim();
+    const isX = axis === "x";
+    const isMin = bound === "min";
+    const trimmed = String(rawValue ?? "").trim();
     let nextOverride = null;
     if (trimmed) {
       const parsed = Number(trimmed);
       if (!Number.isFinite(parsed)) {
-        window.alert("Enter a valid numeric x-axis bound.");
+        window.alert(`Enter a valid numeric ${axis}-axis bound.`);
         return false;
       }
       nextOverride = parsed;
     }
-    const nextMin = isMin ? nextOverride : specState.xRangeMin;
-    const nextMax = isMin ? specState.xRangeMax : nextOverride;
-    const resolvedMin = Number.isFinite(nextMin) ? nextMin : (isMin ? autoValue : plot.dataXMin);
-    const resolvedMax = Number.isFinite(nextMax) ? nextMax : (isMin ? plot.dataXMax : autoValue);
+    const currentMin = isX ? specState.xRangeMin : specState.yRangeMin;
+    const currentMax = isX ? specState.xRangeMax : specState.yRangeMax;
+    const autoMin = isX ? plot.dataXMin : plot.dataYMin;
+    const autoMax = isX ? plot.dataXMax : plot.dataYMax;
+    const viewMin = isX ? plot.viewXMin : plot.viewYMin;
+    const viewMax = isX ? plot.viewXMax : plot.viewYMax;
+    const nextMin = isMin ? nextOverride : currentMin;
+    const nextMax = isMin ? currentMax : nextOverride;
+    const resolvedMin = Number.isFinite(nextMin) ? nextMin : autoMin;
+    const resolvedMax = Number.isFinite(nextMax) ? nextMax : autoMax;
     if (!(resolvedMax > resolvedMin)) {
       const relation = isMin ? "less than the right bound" : "greater than the left bound";
-      window.alert(`The ${title} x-axis bound must be ${relation}. Current opposite bound: ${formatAxisNumber(otherValue)}.`);
+      const otherValue = isMin ? viewMax : viewMin;
+      window.alert(`The ${axis}-axis bound must be ${relation}. Current opposite bound: ${formatAxisNumber(otherValue)}.`);
       return false;
     }
-    if (isMin) specState.xRangeMin = nextOverride;
-    else specState.xRangeMax = nextOverride;
+    if (isX && isMin) specState.xRangeMin = nextOverride;
+    else if (isX) specState.xRangeMax = nextOverride;
+    else if (isMin) specState.yRangeMin = nextOverride;
+    else specState.yRangeMax = nextOverride;
     redrawSpectrum();
+    return true;
+  }
+
+  function closeSpectrumRangeEditor(apply = false) {
+    const input = specState.rangeEditInput;
+    if (!input) return false;
+    specState.rangeEditInput = null;
+    if (apply && input.dataset) {
+      applySpectrumRangeBound(input.dataset.axis, input.dataset.bound, input.value);
+    }
+    input.remove();
+    return true;
+  }
+
+  function openSpectrumRangeEditor(hit) {
+    const plot = specState.plot;
+    if (!plot || !hit) return false;
+    const meta = getRangeEditMeta(hit.axis, hit.bound);
+    if (!meta?.box || !els.specCanvas || !els.specPanel || typeof document === "undefined") return false;
+    closeSpectrumRangeEditor(false);
+
+    const canvasRect = els.specCanvas.getBoundingClientRect();
+    const panelRect = els.specPanel.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const box = meta.box;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "spec-axis-editor";
+    input.value = formatAxisNumber(meta.currentValue);
+    input.dataset.axis = hit.axis;
+    input.dataset.bound = hit.bound;
+    input.setAttribute("aria-label", `Edit ${hit.axis}-axis ${hit.bound} range`);
+
+    const left = canvasRect.left - panelRect.left + (box.x0 / dpr);
+    const top = canvasRect.top - panelRect.top + (box.y0 / dpr);
+    const width = Math.max(48, (box.x1 - box.x0) / dpr);
+    const height = Math.max(20, (box.y1 - box.y0) / dpr);
+    input.style.left = `${Math.round(left)}px`;
+    input.style.top = `${Math.round(top)}px`;
+    input.style.width = `${Math.round(width)}px`;
+    input.style.height = `${Math.round(height)}px`;
+
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        closeSpectrumRangeEditor(true);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        closeSpectrumRangeEditor(false);
+      }
+      ev.stopPropagation();
+    });
+    input.addEventListener("blur", () => {
+      closeSpectrumRangeEditor(true);
+    });
+    input.addEventListener("dblclick", (ev) => ev.stopPropagation());
+    input.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+
+    els.specPanel.appendChild(input);
+    specState.rangeEditInput = input;
+    input.focus();
+    input.select();
     return true;
   }
 
@@ -762,7 +883,11 @@ export function createSpectrumController(deps) {
       els.specCanvas.style.cursor = "grabbing";
       return;
     }
-    els.specCanvas.style.cursor = isSpectrumHandleHit(clientX, clientY) ? "grab" : "";
+    if (isSpectrumHandleHit(clientX, clientY)) {
+      els.specCanvas.style.cursor = "grab";
+      return;
+    }
+    els.specCanvas.style.cursor = resolveSpectrumAxisLabelHit(clientX, clientY) ? "text" : "";
   }
 
   function applyActiveBandFromIndex(idx) {
@@ -900,7 +1025,7 @@ export function createSpectrumController(deps) {
       if (!specState.open || !specState.plot) return;
       const hit = resolveSpectrumAxisLabelHit(ev.clientX, ev.clientY);
       if (!hit) return;
-      promptSpectrumXRangeBound(hit);
+      openSpectrumRangeEditor(hit);
       ev.preventDefault();
       ev.stopPropagation();
     });

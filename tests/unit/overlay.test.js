@@ -150,4 +150,49 @@ describe("overlay renderer", () => {
     overlay.drawOverlaysForPanel(ds, { x: 0, y: 0, w: 100, h: 80 }, { raster: panelRaster, activeBand: 2 });
     expect(ctx.stroke).toHaveBeenCalledTimes(3);
   });
+
+  test("draws spectral point crosshair at fixed viewport-relative screen size", () => {
+    const ctx = makeCtx();
+    const els = {
+      chkScale: { checked: false },
+      chkGrid: { checked: false },
+      overlayCanvas: { width: 200, height: 100 }
+    };
+    const overlay = createOverlayRenderer({
+      els,
+      overlayCtx: ctx,
+      getDevicePixelRatio: () => 1,
+      getDrawData: () => ({
+        items: [],
+        draft: null,
+        rulerHover: null,
+        rulerProfileHover: null,
+        selectionIds: [],
+        marqueeOffset: 0,
+        spectrumPoint: { dsId: "ds1", x: 49, y: 29 }
+      })
+    });
+    const ds = {
+      id: "ds1",
+      view: { x: 0, y: 0, scale: 1 },
+      meta: { samples: 100, lines: 60 }
+    };
+
+    overlay.drawOverlaysForPanel(ds, { x: 0, y: 0, w: 200, h: 100 }, {});
+    expect(ctx.moveTo).toHaveBeenCalledWith(44.5, 29.5);
+    expect(ctx.lineTo).toHaveBeenCalledWith(48, 29.5);
+    expect(ctx.moveTo).toHaveBeenCalledWith(49.5, 24.5);
+    expect(ctx.lineTo).toHaveBeenCalledWith(49.5, 28);
+
+    ctx.moveTo.mockClear();
+    ctx.lineTo.mockClear();
+    ds.view.scale = 2;
+    ds.view.x = 24.75;
+    ds.view.y = 14.75;
+    overlay.drawOverlaysForPanel(ds, { x: 0, y: 0, w: 200, h: 100 }, {});
+    expect(ctx.moveTo).toHaveBeenCalledWith(44.5, 29.5);
+    expect(ctx.lineTo).toHaveBeenCalledWith(48, 29.5);
+    expect(ctx.moveTo).toHaveBeenCalledWith(49.5, 24.5);
+    expect(ctx.lineTo).toHaveBeenCalledWith(49.5, 28);
+  });
 });

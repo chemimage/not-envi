@@ -21,6 +21,7 @@ export function createAppState() {
     histDrag: { active: false, handle: null },
     histMode: "whole",
     histViewDebounce: null,
+    spectrumPoint: null,
     draw: {
       tool: "none",
       color: "#ff2d2d",

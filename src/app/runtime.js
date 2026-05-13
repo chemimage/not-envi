@@ -1228,7 +1228,11 @@ import { pointInPolygon } from "./draw-geometry.js";
     return spectrumArea.openSpectrumForEffectiveArea(ds, anchor, noReposition);
   }
   function redrawSpectrum(){ spectrum.redrawSpectrum(); }
-  function closeSpectrum(){ spectrum.closeSpectrum(); }
+  function closeSpectrum(){
+    state.spectrumPoint = null;
+    spectrum.closeSpectrum();
+    drawOverlays();
+  }
   function exportSpectrumCSV(){ spectrum.exportSpectrumCSV(); }
 // ========= Mouse interaction =========
 

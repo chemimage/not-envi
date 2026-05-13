@@ -326,6 +326,104 @@ describe("spectrum controller", () => {
     expect(specCanvas.style.cursor).toBe("grab");
   });
 
+  test("terminal x and y axis labels edit inline and blank values reset to auto range", async () => {
+    globalThis.requestAnimationFrame = (cb) => {
+      cb();
+      return 1;
+    };
+
+    const specCtx = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      setLineDash: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
+      textAlign: "",
+      textBaseline: "",
+      lineWidth: 1,
+      strokeStyle: "",
+      fillStyle: "",
+      font: ""
+    };
+    const specPanel = document.createElement("div");
+    specPanel.style.display = "none";
+    specPanel.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 220 });
+    const specCanvas = document.createElement("canvas");
+    specCanvas.style.cursor = "";
+    specCanvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 180 });
+    specPanel.appendChild(specCanvas);
+    const els = {
+      specPanel,
+      specCanvas,
+      specSub: { textContent: "" },
+      specWarn: { textContent: "", style: { display: "none" } },
+      specFoot: { textContent: "" }
+    };
+    const ds = {
+      id: 22,
+      name: "axis-edit-demo",
+      activeBand: 1,
+      meta: { bands: 3, wlUnits: "nm", scale: null, bandNames: ["a", "b", "c"] }
+    };
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+
+    const ctrl = createSpectrumController({
+      els,
+      specCtx,
+      getActive: () => ds,
+      bandLabel: (_ds, b) => `B${b}`,
+      updatePerf: vi.fn(),
+      sanitizeFilePart: (s) => s,
+      downloadBlob: vi.fn(),
+      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
+      readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
+      wavelengthArrayOrNull: () => [500, 600, 700]
+    });
+
+    await ctrl.openSpectrumAt(ds, 0, 0);
+    specCtx.fillText.mockClear();
+
+    specCanvas.dispatchEvent(new MouseEvent("dblclick", { clientX: 53, clientY: 154, bubbles: true }));
+    let input = specPanel.querySelector(".spec-axis-editor");
+    expect(input).not.toBeNull();
+    input.value = "550";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(specPanel.querySelector(".spec-axis-editor")).toBeNull();
+    expect(specCtx.fillText).toHaveBeenCalledWith("550.0", 52, 152);
+
+    specCtx.fillText.mockClear();
+    specCanvas.dispatchEvent(new MouseEvent("dblclick", { clientX: 53, clientY: 154, bubbles: true }));
+    input = specPanel.querySelector(".spec-axis-editor");
+    input.value = "";
+    input.dispatchEvent(new FocusEvent("blur"));
+    expect(specCtx.fillText).toHaveBeenCalledWith("500.0", 52, 152);
+
+    specCtx.fillText.mockClear();
+    specCanvas.dispatchEvent(new MouseEvent("dblclick", { clientX: 40, clientY: 15, bubbles: true }));
+    input = specPanel.querySelector(".spec-axis-editor");
+    expect(input).not.toBeNull();
+    input.value = "5";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(specCtx.fillText).toHaveBeenCalledWith("5.000", 44, 12);
+
+    specCtx.fillText.mockClear();
+    specCanvas.dispatchEvent(new MouseEvent("dblclick", { clientX: 40, clientY: 15, bubbles: true }));
+    input = specPanel.querySelector(".spec-axis-editor");
+    input.value = "";
+    input.dispatchEvent(new FocusEvent("blur"));
+    expect(specCtx.fillText).toHaveBeenCalledWith("3.120", 44, 12);
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
   test("pending spectrum state renders placeholder without reading data", async () => {
     globalThis.requestAnimationFrame = (cb) => {
       cb();
