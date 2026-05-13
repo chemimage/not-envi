@@ -125,7 +125,7 @@ describe("histogram controller", () => {
     expect(labels).toContain("Estimated");
   });
 
-  test("buildEstimatedViewHistogram reads a capped visible window and draws estimated placeholder while pending", async () => {
+  test("buildEstimatedViewHistogram reads a capped visible window and keeps pending state unestimated", async () => {
     let releaseRead = null;
     const labels = [];
     const fakeCtx = {
@@ -189,7 +189,8 @@ describe("histogram controller", () => {
 
     const pending = ctrl.buildEstimatedViewHistogram(ds);
     ctrl.drawHistogram(ds);
-    expect(labels).toContain("Estimated");
+    expect(labels).toContain("Histogram not ready");
+    expect(labels).not.toContain("Estimated");
     expect(readBandWindow).toHaveBeenCalled();
     releaseRead();
     await pending;

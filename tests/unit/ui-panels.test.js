@@ -263,6 +263,103 @@ describe("ui-panels", () => {
     expect(ui.getBandSettings(ds, 1).contrast).toBe(1.4);
   });
 
+  test("numeric display range inputs keep user values outside current histogram stats", () => {
+    document.body.innerHTML = `
+      <input id="slContrast" value="1" />
+      <input id="slBrightness" value="0" />
+      <input id="slGain" value="1" />
+      <input id="numContrast" value="1" />
+      <input id="numBrightness" value="0" />
+      <input id="numGain" value="1" />
+      <input id="numMin" value="0" />
+      <input id="numMax" value="1" />
+      <button id="btnHistRangeLock" type="button" aria-pressed="false"><i></i></button>
+      <canvas id="hist"></canvas>
+    `;
+
+    const deps = makeDeps();
+    const ds = {
+      id: "ds1",
+      meta: { bands: 1 },
+      activeBand: 0,
+      bandSettings: new Map([[0, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 }]]),
+      bandStatsWhole: new Map([[0, { min: 10, max: 20, p1: 11, p99: 19 }]]),
+      bandStatsView: null
+    };
+    deps.getActive = () => ds;
+    deps.els = {
+      slContrast: document.querySelector("#slContrast"),
+      slBrightness: document.querySelector("#slBrightness"),
+      slGain: document.querySelector("#slGain"),
+      numContrast: document.querySelector("#numContrast"),
+      numBrightness: document.querySelector("#numBrightness"),
+      numGain: document.querySelector("#numGain"),
+      numMin: document.querySelector("#numMin"),
+      numMax: document.querySelector("#numMax"),
+      btnHistRangeLock: document.querySelector("#btnHistRangeLock"),
+      hist: document.querySelector("#hist")
+    };
+
+    const ui = createUIPanels(deps);
+    deps.els.numMin.value = "5.123456";
+    deps.els.numMax.value = "25.654321";
+    ui.applyRangeFromNumbers(ds);
+
+    expect(ui.getBandSettings(ds, 0).min).toBe(5.123456);
+    expect(ui.getBandSettings(ds, 0).max).toBe(25.654321);
+    ui.updateDisplayUI(true);
+    expect(deps.els.numMin.value).toBe("5.12346");
+    expect(deps.els.numMax.value).toBe("25.6543");
+  });
+
+  test("numeric display range inputs apply before histogram stats are ready", () => {
+    document.body.innerHTML = `
+      <input id="slContrast" value="1" />
+      <input id="slBrightness" value="0" />
+      <input id="slGain" value="1" />
+      <input id="numContrast" value="1" />
+      <input id="numBrightness" value="0" />
+      <input id="numGain" value="1" />
+      <input id="numMin" value="0" />
+      <input id="numMax" value="1" />
+      <button id="btnHistRangeLock" type="button" aria-pressed="false"><i></i></button>
+      <canvas id="hist"></canvas>
+    `;
+
+    const deps = makeDeps();
+    const ds = {
+      id: "ds1",
+      meta: { bands: 1 },
+      activeBand: 0,
+      bandSettings: new Map([[0, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 }]]),
+      bandStatsWhole: new Map(),
+      bandStatsView: null
+    };
+    deps.getActive = () => ds;
+    deps.els = {
+      slContrast: document.querySelector("#slContrast"),
+      slBrightness: document.querySelector("#slBrightness"),
+      slGain: document.querySelector("#slGain"),
+      numContrast: document.querySelector("#numContrast"),
+      numBrightness: document.querySelector("#numBrightness"),
+      numGain: document.querySelector("#numGain"),
+      numMin: document.querySelector("#numMin"),
+      numMax: document.querySelector("#numMax"),
+      btnHistRangeLock: document.querySelector("#btnHistRangeLock"),
+      hist: document.querySelector("#hist")
+    };
+
+    const ui = createUIPanels(deps);
+    deps.els.numMin.value = "30";
+    deps.els.numMax.value = "10";
+    ui.applyRangeFromNumbers(ds);
+
+    expect(ui.getBandSettings(ds, 0).min).toBe(10);
+    expect(ui.getBandSettings(ds, 0).max).toBe(30);
+    expect(deps.els.numMin.value).toBe("10");
+    expect(deps.els.numMax.value).toBe("30");
+  });
+
   test("band tree and band changes follow the selected panel band", () => {
     document.body.innerHTML = `
       <input id="bandSearch" value="" />

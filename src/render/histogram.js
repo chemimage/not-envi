@@ -275,7 +275,7 @@ export function createHistogramController(deps) {
           ds.bandStatsWhole.set(band, stats);
 
           if (ds.id === state.activeId && resolveDisplayBand(ds) === band && state.histMode === "whole") {
-            syncRangeInputsFromSettings(ds, { force: true });
+            syncRangeInputsFromSettings(ds);
             drawHistogram(ds);
           }
         } finally {
@@ -321,7 +321,10 @@ export function createHistogramController(deps) {
     if (!ds.__viewStatsPending || typeof ds.__viewStatsPending.get !== "function") {
       ds.__viewStatsPending = new Map();
     }
-    if (ds.__viewStatsPending.has(key)) return;
+    if (ds.__viewStatsPending.has(key)) {
+      await ds.__viewStatsPending.get(key);
+      return;
+    }
 
     const dpr = typeof getDevicePixelRatio === "function" ? (Number(getDevicePixelRatio()) || 1) : (window.devicePixelRatio || 1);
     const viewport = typeof getActiveViewportDevice === "function"
@@ -361,7 +364,7 @@ export function createHistogramController(deps) {
             }
           );
           if (ds.id === state.activeId && resolveDisplayBand(ds) === band && !ds.bandStatsWhole.has(band)) {
-            syncRangeInputsFromSettings(ds, { force: true });
+            syncRangeInputsFromSettings(ds);
             drawHistogram(ds);
           }
         } finally {
@@ -395,7 +398,7 @@ export function createHistogramController(deps) {
       }
     );
     ds.bandStatsView = stats;
-    syncRangeInputsFromSettings(ds, { force: true });
+    syncRangeInputsFromSettings(ds);
     drawHistogram(ds);
   }
 
@@ -410,7 +413,7 @@ export function createHistogramController(deps) {
     if (!list.length || band == null) {
       ds.bandStatsSelection = null;
       if (ds.id === state.activeId) {
-        syncRangeInputsFromSettings(ds, { force: true });
+        syncRangeInputsFromSettings(ds);
         drawHistogram(ds);
       }
       return;
@@ -422,7 +425,7 @@ export function createHistogramController(deps) {
       if (token !== ds.__selectionHistToken) return;
       ds.bandStatsSelection = stats ? { band, selectionKey, stats } : null;
       if (ds.id === state.activeId) {
-        syncRangeInputsFromSettings(ds, { force: true });
+        syncRangeInputsFromSettings(ds);
         drawHistogram(ds);
       }
       setStatus("ready", "ok");
@@ -440,7 +443,7 @@ export function createHistogramController(deps) {
     ds.__selectionHistToken = (ds.__selectionHistToken || 0) + 1;
     ds.bandStatsSelection = null;
     if (ds.id === state.activeId) {
-      syncRangeInputsFromSettings(ds, { force: true });
+      syncRangeInputsFromSettings(ds);
       drawHistogram(ds);
     }
   }
@@ -469,8 +472,7 @@ export function createHistogramController(deps) {
     if (!ds || !s || !stats || !stats.bins) {
       ctx.fillStyle = "rgba(209,213,219,0.9)";
       ctx.font = `${12 * dpr}px ${getComputedStyle(document.body).fontFamily}`;
-      const hasPendingEstimate = !!(ds && ds.__viewStatsPending && typeof ds.__viewStatsPending.size === "number" && ds.__viewStatsPending.size > 0);
-      ctx.fillText(hasPendingEstimate ? "Estimated" : "Histogram not ready", 10 * dpr, 20 * dpr);
+      ctx.fillText("Histogram not ready", 10 * dpr, 20 * dpr);
       ctx.restore();
       return;
     }

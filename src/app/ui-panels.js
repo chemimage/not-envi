@@ -165,6 +165,22 @@ export function createUIPanels(deps) {
     onNeedWholeStats(ds, band);
   }
 
+  function requestWholeStatsAfterEstimate(ds, band, pending) {
+    if (!pending || typeof pending.finally !== "function") {
+      requestWholeStatsIfNeeded(ds, band);
+      return;
+    }
+    if (!ds.__wholeStatsAfterEstimate || typeof ds.__wholeStatsAfterEstimate.has !== "function") {
+      ds.__wholeStatsAfterEstimate = new Set();
+    }
+    if (ds.__wholeStatsAfterEstimate.has(band)) return;
+    ds.__wholeStatsAfterEstimate.add(band);
+    pending.finally(() => {
+      ds.__wholeStatsAfterEstimate?.delete?.(band);
+      requestWholeStatsIfNeeded(ds, band);
+    }).catch(() => {});
+  }
+
   function resolveActiveBandForDataset(ds) {
     if (!ds) return null;
     const panel = (typeof getActivePanel === "function") ? getActivePanel() : null;
@@ -294,7 +310,7 @@ export function createUIPanels(deps) {
   function formatDisplayRangeInput(v) {
     if (!Number.isFinite(v)) return "";
     if (v === 0) return "0";
-    const compact = Number(v).toPrecision(3);
+    const compact = Number(v).toPrecision(6);
     return compact
       .replace(/(\.\d*?[1-9])0+(e.*)?$/i, "$1$2")
       .replace(/\.0+(e.*)?$/i, "$1")
@@ -333,10 +349,12 @@ export function createUIPanels(deps) {
       domMax = 1;
     }
 
-    const curMin = (s.min != null && Number.isFinite(s.min)) ? s.min : (stats ? stats.p1 : domMin);
-    const curMax = (s.max != null && Number.isFinite(s.max)) ? s.max : (stats ? stats.p99 : domMax);
-    const minVal = clamp(curMin, domMin, domMax);
-    const maxVal = clamp(curMax, domMin, domMax);
+    const hasUserMin = s.min != null && Number.isFinite(s.min);
+    const hasUserMax = s.max != null && Number.isFinite(s.max);
+    const curMin = hasUserMin ? s.min : (stats ? stats.p1 : domMin);
+    const curMax = hasUserMax ? s.max : (stats ? stats.p99 : domMax);
+    const minVal = hasUserMin ? curMin : clamp(curMin, domMin, domMax);
+    const maxVal = hasUserMax ? curMax : clamp(curMax, domMin, domMax);
 
     if (force || document.activeElement !== els.numMin) els.numMin.value = formatDisplayRangeInput(minVal);
     if (force || document.activeElement !== els.numMax) els.numMax.value = formatDisplayRangeInput(maxVal);
@@ -360,8 +378,12 @@ export function createUIPanels(deps) {
     els.numGain.value = Number(els.slGain.value).toFixed(2);
 
     if (!resolveStats(ds)) {
-      if (typeof onNeedEstimatedViewStats === "function") onNeedEstimatedViewStats(ds);
-      requestWholeStatsIfNeeded(ds, b);
+      if (typeof onNeedEstimatedViewStats === "function") {
+        const pending = onNeedEstimatedViewStats(ds);
+        requestWholeStatsAfterEstimate(ds, b, pending);
+      } else {
+        requestWholeStatsIfNeeded(ds, b);
+      }
     }
     syncRangeInputsFromSettings(ds, { force });
     drawHistogram(ds);
@@ -539,22 +561,17 @@ export function createUIPanels(deps) {
     if (b == null) return;
     const s = getBandSettings(ds, b);
     const stats = resolveStats(ds);
-    if (!stats) return;
 
-    const domMin = stats.min;
-    const domMax = stats.max;
     let minVal = Number(els.numMin.value);
     let maxVal = Number(els.numMax.value);
-    if (!Number.isFinite(minVal)) minVal = s.min ?? stats.p1;
-    if (!Number.isFinite(maxVal)) maxVal = s.max ?? stats.p99;
+    if (!Number.isFinite(minVal)) minVal = s.min ?? stats?.p1 ?? 0;
+    if (!Number.isFinite(maxVal)) maxVal = s.max ?? stats?.p99 ?? 1;
     if (minVal > maxVal) {
       const tmp = minVal;
       minVal = maxVal;
       maxVal = tmp;
     }
 
-    minVal = clamp(minVal, domMin, domMax);
-    maxVal = clamp(maxVal, domMin, domMax);
     s.min = minVal;
     s.max = maxVal;
 
