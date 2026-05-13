@@ -685,7 +685,10 @@ export function createAnnotationController(deps) {
       && state.spectrumPoint
       && state.spectrumPoint.dsId === ds.id
       && selectionIds.length === 0)
-      ? state.spectrumPoint
+      ? {
+        ...state.spectrumPoint,
+        color: state.draw?.color || "#ff2d2d"
+      }
       : null;
     return { items, draft, rulerHover, rulerProfileHover, selectionIds, marqueeOffset, spectrumPoint };
   }

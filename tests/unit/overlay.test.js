@@ -153,6 +153,12 @@ describe("overlay renderer", () => {
 
   test("draws spectral point crosshair at fixed viewport-relative screen size", () => {
     const ctx = makeCtx();
+    const strokeStyles = [];
+    Object.defineProperty(ctx, "strokeStyle", {
+      get: () => strokeStyles[strokeStyles.length - 1],
+      set: (value) => { strokeStyles.push(value); },
+      configurable: true
+    });
     const els = {
       chkScale: { checked: false },
       chkGrid: { checked: false },
@@ -169,7 +175,7 @@ describe("overlay renderer", () => {
         rulerProfileHover: null,
         selectionIds: [],
         marqueeOffset: 0,
-        spectrumPoint: { dsId: "ds1", x: 49, y: 29 }
+        spectrumPoint: { dsId: "ds1", x: 49, y: 29, color: "#22c55e" }
       })
     });
     const ds = {
@@ -183,6 +189,7 @@ describe("overlay renderer", () => {
     expect(ctx.lineTo).toHaveBeenCalledWith(48, 29.5);
     expect(ctx.moveTo).toHaveBeenCalledWith(49.5, 24.5);
     expect(ctx.lineTo).toHaveBeenCalledWith(49.5, 28);
+    expect(strokeStyles).toContain("rgba(34,197,94,0.96)");
 
     ctx.moveTo.mockClear();
     ctx.lineTo.mockClear();

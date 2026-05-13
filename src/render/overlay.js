@@ -383,7 +383,7 @@ export function createOverlayRenderer(deps) {
     overlayCtx.stroke();
 
     overlayCtx.lineWidth = Math.max(1 * dpr, 1);
-    overlayCtx.strokeStyle = "rgba(255,255,255,0.95)";
+    overlayCtx.strokeStyle = colorWithAlpha(spectrumPoint.color || "#ff2d2d", 0.96);
     overlayCtx.beginPath();
     overlayCtx.moveTo(sx - arm, sy);
     overlayCtx.lineTo(sx - gap, sy);
