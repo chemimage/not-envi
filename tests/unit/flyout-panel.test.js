@@ -3,6 +3,7 @@ import { wireFlyoutPanel } from "../../src/app/wiring/flyout-panel.js";
 
 describe("flyout panel wiring", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -65,7 +66,9 @@ describe("flyout panel wiring", () => {
     expect(btnPin.dataset.pinned).toBe("false");
     expect(btnPin.querySelector("i")?.classList.contains("fa-thumbtack-slash")).toBe(true);
 
+    vi.useFakeTimers();
     panel.dispatchEvent(new Event("pointerleave"));
+    vi.advanceTimersByTime(160);
     expect(panel.dataset.open).toBe("false");
 
     header.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -75,7 +78,49 @@ describe("flyout panel wiring", () => {
     expect(panel.dataset.pinned).toBe("true");
 
     panel.dispatchEvent(new Event("pointerleave"));
+    vi.advanceTimersByTime(160);
     expect(panel.dataset.open).toBe("true");
+  });
+
+  test("desktop hover stays open in the right gutter instead of rapidly toggling", () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1000
+    });
+    document.body.innerHTML = `
+      <aside id="panel" data-open="true" data-pinned="false">
+        <div id="header">
+          <h2>Bands</h2>
+          <button id="pin" type="button">
+            <i class="fa-solid fa-thumbtack-slash" aria-hidden="true"></i>
+          </button>
+        </div>
+      </aside>
+    `;
+
+    const panel = document.querySelector("#panel");
+    const header = document.querySelector("#header");
+    const btnPin = document.querySelector("#pin");
+    panel.getBoundingClientRect = () => ({ left: 610, right: 990, top: 100, bottom: 400, width: 380, height: 300 });
+
+    wireFlyoutPanel({ panel, header, btnPin });
+
+    panel.dispatchEvent(new MouseEvent("pointerleave", {
+      bubbles: true,
+      clientX: 996,
+      clientY: 180
+    }));
+    vi.advanceTimersByTime(500);
+    expect(panel.dataset.open).toBe("true");
+
+    window.dispatchEvent(new MouseEvent("pointermove", {
+      bubbles: true,
+      clientX: 800,
+      clientY: 520
+    }));
+    vi.advanceTimersByTime(160);
+    expect(panel.dataset.open).toBe("false");
   });
 
   test("touch-style devices collapse unpinned panels and hide on outside tap", () => {

@@ -7,13 +7,67 @@ export function wireFlyoutPanel({
   const isOpen = () => panel.dataset.open !== "false";
   const isPinned = () => panel.dataset.pinned !== "false";
   const title = header && header.querySelector ? header.querySelector("h2") : null;
+  let closeTimer = null;
+  let trackingPointer = false;
   const supportsHover = () => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
     return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   };
 
+  const clearCloseTimer = () => {
+    if (closeTimer == null) return;
+    clearTimeout(closeTimer);
+    closeTimer = null;
+  };
+
   const setOpen = (open) => {
+    if (open) clearCloseTimer();
     panel.dataset.open = open ? "true" : "false";
+  };
+
+  const isInRightHoverBuffer = (ev) => {
+    if (!ev || !Number.isFinite(ev.clientX) || !Number.isFinite(ev.clientY)) return false;
+    if (typeof window === "undefined" || typeof panel.getBoundingClientRect !== "function") return false;
+    const rect = panel.getBoundingClientRect();
+    const buffer = 18;
+    const viewportRight = Number(window.innerWidth) || rect.right;
+    const nearRightEdge = ev.clientX >= Math.min(rect.right, viewportRight) && ev.clientX <= viewportRight;
+    const nearPanel = ev.clientX >= rect.right - buffer && ev.clientX <= viewportRight;
+    const withinY = ev.clientY >= rect.top - buffer && ev.clientY <= rect.bottom + buffer;
+    return withinY && (nearRightEdge || nearPanel);
+  };
+
+  const stopPointerTracking = () => {
+    if (!trackingPointer || typeof window === "undefined" || !window.removeEventListener) return;
+    window.removeEventListener("pointermove", onWindowPointerMove, true);
+    trackingPointer = false;
+  };
+
+  const scheduleClose = () => {
+    clearCloseTimer();
+    closeTimer = setTimeout(() => {
+      closeTimer = null;
+      stopPointerTracking();
+      if (!isPinned()) setOpen(false);
+    }, 160);
+  };
+
+  function onWindowPointerMove(ev) {
+    if (!supportsHover() || isPinned() || !isOpen()) {
+      stopPointerTracking();
+      return;
+    }
+    if (isInRightHoverBuffer(ev)) {
+      clearCloseTimer();
+      return;
+    }
+    scheduleClose();
+  }
+
+  const startPointerTracking = () => {
+    if (trackingPointer || typeof window === "undefined" || !window.addEventListener) return;
+    window.addEventListener("pointermove", onWindowPointerMove, true);
+    trackingPointer = true;
   };
 
   const syncCollapsedGeometry = () => {
@@ -57,6 +111,7 @@ export function wireFlyoutPanel({
     panel.dataset.pinned = nextPinned ? "true" : "false";
     syncPinButton();
     if (nextPinned && forceOpen) {
+      stopPointerTracking();
       setOpen(true);
       return;
     }
@@ -111,11 +166,18 @@ export function wireFlyoutPanel({
 
   panel.addEventListener("pointerenter", () => {
     if (!supportsHover()) return;
+    stopPointerTracking();
+    clearCloseTimer();
     if (!isPinned() && !isOpen()) setOpen(true);
   });
-  panel.addEventListener("pointerleave", () => {
+  panel.addEventListener("pointerleave", (ev) => {
     if (!supportsHover()) return;
-    if (!isPinned()) setOpen(false);
+    if (isPinned()) return;
+    if (isInRightHoverBuffer(ev)) {
+      startPointerTracking();
+      return;
+    }
+    scheduleClose();
   });
   if (typeof document !== "undefined" && document.addEventListener) {
     document.addEventListener("pointerdown", (ev) => {
