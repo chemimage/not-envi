@@ -50,6 +50,7 @@ export function createSpectrumController(deps) {
     yRangeMin: null,
     yRangeMax: null,
     rangeEditInput: null,
+    hover: null,
     source: { type: "pixel", sampleCount: 0, selectionCount: 0, sampleStep: 1 }
   };
 
@@ -110,6 +111,7 @@ export function createSpectrumController(deps) {
     specState.stdVals = null;
     specState.plot = null;
     specState.activeBandX = null;
+    specState.hover = null;
     closeSpectrumRangeEditor(false);
     if (els.specCanvas?.style) els.specCanvas.style.cursor = "";
   }
@@ -422,6 +424,7 @@ export function createSpectrumController(deps) {
       dataYMax,
       viewYMin: ymin,
       viewYMax: ymax,
+      useBarPlot,
       xMinLabelBox: null,
       xMaxLabelBox: null,
       yMinLabelBox: null,
@@ -555,6 +558,8 @@ export function createSpectrumController(deps) {
       }
     }
 
+    drawSpectrumHoverGuide(ctx, ds, dpr);
+
     ctx.fillStyle = "rgba(229,231,235,0.92)";
     ctx.font = `${Math.round(11 * dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     ctx.textBaseline = "middle";
@@ -627,6 +632,132 @@ export function createSpectrumController(deps) {
   function boxContainsPoint(box, point) {
     if (!box || !point) return false;
     return point.x >= box.x0 && point.x <= box.x1 && point.y >= box.y0 && point.y <= box.y1;
+  }
+
+  function spectrumPointInPlot(point) {
+    const plot = specState.plot;
+    return !!(plot && point
+      && point.x >= plot.x0
+      && point.x <= plot.x1
+      && point.y >= plot.y0
+      && point.y <= plot.y1);
+  }
+
+  function interpolateSpectrumValueAtX(xValue) {
+    const xVals = specState.xVals;
+    const yVals = specState.yVals;
+    if (!yVals?.length || !Number.isFinite(xValue)) return null;
+    if (!xVals?.length) {
+      const idx = Math.max(0, Math.min(yVals.length - 1, Math.round(xValue)));
+      const y = Number(yVals[idx]);
+      return Number.isFinite(y) ? { band: idx, value: y, xValue: idx } : null;
+    }
+
+    let nearestBand = null;
+    let nearestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < yVals.length; i += 1) {
+      const xv = Number(xVals[i]);
+      const yv = Number(yVals[i]);
+      if (!Number.isFinite(xv) || !Number.isFinite(yv)) continue;
+      const dist = Math.abs(xv - xValue);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestBand = i;
+      }
+      if (i + 1 >= yVals.length) continue;
+      const xNext = Number(xVals[i + 1]);
+      const yNext = Number(yVals[i + 1]);
+      if (!Number.isFinite(xNext) || !Number.isFinite(yNext) || xNext === xv) continue;
+      const lo = Math.min(xv, xNext);
+      const hi = Math.max(xv, xNext);
+      if (xValue < lo || xValue > hi) continue;
+      const t = (xValue - xv) / (xNext - xv);
+      return {
+        band: t <= 0.5 ? i : i + 1,
+        value: yv + (t * (yNext - yv)),
+        xValue
+      };
+    }
+
+    if (nearestBand == null) return null;
+    const y = Number(yVals[nearestBand]);
+    const x = Number(xVals[nearestBand]);
+    return Number.isFinite(y) && Number.isFinite(x) ? { band: nearestBand, value: y, xValue: x } : null;
+  }
+
+  function resolveSpectrumHover(clientX, clientY) {
+    const point = spectrumPointFromClient(clientX, clientY);
+    const plot = specState.plot;
+    if (!spectrumPointInPlot(point) || !plot || !specState.yVals?.length) return null;
+    const unit = resolveSpectralUnit(getActive());
+
+    if (plot.useBarPlot || isCmInverseUnit(unit)) {
+      const band = bandFromClientX(clientX);
+      if (band == null) return null;
+      const xValue = specState.xVals ? Number(specState.xVals[band]) : band;
+      const value = Number(specState.yVals[band]);
+      const xPx = Number(plot.bandCenters?.[band]);
+      if (!Number.isFinite(xValue) || !Number.isFinite(value) || !Number.isFinite(xPx)) return null;
+      return { xPx, xValue, value, band, unit, snapped: true };
+    }
+
+    const xValue = plot.viewXMin + ((point.x - plot.x0) / plot.plotW) * (plot.viewXMax - plot.viewXMin);
+    const resolved = interpolateSpectrumValueAtX(xValue);
+    if (!resolved) return null;
+    return { ...resolved, xPx: point.x, unit, snapped: false };
+  }
+
+  function formatSpectrumHoverLabel(hover) {
+    if (!hover) return "";
+    return formatAxisNumber(hover.value);
+  }
+
+  function drawSpectrumHoverGuide(ctx, ds, dpr) {
+    const hover = specState.hover;
+    const plot = specState.plot;
+    if (!hover || !plot || !Number.isFinite(hover.xPx) || ds?.id !== specState.dsId) return;
+    const x = Math.max(plot.x0, Math.min(plot.x1, hover.xPx));
+    const value = Number(hover.value);
+    const y = Number.isFinite(value)
+      ? Math.max(plot.y0, Math.min(plot.y1, plot.y1 - ((value - plot.viewYMin) / Math.max(1e-12, plot.viewYMax - plot.viewYMin)) * plot.plotH))
+      : null;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(226,232,240,0.48)";
+    ctx.lineWidth = Math.max(0.5, 0.75 * dpr);
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(x, plot.y0);
+    ctx.lineTo(x, plot.y1);
+    ctx.stroke();
+
+    if (Number.isFinite(y)) {
+      ctx.fillStyle = "rgba(226,232,240,0.92)";
+      ctx.beginPath();
+      ctx.arc(x, y, 2.2 * dpr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const label = formatSpectrumHoverLabel(hover);
+    if (label) {
+      const fontPx = Math.round(11 * dpr);
+      ctx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const padX = 5 * dpr;
+      const padY = 4 * dpr;
+      const width = ctx.measureText(label).width + (2 * padX);
+      const height = fontPx + (2 * padY);
+      let lx = x + (7 * dpr);
+      if (lx + width > plot.x1) lx = x - width - (7 * dpr);
+      lx = Math.max(plot.x0 + (2 * dpr), Math.min(lx, plot.x1 - width - (2 * dpr)));
+      const ly = Math.max(plot.y0 + (2 * dpr), Math.min((Number.isFinite(y) ? y - height - (7 * dpr) : plot.y0 + (4 * dpr)), plot.y1 - height - (2 * dpr)));
+      ctx.fillStyle = "rgba(15,23,42,0.86)";
+      ctx.fillRect(lx, ly, width, height);
+      ctx.fillStyle = "rgba(241,245,249,0.96)";
+      ctx.fillText(label, lx + padX, ly + padY);
+    }
+    ctx.restore();
   }
 
   function resolveSpectrumAxisLabelHit(clientX, clientY) {
@@ -890,6 +1021,26 @@ export function createSpectrumController(deps) {
     els.specCanvas.style.cursor = resolveSpectrumAxisLabelHit(clientX, clientY) ? "text" : "";
   }
 
+  function updateSpectrumHover(clientX, clientY) {
+    const next = resolveSpectrumHover(clientX, clientY);
+    const prev = specState.hover;
+    const same = !!(prev && next
+      && Math.abs(prev.xPx - next.xPx) < 0.5
+      && prev.band === next.band
+      && prev.snapped === next.snapped
+      && Object.is(prev.value, next.value)
+      && Object.is(prev.xValue, next.xValue));
+    if (same || (!prev && !next)) return;
+    specState.hover = next;
+    redrawSpectrum();
+  }
+
+  function clearSpectrumHover() {
+    if (!specState.hover) return;
+    specState.hover = null;
+    redrawSpectrum();
+  }
+
   function applyActiveBandFromIndex(idx) {
     const ds = getActive();
     if (!ds || ds.id !== specState.dsId || !Number.isFinite(idx)) return false;
@@ -997,9 +1148,11 @@ export function createSpectrumController(deps) {
     els.specCanvas.addEventListener("pointermove", (ev) => {
       if (specState.bandDragPointerId == null || ev.pointerId !== specState.bandDragPointerId) {
         syncSpectrumCanvasCursor(ev.clientX, ev.clientY);
+        updateSpectrumHover(ev.clientX, ev.clientY);
         return;
       }
       syncSpectrumCanvasCursor(ev.clientX, ev.clientY);
+      clearSpectrumHover();
       const idx = bandFromClientX(ev.clientX);
       if (idx != null) applyActiveBandFromIndex(idx);
       ev.preventDefault();
@@ -1018,7 +1171,10 @@ export function createSpectrumController(deps) {
     els.specCanvas.addEventListener("pointerup", endBandDrag);
     els.specCanvas.addEventListener("pointercancel", endBandDrag);
     els.specCanvas.addEventListener("pointerleave", () => {
-      if (specState.bandDragPointerId == null) syncSpectrumCanvasCursor();
+      if (specState.bandDragPointerId == null) {
+        clearSpectrumHover();
+        syncSpectrumCanvasCursor();
+      }
     });
 
     els.specCanvas.addEventListener("dblclick", (ev) => {
