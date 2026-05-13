@@ -375,6 +375,42 @@ describe("ui-panels", () => {
     expect(ds.activeBand).toBe(2);
   });
 
+  test("active band list fits the panel viewport when more than two datasets are loaded", () => {
+    document.body.innerHTML = `
+      <div class="panel-body" id="panelBody">
+        <input id="bandSearch" value="" />
+        <div id="bandTree"></div>
+      </div>
+    `;
+
+    const deps = makeDeps();
+    const ds1 = { id: "ds1", name: "One", meta: { bands: 4 }, activeBand: 0, treeExpanded: false };
+    const ds2 = { id: "ds2", name: "Two", meta: { bands: 12 }, activeBand: 0, treeExpanded: true };
+    const ds3 = { id: "ds3", name: "Three", meta: { bands: 4 }, activeBand: 0, treeExpanded: false };
+    deps.state.datasets = [ds1, ds2, ds3];
+    deps.state.activeId = ds2.id;
+    const panelBody = document.querySelector("#panelBody");
+    Object.defineProperty(panelBody, "clientHeight", { configurable: true, value: 160 });
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    deps.els = {
+      bandSearch: document.querySelector("#bandSearch"),
+      bandTree: document.querySelector("#bandTree")
+    };
+    const ui = createUIPanels(deps);
+
+    try {
+      ui.rebuildBandTree();
+
+      const activeBands = document.querySelector(".tree-ds.active .tree-bands");
+      expect(activeBands?.style.maxHeight).toBe("106px");
+      expect(scrollIntoView).toHaveBeenCalled();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   test("dataset panel buttons render L, R, and L|R states", () => {
     document.body.innerHTML = `
       <div id="datasetList"></div>

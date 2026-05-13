@@ -363,6 +363,37 @@ export function createUIPanels(deps) {
     if (!resolveStats(ds)) requestWholeStatsIfNeeded(ds, b);
   }
 
+  function fitActiveBandListToPanel() {
+    if (!els.bandTree) return;
+    const activeNode = els.bandTree.querySelector(".tree-ds.active");
+    const bandsWrap = activeNode ? activeNode.querySelector(".tree-bands") : null;
+    if (!bandsWrap) return;
+
+    bandsWrap.style.maxHeight = "";
+    if (state.datasets.length <= 2) return;
+
+    const panelBody = els.bandTree.closest ? els.bandTree.closest(".panel-body") : null;
+    const bodyH = Number(panelBody?.clientHeight) || 0;
+    if (bodyH > 0) {
+      const head = activeNode.querySelector(".tree-head");
+      const headRect = head && typeof head.getBoundingClientRect === "function"
+        ? head.getBoundingClientRect()
+        : null;
+      const headH = Number(headRect?.height) || Number(head?.offsetHeight) || 38;
+      const maxH = Math.max(72, bodyH - headH - 16);
+      bandsWrap.style.maxHeight = `${Math.floor(maxH)}px`;
+    }
+
+    if (panelBody) {
+      const treeTop = Number(els.bandTree.offsetTop) || 0;
+      const nodeTop = Number(activeNode.offsetTop) || 0;
+      panelBody.scrollTop = Math.max(0, nodeTop - treeTop);
+    }
+    if (typeof activeNode.scrollIntoView === "function") {
+      try { activeNode.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (_err) {}
+    }
+  }
+
   function rebuildBandTree({ preserveScroll = false } = {}) {
     const q = (els.bandSearch.value || "").trim().toLowerCase();
     const prevScroll = preserveScroll ? els.bandTree.scrollTop : 0;
@@ -477,6 +508,10 @@ export function createUIPanels(deps) {
     }
 
     if (preserveScroll) els.bandTree.scrollTop = prevScroll;
+    fitActiveBandListToPanel();
+    requestAnimationFrame(() => {
+      fitActiveBandListToPanel();
+    });
   }
 
   function setActiveBand(ds, band) {
