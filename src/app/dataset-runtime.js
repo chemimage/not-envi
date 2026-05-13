@@ -79,10 +79,19 @@ export function createDatasetRuntime(deps) {
     return `Band ${b}`;
   }
 
+  function syncBandTreeExpansionToActive() {
+    const activeKey = String(state.activeId || "");
+    if (!activeKey) return;
+    for (const ds of state.datasets) {
+      ds.treeExpanded = String(ds?.id || "") === activeKey;
+    }
+  }
+
   function updateActiveDataset(fit = false, preserveBandTreeScroll = false, closeSpectrumOnChange = true) {
     const panel = getActivePanel();
     const nextId = panel?.datasetId || null;
     state.activeId = nextId;
+    syncBandTreeExpansionToActive();
     if (typeof syncActiveDatasetView === "function") syncActiveDatasetView();
     recomputeCacheBudgets();
     if (closeSpectrumOnChange) closeSpectrum();

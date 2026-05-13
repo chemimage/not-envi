@@ -40,6 +40,29 @@ describe("dataset runtime", () => {
     expect(deps.fitToScreen).toHaveBeenCalled();
   });
 
+  test("setActiveDataset expands the selected dataset and collapses other band trees", () => {
+    const ds1 = { id: "ds1", meta: {}, view: {}, treeExpanded: true };
+    const ds2 = { id: "ds2", meta: {}, view: {}, treeExpanded: false };
+    const state = {
+      datasets: [ds1, ds2],
+      activeId: "ds1",
+      activePanelSlot: 1,
+      nextLinkGroupId: 1,
+      displayPanels: [
+        { slot: 1, datasetId: "ds1", view: {}, annotations: {} },
+        { slot: 2, datasetId: "ds2", view: {}, annotations: {} }
+      ]
+    };
+    const deps = makeDeps(state);
+    const rt = createDatasetRuntime(deps);
+
+    rt.setActiveDataset("ds2");
+
+    expect(state.activeId).toBe("ds2");
+    expect(ds1.treeExpanded).toBe(false);
+    expect(ds2.treeExpanded).toBe(true);
+  });
+
   test("closeDataset removes dataset and cleans resources", () => {
     const ds = { id: "ds2", ds: { close: vi.fn() }, baseDs: { close: vi.fn() }, pyramid: { cancelled: false } };
     const state = { datasets: [ds], activeId: "ds2", renderSeq: 4, histViewDebounce: setTimeout(() => {}, 1000) };
