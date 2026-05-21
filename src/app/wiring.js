@@ -289,6 +289,11 @@ export function wireApp(deps) {
   if (els.expBandAll) els.expBandAll.oninput = () => updateExportEstimate();
   if (els.expScaled8) els.expScaled8.oninput = () => updateExportEstimate();
   if (els.expIncludeAnnotations) els.expIncludeAnnotations.oninput = () => updateExportEstimate();
+  if (els.expScaleBar) els.expScaleBar.oninput = () => updateExportEstimate();
+  if (els.expScaleBarSize) els.expScaleBarSize.oninput = () => updateExportEstimate();
+  if (els.expColorBar) els.expColorBar.oninput = () => updateExportEstimate();
+  if (els.expColorBarMin) els.expColorBarMin.oninput = () => updateExportEstimate();
+  if (els.expColorBarMax) els.expColorBarMax.oninput = () => updateExportEstimate();
 
   if (els.btnExpCancel) els.btnExpCancel.onclick = () => {
     try { els.exportDlg.close(); } catch { els.exportDlg.open = false; }

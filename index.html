@@ -350,6 +350,34 @@
     </label>
   </div>
 
+  <div id="expRenderedOverlaysWrap" style="margin-top:10px;">
+    <label class="small">Rendered overlays</label>
+    <div class="row" style="margin-top:6px; align-items:flex-start; gap:14px; flex-wrap:wrap;">
+      <label class="toggle" title="Add a scale bar to rendered exports">
+        <input type="checkbox" id="expScaleBar" />
+        <span>Scale bar</span>
+      </label>
+      <label class="toggle" title="Scale bar length in image pixels, or calibrated units if available">
+        <span>Size</span>
+        <input type="number" id="expScaleBarSize" min="0" step="any" placeholder="auto" style="width:86px;" />
+      </label>
+    </div>
+    <div class="row" style="margin-top:6px; align-items:flex-start; gap:14px; flex-wrap:wrap;">
+      <label class="toggle" title="Add a color bar to rendered exports">
+        <input type="checkbox" id="expColorBar" />
+        <span>Color bar</span>
+      </label>
+      <label class="toggle" title="Minimum value for export tone mapping and color bar">
+        <span>Min</span>
+        <input type="number" id="expColorBarMin" step="any" placeholder="display" style="width:92px;" />
+      </label>
+      <label class="toggle" title="Maximum value for export tone mapping and color bar">
+        <span>Max</span>
+        <input type="number" id="expColorBarMax" step="any" placeholder="display" style="width:92px;" />
+      </label>
+    </div>
+  </div>
+
   <div style="margin-top:10px;">
     <span class="badge" id="expWarning" style="display:none; border-color:#6b7280; color:#d1d5db;">Large export</span>
   </div>

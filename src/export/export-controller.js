@@ -38,6 +38,12 @@ export function createExportDialogController(deps) {
     return mode === "rendered" && !!els.expIncludeAnnotations?.checked;
   }
 
+  function hasExportColorRange() {
+    const minVal = Number(els.expColorBarMin?.value);
+    const maxVal = Number(els.expColorBarMax?.value);
+    return Number.isFinite(minVal) && Number.isFinite(maxVal) && minVal !== maxVal;
+  }
+
   function isEightBitDataset(ds) {
     return Number(ds?.meta?.dataTypeInfo?.bytes) === 1;
   }
@@ -180,6 +186,9 @@ export function createExportDialogController(deps) {
     if (els.expIncludeAnnotationsWrap) {
       els.expIncludeAnnotationsWrap.style.display = (mode === "rendered") ? "block" : "none";
     }
+    if (els.expRenderedOverlaysWrap) {
+      els.expRenderedOverlaysWrap.style.display = (mode === "rendered") ? "block" : "none";
+    }
 
     updateExportEstimate();
   }
@@ -283,6 +292,9 @@ export function createExportDialogController(deps) {
 
     if (mode === "rendered") {
       note += annotationsOn ? " Includes annotations." : " Annotations will be omitted.";
+      if (els.expScaleBar?.checked) note += " Includes scale bar.";
+      if (els.expColorBar?.checked) note += " Includes color bar.";
+      if (hasExportColorRange()) note += " Uses the export color range for tone mapping.";
     }
 
     els.expEstimate.textContent = `Estimated output: ${humanBytes(estBytes)}`;

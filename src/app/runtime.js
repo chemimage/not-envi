@@ -1139,8 +1139,8 @@ import { pointInPolygon } from "./draw-geometry.js";
     recenterViewAtFraction: (nx, ny) => recenterLinkedPanelsAtFraction(nx, ny)
   });
 
-  async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step){
-    return thumbnails.renderWindowToImageData(ds, band, x0, y0, outW, outH, step);
+  async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step, opts = {}){
+    return thumbnails.renderWindowToImageData(ds, band, x0, y0, outW, outH, step, opts);
   }
 
   function renderThumbnail(){

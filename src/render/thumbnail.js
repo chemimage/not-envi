@@ -178,12 +178,16 @@ export function createThumbnailController(deps) {
     }
   }
 
-  async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step) {
+  async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step, opts = {}) {
     const window = await readWindowF32(ds, band, x0, y0, outW, outH, step);
     try {
       const f32 = window.data;
       const settings = getBandSettings(ds, band);
-      const range = resolveDisplayRange(ds, band, f32);
+      const overrideMin = Number(opts?.displayRange?.minVal);
+      const overrideMax = Number(opts?.displayRange?.maxVal);
+      const range = (Number.isFinite(overrideMin) && Number.isFinite(overrideMax) && overrideMax !== overrideMin)
+        ? { minVal: Math.min(overrideMin, overrideMax), maxVal: Math.max(overrideMin, overrideMax) }
+        : resolveDisplayRange(ds, band, f32);
       const params = {
         minVal: range.minVal,
         maxVal: range.maxVal,

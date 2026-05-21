@@ -59,6 +59,29 @@ export function createExportService(deps) {
     return mode === "rendered" && !!deps.els.expIncludeAnnotations?.checked;
   }
 
+  function finiteNumberFromInput(input) {
+    const value = Number(input?.value);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function renderedExportOptionsFromDialog(kind = selectedKindFromDialog(), mode = selectedModeFromDialog(kind)) {
+    if (mode !== "rendered") return {};
+    const minVal = finiteNumberFromInput(deps.els.expColorBarMin);
+    const maxVal = finiteNumberFromInput(deps.els.expColorBarMax);
+    const hasRange = minVal != null && maxVal != null && minVal !== maxVal;
+    const range = hasRange
+      ? { minVal: Math.min(minVal, maxVal), maxVal: Math.max(minVal, maxVal) }
+      : null;
+    return {
+      includeAnnotations: includeAnnotationsFromDialog(kind, mode),
+      includeScaleBar: !!deps.els.expScaleBar?.checked,
+      scaleBarSize: finiteNumberFromInput(deps.els.expScaleBarSize),
+      includeColorBar: !!deps.els.expColorBar?.checked,
+      colorBarRange: range,
+      displayRange: range
+    };
+  }
+
   function bandExportToken(ds, bandIndices) {
     if (Array.isArray(bandIndices) && bandIndices.length === 1) {
       return sanitizeFilePart(deps.bandLabel(ds, bandIndices[0]));
@@ -427,7 +450,7 @@ export function createExportService(deps) {
     return canvas;
   }
 
-  async function renderViewportToImageData(ds, band, rect) {
+  async function renderViewportToImageData(ds, band, rect, opts = {}) {
     const viewport = viewportCssSize();
     const geom = resolveRasterSampling(ds, viewport.width, viewport.height, Number(ds?.view?.scale) || 1);
     const canvas = document.createElement("canvas");
@@ -438,7 +461,9 @@ export function createExportService(deps) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (geom.validW > 0 && geom.validH > 0) {
-      const src = await deps.renderWindowToImageData(ds, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step);
+      const src = await deps.renderWindowToImageData(ds, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step, {
+        displayRange: opts.displayRange || opts.colorBarRange || null
+      });
       const srcCanvas = imageDataToCanvas(src);
       const displayRect = geom.displayRect || { x: 0, y: 0, w: canvas.width, h: canvas.height };
       ctx.imageSmoothingEnabled = false;
@@ -540,6 +565,119 @@ export function createExportService(deps) {
     return ctx.getImageData(0, 0, canvas.width, canvas.height);
   }
 
+  function formatExportNumber(v) {
+    if (!Number.isFinite(v)) return "";
+    const a = Math.abs(v);
+    if (a !== 0 && (a < 0.001 || a >= 100000)) return Number(v).toExponential(3).replace(/0+e/, "e");
+    return String(Number(v.toPrecision(6))).replace(/\.0+$/, "");
+  }
+
+  function formatExportDistance(ds, imgPx) {
+    const sc = ds?.meta?.scale;
+    const umPerPx = Number(sc?.umPerPixelX);
+    if (Number.isFinite(umPerPx) && umPerPx > 0) {
+      const um = imgPx * umPerPx;
+      if (Math.abs(um) >= 1000) return `${formatExportNumber(um / 1000)} mm`;
+      if (Math.abs(um) >= 1) return `${formatExportNumber(um)} um`;
+      return `${formatExportNumber(um * 1000)} nm`;
+    }
+    return `${formatExportNumber(imgPx)} px`;
+  }
+
+  function resolveScaleBarImagePixels(ds, rect, outputW, requestedSize) {
+    const rawSize = Number(requestedSize);
+    if (Number.isFinite(rawSize) && rawSize > 0) {
+      const umPerPx = Number(ds?.meta?.scale?.umPerPixelX);
+      return (Number.isFinite(umPerPx) && umPerPx > 0) ? rawSize / umPerPx : rawSize;
+    }
+    const target = Math.max(1, Number(rect?.w) || 1) * 0.22;
+    const pow = Math.pow(10, Math.floor(Math.log10(target)));
+    const base = target / pow;
+    const nice = base >= 5 ? 5 : base >= 2 ? 2 : 1;
+    return nice * pow;
+  }
+
+  function drawExportScaleBar(ctx, ds, rect, outputW, outputH, requestedSize) {
+    const imgPx = resolveScaleBarImagePixels(ds, rect, outputW, requestedSize);
+    const pxPerImg = outputW / Math.max(1, Number(rect?.w) || 1);
+    const barW = deps.clamp(Math.round(imgPx * pxPerImg), 12, Math.max(12, outputW - 28));
+    const pad = Math.max(10, Math.round(Math.min(outputW, outputH) * 0.018));
+    const tick = Math.max(6, Math.round(pad * 0.55));
+    const fontPx = Math.max(12, Math.round(Math.min(outputW, outputH) * 0.025));
+    const label = formatExportDistance(ds, imgPx);
+    ctx.save();
+    ctx.font = `${fontPx}px Arial, sans-serif`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    const textW = ctx.measureText(label).width;
+    const boxW = Math.max(barW, textW) + (pad * 2);
+    const boxH = fontPx + tick + (pad * 2);
+    const x0 = pad;
+    const y0 = outputH - boxH - pad;
+    ctx.fillStyle = "rgba(0,0,0,0.58)";
+    ctx.fillRect(x0, y0, boxW, boxH);
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = Math.max(2, Math.round(fontPx * 0.16));
+    const bx0 = x0 + pad;
+    const by = y0 + pad;
+    ctx.beginPath();
+    ctx.moveTo(bx0, by);
+    ctx.lineTo(bx0 + barW, by);
+    ctx.moveTo(bx0, by);
+    ctx.lineTo(bx0, by + tick);
+    ctx.moveTo(bx0 + barW, by);
+    ctx.lineTo(bx0 + barW, by + tick);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.fillText(label, bx0, y0 + boxH - pad);
+    ctx.restore();
+  }
+
+  function resolveExportColorRange(ds, bandIndex, explicitRange) {
+    const minVal = Number(explicitRange?.minVal);
+    const maxVal = Number(explicitRange?.maxVal);
+    if (Number.isFinite(minVal) && Number.isFinite(maxVal) && minVal !== maxVal) {
+      return { minVal: Math.min(minVal, maxVal), maxVal: Math.max(minVal, maxVal) };
+    }
+    return resolveBandDisplayRange(ds, bandIndex, null);
+  }
+
+  function drawExportColorBar(ctx, ds, bandIndex, outputW, outputH, explicitRange) {
+    const range = resolveExportColorRange(ds, bandIndex, explicitRange);
+    const pad = Math.max(10, Math.round(Math.min(outputW, outputH) * 0.018));
+    const fontPx = Math.max(12, Math.round(Math.min(outputW, outputH) * 0.024));
+    const barW = Math.max(12, Math.round(fontPx * 0.9));
+    const barH = Math.max(80, Math.round(outputH * 0.34));
+    const maxLabel = formatExportNumber(range.maxVal);
+    const minLabel = formatExportNumber(range.minVal);
+    ctx.save();
+    ctx.font = `${fontPx}px Arial, sans-serif`;
+    const labelW = Math.max(ctx.measureText(maxLabel).width, ctx.measureText(minLabel).width);
+    const boxW = barW + labelW + (pad * 3);
+    const boxH = barH + (pad * 2);
+    const x0 = outputW - boxW - pad;
+    const y0 = outputH - boxH - pad;
+    ctx.fillStyle = "rgba(0,0,0,0.58)";
+    ctx.fillRect(x0, y0, boxW, boxH);
+    const bx = x0 + pad;
+    const by = y0 + pad;
+    const grad = ctx.createLinearGradient(0, by + barH, 0, by);
+    grad.addColorStop(0, "#000");
+    grad.addColorStop(1, "#fff");
+    ctx.fillStyle = grad;
+    ctx.fillRect(bx, by, barW, barH);
+    ctx.strokeStyle = "rgba(255,255,255,0.86)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by, barW, barH);
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(maxLabel, bx + barW + pad, by);
+    ctx.textBaseline = "bottom";
+    ctx.fillText(minLabel, bx + barW + pad, by + barH);
+    ctx.restore();
+  }
+
   function finalizeRenderedImage(ds, rect, imageData, opts = {}) {
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Number(opts.outputW || imageData?.width || rect?.w || 1));
@@ -552,6 +690,12 @@ export function createExportService(deps) {
         outputH: canvas.height,
         omitSelectionOverlay: !!opts.omitSelectionOverlay
       });
+    }
+    if (opts.includeScaleBar) {
+      drawExportScaleBar(ctx, ds, rect, canvas.width, canvas.height, opts.scaleBarSize);
+    }
+    if (opts.includeColorBar) {
+      drawExportColorBar(ctx, ds, opts.bandIndex, canvas.width, canvas.height, opts.colorBarRange);
     }
     return imageDataFromCanvas(canvas);
   }
@@ -570,7 +714,9 @@ export function createExportService(deps) {
     }
 
     if (srcWin.w > 0 && srcWin.h > 0) {
-      const src = await deps.renderWindowToImageData(ds, bandIndex, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1);
+      const src = await deps.renderWindowToImageData(ds, bandIndex, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1, {
+        displayRange: opts.displayRange || opts.colorBarRange || null
+      });
       for (let row = 0; row < srcWin.h; row += 1) {
         const outRow = row + srcWin.offY;
         for (let col = 0; col < srcWin.w; col += 1) {
@@ -592,16 +738,23 @@ export function createExportService(deps) {
       outputW: job.w,
       outputH: job.h,
       includeAnnotations: !!opts.includeAnnotations,
-      omitSelectionOverlay: !!opts.omitSelectionOverlay
+      omitSelectionOverlay: !!opts.omitSelectionOverlay,
+      includeScaleBar: !!opts.includeScaleBar,
+      scaleBarSize: opts.scaleBarSize,
+      includeColorBar: !!opts.includeColorBar,
+      colorBarRange: opts.colorBarRange,
+      bandIndex
     });
   }
 
   async function buildRenderedImageData(ds, bandIndex, rect, scope = "window", opts = {}) {
     const target = resolveRenderedExportTarget(ds, scope, rect);
     const rendered = target.mode === "viewport"
-      ? await renderViewportToImageData(ds, bandIndex, target.rect)
+      ? await renderViewportToImageData(ds, bandIndex, target.rect, opts)
       : {
-          imageData: await deps.renderWindowToImageData(ds, bandIndex, target.rect.x0, target.rect.y0, target.outputW, target.outputH, 1),
+          imageData: await deps.renderWindowToImageData(ds, bandIndex, target.rect.x0, target.rect.y0, target.outputW, target.outputH, 1, {
+            displayRange: opts.displayRange || opts.colorBarRange || null
+          }),
           outputW: target.outputW,
           outputH: target.outputH,
           rect: target.rect
@@ -610,7 +763,12 @@ export function createExportService(deps) {
       outputW: target.outputW,
       outputH: target.outputH,
       includeAnnotations: !!opts.includeAnnotations,
-      omitSelectionOverlay: !!opts.omitSelectionOverlay
+      omitSelectionOverlay: !!opts.omitSelectionOverlay,
+      includeScaleBar: !!opts.includeScaleBar,
+      scaleBarSize: opts.scaleBarSize,
+      includeColorBar: !!opts.includeColorBar,
+      colorBarRange: opts.colorBarRange,
+      bandIndex
     });
     return {
       imageData: finalImage,
@@ -863,6 +1021,7 @@ export function createExportService(deps) {
     const bandIndices = selectedBandIndices(ds, kind);
     const includeAnnotations = includeAnnotationsFromDialog(kind, mode);
     const scaled8 = useScaled8FromDialog(ds, kind, mode);
+    const renderedOpts = renderedExportOptionsFromDialog(kind, mode);
     deps.state.exportKind = kind;
     const selections = collectAreaSelections(ds);
 
@@ -887,13 +1046,14 @@ export function createExportService(deps) {
     if (scope === "sel" && selections.length) {
       const plan = resolveSelectionExportPlan(ds, selections, false);
       await exportRenderedSelectionJobs(ds, kind, plan.jobs, bandIndices, {
+        ...renderedOpts,
         includeAnnotations,
         omitSelectionOverlay: true
       });
       return;
     }
     const rect = resolveExportRect(ds, "view");
-    await exportRendered(ds, kind, rect, "view", bandIndices, { includeAnnotations });
+    await exportRendered(ds, kind, rect, "view", bandIndices, { ...renderedOpts, includeAnnotations });
   }
 
   return {
