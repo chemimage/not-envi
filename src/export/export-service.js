@@ -68,7 +68,7 @@ export function createExportService(deps) {
     const corner = String(value || "").toLowerCase();
     return ["top-left", "top-right", "bottom-left", "bottom-right"].includes(corner)
       ? corner
-      : "bottom-left";
+      : "bottom-right";
   }
 
   function renderedExportOptionsFromDialog(kind = selectedKindFromDialog(), mode = selectedModeFromDialog(kind)) {
