@@ -130,6 +130,7 @@ export function collectElements() {
     expRenderedOverlaysWrap: $("#expRenderedOverlaysWrap"),
     expScaleBar: $("#expScaleBar"),
     expScaleBarSize: $("#expScaleBarSize"),
+    expBarCorner: $("#expBarCorner"),
     expColorBar: $("#expColorBar"),
     expColorBarMin: $("#expColorBarMin"),
     expColorBarMax: $("#expColorBarMax"),

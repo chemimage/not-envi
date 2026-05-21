@@ -361,6 +361,15 @@
         <span>Size</span>
         <input type="number" id="expScaleBarSize" min="0" step="any" placeholder="auto" style="width:86px;" />
       </label>
+      <label class="toggle" title="Place export bars in a corner">
+        <span>Corner</span>
+        <select id="expBarCorner" style="width:118px;">
+          <option value="bottom-left" selected>Bottom left</option>
+          <option value="bottom-right">Bottom right</option>
+          <option value="top-left">Top left</option>
+          <option value="top-right">Top right</option>
+        </select>
+      </label>
     </div>
     <div class="row" style="margin-top:6px; align-items:flex-start; gap:14px; flex-wrap:wrap;">
       <label class="toggle" title="Add a color bar to rendered exports">

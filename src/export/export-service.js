@@ -64,6 +64,13 @@ export function createExportService(deps) {
     return Number.isFinite(value) ? value : null;
   }
 
+  function normalizeExportBarCorner(value) {
+    const corner = String(value || "").toLowerCase();
+    return ["top-left", "top-right", "bottom-left", "bottom-right"].includes(corner)
+      ? corner
+      : "bottom-left";
+  }
+
   function renderedExportOptionsFromDialog(kind = selectedKindFromDialog(), mode = selectedModeFromDialog(kind)) {
     if (mode !== "rendered") return {};
     const minVal = finiteNumberFromInput(deps.els.expColorBarMin);
@@ -76,6 +83,7 @@ export function createExportService(deps) {
       includeAnnotations: includeAnnotationsFromDialog(kind, mode),
       includeScaleBar: !!deps.els.expScaleBar?.checked,
       scaleBarSize: finiteNumberFromInput(deps.els.expScaleBarSize),
+      barCorner: normalizeExportBarCorner(deps.els.expBarCorner?.value),
       includeColorBar: !!deps.els.expColorBar?.checked,
       colorBarRange: range,
       displayRange: range
@@ -597,40 +605,78 @@ export function createExportService(deps) {
     return nice * pow;
   }
 
-  function drawExportScaleBar(ctx, ds, rect, outputW, outputH, requestedSize) {
-    const imgPx = resolveScaleBarImagePixels(ds, rect, outputW, requestedSize);
+  function exportBarMetrics(ctx, ds, rect, outputW, outputH, opts = {}) {
+    const imgPx = resolveScaleBarImagePixels(ds, rect, outputW, opts.scaleBarSize);
     const pxPerImg = outputW / Math.max(1, Number(rect?.w) || 1);
     const barW = deps.clamp(Math.round(imgPx * pxPerImg), 12, Math.max(12, outputW - 28));
     const pad = Math.max(10, Math.round(Math.min(outputW, outputH) * 0.018));
     const tick = Math.max(6, Math.round(pad * 0.55));
     const fontPx = Math.max(12, Math.round(Math.min(outputW, outputH) * 0.025));
-    const label = formatExportDistance(ds, imgPx);
+    const scaleLabel = formatExportDistance(ds, imgPx);
+    const colorRange = resolveExportColorRange(ds, opts.bandIndex, opts.colorBarRange);
+    const colorMinLabel = formatExportNumber(colorRange.minVal);
+    const colorMaxLabel = formatExportNumber(colorRange.maxVal);
+    const colorGap = Math.max(6, Math.round(pad * 0.55));
+    const colorBarH = Math.max(10, Math.round(fontPx * 0.75));
+    const colorBarW = Math.max(barW, Math.round(Math.min(outputW * 0.34, Math.max(72, outputW - (pad * 4)))));
     ctx.save();
     ctx.font = `${fontPx}px Arial, sans-serif`;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "bottom";
-    const textW = ctx.measureText(label).width;
-    const boxW = Math.max(barW, textW) + (pad * 2);
-    const boxH = fontPx + tick + (pad * 2);
-    const x0 = pad;
-    const y0 = outputH - boxH - pad;
+    const labelTextW = Math.max(
+      ctx.measureText(scaleLabel).width,
+      ctx.measureText(colorMinLabel).width + ctx.measureText(colorMaxLabel).width + pad,
+      colorBarW
+    );
+    ctx.restore();
+    const scaleH = fontPx + tick + colorGap;
+    const colorH = opts.includeColorBar ? (fontPx + colorBarH + colorGap) : 0;
+    return {
+      pad,
+      tick,
+      fontPx,
+      colorGap,
+      imgPx,
+      scaleBarW: barW,
+      colorBarW,
+      colorBarH,
+      scaleLabel,
+      colorRange,
+      colorMinLabel,
+      colorMaxLabel,
+      boxW: Math.ceil(labelTextW + (pad * 2)),
+      boxH: Math.ceil(pad + colorH + scaleH + pad)
+    };
+  }
+
+  function resolveExportBarBox(outputW, outputH, metrics, corner) {
+    const pad = metrics.pad;
+    const normalized = normalizeExportBarCorner(corner);
+    const left = normalized.endsWith("left");
+    const top = normalized.startsWith("top");
+    return {
+      corner: normalized,
+      x0: left ? pad : outputW - metrics.boxW - pad,
+      y0: top ? pad : outputH - metrics.boxH - pad
+    };
+  }
+
+  function drawExportScaleBar(ctx, metrics, x0, yCursor) {
+    const bx0 = x0 + metrics.pad;
+    const by = yCursor;
     ctx.fillStyle = "rgba(0,0,0,0.58)";
-    ctx.fillRect(x0, y0, boxW, boxH);
     ctx.strokeStyle = "rgba(255,255,255,0.95)";
-    ctx.lineWidth = Math.max(2, Math.round(fontPx * 0.16));
-    const bx0 = x0 + pad;
-    const by = y0 + pad;
+    ctx.lineWidth = Math.max(2, Math.round(metrics.fontPx * 0.16));
     ctx.beginPath();
     ctx.moveTo(bx0, by);
-    ctx.lineTo(bx0 + barW, by);
+    ctx.lineTo(bx0 + metrics.scaleBarW, by);
     ctx.moveTo(bx0, by);
-    ctx.lineTo(bx0, by + tick);
-    ctx.moveTo(bx0 + barW, by);
-    ctx.lineTo(bx0 + barW, by + tick);
+    ctx.lineTo(bx0, by + metrics.tick);
+    ctx.moveTo(bx0 + metrics.scaleBarW, by);
+    ctx.lineTo(bx0 + metrics.scaleBarW, by + metrics.tick);
     ctx.stroke();
     ctx.fillStyle = "rgba(255,255,255,0.95)";
-    ctx.fillText(label, bx0, y0 + boxH - pad);
-    ctx.restore();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(metrics.scaleLabel, bx0, yCursor + metrics.tick + metrics.colorGap + metrics.fontPx);
   }
 
   function resolveExportColorRange(ds, bandIndex, explicitRange) {
@@ -642,39 +688,42 @@ export function createExportService(deps) {
     return resolveBandDisplayRange(ds, bandIndex, null);
   }
 
-  function drawExportColorBar(ctx, ds, bandIndex, outputW, outputH, explicitRange) {
-    const range = resolveExportColorRange(ds, bandIndex, explicitRange);
-    const pad = Math.max(10, Math.round(Math.min(outputW, outputH) * 0.018));
-    const fontPx = Math.max(12, Math.round(Math.min(outputW, outputH) * 0.024));
-    const barW = Math.max(12, Math.round(fontPx * 0.9));
-    const barH = Math.max(80, Math.round(outputH * 0.34));
-    const maxLabel = formatExportNumber(range.maxVal);
-    const minLabel = formatExportNumber(range.minVal);
-    ctx.save();
-    ctx.font = `${fontPx}px Arial, sans-serif`;
-    const labelW = Math.max(ctx.measureText(maxLabel).width, ctx.measureText(minLabel).width);
-    const boxW = barW + labelW + (pad * 3);
-    const boxH = barH + (pad * 2);
-    const x0 = outputW - boxW - pad;
-    const y0 = outputH - boxH - pad;
-    ctx.fillStyle = "rgba(0,0,0,0.58)";
-    ctx.fillRect(x0, y0, boxW, boxH);
-    const bx = x0 + pad;
-    const by = y0 + pad;
-    const grad = ctx.createLinearGradient(0, by + barH, 0, by);
+  function drawExportColorBar(ctx, metrics, x0, yCursor) {
+    const bx = x0 + metrics.pad;
+    const by = yCursor + metrics.fontPx + Math.round(metrics.colorGap * 0.35);
+    const grad = ctx.createLinearGradient(bx, 0, bx + metrics.colorBarW, 0);
     grad.addColorStop(0, "#000");
     grad.addColorStop(1, "#fff");
     ctx.fillStyle = grad;
-    ctx.fillRect(bx, by, barW, barH);
+    ctx.fillRect(bx, by, metrics.colorBarW, metrics.colorBarH);
     ctx.strokeStyle = "rgba(255,255,255,0.86)";
     ctx.lineWidth = 1;
-    ctx.strokeRect(bx, by, barW, barH);
+    ctx.strokeRect(bx, by, metrics.colorBarW, metrics.colorBarH);
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText(maxLabel, bx + barW + pad, by);
     ctx.textBaseline = "bottom";
-    ctx.fillText(minLabel, bx + barW + pad, by + barH);
+    ctx.fillText(metrics.colorMinLabel, bx, yCursor + metrics.fontPx);
+    ctx.textAlign = "right";
+    ctx.fillText(metrics.colorMaxLabel, bx + metrics.colorBarW, yCursor + metrics.fontPx);
+  }
+
+  function drawExportBars(ctx, ds, rect, outputW, outputH, opts = {}) {
+    if (!opts.includeScaleBar && !opts.includeColorBar) return;
+    const metrics = exportBarMetrics(ctx, ds, rect, outputW, outputH, opts);
+    const { x0, y0 } = resolveExportBarBox(outputW, outputH, metrics, opts.barCorner);
+    ctx.save();
+    ctx.font = `${metrics.fontPx}px Arial, sans-serif`;
+    ctx.fillStyle = "rgba(0,0,0,0.58)";
+    ctx.fillRect(x0, y0, metrics.boxW, metrics.boxH);
+    let yCursor = y0 + metrics.pad;
+    if (opts.includeColorBar) {
+      drawExportColorBar(ctx, metrics, x0, yCursor);
+      yCursor += metrics.fontPx + metrics.colorBarH + (metrics.colorGap * 2);
+    }
+    if (opts.includeScaleBar) {
+      drawExportScaleBar(ctx, metrics, x0, yCursor);
+    }
+    ctx.textBaseline = "bottom";
     ctx.restore();
   }
 
@@ -691,12 +740,7 @@ export function createExportService(deps) {
         omitSelectionOverlay: !!opts.omitSelectionOverlay
       });
     }
-    if (opts.includeScaleBar) {
-      drawExportScaleBar(ctx, ds, rect, canvas.width, canvas.height, opts.scaleBarSize);
-    }
-    if (opts.includeColorBar) {
-      drawExportColorBar(ctx, ds, opts.bandIndex, canvas.width, canvas.height, opts.colorBarRange);
-    }
+    drawExportBars(ctx, ds, rect, canvas.width, canvas.height, opts);
     return imageDataFromCanvas(canvas);
   }
 
@@ -741,6 +785,7 @@ export function createExportService(deps) {
       omitSelectionOverlay: !!opts.omitSelectionOverlay,
       includeScaleBar: !!opts.includeScaleBar,
       scaleBarSize: opts.scaleBarSize,
+      barCorner: opts.barCorner,
       includeColorBar: !!opts.includeColorBar,
       colorBarRange: opts.colorBarRange,
       bandIndex
@@ -766,6 +811,7 @@ export function createExportService(deps) {
       omitSelectionOverlay: !!opts.omitSelectionOverlay,
       includeScaleBar: !!opts.includeScaleBar,
       scaleBarSize: opts.scaleBarSize,
+      barCorner: opts.barCorner,
       includeColorBar: !!opts.includeColorBar,
       colorBarRange: opts.colorBarRange,
       bandIndex
