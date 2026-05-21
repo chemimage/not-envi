@@ -618,13 +618,12 @@ export function createExportService(deps) {
     const colorMaxLabel = formatExportNumber(colorRange.maxVal);
     const colorGap = Math.max(6, Math.round(pad * 0.55));
     const colorBarH = Math.max(10, Math.round(fontPx * 0.75));
-    const colorBarW = Math.max(barW, Math.round(Math.min(outputW * 0.34, Math.max(72, outputW - (pad * 4)))));
     ctx.save();
     ctx.font = `${fontPx}px Arial, sans-serif`;
     const labelTextW = Math.max(
       ctx.measureText(scaleLabel).width,
       ctx.measureText(colorMinLabel).width + ctx.measureText(colorMaxLabel).width + pad,
-      colorBarW
+      barW
     );
     ctx.restore();
     const scaleH = fontPx + tick + colorGap;
@@ -635,8 +634,7 @@ export function createExportService(deps) {
       fontPx,
       colorGap,
       imgPx,
-      scaleBarW: barW,
-      colorBarW,
+      barW,
       colorBarH,
       scaleLabel,
       colorRange,
@@ -662,16 +660,15 @@ export function createExportService(deps) {
   function drawExportScaleBar(ctx, metrics, x0, yCursor) {
     const bx0 = x0 + metrics.pad;
     const by = yCursor;
-    ctx.fillStyle = "rgba(0,0,0,0.58)";
     ctx.strokeStyle = "rgba(255,255,255,0.95)";
     ctx.lineWidth = Math.max(2, Math.round(metrics.fontPx * 0.16));
     ctx.beginPath();
     ctx.moveTo(bx0, by);
-    ctx.lineTo(bx0 + metrics.scaleBarW, by);
+    ctx.lineTo(bx0 + metrics.barW, by);
     ctx.moveTo(bx0, by);
     ctx.lineTo(bx0, by + metrics.tick);
-    ctx.moveTo(bx0 + metrics.scaleBarW, by);
-    ctx.lineTo(bx0 + metrics.scaleBarW, by + metrics.tick);
+    ctx.moveTo(bx0 + metrics.barW, by);
+    ctx.lineTo(bx0 + metrics.barW, by + metrics.tick);
     ctx.stroke();
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.textAlign = "left";
@@ -691,20 +688,20 @@ export function createExportService(deps) {
   function drawExportColorBar(ctx, metrics, x0, yCursor) {
     const bx = x0 + metrics.pad;
     const by = yCursor + metrics.fontPx + Math.round(metrics.colorGap * 0.35);
-    const grad = ctx.createLinearGradient(bx, 0, bx + metrics.colorBarW, 0);
+    const grad = ctx.createLinearGradient(bx, 0, bx + metrics.barW, 0);
     grad.addColorStop(0, "#000");
     grad.addColorStop(1, "#fff");
     ctx.fillStyle = grad;
-    ctx.fillRect(bx, by, metrics.colorBarW, metrics.colorBarH);
+    ctx.fillRect(bx, by, metrics.barW, metrics.colorBarH);
     ctx.strokeStyle = "rgba(255,255,255,0.86)";
     ctx.lineWidth = 1;
-    ctx.strokeRect(bx, by, metrics.colorBarW, metrics.colorBarH);
+    ctx.strokeRect(bx, by, metrics.barW, metrics.colorBarH);
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
     ctx.fillText(metrics.colorMinLabel, bx, yCursor + metrics.fontPx);
     ctx.textAlign = "right";
-    ctx.fillText(metrics.colorMaxLabel, bx + metrics.colorBarW, yCursor + metrics.fontPx);
+    ctx.fillText(metrics.colorMaxLabel, bx + metrics.barW, yCursor + metrics.fontPx);
   }
 
   function drawExportBars(ctx, ds, rect, outputW, outputH, opts = {}) {
@@ -713,8 +710,6 @@ export function createExportService(deps) {
     const { x0, y0 } = resolveExportBarBox(outputW, outputH, metrics, opts.barCorner);
     ctx.save();
     ctx.font = `${metrics.fontPx}px Arial, sans-serif`;
-    ctx.fillStyle = "rgba(0,0,0,0.58)";
-    ctx.fillRect(x0, y0, metrics.boxW, metrics.boxH);
     let yCursor = y0 + metrics.pad;
     if (opts.includeColorBar) {
       drawExportColorBar(ctx, metrics, x0, yCursor);
