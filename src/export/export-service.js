@@ -135,7 +135,15 @@ export function createExportService(deps) {
       els: { overlayCanvas: { width: outputW, height: outputH }, btnGrid: null, chkGrid: null },
       overlayCtx: ctx,
       getDevicePixelRatio: () => 1,
-      getDrawData: (dataset, explicitState = null) => deps.getDrawData(dataset, explicitState)
+      getDrawData: (dataset, explicitState = null) => {
+        const drawData = deps.getDrawData(dataset, explicitState);
+        if (!drawData) return drawData;
+        return {
+          ...drawData,
+          selectionIds: [],
+          marqueeOffset: 0
+        };
+      }
     });
     const exportDataset = {
       ...ds,
@@ -149,6 +157,7 @@ export function createExportService(deps) {
     overlayRenderer.drawOverlaysForPanel(exportDataset, { x: 0, y: 0, w: outputW, h: outputH }, {
       active: false,
       showScaleBar: false,
+      showImageBounds: false,
       borderColor: "rgba(0,0,0,0)",
       label: "",
       annotations: normalizeAnnotationState(ds, { omitSelectionOverlay: !!opts.omitSelectionOverlay })

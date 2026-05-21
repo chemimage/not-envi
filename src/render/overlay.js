@@ -574,7 +574,7 @@ export function createOverlayRenderer(deps) {
       overlayCtx.stroke();
     }
 
-    const imgRect = computeRenderedImageRect(ds, viewport);
+    const imgRect = opts.showImageBounds === false ? null : computeRenderedImageRect(ds, viewport);
     if (imgRect && (imgRect.w < (viewport.w - 1) || imgRect.h < (viewport.h - 1))) {
       overlayCtx.save();
       overlayCtx.setLineDash([4 * dpr, 4 * dpr]);
