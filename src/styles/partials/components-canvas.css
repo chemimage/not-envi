@@ -319,21 +319,20 @@
   }
 
   .analysis-hist-body {
-    @apply min-h-0 flex-none overflow-auto p-2.5;
+    @apply min-h-0 flex-none overflow-auto p-0;
   }
 
   #analysisHistCanvas {
-    @apply block h-[228px] w-full bg-gray-900 font-mono text-sm text-gray-200;
+    @apply block h-[228px] w-full bg-transparent font-mono text-sm text-gray-200;
     --hist-accent: rgb(34 211 238 / 0.96);
     --hist-accent-muted: rgb(34 211 238 / 0.72);
     --hist-accent-region: rgb(34 211 238 / 0.14);
     --hist-muted: rgb(156 163 175 / 0.9);
     --hist-overlay: rgb(17 24 39 / 0.82);
-    box-shadow: inset 0 0 0 1px rgb(226 232 240 / 0.22);
   }
 
   .analysis-hist-meta {
-    @apply mb-1 flex items-start justify-between gap-3;
+    @apply mb-1 flex items-start justify-between gap-3 px-2.5 pt-2.5;
   }
 
   .analysis-hist-summary {
@@ -358,7 +357,7 @@
   }
 
   .analysis-hist-warning {
-    @apply mt-1 rounded-sm border border-amber-500/30 bg-amber-950/30 px-2 py-1 text-[11px] leading-4 text-amber-200;
+    @apply mx-2.5 mb-2.5 mt-1 rounded-sm border border-amber-500/30 bg-amber-950/30 px-2 py-1 text-[11px] leading-4 text-amber-200;
   }
 
   #overlayHUD {

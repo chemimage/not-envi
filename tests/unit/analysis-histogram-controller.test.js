@@ -162,5 +162,6 @@ describe("analysis-histogram-controller", () => {
     expect(drawnText[binsLabelIndex]).toMatchObject({ font: expect.stringContaining("12px"), textAlign: "right" });
     expect(drawnText[binsLabelIndex + 2]).toMatchObject({ text: "3", textAlign: "left" });
     expect(canvasCtx.fillRect).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), 140, 40);
+    expect(canvasCtx.strokeRect).not.toHaveBeenCalled();
   });
 });

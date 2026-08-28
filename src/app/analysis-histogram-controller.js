@@ -127,8 +127,6 @@ export function createAnalysisHistogramController(deps) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "rgba(17,24,39,0.96)";
-    ctx.fillRect(0, 0, w, h);
 
     if (!stats || !stats.bins || !stats.bins.length) {
       ctx.fillStyle = "rgba(209,213,219,0.9)";
@@ -185,22 +183,12 @@ export function createAnalysisHistogramController(deps) {
     ctx.lineTo(meanX, plotBottom + (5 * dpr));
     ctx.stroke();
 
-    // Keep a visible light frame around the active histogram plotting region.
-    const borderW = 1 * dpr;
-    const inset = borderW * 0.5;
-    ctx.strokeStyle = "rgba(229,231,235,0.38)";
-    ctx.lineWidth = borderW;
-    ctx.strokeRect(
-      plot.plotX0 + inset,
-      plot.plotY0 + inset,
-      Math.max(0, plot.plotW - borderW),
-      Math.max(0, plot.plotH - borderW)
-    );
-
     const tickHeight = 5 * dpr;
     ctx.strokeStyle = "rgba(209,213,219,0.75)";
     ctx.lineWidth = 1 * dpr;
     ctx.beginPath();
+    ctx.moveTo(plot.plotX0, plotBottom);
+    ctx.lineTo(plotRight, plotBottom);
     ctx.moveTo(plot.plotX0, plotBottom);
     ctx.lineTo(plot.plotX0, plotBottom + tickHeight);
     ctx.moveTo(plotRight, plotBottom);
