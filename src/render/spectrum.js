@@ -88,6 +88,7 @@ export function createSpectrumController(deps) {
   function showSpectrumPanel(show) {
     if (!els.specPanel) return;
     els.specPanel.style.display = show ? "flex" : "none";
+    els.specPanel.setAttribute?.("aria-hidden", show ? "false" : "true");
     specState.open = !!show;
   }
 

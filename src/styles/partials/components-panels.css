@@ -307,6 +307,18 @@
     @apply flex items-center justify-between gap-2 px-2 py-1.5;
   }
 
+  .spec-title-row {
+    @apply flex items-center gap-1.5;
+  }
+
+  .floating-window-grip {
+    @apply text-xs text-gray-500;
+  }
+
+  .floating-window-header:hover .floating-window-grip {
+    @apply text-gray-300;
+  }
+
   .spec-head-right {
     @apply flex items-center gap-1.5;
   }

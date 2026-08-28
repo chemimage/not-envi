@@ -166,7 +166,10 @@ export function wireDrawToolInteractions(deps) {
       els.iconToolAreaMode.classList.remove("fa-object-group", "fa-object-ungroup");
       els.iconToolAreaMode.classList.add(singleArea ? "fa-object-ungroup" : "fa-object-group");
     }
-    if (els.btnToolSpectral) els.btnToolSpectral.classList.toggle("active", spectral);
+    if (els.btnToolSpectral) {
+      els.btnToolSpectral.classList.toggle("active", spectral);
+      els.btnToolSpectral.setAttribute?.("aria-pressed", spectral ? "true" : "false");
+    }
     if (getDrawColor) {
       const color = getDrawColor();
       if (els.drawTools && els.drawTools.style) {
@@ -657,7 +660,12 @@ export function wireDrawToolInteractions(deps) {
   if (els.btnSpecClose) {
     els.btnSpecClose.onclick = (ev) => {
       ev.stopPropagation();
-      closeSpectrum();
+      if (setSpectrumPickEnabled) {
+        setSpectralActive(false);
+        syncDrawToolUI();
+      } else {
+        closeSpectrum();
+      }
     };
   }
   if (els.btnSpecCSV) {

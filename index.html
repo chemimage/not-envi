@@ -83,7 +83,7 @@
           <i class="fa-solid fa-eraser" aria-hidden="true"></i>
         </button>
         <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
-        <button class="draw-tool-btn" id="btnToolSpectral" type="button" title="Spectral" aria-label="Spectral">
+        <button class="draw-tool-btn" id="btnToolSpectral" type="button" title="Spectral" aria-label="Spectral" aria-pressed="false">
           <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
         </button>
         <button class="draw-tool-btn" id="btnToolHistogram" type="button" title="Spatial" aria-label="Spatial">
@@ -267,10 +267,13 @@
     </div>
 
     <!-- Spectrum (z-profile) panel: double-click in the view to open -->
-    <div id="specPanel" class="spec-panel" data-ui-surface style="display:none;" role="dialog" aria-labelledby="specTitle">
+    <div id="specPanel" class="spec-panel" data-ui-surface style="display:none;" role="dialog" aria-labelledby="specTitle" aria-hidden="true">
       <div class="spec-head floating-window-header">
         <div class="spec-head-left">
-          <div class="spec-title" id="specTitle">Spectrum</div>
+          <div class="spec-title-row">
+            <i class="fa-solid fa-grip-lines floating-window-grip" aria-hidden="true"></i>
+            <div class="spec-title" id="specTitle">Spectrum</div>
+          </div>
           <div class="spec-sub" id="specSub">—</div>
           <div class="spec-warning tiny" id="specWarn" style="display:none;"></div>
         </div>
