@@ -147,11 +147,13 @@ describe("analysis-histogram-controller", () => {
     expect(warning.textContent).toContain("Approximate:");
     expect(warning.textContent).toContain("3");
     expect(statRms.textContent).toBe("2.25");
-    expect(canvasCtx.fillText).toHaveBeenCalledWith("Bins 3", expect.any(Number), expect.any(Number));
-    expect(canvasCtx.fillText).toHaveBeenCalledWith("Bin width 1", expect.any(Number), expect.any(Number));
-    expect(canvasCtx.fillText).toHaveBeenCalledWith("Mean 1.5", expect.any(Number), expect.any(Number));
-    expect(canvasCtx.fillText).toHaveBeenCalledWith("StdDev 0.5", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("bins", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("bin width", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("=", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("mean = 1.5", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("std = 0.5", expect.any(Number), expect.any(Number));
     expect(canvasCtx.fillText).toHaveBeenCalledWith("0", expect.any(Number), expect.any(Number));
     expect(canvasCtx.fillText).toHaveBeenCalledWith("3", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.font).toContain("14px");
   });
 });

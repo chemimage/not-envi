@@ -323,12 +323,21 @@
   }
 
   #analysisHistCanvas {
-    @apply block h-[190px] w-full bg-gray-900;
+    @apply block h-[210px] w-full bg-gray-900 font-mono text-sm text-gray-200;
+    --hist-accent: rgb(34 211 238 / 0.96);
+    --hist-accent-muted: rgb(34 211 238 / 0.72);
+    --hist-accent-region: rgb(34 211 238 / 0.14);
+    --hist-muted: rgb(156 163 175 / 0.9);
+    --hist-overlay: rgb(17 24 39 / 0.82);
     box-shadow: inset 0 0 0 1px rgb(226 232 240 / 0.22);
   }
 
   .analysis-hist-hover {
-    @apply mt-1 rounded-sm border border-gray-700 bg-gray-950 px-2 py-1 font-mono text-xs text-gray-300;
+    @apply mb-1 min-h-4 px-0.5 text-[11px] leading-4 text-gray-500;
+  }
+
+  .analysis-hist-hover.active {
+    @apply font-mono text-xs text-gray-300;
   }
 
   .analysis-hist-warning {

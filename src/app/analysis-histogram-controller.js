@@ -36,7 +36,7 @@ export function createAnalysisHistogramController(deps) {
   function getCanvasPlotRect(canvasWidth, canvasHeight, dpr = 1) {
     const horizontalPad = 10 * dpr;
     const topPad = 8 * dpr;
-    const axisHeight = 48 * dpr;
+    const axisHeight = 62 * dpr;
     return {
       plotX0: horizontalPad,
       plotY0: topPad,
@@ -74,7 +74,8 @@ export function createAnalysisHistogramController(deps) {
   function updateHoverText(stats, binIndex) {
     if (!els.analysisHistHover) return;
     if (!stats || !stats.bins || binIndex < 0 || binIndex >= stats.bins.length) {
-      els.analysisHistHover.textContent = "Hover a bin to inspect value/count.";
+      els.analysisHistHover.textContent = "Hover to inspect values.";
+      els.analysisHistHover.classList.remove("active");
       return;
     }
     const bins = stats.bins.length;
@@ -83,6 +84,7 @@ export function createAnalysisHistogramController(deps) {
     const hi = lo + bw;
     const count = stats.bins[binIndex] || 0;
     els.analysisHistHover.textContent = `Bin ${binIndex}: ${formatNumber(lo)} .. ${formatNumber(hi)}  |  Count ${fmtNoGroup(count)}`;
+    els.analysisHistHover.classList.add("active");
   }
 
   function resolveSamplingWarning(stats) {
@@ -119,6 +121,16 @@ export function createAnalysisHistogramController(deps) {
       canvas.height = h;
     }
     const ctx = canvas.getContext("2d", { alpha: true });
+    const canvasStyle = window.getComputedStyle?.(canvas);
+    const annotationFontSize = Number.parseFloat(canvasStyle?.fontSize || "") || 14;
+    const annotationFontFamily = canvasStyle?.fontFamily || "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    const themeValue = (name, fallback) => canvasStyle?.getPropertyValue(name)?.trim() || fallback;
+    const annotationColor = canvasStyle?.color || "rgba(229,231,235,0.9)";
+    const accentColor = themeValue("--hist-accent", "rgba(34,211,238,0.96)");
+    const accentMutedColor = themeValue("--hist-accent-muted", "rgba(34,211,238,0.72)");
+    const accentRegionColor = themeValue("--hist-accent-region", "rgba(34,211,238,0.14)");
+    const mutedColor = themeValue("--hist-muted", "rgba(156,163,175,0.9)");
+    const overlayColor = themeValue("--hist-overlay", "rgba(17,24,39,0.82)");
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
@@ -147,10 +159,10 @@ export function createAnalysisHistogramController(deps) {
     const stdHighX = valueX(stats.mean + stats.stdDev);
 
     // Show the one-standard-deviation spread behind the distribution bars.
-    ctx.fillStyle = "rgba(56,189,248,0.14)";
+    ctx.fillStyle = accentRegionColor;
     ctx.fillRect(stdLowX, plot.plotY0, Math.max(1, stdHighX - stdLowX), plot.plotH);
 
-    ctx.fillStyle = "rgba(148,163,184,0.45)";
+    ctx.fillStyle = "rgba(156,163,175,0.45)";
     for (let i = 0; i < bins.length; i += 1) {
       const bh = (bins[i] / maxBin) * plot.plotH;
       const x = plot.plotX0 + i * barW;
@@ -173,7 +185,7 @@ export function createAnalysisHistogramController(deps) {
     }
 
     // Keep the mean visible as the primary spatial statistic marker.
-    ctx.strokeStyle = "rgba(125,211,252,0.95)";
+    ctx.strokeStyle = accentColor;
     ctx.lineWidth = 1.5 * dpr;
     ctx.beginPath();
     ctx.moveTo(meanX, plot.plotY0);
@@ -183,7 +195,7 @@ export function createAnalysisHistogramController(deps) {
     // Keep a visible light frame around the active histogram plotting region.
     const borderW = 1 * dpr;
     const inset = borderW * 0.5;
-    ctx.strokeStyle = "rgba(226,232,240,0.38)";
+    ctx.strokeStyle = "rgba(229,231,235,0.38)";
     ctx.lineWidth = borderW;
     ctx.strokeRect(
       plot.plotX0 + inset,
@@ -193,7 +205,7 @@ export function createAnalysisHistogramController(deps) {
     );
 
     const tickHeight = 5 * dpr;
-    ctx.strokeStyle = "rgba(203,213,225,0.75)";
+    ctx.strokeStyle = "rgba(209,213,219,0.75)";
     ctx.lineWidth = 1 * dpr;
     ctx.beginPath();
     ctx.moveTo(plot.plotX0, plotBottom);
@@ -202,34 +214,45 @@ export function createAnalysisHistogramController(deps) {
     ctx.lineTo(plotRight, plotBottom + tickHeight);
     ctx.stroke();
 
-    const axisFont = `${10 * dpr}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    const axisFont = `${annotationFontSize * dpr}px ${annotationFontFamily}`;
     ctx.font = axisFont;
-    ctx.fillStyle = "rgba(203,213,225,0.9)";
+    ctx.fillStyle = annotationColor;
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
     ctx.fillText(formatNumber(stats.min), plot.plotX0, plotBottom + (6 * dpr));
     ctx.textAlign = "right";
     ctx.fillText(formatNumber(stats.max), plotRight, plotBottom + (6 * dpr));
 
-    const meanLabel = `Mean ${formatNumber(stats.mean)}`;
-    const stdLabel = `StdDev ${formatNumber(stats.stdDev)}`;
-    const labelWidth = Math.max(meanLabel.length, stdLabel.length) * 3.2 * dpr;
+    const meanLabel = `mean = ${formatNumber(stats.mean)}`;
+    const stdLabel = `std = ${formatNumber(stats.stdDev)}`;
+    const labelWidth = Math.max(meanLabel.length, stdLabel.length) * 4.2 * dpr;
     const meanLabelX = clamp(meanX, plot.plotX0 + labelWidth, plotRight - labelWidth);
-    ctx.fillStyle = "rgba(125,211,252,0.96)";
+    ctx.fillStyle = accentColor;
     ctx.textAlign = "center";
-    ctx.fillText(meanLabel, meanLabelX, plotBottom + (20 * dpr));
-    ctx.fillStyle = "rgba(125,211,252,0.72)";
-    ctx.fillText(stdLabel, meanLabelX, plotBottom + (33 * dpr));
+    ctx.fillText(meanLabel, meanLabelX, plotBottom + (25 * dpr));
+    ctx.fillStyle = accentMutedColor;
+    ctx.fillText(stdLabel, meanLabelX, plotBottom + (43 * dpr));
 
     const binWidth = Number.isFinite(stats.binWidth)
       ? stats.binWidth
       : ((stats.max - stats.min) / Math.max(1, bins.length));
-    ctx.fillStyle = "rgba(15,23,42,0.78)";
-    ctx.fillRect(plotRight - (116 * dpr), plot.plotY0 + (4 * dpr), 112 * dpr, 30 * dpr);
-    ctx.fillStyle = "rgba(226,232,240,0.88)";
-    ctx.textAlign = "right";
-    ctx.fillText(`Bins ${fmtNoGroup(bins.length)}`, plotRight - (8 * dpr), plot.plotY0 + (7 * dpr));
-    ctx.fillText(`Bin width ${formatNumber(binWidth)}`, plotRight - (8 * dpr), plot.plotY0 + (19 * dpr));
+    const metaLeft = plotRight - (164 * dpr);
+    const metaRight = plotRight - (8 * dpr);
+    const metaEqualsX = metaLeft + (82 * dpr);
+    const drawMetadataRow = (label, value, y) => {
+      ctx.fillStyle = mutedColor;
+      ctx.textAlign = "left";
+      ctx.fillText(label, metaLeft + (8 * dpr), y);
+      ctx.textAlign = "center";
+      ctx.fillText("=", metaEqualsX, y);
+      ctx.fillStyle = annotationColor;
+      ctx.textAlign = "right";
+      ctx.fillText(value, metaRight, y);
+    };
+    ctx.fillStyle = overlayColor;
+    ctx.fillRect(metaLeft, plot.plotY0 + (4 * dpr), 164 * dpr, 42 * dpr);
+    drawMetadataRow("bins", fmtNoGroup(bins.length), plot.plotY0 + (8 * dpr));
+    drawMetadataRow("bin width", formatNumber(binWidth), plot.plotY0 + (25 * dpr));
 
     ctx.restore();
   }
