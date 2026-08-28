@@ -61,6 +61,7 @@ export function createAnalysisHistogramController(deps) {
       els.analysisStatN.textContent = "—";
       els.analysisStatRange.textContent = "—";
       els.analysisStatMeanStd.textContent = "—";
+      els.analysisStatRms.textContent = "—";
       els.analysisStatMode.textContent = "—";
       els.analysisStatBins.textContent = "—";
       els.analysisStatBinWidth.textContent = "—";
@@ -71,6 +72,7 @@ export function createAnalysisHistogramController(deps) {
     els.analysisStatN.textContent = fmtNoGroup(stats.count || 0);
     els.analysisStatRange.textContent = `${formatNumber(stats.min)} / ${formatNumber(stats.max)}`;
     els.analysisStatMeanStd.textContent = `${formatNumber(stats.mean)} / ${formatNumber(stats.stdDev)}`;
+    els.analysisStatRms.textContent = formatNumber(stats.rms);
     els.analysisStatMode.textContent = formatNumber(stats.mode);
     els.analysisStatBins.textContent = fmtNoGroup(bins);
     els.analysisStatBinWidth.textContent = formatNumber(binWidth);

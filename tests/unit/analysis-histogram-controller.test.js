@@ -89,6 +89,7 @@ describe("analysis-histogram-controller", () => {
     const statN = document.createElement("div");
     const statRange = document.createElement("div");
     const statMeanStd = document.createElement("div");
+    const statRms = document.createElement("div");
     const statMode = document.createElement("div");
     const statBins = document.createElement("div");
     const statBinWidth = document.createElement("div");
@@ -102,6 +103,7 @@ describe("analysis-histogram-controller", () => {
       max: 3,
       mean: 1.5,
       stdDev: 0.5,
+      rms: 2.25,
       mode: 2,
       binWidth: 1,
       sampleStep: 3,
@@ -125,6 +127,7 @@ describe("analysis-histogram-controller", () => {
         analysisStatN: statN,
         analysisStatRange: statRange,
         analysisStatMeanStd: statMeanStd,
+        analysisStatRms: statRms,
         analysisStatMode: statMode,
         analysisStatBins: statBins,
         analysisStatBinWidth: statBinWidth,
@@ -151,5 +154,6 @@ describe("analysis-histogram-controller", () => {
     expect(warning.style.display).toBe("block");
     expect(warning.textContent).toContain("Approximate:");
     expect(warning.textContent).toContain("3");
+    expect(statRms.textContent).toBe("2.25");
   });
 });

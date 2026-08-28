@@ -72,6 +72,7 @@ export function collectElements() {
     analysisStatN: $("#analysisStatN"),
     analysisStatRange: $("#analysisStatRange"),
     analysisStatMeanStd: $("#analysisStatMeanStd"),
+    analysisStatRms: $("#analysisStatRms"),
     analysisStatMode: $("#analysisStatMode"),
     analysisStatBins: $("#analysisStatBins"),
     analysisStatBinWidth: $("#analysisStatBinWidth"),

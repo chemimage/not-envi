@@ -55,11 +55,12 @@ export function computeHistogram(arr, bins = 256) {
   const p1 = percentileFromHist(out, min, max, 0.01, count);
   const p99 = percentileFromHist(out, min, max, 0.99, count);
   const mean = count ? (sum / count) : 0;
+  const rms = count ? Math.sqrt(sumSq / count) : 0;
   const variance = count ? Math.max(0, (sumSq / count) - (mean * mean)) : 0;
   const stdDev = Math.sqrt(variance);
   const binWidth = (max - min) / Math.max(1, bins);
   const mode = min + ((modeBin + 0.5) / Math.max(1, bins)) * (max - min);
-  return { bins: out, min, max, count, p1, p99, mean, stdDev, mode, modeBin, binWidth };
+  return { bins: out, min, max, count, p1, p99, mean, rms, stdDev, mode, modeBin, binWidth };
 }
 
 export function tone01(v, minVal, maxVal, brightness, gain, contrast) {

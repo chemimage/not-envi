@@ -20,6 +20,7 @@ describe("display-math", () => {
     expect(Array.from(h.bins)).toEqual([1, 1, 1, 1, 1]);
     expect(h.p1).toBeGreaterThanOrEqual(0);
     expect(h.p99).toBeLessThanOrEqual(4);
+    expect(h.rms).toBeCloseTo(Math.sqrt(6));
   });
 
   test("percentileFromHist handles empty total", () => {
