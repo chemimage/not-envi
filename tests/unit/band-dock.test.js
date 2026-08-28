@@ -45,7 +45,7 @@ describe("band dock", () => {
 
   test("magnifies the hovered band and selects while dragging", () => {
     document.body.innerHTML = `
-      <div id="dock"><div id="selector"><span id="min"></span><div id="track"></div><span id="max"></span><output id="value"></output></div></div>
+      <div id="dock"><div id="selector"><span id="min"></span><div id="track"></div><span id="max"></span><output id="value"></output><output id="preview"></output></div></div>
     `;
     const ds = { id: "one", activeBand: 0, meta: { bands: 3, wavelengths: [500, 1000, 1500] } };
     const selector = document.querySelector("#selector");
@@ -60,7 +60,8 @@ describe("band dock", () => {
         bandDockTrack: track,
         bandDockMin: document.querySelector("#min"),
         bandDockMax: document.querySelector("#max"),
-        bandDockValue: document.querySelector("#value")
+        bandDockValue: document.querySelector("#value"),
+        bandDockPreview: document.querySelector("#preview")
       },
       getActive: () => ds,
       bandLabel: (_dataset, band) => String(band),
@@ -76,12 +77,19 @@ describe("band dock", () => {
     const hover = new Event("pointerenter", { bubbles: true });
     Object.defineProperties(hover, { clientX: { value: 200 }, pointerId: { value: 1 } });
     selector.dispatchEvent(hover);
-    expect(document.querySelector("#value").textContent).toBe("1000");
+    expect(document.querySelector("#value").textContent).toBe("500");
+    expect(document.querySelector("#preview").textContent).toBe("1000");
+    expect(selector.classList.contains("previewing")).toBe(true);
     expect(document.querySelectorAll(".band-dock-tick.hovered")).toHaveLength(1);
 
     const down = new Event("pointerdown", { bubbles: true, cancelable: true });
     Object.defineProperties(down, { clientX: { value: 300 }, pointerId: { value: 1 } });
     selector.dispatchEvent(down);
+    expect(selected).toEqual([]);
+
+    const up = new Event("pointerup", { bubbles: true, cancelable: true });
+    Object.defineProperties(up, { clientX: { value: 300 }, pointerId: { value: 1 } });
+    selector.dispatchEvent(up);
     expect(selected).toEqual([2]);
   });
 

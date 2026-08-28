@@ -471,7 +471,11 @@
 
   .band-dock-tick.hovered {
     width: 2px;
-    background: rgb(248 250 252 / 0.98);
+    background: rgb(226 232 240 / 0.52);
+  }
+
+  .band-dock-tick.preview-neighbor {
+    opacity: 0.52;
   }
 
   .band-dock-bound {
@@ -490,7 +494,8 @@
     right: 51px;
   }
 
-  .band-dock-value {
+  .band-dock-value,
+  .band-dock-preview {
     @apply pointer-events-none absolute top-1 rounded-sm bg-gray-950/90 px-1.5 py-0.5 font-mono text-lg font-semibold leading-none text-white shadow-lg shadow-black/40;
     left: var(--band-value-x, 50%);
     max-width: 132px;
@@ -505,14 +510,22 @@
     z-index: 4;
   }
 
-  .band-selector.hovering:not(.locked) .band-dock-value,
-  .band-selector.dragging:not(.locked) .band-dock-value {
-    transform: translateX(-50%) translateY(-20px) scale(1.6);
-    background-color: rgb(3 7 18 / 0.96);
-    box-shadow: 0 8px 22px rgb(0 0 0 / 0.58), 0 0 0 1px rgb(226 232 240 / 0.18);
+  .band-dock-preview {
+    color: rgb(226 232 240 / 0.72);
+    background-color: rgb(31 41 55 / 0.62);
+    border: 1px solid rgb(226 232 240 / 0.2);
+    opacity: 0;
+    z-index: 5;
   }
 
-  .band-selector.locked .band-dock-value {
+  .band-selector.previewing:not(.locked) .band-dock-preview {
+    opacity: 0.72;
+    transform: translateX(-50%) translateY(-20px) scale(1.6);
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.34), 0 0 0 1px rgb(226 232 240 / 0.1);
+  }
+
+  .band-selector.locked .band-dock-value,
+  .band-selector.locked .band-dock-preview {
     display: none;
   }
 

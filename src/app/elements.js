@@ -26,6 +26,7 @@ export function collectElements() {
     bandDockMin: $("#bandDockMin"),
     bandDockMax: $("#bandDockMax"),
     bandDockValue: $("#bandDockValue"),
+    bandDockPreview: $("#bandDockPreview"),
     bandDockLock: $("#bandDockLock"),
     bandColorMode: $("#bandColorMode"),
     metaHoverPanel: $("#metaHoverPanel"),

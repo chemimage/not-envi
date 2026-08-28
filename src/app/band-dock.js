@@ -107,6 +107,7 @@ export function createBandDockController(deps) {
   const selector = els?.bandSelector;
   const track = els?.bandDockTrack;
   const valueOutput = els?.bandDockValue;
+  const previewOutput = els?.bandDockPreview;
   let entries = [];
   let datasetId = null;
   let hoverBand = null;
@@ -135,27 +136,28 @@ export function createBandDockController(deps) {
     return Math.max(12, Math.min(64, Math.floor(width / 6)));
   }
 
-  function positionValue(entry) {
-    if (!entry || !valueOutput) return;
+  function positionOutput(output, entry) {
+    if (!entry || !output) return;
     const selectorRect = selector?.getBoundingClientRect?.();
     const trackRect = track?.getBoundingClientRect?.();
     if (selectorRect && trackRect && Number(trackRect.width) > 0) {
       const raw = (Number(trackRect.left) - Number(selectorRect.left)) + (entry.fraction * Number(trackRect.width));
       const estimatedWidth = Math.min(132, Math.max(28, (String(entry.label || "").length * 11) + 12));
-      const valueWidth = Number(valueOutput.offsetWidth) || estimatedWidth;
+      const valueWidth = Number(output.offsetWidth) || estimatedWidth;
       const halfWidth = (valueWidth / 2) + 4;
       const rightReserve = els.bandDock?.classList?.contains("has-color-mode") ? 48 : 0;
       const min = halfWidth;
       const max = Math.max(min, Number(selectorRect.width) - rightReserve - halfWidth);
-      valueOutput.style.left = `${Math.min(max, Math.max(min, raw))}px`;
+      output.style.left = `${Math.min(max, Math.max(min, raw))}px`;
     } else {
-      valueOutput.style.left = `${Math.min(92, Math.max(8, entry.fraction * 100))}%`;
+      output.style.left = `${Math.min(92, Math.max(8, entry.fraction * 100))}%`;
     }
   }
 
   function renderTicks(ds) {
     if (!track) return;
     const selectedBand = activeBand(ds);
+    const selectedEntry = entryForBand(selectedBand);
     const focusBand = hoverBand == null ? selectedBand : hoverBand;
     const showMagnification = hoverBand != null
       || draggingPointerId != null
@@ -175,17 +177,27 @@ export function createBandDockController(deps) {
       const tick = document.createElement("span");
       tick.className = "band-dock-tick";
       if (entry.band === selectedBand) tick.classList.add("active");
-      if (focusEntry && entry.band === focusBand) tick.classList.add("hovered");
       const orderDistance = focusEntry ? Math.abs(entry.order - focusEntry.order) : Number.POSITIVE_INFINITY;
+      if (focusEntry && focusBand !== selectedBand && entry.band === focusBand) tick.classList.add("hovered");
+      if (focusEntry && focusBand !== selectedBand && entry.band !== selectedBand && orderDistance > 0 && orderDistance <= 2) {
+        tick.classList.add("preview-neighbor");
+      }
       const scale = orderDistance === 0 ? 3 : (orderDistance === 1 ? 2.15 : (orderDistance === 2 ? 1.45 : 1));
       tick.style.setProperty("--band-tick-x", `${entry.fraction * 100}%`);
       tick.style.setProperty("--band-tick-scale", String(scale));
       track.appendChild(tick);
     }
-    if (displayEntry && valueOutput) {
-      valueOutput.value = displayEntry.label;
-      valueOutput.textContent = displayEntry.label;
-      positionValue(displayEntry);
+    if (selectedEntry && valueOutput) {
+      valueOutput.value = selectedEntry.label;
+      valueOutput.textContent = selectedEntry.label;
+      positionOutput(valueOutput, selectedEntry);
+    }
+    const showPreview = !!(focusEntry && displayEntry && displayEntry.band !== selectedBand);
+    selector?.classList?.toggle("previewing", showPreview);
+    if (showPreview && previewOutput) {
+      previewOutput.value = displayEntry.label;
+      previewOutput.textContent = displayEntry.label;
+      positionOutput(previewOutput, displayEntry);
     }
   }
 
@@ -196,6 +208,7 @@ export function createBandDockController(deps) {
       entries = [];
       datasetId = null;
       hoverBand = null;
+      selector.classList.remove("previewing");
       track.replaceChildren();
       return;
     }
@@ -238,14 +251,14 @@ export function createBandDockController(deps) {
     renderTicks(ds);
   }
 
-  function selectAt(clientX) {
+  function previewAt(clientX) {
     const ds = getActive?.() || null;
     if (!ds || isThreeBandColorMode(ds)) return;
     const band = pickBandAtFraction(entries, trackFraction(clientX));
     if (band == null) return;
+    if (hoverBand === band) return;
     hoverBand = band;
-    if (activeBand(ds) !== band) onSelectBand?.(ds, band);
-    else renderTicks(ds);
+    renderTicks(ds);
   }
 
   if (selector) {
@@ -260,10 +273,12 @@ export function createBandDockController(deps) {
       const ds = getActive?.() || null;
       if (!ds || isThreeBandColorMode(ds)) return;
       if (draggingPointerId != null && event.pointerId === draggingPointerId) {
-        selectAt(event.clientX);
+        previewAt(event.clientX);
         return;
       }
-      hoverBand = pickBandAtFraction(entries, trackFraction(event.clientX));
+      const nextBand = pickBandAtFraction(entries, trackFraction(event.clientX));
+      if (nextBand === hoverBand) return;
+      hoverBand = nextBand;
       renderTicks(ds);
     });
     selector.addEventListener("pointerleave", () => {
@@ -279,16 +294,22 @@ export function createBandDockController(deps) {
       draggingPointerId = event.pointerId;
       selector.classList.add("dragging", "hovering");
       try { selector.setPointerCapture(event.pointerId); } catch (_err) {}
-      selectAt(event.clientX);
+      previewAt(event.clientX);
     });
-    const finishDrag = (event) => {
+    const finishDrag = (event, commit = true) => {
       if (draggingPointerId == null || event.pointerId !== draggingPointerId) return;
       try { selector.releasePointerCapture(event.pointerId); } catch (_err) {}
       draggingPointerId = null;
       selector.classList.remove("dragging");
+      const ds = getActive?.() || null;
+      if (commit && ds && hoverBand != null && activeBand(ds) !== hoverBand) {
+        onSelectBand?.(ds, hoverBand);
+      } else {
+        renderTicks(ds);
+      }
     };
     selector.addEventListener("pointerup", finishDrag);
-    selector.addEventListener("pointercancel", finishDrag);
+    selector.addEventListener("pointercancel", (event) => finishDrag(event, false));
     selector.addEventListener("keydown", (event) => {
       const ds = getActive?.() || null;
       if (!ds || isThreeBandColorMode(ds) || !entries.length) return;
