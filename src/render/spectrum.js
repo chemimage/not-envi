@@ -495,8 +495,6 @@ export function createSpectrumController(deps) {
       }
     }
 
-    drawSpectrumHoverGuide(ctx, ds, dpr);
-
     ctx.fillStyle = "rgba(229,231,235,0.92)";
     ctx.font = `${Math.round(11 * dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     ctx.textBaseline = "middle";
@@ -554,6 +552,9 @@ export function createSpectrumController(deps) {
     ctx.textAlign = "right";
     ctx.fillText(rightLabel, x1, labelY);
     specState.plot.xMaxLabelBox = buildLabelBox(rightLabel, x1, "right");
+
+    // Render hover annotations after the axes so the active x label remains legible.
+    drawSpectrumHoverGuide(ctx, ds, dpr);
   }
 
   function spectrumPointFromClient(clientX, clientY) {
@@ -649,6 +650,11 @@ export function createSpectrumController(deps) {
     return formatAxisNumber(hover.value);
   }
 
+  function formatSpectrumHoverXLabel(hover) {
+    if (!hover || !Number.isFinite(hover.xValue)) return "";
+    return formatAxisNumber(hover.xValue);
+  }
+
   function drawSpectrumHoverGuide(ctx, ds, dpr) {
     const hover = specState.hover;
     const plot = specState.plot;
@@ -693,6 +699,24 @@ export function createSpectrumController(deps) {
       ctx.fillRect(lx, ly, width, height);
       ctx.fillStyle = "rgba(241,245,249,0.96)";
       ctx.fillText(label, lx + padX, ly + padY);
+    }
+
+    const xLabel = formatSpectrumHoverXLabel(hover);
+    if (xLabel) {
+      const fontPx = Math.round(14 * dpr);
+      const padX = 5 * dpr;
+      const padY = 3 * dpr;
+      ctx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      const width = ctx.measureText(xLabel).width + (2 * padX);
+      const height = fontPx + (2 * padY);
+      const lx = Math.max(plot.x0, Math.min(x - (width * 0.5), plot.x1 - width));
+      const ly = plot.y1 + (5 * dpr);
+      ctx.fillStyle = "rgba(15,23,42,0.92)";
+      ctx.fillRect(lx, ly, width, height);
+      ctx.fillStyle = "rgba(241,245,249,0.98)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(xLabel, lx + (width * 0.5), ly + padY);
     }
     ctx.restore();
   }

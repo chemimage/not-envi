@@ -419,6 +419,7 @@ describe("spectrum controller", () => {
 
     const handlers = new Map();
     const textLabels = [];
+    const drawnText = [];
     const specCtx = {
       clearRect: vi.fn(),
       fillRect: vi.fn(),
@@ -431,7 +432,10 @@ describe("spectrum controller", () => {
       arc: vi.fn(),
       fill: vi.fn(),
       setLineDash: vi.fn(),
-      fillText: vi.fn((text) => textLabels.push(String(text))),
+      fillText: vi.fn(function recordText(text) {
+        textLabels.push(String(text));
+        drawnText.push({ text: String(text), font: this.font });
+      }),
       measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
       textAlign: "",
       textBaseline: "",
@@ -493,6 +497,8 @@ describe("spectrum controller", () => {
     expect(specCtx.moveTo).toHaveBeenCalledWith(snappedX, 12);
     expect(specCtx.lineTo).toHaveBeenCalledWith(snappedX, 146);
     expect(textLabels).toContain("4.000");
+    expect(textLabels).toContain("1100");
+    expect(drawnText.find(({ text }) => text === "1100")?.font).toContain("14px");
   });
 
   test("terminal x and y axis labels edit inline and blank values reset to auto range", async () => {
