@@ -467,7 +467,7 @@
     background: rgb(156 163 175 / 0.82);
     transform: translateX(-0.5px);
     transform-origin: 50% 100%;
-    transition: height 85ms ease, background-color 85ms ease, width 85ms ease;
+    transition: height 100ms ease-out, background-color 85ms ease, width 85ms ease, opacity 85ms ease;
   }
 
   .band-dock-tick.active {
@@ -512,7 +512,7 @@
     transform: translateX(-50%) scale(1);
     transform-origin: 50% 100%;
     opacity: 1;
-    transition: opacity 80ms ease, transform 100ms ease;
+    transition: left 70ms ease-out, opacity 80ms ease, transform 100ms ease;
     font-variant-numeric: tabular-nums;
     z-index: 4;
   }

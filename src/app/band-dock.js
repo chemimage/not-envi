@@ -45,20 +45,23 @@ export function buildBandDockEntries(ds, bandLabel = (_dataset, band) => `Band $
   return entries;
 }
 
-export function pickBandAtFraction(entries, fraction) {
+function closestEntryAtFraction(entries, fraction) {
   if (!Array.isArray(entries) || !entries.length) return null;
   const target = Math.min(1, Math.max(0, Number(fraction) || 0));
-  let best = entries[0];
-  let bestDistance = Math.abs(best.fraction - target);
-  for (let index = 1; index < entries.length; index += 1) {
-    const candidate = entries[index];
-    const distance = Math.abs(candidate.fraction - target);
-    if (distance < bestDistance) {
-      best = candidate;
-      bestDistance = distance;
-    }
+  let low = 0;
+  let high = entries.length - 1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (entries[middle].fraction < target) low = middle + 1;
+    else high = middle - 1;
   }
-  return best.band;
+  const right = entries[Math.min(entries.length - 1, low)];
+  const left = entries[Math.max(0, low - 1)];
+  return Math.abs(left.fraction - target) <= Math.abs(right.fraction - target) ? left : right;
+}
+
+export function pickBandAtFraction(entries, fraction) {
+  return closestEntryAtFraction(entries, fraction)?.band ?? null;
 }
 
 export function representativeBandEntries(entries, maxTicks, importantBands = []) {
@@ -67,7 +70,9 @@ export function representativeBandEntries(entries, maxTicks, importantBands = []
   if (entries.length <= limit) return entries.slice();
   const selectedOrders = new Set([0, entries.length - 1]);
   for (let index = 0; index < limit; index += 1) {
-    selectedOrders.add(Math.round((index * (entries.length - 1)) / Math.max(1, limit - 1)));
+    const targetFraction = index / Math.max(1, limit - 1);
+    const closest = closestEntryAtFraction(entries, targetFraction);
+    selectedOrders.add(closest.order);
   }
   for (const band of importantBands) {
     const found = entries.find((entry) => entry.band === band);
@@ -76,6 +81,17 @@ export function representativeBandEntries(entries, maxTicks, importantBands = []
   return Array.from(selectedOrders)
     .sort((a, b) => a - b)
     .map((order) => entries[order]);
+}
+
+export function bandDockMagnificationScale(entryFraction, focusFraction, radius = 0.12) {
+  const entry = finiteNumber(entryFraction);
+  const focus = finiteNumber(focusFraction);
+  const falloffRadius = Math.max(0.001, finiteNumber(radius) ?? 0.12);
+  if (entry == null || focus == null) return 1;
+  const normalizedDistance = Math.abs(entry - focus) / falloffRadius;
+  if (normalizedDistance >= 1) return 1;
+  const influence = (1 + Math.cos(Math.PI * normalizedDistance)) / 2;
+  return 1 + (2 * influence);
 }
 
 export function closestBandForLinkedDataset(sourceEntry, targetDs, fallbackBand = 0) {
@@ -111,6 +127,7 @@ export function createBandDockController(deps) {
   let entries = [];
   let datasetId = null;
   let hoverBand = null;
+  let hoverFraction = null;
   let draggingPointerId = null;
 
   function activeBand(ds) {
@@ -165,27 +182,31 @@ export function createBandDockController(deps) {
     const displayEntry = entryForBand(focusBand);
     const focusEntry = showMagnification ? displayEntry : null;
     const importantBands = [selectedBand, focusBand];
-    if (focusEntry) {
-      for (const delta of [-2, -1, 1, 2]) {
-        const neighbor = entries[focusEntry.order + delta];
-        if (neighbor) importantBands.push(neighbor.band);
-      }
-    }
     const visible = representativeBandEntries(entries, maxVisibleTicks(), importantBands);
-    track.replaceChildren();
+    const existingTicks = new Map(Array.from(track.querySelectorAll(".band-dock-tick"))
+      .map((tick) => [tick.dataset.band, tick]));
+    const visibleBands = new Set();
+    const magnificationCenter = showMagnification
+      ? (finiteNumber(hoverFraction) ?? focusEntry?.fraction ?? null)
+      : null;
     for (const entry of visible) {
-      const tick = document.createElement("span");
+      const key = String(entry.band);
+      visibleBands.add(key);
+      const tick = existingTicks.get(key) || document.createElement("span");
       tick.className = "band-dock-tick";
+      tick.dataset.band = key;
       if (entry.band === selectedBand) tick.classList.add("active");
-      const orderDistance = focusEntry ? Math.abs(entry.order - focusEntry.order) : Number.POSITIVE_INFINITY;
       if (focusEntry && focusBand !== selectedBand && entry.band === focusBand) tick.classList.add("hovered");
-      if (focusEntry && focusBand !== selectedBand && entry.band !== selectedBand && orderDistance > 0 && orderDistance <= 2) {
+      const scale = bandDockMagnificationScale(entry.fraction, magnificationCenter);
+      if (focusEntry && focusBand !== selectedBand && entry.band !== selectedBand && scale > 1.02) {
         tick.classList.add("preview-neighbor");
       }
-      const scale = orderDistance === 0 ? 3 : (orderDistance === 1 ? 2.15 : (orderDistance === 2 ? 1.45 : 1));
       tick.style.setProperty("--band-tick-x", `${entry.fraction * 100}%`);
       tick.style.setProperty("--band-tick-scale", String(scale));
       track.appendChild(tick);
+    }
+    for (const [band, tick] of existingTicks) {
+      if (!visibleBands.has(band)) tick.remove();
     }
     if (selectedEntry && valueOutput) {
       valueOutput.value = selectedEntry.label;
@@ -208,6 +229,7 @@ export function createBandDockController(deps) {
       entries = [];
       datasetId = null;
       hoverBand = null;
+      hoverFraction = null;
       selector.classList.remove("previewing");
       track.replaceChildren();
       return;
@@ -215,6 +237,7 @@ export function createBandDockController(deps) {
     if (String(datasetId || "") !== String(ds.id || "")) {
       datasetId = ds.id;
       hoverBand = null;
+      hoverFraction = null;
     }
     entries = buildBandDockEntries(ds, bandLabel);
     const first = entries[0];
@@ -254,10 +277,13 @@ export function createBandDockController(deps) {
   function previewAt(clientX) {
     const ds = getActive?.() || null;
     if (!ds || isThreeBandColorMode(ds)) return;
-    const band = pickBandAtFraction(entries, trackFraction(clientX));
+    const fraction = trackFraction(clientX);
+    const band = pickBandAtFraction(entries, fraction);
     if (band == null) return;
-    if (hoverBand === band) return;
+    const unchanged = hoverBand === band && hoverFraction === fraction;
     hoverBand = band;
+    hoverFraction = fraction;
+    if (unchanged) return;
     renderTicks(ds);
   }
 
@@ -266,7 +292,8 @@ export function createBandDockController(deps) {
       const ds = getActive?.() || null;
       if (!ds || isThreeBandColorMode(ds)) return;
       selector.classList.add("hovering");
-      hoverBand = pickBandAtFraction(entries, trackFraction(event.clientX));
+      hoverFraction = trackFraction(event.clientX);
+      hoverBand = pickBandAtFraction(entries, hoverFraction);
       renderTicks(ds);
     });
     selector.addEventListener("pointermove", (event) => {
@@ -276,14 +303,17 @@ export function createBandDockController(deps) {
         previewAt(event.clientX);
         return;
       }
-      const nextBand = pickBandAtFraction(entries, trackFraction(event.clientX));
-      if (nextBand === hoverBand) return;
+      const nextFraction = trackFraction(event.clientX);
+      const nextBand = pickBandAtFraction(entries, nextFraction);
+      if (nextBand === hoverBand && nextFraction === hoverFraction) return;
       hoverBand = nextBand;
+      hoverFraction = nextFraction;
       renderTicks(ds);
     });
     selector.addEventListener("pointerleave", () => {
       if (draggingPointerId != null) return;
       hoverBand = null;
+      hoverFraction = null;
       selector.classList.remove("hovering");
       renderTicks(getActive?.() || null);
     });
@@ -323,6 +353,7 @@ export function createBandDockController(deps) {
       event.preventDefault();
       const next = entries[Math.min(entries.length - 1, Math.max(0, order))];
       hoverBand = next.band;
+      hoverFraction = next.fraction;
       onSelectBand?.(ds, next.band);
     });
   }

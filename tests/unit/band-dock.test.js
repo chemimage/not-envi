@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  bandDockMagnificationScale,
   buildBandDockEntries,
   closestBandForLinkedDataset,
   createBandDockController,
@@ -27,6 +28,17 @@ describe("band dock", () => {
     expect(visible.some((entry) => entry.band === 37)).toBe(true);
     expect(visible.some((entry) => entry.band === 63)).toBe(true);
     expect(visible.length).toBeLessThanOrEqual(14);
+  });
+
+  test("samples representative ticks and magnification in display space", () => {
+    const ds = { meta: { bands: 8, wavelengths: [0, 1, 2, 3, 4, 5, 90, 100] } };
+    const entries = buildBandDockEntries(ds);
+    const visible = representativeBandEntries(entries, 4);
+
+    expect(visible.map((entry) => entry.fraction)).toEqual([0, 0.05, 0.9, 1]);
+    expect(bandDockMagnificationScale(0.5, 0.5)).toBe(3);
+    expect(bandDockMagnificationScale(0.55, 0.5)).toBeGreaterThan(1);
+    expect(bandDockMagnificationScale(0.62, 0.5)).toBe(1);
   });
 
   test("matches a linked dataset to its nearest wavenumber", () => {
@@ -91,6 +103,47 @@ describe("band dock", () => {
     Object.defineProperties(up, { clientX: { value: 300 }, pointerId: { value: 1 } });
     selector.dispatchEvent(up);
     expect(selected).toEqual([2]);
+  });
+
+  test("keeps dense ticks stable while magnification follows the cursor fraction", () => {
+    document.body.innerHTML = `
+      <div id="dock"><div id="selector"><div id="track"></div><output id="value"></output><output id="preview"></output></div></div>
+    `;
+    const ds = {
+      id: "dense",
+      activeBand: 0,
+      meta: { bands: 101, wavelengths: Array.from({ length: 101 }, (_unused, band) => 400 + band) }
+    };
+    const selector = document.querySelector("#selector");
+    const track = document.querySelector("#track");
+    track.getBoundingClientRect = () => ({ left: 100, width: 200 });
+    Object.defineProperty(track, "clientWidth", { configurable: true, value: 200 });
+    selector.getBoundingClientRect = () => ({ left: 50, width: 340 });
+    const controller = createBandDockController({
+      els: {
+        bandDock: document.querySelector("#dock"),
+        bandSelector: selector,
+        bandDockTrack: track,
+        bandDockValue: document.querySelector("#value"),
+        bandDockPreview: document.querySelector("#preview")
+      },
+      getActive: () => ds
+    });
+    controller.sync();
+    const stableTick = track.querySelector('[data-band="50"]');
+
+    const enter = new Event("pointerenter", { bubbles: true });
+    Object.defineProperty(enter, "clientX", { value: 200 });
+    selector.dispatchEvent(enter);
+    expect(track.querySelector('[data-band="50"]')).toBe(stableTick);
+    expect(Number(stableTick.style.getPropertyValue("--band-tick-scale"))).toBe(3);
+
+    const move = new Event("pointermove", { bubbles: true });
+    Object.defineProperty(move, "clientX", { value: 210 });
+    selector.dispatchEvent(move);
+    expect(track.querySelector('[data-band="50"]')).toBe(stableTick);
+    expect(Number(stableTick.style.getPropertyValue("--band-tick-scale"))).toBeGreaterThan(1);
+    expect(Number(stableTick.style.getPropertyValue("--band-tick-scale"))).toBeLessThan(3);
   });
 
   test("locks selection in color mode and exposes the composite mode button", () => {
