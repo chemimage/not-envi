@@ -58,6 +58,12 @@ export function createAnalysisHistogramController(deps) {
     els.btnToolHistogram.setAttribute("aria-pressed", state.analysisHist.open ? "true" : "false");
   }
 
+  function updateSummary(stats) {
+    if (!els.analysisStatN || !els.analysisStatMode) return;
+    els.analysisStatN.textContent = stats ? fmtNoGroup(stats.count || 0) : "—";
+    els.analysisStatMode.textContent = stats ? formatNumber(stats.mode) : "—";
+  }
+
   function updateHoverText(stats, binIndex) {
     if (!els.analysisHistHover) return;
     if (!stats || !stats.bins || binIndex < 0 || binIndex >= stats.bins.length) {
@@ -222,14 +228,6 @@ export function createAnalysisHistogramController(deps) {
     ctx.fillText(stdLabel, meanLabelX, plotBottom + (43 * dpr));
     ctx.fillText(rmsLabel, meanLabelX, plotBottom + (61 * dpr));
 
-    const summaryLeft = plot.plotX0 + (8 * dpr);
-    ctx.font = axisFont;
-    ctx.fillStyle = annotationColor;
-    ctx.textAlign = "left";
-    ctx.fillText(`N = ${fmtNoGroup(stats.count || 0)}`, summaryLeft, plot.plotY0 + (8 * dpr));
-    ctx.fillStyle = mutedColor;
-    ctx.fillText(`mode = ${formatNumber(stats.mode)}`, summaryLeft, plot.plotY0 + (27 * dpr));
-
     const binWidth = Number.isFinite(stats.binWidth)
       ? stats.binWidth
       : ((stats.max - stats.min) / Math.max(1, bins.length));
@@ -340,6 +338,7 @@ export function createAnalysisHistogramController(deps) {
     state.analysisHist.hoverBin = -1;
     if (!ds) {
       state.analysisHist.stats = null;
+      updateSummary(null);
       updateSamplingWarning(null);
       updateHoverText(null, -1);
       drawCanvas(null);
@@ -351,6 +350,7 @@ export function createAnalysisHistogramController(deps) {
     try {
       const stats = await ensureStatsForPanel(ds);
       state.analysisHist.stats = stats;
+      updateSummary(stats);
       updateSamplingWarning(stats);
       updateHoverText(stats, -1);
       drawCanvas(stats);
@@ -358,6 +358,7 @@ export function createAnalysisHistogramController(deps) {
     } catch (err) {
       console.warn("Analysis histogram failed", err);
       state.analysisHist.stats = null;
+      updateSummary(null);
       updateSamplingWarning(null);
       updateHoverText(null, -1);
       drawCanvas(null);

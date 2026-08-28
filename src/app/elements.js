@@ -69,6 +69,8 @@ export function collectElements() {
     analysisHistCanvas: $("#analysisHistCanvas"),
     analysisHistHover: $("#analysisHistHover"),
     analysisHistWarning: $("#analysisHistWarning"),
+    analysisStatN: $("#analysisStatN"),
+    analysisStatMode: $("#analysisStatMode"),
     btnAnalysisHistClose: $("#btnAnalysisHistClose"),
     btnAnalysisHistReset: $("#btnAnalysisHistReset"),
     selRect: $("#selRect"),
