@@ -421,6 +421,141 @@
     @apply absolute bottom-2.5 left-2.5 z-20 w-[min(340px,46vw)];
   }
 
+  #bandDock {
+    @apply absolute bottom-2.5 right-2.5 z-20 w-[min(340px,46vw)];
+    height: 52px;
+  }
+
+  .band-selector {
+    @apply relative h-full w-full overflow-visible rounded-sm border border-gray-700 bg-gray-900/80 outline-none;
+    cursor: ew-resize;
+    touch-action: none;
+    backdrop-filter: blur(4px);
+  }
+
+  .band-selector:focus-visible {
+    @apply border-gray-300 ring-2 ring-gray-500/40;
+  }
+
+  .band-dock-track {
+    position: absolute;
+    left: 48px;
+    right: 48px;
+    bottom: 10px;
+    height: 27px;
+    border-bottom: 1px solid rgb(107 114 128 / 0.8);
+  }
+
+  #bandDock.has-color-mode .band-dock-track {
+    right: 91px;
+  }
+
+  .band-dock-tick {
+    --band-tick-scale: 1;
+    position: absolute;
+    left: var(--band-tick-x, 0%);
+    bottom: -1px;
+    width: 1px;
+    height: calc(8px * var(--band-tick-scale));
+    background: rgb(156 163 175 / 0.82);
+    transform: translateX(-0.5px);
+    transform-origin: 50% 100%;
+    transition: height 85ms ease, background-color 85ms ease, width 85ms ease;
+  }
+
+  .band-dock-tick.active {
+    width: 2px;
+    background: rgb(103 232 249 / 0.98);
+    box-shadow: 0 0 7px rgb(34 211 238 / 0.65);
+  }
+
+  .band-dock-tick.hovered {
+    width: 2px;
+    background: rgb(248 250 252 / 0.98);
+  }
+
+  .band-dock-bound {
+    @apply pointer-events-none absolute bottom-2 font-mono text-[10px] leading-none text-gray-300;
+    max-width: 44px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .band-dock-min { left: 7px; text-align: left; }
+  .band-dock-max { right: 7px; text-align: right; }
+
+  #bandDock.has-color-mode .band-dock-max {
+    right: 51px;
+  }
+
+  .band-dock-value {
+    @apply pointer-events-none absolute top-1 rounded-sm bg-gray-950/90 px-1.5 py-0.5 font-mono text-lg font-semibold leading-none text-white shadow-lg shadow-black/40;
+    left: var(--band-value-x, 50%);
+    max-width: 132px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transform: translateX(-50%) scale(1);
+    transform-origin: 50% 100%;
+    opacity: 1;
+    transition: opacity 80ms ease, transform 100ms ease;
+    font-variant-numeric: tabular-nums;
+    z-index: 4;
+  }
+
+  .band-selector.hovering:not(.locked) .band-dock-value,
+  .band-selector.dragging:not(.locked) .band-dock-value {
+    transform: translateX(-50%) translateY(-20px) scale(1.6);
+    background-color: rgb(3 7 18 / 0.96);
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.58), 0 0 0 1px rgb(226 232 240 / 0.18);
+  }
+
+  .band-selector.locked .band-dock-value {
+    display: none;
+  }
+
+  .band-color-mode {
+    @apply absolute right-1.5 top-1.5 hidden h-10 w-10 items-center justify-center rounded-sm border border-gray-600 bg-gray-950/90 p-0 text-[9px] font-black uppercase leading-none tracking-[-0.03em] text-gray-200;
+    touch-action: manipulation;
+  }
+
+  #bandDock.has-color-mode .band-color-mode {
+    display: inline-flex;
+  }
+
+  .band-color-mode.mode-rgb {
+    color: white;
+    border-color: rgb(148 163 184);
+    background: linear-gradient(135deg, rgb(220 38 38) 0 33.333%, rgb(22 163 74) 33.333% 66.666%, rgb(37 99 235) 66.666% 100%);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
+  }
+
+  .band-color-mode.mode-bgr {
+    color: white;
+    border-color: rgb(148 163 184);
+    background: linear-gradient(135deg, rgb(37 99 235) 0 33.333%, rgb(22 163 74) 33.333% 66.666%, rgb(220 38 38) 66.666% 100%);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
+  }
+
+  .band-dock-lock {
+    @apply pointer-events-none absolute inset-y-1 left-12 hidden items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-300;
+    right: 91px;
+  }
+
+  .band-selector.locked {
+    cursor: not-allowed;
+  }
+
+  .band-selector.locked .band-dock-track {
+    opacity: 0.22;
+  }
+
+  .band-selector.locked .band-dock-lock {
+    display: flex;
+  }
+
   .dataset-viewport {
     @apply overflow-y-hidden;
     height: 192px;

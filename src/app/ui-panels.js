@@ -1,5 +1,15 @@
 import { formatExperimentSettingsInline, parseExperimentSettings } from "./experiment-meta.js";
-import { DISPLAY_COMPOSITION_OVERLAY, resolveDisplayLinkColorName, resolveDisplayPanelBand } from "./display-panels.js";
+import {
+  DISPLAY_COMPOSITION_OVERLAY,
+  getLinkedDisplayPanels,
+  resolveDisplayLinkColorName,
+  resolveDisplayPanelBand
+} from "./display-panels.js";
+import {
+  buildBandDockEntries,
+  closestBandForLinkedDataset,
+  createBandDockController
+} from "./band-dock.js";
 import {
   THREE_BAND_ADJUST_BLUE,
   THREE_BAND_ADJUST_GREEN,
@@ -43,6 +53,13 @@ export function createUIPanels(deps) {
   let metaPinnedDatasetId = null;
   let metaPinnedRowEl = null;
   let metaHoverDatasetId = null;
+  const bandDock = createBandDockController({
+    els,
+    getActive,
+    bandLabel,
+    onSelectBand: (ds, band) => setActiveBand(ds, band),
+    onCycleColorMode: (ds) => cycleDatasetDisplayMode(ds)
+  });
 
   function ensureSharedDisplayRange(ds) {
     if (!ds.sharedDisplayRange || typeof ds.sharedDisplayRange !== "object") {
@@ -303,7 +320,8 @@ export function createUIPanels(deps) {
     }
     for (let b = 0; b < 3; b += 1) requestWholeStatsIfNeeded(ds, b, { force: true });
     rebuildBandTree({ preserveScroll: true });
-    updateDisplayUI(true);
+    updateDisplayUI(true, { skipStatsRequest: true });
+    bandDock.sync();
     render();
   }
 
@@ -361,8 +379,9 @@ export function createUIPanels(deps) {
 
   }
 
-  function updateDisplayUI(force = false) {
+  function updateDisplayUI(force = false, { skipStatsRequest = false } = {}) {
     const ds = getActive();
+    bandDock.sync();
     syncDisplayAdjustButton(ds);
     syncDisplayRangeLockButton(ds);
     if (!ds) return;
@@ -377,7 +396,7 @@ export function createUIPanels(deps) {
     els.numBrightness.value = Number(els.slBrightness.value).toFixed(2);
     els.numGain.value = Number(els.slGain.value).toFixed(2);
 
-    if (!resolveStats(ds)) {
+    if (!skipStatsRequest && !resolveStats(ds)) {
       if (typeof onNeedEstimatedViewStats === "function") {
         const pending = onNeedEstimatedViewStats(ds);
         requestWholeStatsAfterEstimate(ds, b, pending);
@@ -548,9 +567,22 @@ export function createUIPanels(deps) {
       activePanel.activeBand = b;
     }
     ds.activeBand = b;
+    const sourceEntry = buildBandDockEntries(ds, bandLabel).find((entry) => entry.band === b) || null;
+    if (activePanel && Number.isFinite(Number(activePanel.linkGroupId))) {
+      for (const linkedPanel of getLinkedDisplayPanels(state, activePanel.slot)) {
+        if (!linkedPanel || Number(linkedPanel.slot) === Number(activePanel.slot)) continue;
+        const linkedDs = state.datasets.find((item) => String(item?.id || "") === String(linkedPanel.datasetId || "")) || null;
+        if (!linkedDs || isThreeBandColorMode(linkedDs)) continue;
+        const linkedBand = closestBandForLinkedDataset(sourceEntry, linkedDs, b);
+        if (linkedBand == null) continue;
+        linkedPanel.activeBand = linkedBand;
+        if (String(linkedDs.id || "") !== String(ds.id || "")) linkedDs.activeBand = linkedBand;
+      }
+    }
     getBandSettings(ds, b);
     rebuildBandTree({ preserveScroll: true });
     updateDisplayUI(true);
+    bandDock.sync();
     render();
     requestWholeStatsIfNeeded(ds, b);
     if (onBandChanged) onBandChanged(ds, b);

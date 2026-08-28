@@ -155,6 +155,33 @@
       </div>
     </div>
 
+    <div id="bandDock" aria-label="Band selector">
+      <div
+        id="bandSelector"
+        class="band-selector"
+        role="slider"
+        tabindex="0"
+        aria-label="Current image wavenumber"
+        aria-orientation="horizontal"
+      >
+        <span id="bandDockMin" class="band-dock-bound band-dock-min">—</span>
+        <div id="bandDockTrack" class="band-dock-track" aria-hidden="true"></div>
+        <span id="bandDockMax" class="band-dock-bound band-dock-max">—</span>
+        <output id="bandDockValue" class="band-dock-value" aria-live="off"></output>
+        <div id="bandDockLock" class="band-dock-lock" aria-hidden="true">
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
+          <span>Color composite</span>
+        </div>
+      </div>
+      <button
+        id="bandColorMode"
+        class="band-color-mode"
+        type="button"
+        title="Cycle color display mode"
+        aria-label="Cycle color display mode"
+      >Gray</button>
+    </div>
+
     <div id="rightDock">
       <aside id="right" data-open="false" data-pinned="false">
         <div class="panel-header" id="rightHeader">

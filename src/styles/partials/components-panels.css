@@ -13,10 +13,11 @@
   }
 
   .ds-item {
-    @apply grid cursor-pointer items-center gap-2 rounded-sm border border-gray-700 bg-gray-800/75 px-2.5 py-2;
+    @apply grid cursor-pointer items-center gap-2 rounded-sm border border-gray-700 bg-gray-900/80 px-2.5 py-2;
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 52px;
     transition: min-height 140ms ease, border-color 140ms ease, background-color 140ms ease;
+    backdrop-filter: blur(4px);
   }
 
   .ds-item:hover {
@@ -432,6 +433,7 @@
   #app[data-empty="true"] #thumbDock,
   #app[data-empty="true"] #overlayHUD,
   #app[data-empty="true"] #datasetDock,
+  #app[data-empty="true"] #bandDock,
   #app[data-empty="true"] #rightDock,
   #app[data-empty="true"] #analysisHistPanel,
   #app[data-empty="true"] #specPanel {
@@ -497,6 +499,10 @@
       width: min(360px, calc(100% - 14px));
     }
 
+    #bandDock {
+      width: min(360px, calc(100% - 14px));
+    }
+
     .display-range-layout {
       grid-template-columns: minmax(0, 1fr);
       justify-items: center;
@@ -514,6 +520,26 @@
 
     .empty-dropzone {
       @apply w-[min(640px,92vw)] px-4 py-8;
+    }
+  }
+
+  @media (max-width: 760px) {
+    #datasetDock,
+    #bandDock {
+      width: calc(50% - 15px);
+    }
+
+    .band-dock-track {
+      left: 38px;
+      right: 38px;
+    }
+
+    #bandDock.has-color-mode .band-dock-track {
+      right: 82px;
+    }
+
+    .band-dock-bound {
+      max-width: 34px;
     }
   }
 }
