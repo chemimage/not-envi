@@ -87,12 +87,8 @@ describe("analysis-histogram-controller", () => {
     warning.style.display = "none";
     const hover = document.createElement("div");
     const statN = document.createElement("div");
-    const statRange = document.createElement("div");
-    const statMeanStd = document.createElement("div");
     const statRms = document.createElement("div");
     const statMode = document.createElement("div");
-    const statBins = document.createElement("div");
-    const statBinWidth = document.createElement("div");
     const btn = makeButton();
     btn.getBoundingClientRect = () => ({ right: 120, top: 60 });
 
@@ -125,12 +121,8 @@ describe("analysis-histogram-controller", () => {
         analysisHistHover: hover,
         analysisHistWarning: warning,
         analysisStatN: statN,
-        analysisStatRange: statRange,
-        analysisStatMeanStd: statMeanStd,
         analysisStatRms: statRms,
         analysisStatMode: statMode,
-        analysisStatBins: statBins,
-        analysisStatBinWidth: statBinWidth,
         btnToolHistogram: btn,
         main: { getBoundingClientRect: () => ({ width: 800, height: 600 }) }
       },
@@ -155,5 +147,11 @@ describe("analysis-histogram-controller", () => {
     expect(warning.textContent).toContain("Approximate:");
     expect(warning.textContent).toContain("3");
     expect(statRms.textContent).toBe("2.25");
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("Bins 3", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("Bin width 1", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("Mean 1.5", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("StdDev 0.5", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("0", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("3", expect.any(Number), expect.any(Number));
   });
 });

@@ -33,12 +33,15 @@ export function createAnalysisHistogramController(deps) {
     return null;
   }
 
-  function getCanvasPlotRect(canvasWidth, canvasHeight) {
+  function getCanvasPlotRect(canvasWidth, canvasHeight, dpr = 1) {
+    const horizontalPad = 10 * dpr;
+    const topPad = 8 * dpr;
+    const axisHeight = 48 * dpr;
     return {
-      plotX0: 0,
-      plotY0: 0,
-      plotW: canvasWidth,
-      plotH: canvasHeight
+      plotX0: horizontalPad,
+      plotY0: topPad,
+      plotW: Math.max(1, canvasWidth - (horizontalPad * 2)),
+      plotH: Math.max(1, canvasHeight - topPad - axisHeight)
     };
   }
 
@@ -59,23 +62,13 @@ export function createAnalysisHistogramController(deps) {
     if (!els.analysisStatN) return;
     if (!stats) {
       els.analysisStatN.textContent = "—";
-      els.analysisStatRange.textContent = "—";
-      els.analysisStatMeanStd.textContent = "—";
       els.analysisStatRms.textContent = "—";
       els.analysisStatMode.textContent = "—";
-      els.analysisStatBins.textContent = "—";
-      els.analysisStatBinWidth.textContent = "—";
       return;
     }
-    const bins = stats.bins?.length || 0;
-    const binWidth = Number.isFinite(stats.binWidth) ? stats.binWidth : ((stats.max - stats.min) / Math.max(1, bins));
     els.analysisStatN.textContent = fmtNoGroup(stats.count || 0);
-    els.analysisStatRange.textContent = `${formatNumber(stats.min)} / ${formatNumber(stats.max)}`;
-    els.analysisStatMeanStd.textContent = `${formatNumber(stats.mean)} / ${formatNumber(stats.stdDev)}`;
     els.analysisStatRms.textContent = formatNumber(stats.rms);
     els.analysisStatMode.textContent = formatNumber(stats.mode);
-    els.analysisStatBins.textContent = fmtNoGroup(bins);
-    els.analysisStatBinWidth.textContent = formatNumber(binWidth);
   }
 
   function updateHoverText(stats, binIndex) {
@@ -142,9 +135,20 @@ export function createAnalysisHistogramController(deps) {
 
     const bins = stats.bins;
     const maxBin = Math.max(1, ...bins);
-    const plot = getCanvasPlotRect(w, h);
+    const plot = getCanvasPlotRect(w, h, dpr);
     const barW = plot.plotW / bins.length;
     const hoverBin = state.analysisHist.hoverBin;
+    const plotRight = plot.plotX0 + plot.plotW;
+    const plotBottom = plot.plotY0 + plot.plotH;
+    const valueRange = Math.max(Number.EPSILON, stats.max - stats.min);
+    const valueX = (value) => plot.plotX0 + (clamp((value - stats.min) / valueRange, 0, 1) * plot.plotW);
+    const meanX = valueX(stats.mean);
+    const stdLowX = valueX(stats.mean - stats.stdDev);
+    const stdHighX = valueX(stats.mean + stats.stdDev);
+
+    // Show the one-standard-deviation spread behind the distribution bars.
+    ctx.fillStyle = "rgba(56,189,248,0.14)";
+    ctx.fillRect(stdLowX, plot.plotY0, Math.max(1, stdHighX - stdLowX), plot.plotH);
 
     ctx.fillStyle = "rgba(148,163,184,0.45)";
     for (let i = 0; i < bins.length; i += 1) {
@@ -168,6 +172,14 @@ export function createAnalysisHistogramController(deps) {
       ctx.stroke();
     }
 
+    // Keep the mean visible as the primary spatial statistic marker.
+    ctx.strokeStyle = "rgba(125,211,252,0.95)";
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(meanX, plot.plotY0);
+    ctx.lineTo(meanX, plotBottom + (5 * dpr));
+    ctx.stroke();
+
     // Keep a visible light frame around the active histogram plotting region.
     const borderW = 1 * dpr;
     const inset = borderW * 0.5;
@@ -179,6 +191,45 @@ export function createAnalysisHistogramController(deps) {
       Math.max(0, plot.plotW - borderW),
       Math.max(0, plot.plotH - borderW)
     );
+
+    const tickHeight = 5 * dpr;
+    ctx.strokeStyle = "rgba(203,213,225,0.75)";
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(plot.plotX0, plotBottom);
+    ctx.lineTo(plot.plotX0, plotBottom + tickHeight);
+    ctx.moveTo(plotRight, plotBottom);
+    ctx.lineTo(plotRight, plotBottom + tickHeight);
+    ctx.stroke();
+
+    const axisFont = `${10 * dpr}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.font = axisFont;
+    ctx.fillStyle = "rgba(203,213,225,0.9)";
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText(formatNumber(stats.min), plot.plotX0, plotBottom + (6 * dpr));
+    ctx.textAlign = "right";
+    ctx.fillText(formatNumber(stats.max), plotRight, plotBottom + (6 * dpr));
+
+    const meanLabel = `Mean ${formatNumber(stats.mean)}`;
+    const stdLabel = `StdDev ${formatNumber(stats.stdDev)}`;
+    const labelWidth = Math.max(meanLabel.length, stdLabel.length) * 3.2 * dpr;
+    const meanLabelX = clamp(meanX, plot.plotX0 + labelWidth, plotRight - labelWidth);
+    ctx.fillStyle = "rgba(125,211,252,0.96)";
+    ctx.textAlign = "center";
+    ctx.fillText(meanLabel, meanLabelX, plotBottom + (20 * dpr));
+    ctx.fillStyle = "rgba(125,211,252,0.72)";
+    ctx.fillText(stdLabel, meanLabelX, plotBottom + (33 * dpr));
+
+    const binWidth = Number.isFinite(stats.binWidth)
+      ? stats.binWidth
+      : ((stats.max - stats.min) / Math.max(1, bins.length));
+    ctx.fillStyle = "rgba(15,23,42,0.78)";
+    ctx.fillRect(plotRight - (116 * dpr), plot.plotY0 + (4 * dpr), 112 * dpr, 30 * dpr);
+    ctx.fillStyle = "rgba(226,232,240,0.88)";
+    ctx.textAlign = "right";
+    ctx.fillText(`Bins ${fmtNoGroup(bins.length)}`, plotRight - (8 * dpr), plot.plotY0 + (7 * dpr));
+    ctx.fillText(`Bin width ${formatNumber(binWidth)}`, plotRight - (8 * dpr), plot.plotY0 + (19 * dpr));
 
     ctx.restore();
   }
@@ -341,7 +392,7 @@ export function createAnalysisHistogramController(deps) {
     const rect = canvas.getBoundingClientRect();
     const x = (ev.clientX - rect.left) * dpr;
     const y = (ev.clientY - rect.top) * dpr;
-    const plot = getCanvasPlotRect(canvas.width, canvas.height);
+    const plot = getCanvasPlotRect(canvas.width, canvas.height, dpr);
     if (x < plot.plotX0 || x > (plot.plotX0 + plot.plotW) || y < plot.plotY0 || y > (plot.plotY0 + plot.plotH)) {
       if (state.analysisHist.hoverBin !== -1) {
         state.analysisHist.hoverBin = -1;

@@ -241,7 +241,7 @@
 
     <div id="analysisHistPanel" class="analysis-hist-panel" data-ui-surface style="display:none;" aria-hidden="true" role="dialog" aria-labelledby="analysisHistTitle">
       <div class="analysis-hist-head floating-window-header">
-        <div class="analysis-hist-title" id="analysisHistTitle">Histogram</div>
+        <div class="analysis-hist-title" id="analysisHistTitle">Spatial Histogram</div>
         <div class="floating-window-actions">
           <button class="btn tiny icon-btn floating-window-reset" id="btnAnalysisHistReset" type="button" title="Reset floating window layout" aria-label="Reset floating window layout">
             <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
@@ -257,12 +257,8 @@
         <div class="analysis-hist-warning tiny" id="analysisHistWarning" style="display:none;"></div>
         <div class="analysis-hist-stats">
           <div class="k">N</div><div class="v" id="analysisStatN">—</div>
-          <div class="k">Min/Max</div><div class="v" id="analysisStatRange">—</div>
-          <div class="k">Mean/StdDev</div><div class="v" id="analysisStatMeanStd">—</div>
           <div class="k">RMS</div><div class="v" id="analysisStatRms">—</div>
           <div class="k">Mode</div><div class="v" id="analysisStatMode">—</div>
-          <div class="k">Bins</div><div class="v" id="analysisStatBins">—</div>
-          <div class="k">BinWidth</div><div class="v" id="analysisStatBinWidth">—</div>
         </div>
       </div>
     </div>

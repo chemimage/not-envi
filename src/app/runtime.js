@@ -1188,7 +1188,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     element: els.analysisHistPanel,
     dragHandle: ".analysis-hist-head",
     minWidth: 300,
-    minHeight: 300,
+    minHeight: 1,
+    resizeEdges: { left: true, right: true, top: false, bottom: false },
     onResize: () => analysisHistogram.redraw()
   });
   floatingWindows.register({
