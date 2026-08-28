@@ -38,7 +38,6 @@ export function wireApp(deps) {
     updateExportDialogUI,
     updateExportEstimate,
     runExportFromDialog,
-    rebuildBandTree,
     resetDisplay,
     autoDisplay,
     toggleSharedDisplayRange,
@@ -303,16 +302,6 @@ export function wireApp(deps) {
     runExportWithErrorHandling();
   };
 
-  els.bandSearch.oninput = () => rebuildBandTree();
-  els.btnExpandAll.onclick = () => {
-    for (const ds of state.datasets) ds.treeExpanded = true;
-    rebuildBandTree({ preserveScroll: true });
-  };
-  els.btnCollapseAll.onclick = () => {
-    for (const ds of state.datasets) ds.treeExpanded = false;
-    rebuildBandTree({ preserveScroll: true });
-  };
-
   els.btnReset.onclick = () => {
     const ds = getActive();
     if (!ds) return;
@@ -512,11 +501,6 @@ export function wireApp(deps) {
   updateZoomLabelBoot();
   setIOParallel(state.ioParallel);
   setGpuBadgeAvailable();
-  wireFlyoutPanel({
-    panel: els.right,
-    header: els.rightHeader,
-    btnPin: els.btnRightPin
-  });
   wireFlyoutPanel({
     panel: els.displayPanel,
     header: els.displayHeader,

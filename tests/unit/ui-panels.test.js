@@ -61,10 +61,9 @@ describe("ui-panels", () => {
     expect(ui.resolveStats(ds)).toBe(whole);
   });
 
-  test("three-band datasets cycle list and color display modes from the tree button", () => {
+  test("three-band datasets cycle color modes from the band dock", () => {
     document.body.innerHTML = `
-      <input id="bandSearch" value="" />
-      <div id="bandTree"></div>
+      <div id="bandDock"><div id="bandSelector"><div id="bandDockTrack"></div></div><button id="bandColorMode"></button></div>
       <input id="slContrast" value="1" />
       <input id="slBrightness" value="0" />
       <input id="slGain" value="1" />
@@ -85,8 +84,6 @@ describe("ui-panels", () => {
       bandSettings: new Map([[0, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 }]]),
       bandStatsWhole: new Map([[0, { min: 0, max: 10, p1: 1, p99: 9 }]]),
       bandStatsView: null,
-      treeExpanded: true,
-      treeScrollTop: 0,
       displayMode: "gray",
       thumb: {}
     };
@@ -96,8 +93,10 @@ describe("ui-panels", () => {
     deps.render = render;
     deps.onNeedWholeStats = onNeedWholeStats;
     deps.els = {
-      bandSearch: document.querySelector("#bandSearch"),
-      bandTree: document.querySelector("#bandTree"),
+      bandDock: document.querySelector("#bandDock"),
+      bandSelector: document.querySelector("#bandSelector"),
+      bandDockTrack: document.querySelector("#bandDockTrack"),
+      bandColorMode: document.querySelector("#bandColorMode"),
       slContrast: document.querySelector("#slContrast"),
       slBrightness: document.querySelector("#slBrightness"),
       slGain: document.querySelector("#slGain"),
@@ -109,22 +108,20 @@ describe("ui-panels", () => {
     };
     const ui = createUIPanels(deps);
 
-    ui.rebuildBandTree();
-    expect(document.querySelectorAll(".band-row")).toHaveLength(3);
-    expect(document.querySelector(".display-mode-btn")?.classList.contains("mode-gray")).toBe(true);
+    ui.updateDisplayUI(true);
+    expect(deps.els.bandColorMode.textContent).toBe("Gray");
 
-    document.querySelector(".display-mode-btn")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    deps.els.bandColorMode.click();
     expect(ds.displayMode).toBe("rgb");
-    expect(document.querySelectorAll(".band-row")).toHaveLength(0);
-    expect(document.querySelector(".display-mode-btn")?.classList.contains("mode-rgb")).toBe(true);
+    expect(deps.els.bandColorMode.textContent).toBe("RGB");
 
-    document.querySelector(".display-mode-btn")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    deps.els.bandColorMode.click();
     expect(ds.displayMode).toBe("bgr");
-    expect(document.querySelector(".display-mode-btn")?.classList.contains("mode-bgr")).toBe(true);
+    expect(deps.els.bandColorMode.textContent).toBe("BGR");
 
-    document.querySelector(".display-mode-btn")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    deps.els.bandColorMode.click();
     expect(ds.displayMode).toBe("gray");
-    expect(document.querySelectorAll(".band-row")).toHaveLength(3);
+    expect(deps.els.bandColorMode.textContent).toBe("Gray");
     expect(render).toHaveBeenCalledTimes(3);
     expect(onNeedWholeStats).toHaveBeenCalledTimes(9);
   });
@@ -360,10 +357,8 @@ describe("ui-panels", () => {
     expect(deps.els.numMax.value).toBe("30");
   });
 
-  test("band tree and band changes follow the selected panel band", () => {
+  test("band changes follow the selected panel", () => {
     document.body.innerHTML = `
-      <input id="bandSearch" value="" />
-      <div id="bandTree"></div>
       <input id="slContrast" value="1" />
       <input id="slBrightness" value="0" />
       <input id="slGain" value="1" />
@@ -384,16 +379,12 @@ describe("ui-panels", () => {
       bandSettings: new Map([[0, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 }]]),
       bandStatsWhole: new Map([[1, { min: 0, max: 10, p1: 1, p99: 9 }]]),
       bandStatsView: null,
-      treeExpanded: true,
-      treeScrollTop: 0
     };
     deps.state.datasets = [ds];
     deps.state.activeId = ds.id;
     deps.getActive = () => ds;
     deps.getActivePanel = () => activePanel;
     deps.els = {
-      bandSearch: document.querySelector("#bandSearch"),
-      bandTree: document.querySelector("#bandTree"),
       slContrast: document.querySelector("#slContrast"),
       slBrightness: document.querySelector("#slBrightness"),
       slGain: document.querySelector("#slGain"),
@@ -405,107 +396,10 @@ describe("ui-panels", () => {
     };
 
     const ui = createUIPanels(deps);
-    ui.rebuildBandTree();
-    expect(document.querySelectorAll(".band-row.active")).toHaveLength(1);
-    expect(document.querySelectorAll(".band-row")[1]?.classList.contains("active")).toBe(true);
-
     ui.setActiveBand(ds, 2);
     expect(activePanel.activeBand).toBe(2);
     expect(otherPanel.activeBand).toBe(0);
     expect(ds.activeBand).toBe(2);
-  });
-
-  test("band tree sorts numeric band values while preserving source band selection", () => {
-    document.body.innerHTML = `
-      <input id="bandSearch" value="" />
-      <div id="bandTree"></div>
-      <input id="slContrast" value="1" />
-      <input id="slBrightness" value="0" />
-      <input id="slGain" value="1" />
-      <input id="numContrast" value="1" />
-      <input id="numBrightness" value="0" />
-      <input id="numGain" value="1" />
-      <input id="numMin" value="0" />
-      <input id="numMax" value="1" />
-    `;
-
-    const deps = makeDeps();
-    const ds = {
-      id: "ds1",
-      name: "numeric bands",
-      meta: { bands: 3, wavelengths: [10, 2, 1] },
-      activeBand: 0,
-      bandSettings: new Map(),
-      bandStatsWhole: new Map([
-        [0, { min: 0, max: 10, p1: 1, p99: 9 }],
-        [1, { min: 0, max: 10, p1: 1, p99: 9 }],
-        [2, { min: 0, max: 10, p1: 1, p99: 9 }]
-      ]),
-      bandStatsView: null,
-      treeExpanded: true,
-      treeScrollTop: 0
-    };
-    deps.state.datasets = [ds];
-    deps.state.activeId = ds.id;
-    deps.getActive = () => ds;
-    deps.bandLabel = (dataset, b) => String(dataset.meta.wavelengths[b]);
-    deps.els = {
-      bandSearch: document.querySelector("#bandSearch"),
-      bandTree: document.querySelector("#bandTree"),
-      slContrast: document.querySelector("#slContrast"),
-      slBrightness: document.querySelector("#slBrightness"),
-      slGain: document.querySelector("#slGain"),
-      numContrast: document.querySelector("#numContrast"),
-      numBrightness: document.querySelector("#numBrightness"),
-      numGain: document.querySelector("#numGain"),
-      numMin: document.querySelector("#numMin"),
-      numMax: document.querySelector("#numMax")
-    };
-
-    const ui = createUIPanels(deps);
-    ui.rebuildBandTree();
-
-    const rows = Array.from(document.querySelectorAll(".band-row"));
-    expect(rows.map((row) => row.textContent)).toEqual(["1", "2", "10"]);
-
-    rows[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(ds.activeBand).toBe(2);
-  });
-
-  test("active band list fits the panel viewport when more than two datasets are loaded", () => {
-    document.body.innerHTML = `
-      <div class="panel-body" id="panelBody">
-        <input id="bandSearch" value="" />
-        <div id="bandTree"></div>
-      </div>
-    `;
-
-    const deps = makeDeps();
-    const ds1 = { id: "ds1", name: "One", meta: { bands: 4 }, activeBand: 0, treeExpanded: false };
-    const ds2 = { id: "ds2", name: "Two", meta: { bands: 12 }, activeBand: 0, treeExpanded: true };
-    const ds3 = { id: "ds3", name: "Three", meta: { bands: 4 }, activeBand: 0, treeExpanded: false };
-    deps.state.datasets = [ds1, ds2, ds3];
-    deps.state.activeId = ds2.id;
-    const panelBody = document.querySelector("#panelBody");
-    Object.defineProperty(panelBody, "clientHeight", { configurable: true, value: 160 });
-    const scrollIntoView = vi.fn();
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = scrollIntoView;
-    deps.els = {
-      bandSearch: document.querySelector("#bandSearch"),
-      bandTree: document.querySelector("#bandTree")
-    };
-    const ui = createUIPanels(deps);
-
-    try {
-      ui.rebuildBandTree();
-
-      const activeBands = document.querySelector(".tree-ds.active .tree-bands");
-      expect(activeBands?.style.maxHeight).toBe("106px");
-      expect(scrollIntoView).toHaveBeenCalled();
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
   });
 
   test("dataset panel buttons render L, R, and L|R states", () => {
@@ -515,8 +409,8 @@ describe("ui-panels", () => {
     `;
 
     const deps = makeDeps();
-    const ds1 = { id: "ds1", name: "A", meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq", dataType: 4, dataTypeInfo: { name: "f32" }, littleEndian: true }, treeExpanded: true };
-    const ds2 = { id: "ds2", name: "B", meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq", dataType: 4, dataTypeInfo: { name: "f32" }, littleEndian: true }, treeExpanded: true };
+    const ds1 = { id: "ds1", name: "A", meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq", dataType: 4, dataTypeInfo: { name: "f32" }, littleEndian: true } };
+    const ds2 = { id: "ds2", name: "B", meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq", dataType: 4, dataTypeInfo: { name: "f32" }, littleEndian: true } };
     deps.state.datasets = [ds1, ds2];
     deps.state.activeId = "ds1";
     deps.state.activePanelSlot = 1;
@@ -556,7 +450,6 @@ describe("ui-panels", () => {
       id: "ds1",
       name: "Extremely long dataset name that should scroll when focused on touch or keyboard",
       meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq", dataType: 4, dataTypeInfo: { name: "f32" }, littleEndian: true },
-      treeExpanded: true
     };
     deps.state.datasets = [ds1];
     deps.state.activeId = "ds1";

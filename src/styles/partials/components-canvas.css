@@ -32,7 +32,7 @@
     @apply pointer-events-none bg-transparent;
   }
 
-  #rightDock,
+  #displayDock,
   #analysisHistPanel,
   #metaHoverPanel {
     user-select: text;

@@ -545,7 +545,6 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   function rebuildDatasetList(){ uiPanels.rebuildDatasetList(); }
   function updateMetaUI(){ uiPanels.updateMetaUI(); }
   function updatePerf(){ uiPanels.updatePerf(); }
-  function rebuildBandTree(opts){ uiPanels.rebuildBandTree(opts); }
   function getBandSettings(ds, band){ return uiPanels.getBandSettings(ds, band); }
   function resolveDisplayControlBand(ds){ return uiPanels.resolveDisplayControlBand(ds); }
   function resolveStats(ds){ return uiPanels.resolveStats(ds); }
@@ -569,9 +568,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     getIOConcurrency: () => IO_CONCURRENCY,
     recomputeCacheBudgets,
     closeSpectrum,
-    onAfterDatasetUIUpdate: (opts = {}) => {
+    onAfterDatasetUIUpdate: () => {
       rebuildDatasetList();
-      rebuildBandTree({ preserveScroll: !!opts.preserveBandTreeScroll });
       updateMetaUI();
       updatePerf();
       updateDisplayUI(true);
@@ -1387,7 +1385,6 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     updateExportDialogUI,
     updateExportEstimate,
     runExportFromDialog,
-    rebuildBandTree,
     resetDisplay,
     autoDisplay,
     toggleSharedDisplayRange,

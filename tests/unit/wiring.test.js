@@ -14,9 +14,6 @@ function setupEraserHarness() {
     <div id="drawTools"></div>
     <button id="toolEraser" type="button"></button>
     <div id="main"></div>
-    <aside id="right" data-open="false" data-pinned="false">
-      <div id="rightHeader"><h2>Bands</h2><button id="btnRightPin" type="button"><i></i></button></div>
-    </aside>
     <aside id="displayPanel" data-open="false" data-pinned="false">
       <div id="displayHeader"><h2>Display</h2><button id="btnDisplayPin" type="button"><i></i></button></div>
     </aside>
@@ -25,9 +22,6 @@ function setupEraserHarness() {
     <input id="chkGrid" type="checkbox" />
     <button id="btnExpCancel" type="button"></button>
     <button id="btnExpGo" type="button"></button>
-    <input id="bandSearch" />
-    <button id="btnExpandAll" type="button"></button>
-    <button id="btnCollapseAll" type="button"></button>
     <button id="btnReset" type="button"></button>
     <button id="btnAuto" type="button"></button>
     <input id="slContrast" />
@@ -58,9 +52,6 @@ function setupEraserHarness() {
     drawTools: document.querySelector("#drawTools"),
     toolEraser: document.querySelector("#toolEraser"),
     main: document.querySelector("#main"),
-    right: document.querySelector("#right"),
-    rightHeader: document.querySelector("#rightHeader"),
-    btnRightPin: document.querySelector("#btnRightPin"),
     displayPanel: document.querySelector("#displayPanel"),
     displayHeader: document.querySelector("#displayHeader"),
     btnDisplayPin: document.querySelector("#btnDisplayPin"),
@@ -69,9 +60,6 @@ function setupEraserHarness() {
     chkGrid: document.querySelector("#chkGrid"),
     btnExpCancel: document.querySelector("#btnExpCancel"),
     btnExpGo: document.querySelector("#btnExpGo"),
-    bandSearch: document.querySelector("#bandSearch"),
-    btnExpandAll: document.querySelector("#btnExpandAll"),
-    btnCollapseAll: document.querySelector("#btnCollapseAll"),
     btnReset: document.querySelector("#btnReset"),
     btnAuto: document.querySelector("#btnAuto"),
     slContrast: document.querySelector("#slContrast"),
@@ -145,7 +133,6 @@ function setupEraserHarness() {
     updateExportDialogUI: noop,
     updateExportEstimate: noop,
     runExportFromDialog: async () => {},
-    rebuildBandTree: noop,
     resetDisplay: noop,
     autoDisplay: noop,
     resolveDisplayControlBand: () => 0,
@@ -242,9 +229,6 @@ describe("app wiring", () => {
       btnExpCancel: makeButton(),
       btnExpGo: makeButton(),
       exportDlg: { close: noop, open: false },
-      bandSearch: { oninput: null, value: "" },
-      btnExpandAll: makeButton(),
-      btnCollapseAll: makeButton(),
       btnReset: makeButton(),
       btnAuto: makeButton(),
       slContrast: { oninput: null, value: "1" },
@@ -300,7 +284,6 @@ describe("app wiring", () => {
       updateExportDialogUI: noop,
       updateExportEstimate: noop,
       runExportFromDialog: async () => {},
-      rebuildBandTree: noop,
       resetDisplay: noop,
       autoDisplay: noop,
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
@@ -369,16 +352,13 @@ describe("app wiring", () => {
     windowAdd.mockRestore();
   });
 
-  test("boot wiring attaches flyout behavior to bands and display panels", () => {
+  test("boot wiring attaches flyout behavior to the display panel", () => {
     const { els, windowAdd } = setupEraserHarness();
 
-    expect(els.right.dataset.open).toBe("false");
     expect(els.displayPanel.dataset.open).toBe("false");
 
-    els.rightHeader.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     els.displayHeader.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-    expect(els.right.dataset.open).toBe("true");
     expect(els.displayPanel.dataset.open).toBe("true");
 
     windowAdd.mockRestore();
@@ -397,9 +377,6 @@ describe("app wiring", () => {
       <input id="chkGrid" type="checkbox" />
       <button id="btnExpCancel" type="button"></button>
       <button id="btnExpGo" type="button"></button>
-      <input id="bandSearch" />
-      <button id="btnExpandAll" type="button"></button>
-      <button id="btnCollapseAll" type="button"></button>
       <button id="btnReset" type="button"></button>
       <button id="btnAuto" type="button"></button>
       <input id="slContrast" />
@@ -434,9 +411,6 @@ describe("app wiring", () => {
       chkGrid: document.querySelector("#chkGrid"),
       btnExpCancel: document.querySelector("#btnExpCancel"),
       btnExpGo: document.querySelector("#btnExpGo"),
-      bandSearch: document.querySelector("#bandSearch"),
-      btnExpandAll: document.querySelector("#btnExpandAll"),
-      btnCollapseAll: document.querySelector("#btnCollapseAll"),
       btnReset: document.querySelector("#btnReset"),
       btnAuto: document.querySelector("#btnAuto"),
       slContrast: document.querySelector("#slContrast"),
@@ -497,7 +471,6 @@ describe("app wiring", () => {
       updateExportDialogUI: noop,
       updateExportEstimate: noop,
       runExportFromDialog: async () => {},
-      rebuildBandTree: noop,
       resetDisplay: noop,
       autoDisplay: noop,
       resolveDisplayControlBand: () => 0,
@@ -597,9 +570,6 @@ describe("app wiring", () => {
       btnExpCancel: makeButton(),
       btnExpGo: makeButton(),
       exportDlg: { close: noop, open: false },
-      bandSearch: { oninput: null, value: "" },
-      btnExpandAll: makeButton(),
-      btnCollapseAll: makeButton(),
       btnReset: makeButton(),
       btnAuto: makeButton(),
       slContrast: { oninput: null, value: "1" },
@@ -651,7 +621,6 @@ describe("app wiring", () => {
       updateExportDialogUI: noop,
       updateExportEstimate: noop,
       runExportFromDialog: async () => {},
-      rebuildBandTree: noop,
       resetDisplay: noop,
       autoDisplay: noop,
       resolveDisplayControlBand: () => 0,

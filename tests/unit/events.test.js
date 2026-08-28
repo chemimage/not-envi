@@ -329,13 +329,13 @@ describe("interaction controller", () => {
       pointerType: "mouse",
       clientX: 10,
       clientY: 20,
-      target: { closest: () => ({ id: "rightDock" }) }
+      target: { closest: () => ({ id: "displayDock" }) }
     });
     controller.onPointerMove({
       pointerType: "mouse",
       clientX: 40,
       clientY: 60,
-      target: { closest: () => ({ id: "rightDock" }) }
+      target: { closest: () => ({ id: "displayDock" }) }
     });
 
     expect(state.mouse.dragging).toBe(false);

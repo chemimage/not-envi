@@ -41,8 +41,8 @@ describe("dataset runtime", () => {
   });
 
   test("setActiveDataset expands the selected dataset and collapses other band trees", () => {
-    const ds1 = { id: "ds1", meta: {}, view: {}, treeExpanded: true };
-    const ds2 = { id: "ds2", meta: {}, view: {}, treeExpanded: false };
+    const ds1 = { id: "ds1", meta: {}, view: {} };
+    const ds2 = { id: "ds2", meta: {}, view: {} };
     const state = {
       datasets: [ds1, ds2],
       activeId: "ds1",
@@ -59,8 +59,6 @@ describe("dataset runtime", () => {
     rt.setActiveDataset("ds2");
 
     expect(state.activeId).toBe("ds2");
-    expect(ds1.treeExpanded).toBe(false);
-    expect(ds2.treeExpanded).toBe(true);
   });
 
   test("closeDataset removes dataset and cleans resources", () => {
@@ -222,7 +220,7 @@ describe("dataset runtime", () => {
     const deps = makeDeps(state);
     const rt = createDatasetRuntime(deps);
 
-    rt.cycleDatasetPanel("ds1", 2, { preserveBandTreeScroll: true });
+    rt.cycleDatasetPanel("ds1", 2);
 
     const panel1 = getDisplayPanel(state, 1);
     const panel2 = getDisplayPanel(state, 2);

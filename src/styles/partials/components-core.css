@@ -27,64 +27,16 @@
     @apply flex min-h-0 flex-col overflow-hidden rounded-sm border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
   }
 
-  #rightDock {
-    --right-dock-gap: 10px;
-    --bands-panel-open-h: clamp(260px, 46vh, 520px);
+  #displayDock {
     --display-panel-open-h: clamp(220px, 30vh, 300px);
     @apply pointer-events-none absolute right-2.5 z-20 flex flex-col justify-center;
     top: 10px;
     bottom: 10px;
-    gap: var(--right-dock-gap);
     width: min(390px, calc(100% - 20px));
   }
 
-  #rightDock > * {
+  #displayDock > * {
     pointer-events: auto;
-  }
-
-  #right {
-    --flyout-visible-header: 42px;
-    --flyout-title-size: 58px;
-    @apply relative w-full;
-    flex: 0 1 auto;
-    height: var(--bands-panel-open-h);
-    max-height: max(170px, calc(100% - var(--display-panel-open-h) - var(--right-dock-gap)));
-    transform: translateX(0);
-    transition: transform 220ms ease, box-shadow 180ms ease, opacity 180ms ease, height 220ms ease, max-height 220ms ease, min-height 220ms ease;
-    min-height: 170px;
-    opacity: 1;
-  }
-
-  #right[data-open="false"] {
-    transform: translateX(calc(100% - var(--flyout-visible-header)));
-    height: var(--flyout-title-size);
-    min-height: 0;
-    max-height: var(--flyout-title-size);
-  }
-
-  #right[data-open="false"] .panel-body {
-    max-height: 0;
-    opacity: 0;
-    pointer-events: none;
-    padding-top: 0;
-    padding-bottom: 0;
-  }
-
-  #right[data-open="false"] #rightHeader {
-    @apply relative cursor-pointer justify-center p-0;
-    flex: 0 0 var(--flyout-title-size);
-    border-bottom: 0;
-    height: var(--flyout-title-size);
-    overflow: visible;
-  }
-
-  #right .panel-body {
-    @apply flex-1;
-    transition: opacity 140ms ease, max-height 220ms ease, padding 220ms ease;
-  }
-
-  #right .panel-header {
-    @apply sticky top-0 z-10 bg-gray-900;
   }
 
   .panel-header-actions {
@@ -109,37 +61,6 @@
     box-shadow: none;
   }
 
-  #right[data-pinned="false"] #btnRightPin {
-    @apply border-gray-500 text-gray-400;
-  }
-
-  #right[data-open="false"] #rightHeader h2 {
-    position: absolute;
-    left: calc(var(--flyout-visible-header) / 2);
-    top: 50%;
-    margin: 0;
-    padding-top: 2px;
-    padding-right: 8px;
-    padding-bottom: 2px;
-    padding-left: 8px;
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transform: translate(-50%, -50%) rotate(-90deg);
-    transform-origin: center center;
-    white-space: nowrap;
-    color: rgb(229 231 235);
-    font-size: 12px;
-    line-height: 1;
-    text-align: center;
-    z-index: 2;
-    pointer-events: none;
-  }
-
-  #right[data-open="false"] #rightHeader .panel-header-actions {
-    display: none;
-  }
 
   #displayPanel {
     --display-visible-header: 42px;

@@ -79,23 +79,14 @@ export function createDatasetRuntime(deps) {
     return `Band ${b}`;
   }
 
-  function syncBandTreeExpansionToActive() {
-    const activeKey = String(state.activeId || "");
-    if (!activeKey) return;
-    for (const ds of state.datasets) {
-      ds.treeExpanded = String(ds?.id || "") === activeKey;
-    }
-  }
-
-  function updateActiveDataset(fit = false, preserveBandTreeScroll = false, closeSpectrumOnChange = true) {
+  function updateActiveDataset(fit = false, closeSpectrumOnChange = true) {
     const panel = getActivePanel();
     const nextId = panel?.datasetId || null;
     state.activeId = nextId;
-    syncBandTreeExpansionToActive();
     if (typeof syncActiveDatasetView === "function") syncActiveDatasetView();
     recomputeCacheBudgets();
     if (closeSpectrumOnChange) closeSpectrum();
-    onAfterDatasetUIUpdate({ preserveBandTreeScroll });
+    onAfterDatasetUIUpdate();
     const ds = getActive();
     updateZoomRange(ds);
     if (fit && ds) fitToScreen();
@@ -131,7 +122,7 @@ export function createDatasetRuntime(deps) {
     state.displaySplitSnapshot = null;
   }
 
-  function restoreSplitSnapshot(opts = {}) {
+  function restoreSplitSnapshot() {
     const snapshot = state.displaySplitSnapshot;
     if (!snapshot || !Array.isArray(snapshot.panels) || !snapshot.panels.length) return false;
     ensureDisplayPanels(state);
@@ -155,7 +146,7 @@ export function createDatasetRuntime(deps) {
     state.activeId = savedActivePanel?.datasetId || snapshot.activeId || null;
     setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT, { preserveSplitSnapshot: true });
     clearSplitSnapshot();
-    updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+    updateActiveDataset(false, false);
     return true;
   }
 
@@ -168,7 +159,7 @@ export function createDatasetRuntime(deps) {
     }
   }
 
-  function hideDatasetFromPanel(id, slot, opts = {}) {
+  function hideDatasetFromPanel(id, slot) {
     ensureDisplayPanels(state);
     const panel = getDisplayPanel(state, slot);
     if (!panel || String(panel.datasetId || "") !== String(id || "")) return false;
@@ -176,7 +167,7 @@ export function createDatasetRuntime(deps) {
     clearDisplayPanel(panel);
     if (getVisibleDisplayPanels(state).length < 2) setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
     if (typeof reflowDisplayViews === "function") reflowDisplayViews(viewSnapshot);
-    updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+    updateActiveDataset(false, false);
     return true;
   }
 
@@ -189,7 +180,7 @@ export function createDatasetRuntime(deps) {
       return true;
     }
     state.activePanelSlot = Number(panel.slot) || 1;
-    updateActiveDataset(!!opts.fit, !!opts.preserveBandTreeScroll, opts.closeSpectrumOnChange !== false);
+    updateActiveDataset(!!opts.fit, opts.closeSpectrumOnChange !== false);
     return true;
   }
 
@@ -275,7 +266,7 @@ export function createDatasetRuntime(deps) {
 
     setDisplayCompositionMode(opts.compositionMode || DISPLAY_COMPOSITION_SPLIT);
     state.activePanelSlot = Number(panel.slot) || 1;
-    updateActiveDataset(!!opts.fit, !!opts.preserveBandTreeScroll, opts.closeSpectrumOnChange !== false);
+    updateActiveDataset(!!opts.fit, opts.closeSpectrumOnChange !== false);
     return true;
   }
 
@@ -328,7 +319,7 @@ export function createDatasetRuntime(deps) {
     if (![1, 2].includes(Number(state.activePanelSlot)) || String(getDisplayPanel(state, state.activePanelSlot)?.datasetId || "") !== String(dataset.id)) {
       state.activePanelSlot = 1;
     }
-    updateActiveDataset(!!opts.fit, !!opts.preserveBandTreeScroll, opts.closeSpectrumOnChange !== false);
+    updateActiveDataset(!!opts.fit, opts.closeSpectrumOnChange !== false);
     return true;
   }
 
@@ -339,14 +330,13 @@ export function createDatasetRuntime(deps) {
     if (slot === "both") {
       const assigned = getDatasetDisplayPanels(state, ds.id).filter((panel) => Number(panel.slot) === 1 || Number(panel.slot) === 2);
       if (assigned.length === 2 && state.displayCompositionMode === DISPLAY_COMPOSITION_OVERLAY) {
-        if (restoreSplitSnapshot(opts)) return true;
+        if (restoreSplitSnapshot()) return true;
         setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
-        updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+        updateActiveDataset(false, false);
         return true;
       }
       return assignDatasetToOverlay(ds, {
-        fit: !!opts.fit,
-        preserveBandTreeScroll: !!opts.preserveBandTreeScroll
+        fit: !!opts.fit
       });
     }
 
@@ -361,7 +351,6 @@ export function createDatasetRuntime(deps) {
     ) {
       return setActivePanel(panel.slot, {
         fit: false,
-        preserveBandTreeScroll: !!opts.preserveBandTreeScroll,
         closeSpectrumOnChange: false
       });
     }
@@ -369,7 +358,6 @@ export function createDatasetRuntime(deps) {
     if (String(panel.datasetId || "") !== String(ds.id)) {
       return assignDatasetToPanel(ds, slot, {
         fit: !!opts.fit,
-        preserveBandTreeScroll: !!opts.preserveBandTreeScroll,
         compositionMode: DISPLAY_COMPOSITION_SPLIT
       });
     }
@@ -377,12 +365,12 @@ export function createDatasetRuntime(deps) {
     if (panelHasLinkedPeers(state, slot)) {
       makePanelUnique(panel, panel.view);
     } else {
-      return hideDatasetFromPanel(id, slot, opts);
+      return hideDatasetFromPanel(id, slot);
     }
 
     state.activePanelSlot = Number(panel.slot) || 1;
     setDisplayCompositionMode(DISPLAY_COMPOSITION_SPLIT);
-    updateActiveDataset(false, !!opts.preserveBandTreeScroll, false);
+    updateActiveDataset(false, false);
     return true;
   }
 
@@ -394,24 +382,24 @@ export function createDatasetRuntime(deps) {
     return getDisplayPanel(state, state.activePanelSlot) || getDisplayPanel(state, 1);
   }
 
-  function setActiveDataset(id, { fit = false, preserveBandTreeScroll = false, panelSlot = null } = {}) {
+  function setActiveDataset(id, { fit = false, panelSlot = null } = {}) {
     const dataset = findDatasetById(id);
     if (!dataset) return;
 
     if (panelSlot != null) {
-      assignDatasetToPanel(dataset, panelSlot, { fit, preserveBandTreeScroll });
+      assignDatasetToPanel(dataset, panelSlot, { fit });
       return;
     }
 
     const existing = getDatasetDisplayPanels(state, dataset.id);
     if (existing.length) {
-      setActivePanel(existing[0].slot, { fit, preserveBandTreeScroll });
+      setActivePanel(existing[0].slot, { fit });
       return;
     }
 
     const panel = resolvePanelForDatasetSelection(dataset);
     if (!panel) return;
-    assignDatasetToPanel(dataset, panel.slot, { fit, preserveBandTreeScroll });
+    assignDatasetToPanel(dataset, panel.slot, { fit });
   }
 
   function makeDatasetFromLoadedFiles({ hdrFile, dataFile, meta, base, cached }) {
@@ -432,7 +420,6 @@ export function createDatasetRuntime(deps) {
       selectedAreaId: null,
       thumb: { ready: false, _t: 0, scale: 1, x0: 0, y0: 0, w: 0, h: 0 },
       previewOverview: { ready: false, scale: 1, x0: 0, y0: 0, w: 0, h: 0, base: null, baseW: 0, baseH: 0 },
-      treeExpanded: true,
       displayMode: meta.defaultDisplayMode || "gray",
       displayAdjustColor: meta.defaultAdjustColor || "red",
       pyramid: null,

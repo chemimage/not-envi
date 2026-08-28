@@ -12,7 +12,7 @@ test("app boots and core controls are present", async ({ page }) => {
   await expect(page.locator("#btnGrid")).toBeHidden();
   await expect(page.locator("#btnFit")).toBeHidden();
   await expect(page.locator("#drawTools")).toBeHidden();
-  await expect(page.locator("#rightDock")).toBeHidden();
+  await expect(page.locator("#displayDock")).toBeHidden();
   expect(errors).toEqual([]);
 });
 

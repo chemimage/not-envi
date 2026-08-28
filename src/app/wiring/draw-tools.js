@@ -437,7 +437,6 @@ export function wireDrawToolInteractions(deps) {
     els.main.addEventListener("pointerdown", (ev) => {
       if (isUiTarget(ev.target)) return;
       activatePanelAtClientPoint(ev.clientX, ev.clientY, {
-        preserveBandTreeScroll: true,
         closeSpectrumOnChange: false
       });
     }, true);

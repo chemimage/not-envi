@@ -2,8 +2,7 @@ import { formatExperimentSettingsInline, parseExperimentSettings } from "./exper
 import {
   DISPLAY_COMPOSITION_OVERLAY,
   getLinkedDisplayPanels,
-  resolveDisplayLinkColorName,
-  resolveDisplayPanelBand
+  resolveDisplayLinkColorName
 } from "./display-panels.js";
 import {
   buildBandDockEntries,
@@ -14,9 +13,7 @@ import {
   THREE_BAND_ADJUST_BLUE,
   THREE_BAND_ADJUST_GREEN,
   THREE_BAND_ADJUST_RED,
-  THREE_BAND_DISPLAY_MODE_BGR,
   THREE_BAND_DISPLAY_MODE_GRAY,
-  THREE_BAND_DISPLAY_MODE_RGB,
   cycleThreeBandAdjustColor,
   cycleThreeBandDisplayMode,
   getThreeBandAdjustColor,
@@ -130,12 +127,6 @@ export function createUIPanels(deps) {
     return null;
   }
 
-  function describeThreeBandDisplayMode(mode) {
-    if (mode === THREE_BAND_DISPLAY_MODE_RGB) return "RGB image";
-    if (mode === THREE_BAND_DISPLAY_MODE_BGR) return "BGR image";
-    return "Multi-bands";
-  }
-
   function describeAdjustColor(color) {
     if (color === THREE_BAND_ADJUST_GREEN) return "Adjust green channel";
     if (color === THREE_BAND_ADJUST_BLUE) return "Adjust blue channel";
@@ -198,45 +189,6 @@ export function createUIPanels(deps) {
       ds.__wholeStatsAfterEstimate?.delete?.(band);
       requestWholeStatsIfNeeded(ds, band);
     }).catch(() => {});
-  }
-
-  function resolveActiveBandForDataset(ds) {
-    if (!ds) return null;
-    const panel = (typeof getActivePanel === "function") ? getActivePanel() : null;
-    if (panel && String(panel.datasetId || "") === String(ds.id || "")) {
-      return resolveDisplayPanelBand(panel, ds);
-    }
-    return resolveDisplayPanelBand(null, ds);
-  }
-
-  function numericBandSortValue(value) {
-    if (typeof value === "number") return Number.isFinite(value) ? value : null;
-    const s = String(value ?? "").trim();
-    if (!s) return null;
-    const direct = Number(s);
-    if (Number.isFinite(direct)) return direct;
-    const match = s.match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/i);
-    if (!match) return null;
-    const parsed = Number(match[0]);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  function sortedBandIndices(ds) {
-    const bandCount = Math.max(0, Math.floor(Number(ds?.meta?.bands) || 0));
-    const entries = [];
-    for (let b = 0; b < bandCount; b += 1) {
-      const wl = Array.isArray(ds?.meta?.wavelengths) ? ds.meta.wavelengths[b] : null;
-      const label = bandLabel(ds, b);
-      const sortValue = numericBandSortValue(wl ?? label);
-      entries.push({ band: b, sortValue });
-    }
-    if (!entries.length || entries.some((entry) => entry.sortValue == null)) {
-      return entries.map((entry) => entry.band);
-    }
-    return entries
-      .slice()
-      .sort((a, b) => (a.sortValue - b.sortValue) || (a.band - b.band))
-      .map((entry) => entry.band);
   }
 
   function syncDisplayAdjustButton(ds) {
@@ -321,9 +273,7 @@ export function createUIPanels(deps) {
       ds.thumb.buildPendingKey = null;
     }
     for (let b = 0; b < 3; b += 1) requestWholeStatsIfNeeded(ds, b, { force: true });
-    rebuildBandTree({ preserveScroll: true });
     updateDisplayUI(true, { skipStatsRequest: true });
-    bandDock.sync();
     render();
   }
 
@@ -410,157 +360,6 @@ export function createUIPanels(deps) {
     drawHistogram(ds);
   }
 
-  function fitActiveBandListToPanel() {
-    if (!els.bandTree) return;
-    const activeNode = els.bandTree.querySelector(".tree-ds.active");
-    const bandsWrap = activeNode ? activeNode.querySelector(".tree-bands") : null;
-    if (!bandsWrap) return;
-
-    bandsWrap.style.maxHeight = "";
-    if (state.datasets.length <= 2) return;
-
-    const panelBody = els.bandTree.closest ? els.bandTree.closest(".panel-body") : null;
-    const bodyH = Number(panelBody?.clientHeight) || 0;
-    if (bodyH > 0) {
-      const head = activeNode.querySelector(".tree-head");
-      const headRect = head && typeof head.getBoundingClientRect === "function"
-        ? head.getBoundingClientRect()
-        : null;
-      const headH = Number(headRect?.height) || Number(head?.offsetHeight) || 38;
-      const maxH = Math.max(72, bodyH - headH - 16);
-      bandsWrap.style.maxHeight = `${Math.floor(maxH)}px`;
-    }
-
-    if (panelBody) {
-      const treeTop = Number(els.bandTree.offsetTop) || 0;
-      const nodeTop = Number(activeNode.offsetTop) || 0;
-      panelBody.scrollTop = Math.max(0, nodeTop - treeTop);
-    }
-    if (typeof activeNode.scrollIntoView === "function") {
-      try { activeNode.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (_err) {}
-    }
-  }
-
-  function rebuildBandTree({ preserveScroll = false } = {}) {
-    const q = (els.bandSearch.value || "").trim().toLowerCase();
-    const prevScroll = preserveScroll ? els.bandTree.scrollTop : 0;
-    const bandScrollById = new Map();
-    if (preserveScroll) {
-      const existingNodes = els.bandTree.querySelectorAll(".tree-ds[data-dsid]");
-      for (const node of existingNodes) {
-        const id = node.getAttribute("data-dsid");
-        const bands = node.querySelector(".tree-bands");
-        if (id && bands) bandScrollById.set(id, bands.scrollTop || 0);
-      }
-    }
-    els.bandTree.innerHTML = "";
-
-    for (const ds of state.datasets) {
-      if (preserveScroll && bandScrollById.has(ds.id)) {
-        ds.treeScrollTop = bandScrollById.get(ds.id);
-      }
-      const node = document.createElement("div");
-      node.className = `tree-ds${ds.id === state.activeId ? " active" : ""}`;
-      node.dataset.dsid = ds.id;
-
-      const head = document.createElement("div");
-      head.className = "tree-head";
-
-      const caret = document.createElement("button");
-      caret.className = "caret";
-      caret.textContent = ds.treeExpanded ? "▾" : "▸";
-      caret.title = ds.treeExpanded ? "Collapse" : "Expand";
-      caret.onclick = (ev) => {
-        ev.stopPropagation();
-        ds.treeExpanded = !ds.treeExpanded;
-        rebuildBandTree({ preserveScroll: true });
-      };
-
-      const name = document.createElement("div");
-      name.className = "tree-name";
-      name.textContent = ds.name;
-      name.title = ds.name;
-
-      const meta = document.createElement("div");
-      meta.className = "tree-meta";
-      meta.textContent = `${ds.meta.bands} bands`;
-      const displayMode = getThreeBandDisplayMode(ds);
-      const showBands = ds.treeExpanded && !isThreeBandColorMode(ds);
-
-      head.appendChild(caret);
-      head.appendChild(name);
-      head.appendChild(meta);
-      if (isThreeBandDataset(ds)) {
-        const modeBtn = document.createElement("button");
-        modeBtn.type = "button";
-        modeBtn.className = `display-mode-btn mode-${displayMode}`;
-        const modeLabel = describeThreeBandDisplayMode(displayMode);
-        modeBtn.title = modeLabel;
-        modeBtn.ariaLabel = modeLabel;
-        modeBtn.setAttribute("aria-pressed", displayMode === THREE_BAND_DISPLAY_MODE_GRAY ? "false" : "true");
-        modeBtn.onclick = (ev) => {
-          ev.stopPropagation();
-          if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
-          cycleDatasetDisplayMode(ds);
-        };
-        head.appendChild(modeBtn);
-      }
-      head.onclick = () => {
-        if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
-      };
-      node.appendChild(head);
-
-      if (showBands) {
-        const bandsWrap = document.createElement("div");
-        bandsWrap.className = "tree-bands";
-        bandsWrap.addEventListener("scroll", () => {
-          ds.treeScrollTop = bandsWrap.scrollTop;
-        }, { passive: true });
-        for (const b of sortedBandIndices(ds)) {
-          const wl = ds.meta.wavelengths ? ds.meta.wavelengths[b] : null;
-          const label = bandLabel(ds, b);
-          if (q) {
-            const hay = `${ds.name} ${b} ${label} ${wl != null ? fmtNoGroup(wl) : ""}`.toLowerCase();
-            if (!hay.includes(q)) continue;
-          }
-
-          const row = document.createElement("div");
-          row.className = `band-row${(ds.id === state.activeId && b === resolveActiveBandForDataset(ds)) ? " active" : ""}`;
-          row.onclick = () => {
-            if (ds.id !== state.activeId) setActiveDataset(ds.id, { preserveBandTreeScroll: true });
-            setActiveBand(ds, b);
-          };
-
-          const lab = document.createElement("div");
-          lab.className = "label";
-          lab.textContent = label;
-          lab.title = `Band ${b}`;
-          row.appendChild(lab);
-          bandsWrap.appendChild(row);
-        }
-        node.appendChild(bandsWrap);
-      }
-
-      els.bandTree.appendChild(node);
-      if (showBands) {
-        const bandsWrap = node.querySelector(".tree-bands");
-        if (bandsWrap) {
-          const target = Number(ds.treeScrollTop || 0);
-          bandsWrap.scrollTop = target;
-          requestAnimationFrame(() => {
-            bandsWrap.scrollTop = target;
-          });
-        }
-      }
-    }
-
-    if (preserveScroll) els.bandTree.scrollTop = prevScroll;
-    fitActiveBandListToPanel();
-    requestAnimationFrame(() => {
-      fitActiveBandListToPanel();
-    });
-  }
-
   function setActiveBand(ds, band) {
     if (!ds) return;
     const b = clamp(band | 0, 0, ds.meta.bands - 1);
@@ -582,9 +381,7 @@ export function createUIPanels(deps) {
       }
     }
     getBandSettings(ds, b);
-    rebuildBandTree({ preserveScroll: true });
     updateDisplayUI(true);
-    bandDock.sync();
     render();
     requestWholeStatsIfNeeded(ds, b);
     if (onBandChanged) onBandChanged(ds, b);
@@ -797,7 +594,7 @@ export function createUIPanels(deps) {
         btn.textContent = slotButton.label;
         btn.onclick = (ev) => {
           ev.stopPropagation();
-          if (cycleDatasetPanel) cycleDatasetPanel(ds.id, slot, { preserveBandTreeScroll: true });
+          if (cycleDatasetPanel) cycleDatasetPanel(ds.id, slot);
         };
         actions.appendChild(btn);
       }
@@ -1053,7 +850,6 @@ export function createUIPanels(deps) {
     rebuildDatasetList,
     updateMetaUI,
     updatePerf,
-    rebuildBandTree,
     getBandSettings,
     resolveDisplayControlBand,
     resolveStats,
