@@ -308,7 +308,7 @@
   }
 
   .spec-title-row {
-    @apply flex items-center gap-1.5;
+    @apply flex min-w-0 items-baseline gap-2;
   }
 
   .floating-window-grip {
@@ -324,11 +324,11 @@
   }
 
   .spec-title {
-    @apply text-sm font-semibold leading-5 text-gray-100;
+    @apply shrink-0 text-xs uppercase tracking-[0.12em] text-gray-300;
   }
 
   .spec-sub {
-    @apply text-xs text-gray-300;
+    @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-sm text-gray-300;
   }
 
   .spec-warning {
@@ -341,7 +341,7 @@
   }
 
   .spec-axis-editor {
-    @apply absolute z-20 rounded-sm border border-blue-400/70 bg-gray-950 px-1 text-[11px] leading-none text-gray-100 shadow-lg outline-none ring-1 ring-blue-400/40;
+    @apply absolute z-20 rounded-sm border border-blue-400/70 bg-gray-950 px-1 text-sm leading-none text-gray-100 shadow-lg outline-none ring-1 ring-blue-400/40;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
 
@@ -375,6 +375,10 @@
 
   .floating-window-actions .icon-btn {
     @apply h-7 w-7 p-0;
+  }
+
+  .spec-csv-btn {
+    @apply text-[9px] font-bold tracking-[-0.02em];
   }
 
   #app[data-empty="true"] #drawTools,

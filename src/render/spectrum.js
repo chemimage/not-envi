@@ -495,11 +495,12 @@ export function createSpectrumController(deps) {
       }
     }
 
-    ctx.fillStyle = "rgba(229,231,235,0.92)";
-    ctx.font = `${Math.round(11 * dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+    const hoverActive = !!(specState.hover && ds?.id === specState.dsId);
+    ctx.fillStyle = hoverActive ? "rgba(229,231,235,0.34)" : "rgba(229,231,235,0.92)";
+    ctx.font = `${Math.round(14 * dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     ctx.textBaseline = "middle";
     ctx.textAlign = "right";
-    const yLabelFontPx = Math.round(11 * dpr);
+    const yLabelFontPx = Math.round(14 * dpr);
     const buildYLabelBox = (text, y) => {
       const width = ctx.measureText(text).width;
       const padX = 4 * dpr;
@@ -522,7 +523,7 @@ export function createSpectrumController(deps) {
     }
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    const labelFontPx = Math.round(11 * dpr);
+    const labelFontPx = Math.round(14 * dpr);
     const labelY = y1 + 6 * dpr;
     const buildLabelBox = (text, x, align) => {
       const width = ctx.measureText(text).width;
@@ -647,7 +648,7 @@ export function createSpectrumController(deps) {
 
   function formatSpectrumHoverLabel(hover) {
     if (!hover) return "";
-    return formatAxisNumber(hover.value);
+    return `value = ${formatAxisNumber(hover.value)}`;
   }
 
   function formatSpectrumHoverXLabel(hover) {
@@ -683,7 +684,7 @@ export function createSpectrumController(deps) {
 
     const label = formatSpectrumHoverLabel(hover);
     if (label) {
-      const fontPx = Math.round(11 * dpr);
+      const fontPx = Math.round(14 * dpr);
       ctx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";

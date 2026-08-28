@@ -408,7 +408,7 @@ describe("spectrum controller", () => {
     expect(specCtx.setLineDash).toHaveBeenCalledWith([]);
     expect(specCtx.moveTo).toHaveBeenCalledWith(111, 12);
     expect(specCtx.lineTo).toHaveBeenCalledWith(111, 146);
-    expect(textLabels).toContain("6.000");
+    expect(textLabels).toContain("value = 6.000");
   });
 
   test("spectrum hover snaps to the nearest discrete band", async () => {
@@ -434,7 +434,7 @@ describe("spectrum controller", () => {
       setLineDash: vi.fn(),
       fillText: vi.fn(function recordText(text) {
         textLabels.push(String(text));
-        drawnText.push({ text: String(text), font: this.font });
+        drawnText.push({ text: String(text), font: this.font, fillStyle: this.fillStyle });
       }),
       measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
       textAlign: "",
@@ -484,6 +484,7 @@ describe("spectrum controller", () => {
     specCtx.moveTo.mockClear();
     specCtx.lineTo.mockClear();
     textLabels.length = 0;
+    drawnText.length = 0;
 
     handlers.get("pointermove")?.({
       clientX: 120,
@@ -496,9 +497,11 @@ describe("spectrum controller", () => {
     const snappedX = 52 + ((1100 - 1000) / (1300 - 1000)) * 236;
     expect(specCtx.moveTo).toHaveBeenCalledWith(snappedX, 12);
     expect(specCtx.lineTo).toHaveBeenCalledWith(snappedX, 146);
-    expect(textLabels).toContain("4.000");
+    expect(textLabels).toContain("value = 4.000");
     expect(textLabels).toContain("1100");
     expect(drawnText.find(({ text }) => text === "1100")?.font).toContain("14px");
+    expect(drawnText.find(({ text }) => text === "1000")?.font).toContain("14px");
+    expect(drawnText.find(({ text }) => text === "1000")?.fillStyle).toBe("rgba(229,231,235,0.34)");
   });
 
   test("terminal x and y axis labels edit inline and blank values reset to auto range", async () => {
