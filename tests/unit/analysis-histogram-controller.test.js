@@ -62,13 +62,16 @@ describe("analysis-histogram-controller", () => {
     panel.setAttribute("aria-hidden", "false");
     panel.getBoundingClientRect = () => ({ width: 380, height: 260 });
 
+    const drawnText = [];
     const canvasCtx = {
       save: vi.fn(),
       restore: vi.fn(),
       setTransform: vi.fn(),
       clearRect: vi.fn(),
       fillRect: vi.fn(),
-      fillText: vi.fn(),
+      fillText: vi.fn(function recordText(text) {
+        drawnText.push({ text, font: this.font, textAlign: this.textAlign });
+      }),
       beginPath: vi.fn(),
       moveTo: vi.fn(),
       lineTo: vi.fn(),
@@ -86,9 +89,6 @@ describe("analysis-histogram-controller", () => {
     const warning = document.createElement("div");
     warning.style.display = "none";
     const hover = document.createElement("div");
-    const statN = document.createElement("div");
-    const statRms = document.createElement("div");
-    const statMode = document.createElement("div");
     const btn = makeButton();
     btn.getBoundingClientRect = () => ({ right: 120, top: 60 });
 
@@ -120,9 +120,6 @@ describe("analysis-histogram-controller", () => {
         analysisHistCanvas: canvas,
         analysisHistHover: hover,
         analysisHistWarning: warning,
-        analysisStatN: statN,
-        analysisStatRms: statRms,
-        analysisStatMode: statMode,
         btnToolHistogram: btn,
         main: { getBoundingClientRect: () => ({ width: 800, height: 600 }) }
       },
@@ -146,14 +143,20 @@ describe("analysis-histogram-controller", () => {
     expect(warning.style.display).toBe("block");
     expect(warning.textContent).toContain("Approximate:");
     expect(warning.textContent).toContain("3");
-    expect(statRms.textContent).toBe("2.25");
     expect(canvasCtx.fillText).toHaveBeenCalledWith("bins", expect.any(Number), expect.any(Number));
     expect(canvasCtx.fillText).toHaveBeenCalledWith("bin width", expect.any(Number), expect.any(Number));
     expect(canvasCtx.fillText).toHaveBeenCalledWith("=", expect.any(Number), expect.any(Number));
     expect(canvasCtx.fillText).toHaveBeenCalledWith("mean = 1.5", expect.any(Number), expect.any(Number));
     expect(canvasCtx.fillText).toHaveBeenCalledWith("std = 0.5", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("rms = 2.25", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("N = 6", expect.any(Number), expect.any(Number));
+    expect(canvasCtx.fillText).toHaveBeenCalledWith("mode = 2", expect.any(Number), expect.any(Number));
     expect(canvasCtx.fillText).toHaveBeenCalledWith("0", expect.any(Number), expect.any(Number));
     expect(canvasCtx.fillText).toHaveBeenCalledWith("3", expect.any(Number), expect.any(Number));
-    expect(canvasCtx.font).toContain("14px");
+    expect(drawnText.find(({ text }) => text === "rms = 2.25")?.font).toContain("14px");
+    expect(drawnText.find(({ text }) => text === "N = 6")?.font).toContain("14px");
+    const binsLabelIndex = drawnText.findIndex(({ text }) => text === "bins");
+    expect(drawnText[binsLabelIndex]).toMatchObject({ font: expect.stringContaining("12px"), textAlign: "right" });
+    expect(drawnText[binsLabelIndex + 2]).toMatchObject({ text: "3", textAlign: "left" });
   });
 });

@@ -323,7 +323,7 @@
   }
 
   #analysisHistCanvas {
-    @apply block h-[210px] w-full bg-gray-900 font-mono text-sm text-gray-200;
+    @apply block h-[228px] w-full bg-gray-900 font-mono text-sm text-gray-200;
     --hist-accent: rgb(34 211 238 / 0.96);
     --hist-accent-muted: rgb(34 211 238 / 0.72);
     --hist-accent-region: rgb(34 211 238 / 0.14);
@@ -342,19 +342,6 @@
 
   .analysis-hist-warning {
     @apply mt-1 rounded-sm border border-amber-500/30 bg-amber-950/30 px-2 py-1 text-[11px] leading-4 text-amber-200;
-  }
-
-  .analysis-hist-stats {
-    @apply mt-1 grid gap-x-2 gap-y-1 text-xs;
-    grid-template-columns: max-content 1fr max-content 1fr;
-  }
-
-  .analysis-hist-stats .k {
-    @apply text-gray-400;
-  }
-
-  .analysis-hist-stats .v {
-    @apply font-mono text-gray-200;
   }
 
   #overlayHUD {

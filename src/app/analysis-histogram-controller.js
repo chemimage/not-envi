@@ -36,7 +36,7 @@ export function createAnalysisHistogramController(deps) {
   function getCanvasPlotRect(canvasWidth, canvasHeight, dpr = 1) {
     const horizontalPad = 10 * dpr;
     const topPad = 8 * dpr;
-    const axisHeight = 62 * dpr;
+    const axisHeight = 80 * dpr;
     return {
       plotX0: horizontalPad,
       plotY0: topPad,
@@ -56,19 +56,6 @@ export function createAnalysisHistogramController(deps) {
     if (!els.btnToolHistogram) return;
     els.btnToolHistogram.classList.toggle("active", !!state.analysisHist.open);
     els.btnToolHistogram.setAttribute("aria-pressed", state.analysisHist.open ? "true" : "false");
-  }
-
-  function updateStatsPanel(stats) {
-    if (!els.analysisStatN) return;
-    if (!stats) {
-      els.analysisStatN.textContent = "—";
-      els.analysisStatRms.textContent = "—";
-      els.analysisStatMode.textContent = "—";
-      return;
-    }
-    els.analysisStatN.textContent = fmtNoGroup(stats.count || 0);
-    els.analysisStatRms.textContent = formatNumber(stats.rms);
-    els.analysisStatMode.textContent = formatNumber(stats.mode);
   }
 
   function updateHoverText(stats, binIndex) {
@@ -225,30 +212,40 @@ export function createAnalysisHistogramController(deps) {
 
     const meanLabel = `mean = ${formatNumber(stats.mean)}`;
     const stdLabel = `std = ${formatNumber(stats.stdDev)}`;
-    const labelWidth = Math.max(meanLabel.length, stdLabel.length) * 4.2 * dpr;
+    const rmsLabel = `rms = ${formatNumber(stats.rms)}`;
+    const labelWidth = Math.max(meanLabel.length, stdLabel.length, rmsLabel.length) * 4.2 * dpr;
     const meanLabelX = clamp(meanX, plot.plotX0 + labelWidth, plotRight - labelWidth);
     ctx.fillStyle = accentColor;
     ctx.textAlign = "center";
     ctx.fillText(meanLabel, meanLabelX, plotBottom + (25 * dpr));
     ctx.fillStyle = accentMutedColor;
     ctx.fillText(stdLabel, meanLabelX, plotBottom + (43 * dpr));
+    ctx.fillText(rmsLabel, meanLabelX, plotBottom + (61 * dpr));
+
+    const summaryLeft = plot.plotX0 + (8 * dpr);
+    ctx.font = axisFont;
+    ctx.fillStyle = annotationColor;
+    ctx.textAlign = "left";
+    ctx.fillText(`N = ${fmtNoGroup(stats.count || 0)}`, summaryLeft, plot.plotY0 + (8 * dpr));
+    ctx.fillStyle = mutedColor;
+    ctx.fillText(`mode = ${formatNumber(stats.mode)}`, summaryLeft, plot.plotY0 + (27 * dpr));
 
     const binWidth = Number.isFinite(stats.binWidth)
       ? stats.binWidth
       : ((stats.max - stats.min) / Math.max(1, bins.length));
     const metaLeft = plotRight - (164 * dpr);
-    const metaRight = plotRight - (8 * dpr);
     const metaEqualsX = metaLeft + (82 * dpr);
     const drawMetadataRow = (label, value, y) => {
       ctx.fillStyle = mutedColor;
-      ctx.textAlign = "left";
-      ctx.fillText(label, metaLeft + (8 * dpr), y);
+      ctx.textAlign = "right";
+      ctx.fillText(label, metaEqualsX - (8 * dpr), y);
       ctx.textAlign = "center";
       ctx.fillText("=", metaEqualsX, y);
       ctx.fillStyle = annotationColor;
-      ctx.textAlign = "right";
-      ctx.fillText(value, metaRight, y);
+      ctx.textAlign = "left";
+      ctx.fillText(value, metaEqualsX + (8 * dpr), y);
     };
+    ctx.font = `${Math.max(10, annotationFontSize - 2) * dpr}px ${annotationFontFamily}`;
     ctx.fillStyle = overlayColor;
     ctx.fillRect(metaLeft, plot.plotY0 + (4 * dpr), 164 * dpr, 42 * dpr);
     drawMetadataRow("bins", fmtNoGroup(bins.length), plot.plotY0 + (8 * dpr));
@@ -341,7 +338,6 @@ export function createAnalysisHistogramController(deps) {
     state.analysisHist.hoverBin = -1;
     if (!ds) {
       state.analysisHist.stats = null;
-      updateStatsPanel(null);
       updateSamplingWarning(null);
       updateHoverText(null, -1);
       drawCanvas(null);
@@ -353,7 +349,6 @@ export function createAnalysisHistogramController(deps) {
     try {
       const stats = await ensureStatsForPanel(ds);
       state.analysisHist.stats = stats;
-      updateStatsPanel(stats);
       updateSamplingWarning(stats);
       updateHoverText(stats, -1);
       drawCanvas(stats);
@@ -361,7 +356,6 @@ export function createAnalysisHistogramController(deps) {
     } catch (err) {
       console.warn("Analysis histogram failed", err);
       state.analysisHist.stats = null;
-      updateStatsPanel(null);
       updateSamplingWarning(null);
       updateHoverText(null, -1);
       drawCanvas(null);
