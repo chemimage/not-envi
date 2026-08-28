@@ -1,4 +1,5 @@
 import { fmtNoGroup, fmtUm } from "../core/utils.js";
+import { choosePanelPlacementNearSelection } from "../app/panel-placement.js";
 import {
   formatAxisNumber,
   hasApproximatelyUniformBandIntervals,
@@ -86,7 +87,7 @@ export function createSpectrumController(deps) {
 
   function showSpectrumPanel(show) {
     if (!els.specPanel) return;
-    els.specPanel.style.display = show ? "block" : "none";
+    els.specPanel.style.display = show ? "flex" : "none";
     specState.open = !!show;
   }
 
@@ -193,6 +194,7 @@ export function createSpectrumController(deps) {
 
   function positionSpectrumPanel(anchor = null) {
     if (!els.specPanel || !els.main || !anchor) return;
+    if (els.specPanel.dataset?.floatingUserPlaced === "true") return;
     if (!Number.isFinite(anchor.clientX) || !Number.isFinite(anchor.clientY)) return;
     const mainRect = els.main.getBoundingClientRect();
     const panelRect = els.specPanel.getBoundingClientRect();
@@ -217,88 +219,22 @@ export function createSpectrumController(deps) {
     els.specPanel.style.bottom = "auto";
   }
 
-  function rectOverlapArea(a, b) {
-    const x0 = Math.max(a.x, b.x);
-    const y0 = Math.max(a.y, b.y);
-    const x1 = Math.min(a.x + a.w, b.x + b.w);
-    const y1 = Math.min(a.y + a.h, b.y + b.h);
-    if (x1 <= x0 || y1 <= y0) return 0;
-    return (x1 - x0) * (y1 - y0);
-  }
-
   function positionSpectrumPanelNearSelection(ds, selectionBounds, occluderBounds = [], pointerType = "mouse") {
     if (!els.specPanel || !els.main || !selectionBounds) return false;
-    const mainRect = els.main.getBoundingClientRect();
+    if (els.specPanel.dataset?.floatingUserPlaced === "true") return true;
     const panelRect = els.specPanel.getBoundingClientRect();
-    const panelW = Math.max(220, panelRect.width || 380);
-    const panelH = Math.max(120, panelRect.height || 230);
-    const gap = pointerType === "touch" ? 56 : 28;
-    const margin = 8;
-
-    const scale = Math.max(1e-9, Number(ds?.view?.scale) || 1);
-    const sx0 = (selectionBounds.x0 - ds.view.x) * scale;
-    const sy0 = (selectionBounds.y0 - ds.view.y) * scale;
-    const sx1 = (selectionBounds.x1 + 1 - ds.view.x) * scale;
-    const sy1 = (selectionBounds.y1 + 1 - ds.view.y) * scale;
-    const selRect = {
-      x: Math.min(sx0, sx1),
-      y: Math.min(sy0, sy1),
-      w: Math.max(1, Math.abs(sx1 - sx0)),
-      h: Math.max(1, Math.abs(sy1 - sy0))
-    };
-
-    const cx = selRect.x + (selRect.w / 2);
-    const cy = selRect.y + (selRect.h / 2);
-    const occluderRects = Array.isArray(occluderBounds)
-      ? occluderBounds.map((b) => {
-        const ox0 = (b.x0 - ds.view.x) * scale;
-        const oy0 = (b.y0 - ds.view.y) * scale;
-        const ox1 = (b.x1 + 1 - ds.view.x) * scale;
-        const oy1 = (b.y1 + 1 - ds.view.y) * scale;
-        return {
-          x: Math.min(ox0, ox1),
-          y: Math.min(oy0, oy1),
-          w: Math.max(1, Math.abs(ox1 - ox0)),
-          h: Math.max(1, Math.abs(oy1 - oy0))
-        };
-      })
-      .filter((r) => Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.w) && Number.isFinite(r.h))
-      : [];
-
-    const candidates = [
-      { x: selRect.x + selRect.w + gap, y: cy - (panelH / 2) },
-      { x: selRect.x - panelW - gap, y: cy - (panelH / 2) },
-      { x: cx - (panelW / 2), y: selRect.y + selRect.h + gap },
-      { x: cx - (panelW / 2), y: selRect.y - panelH - gap },
-      { x: selRect.x + selRect.w + gap, y: selRect.y + selRect.h + gap },
-      { x: selRect.x - panelW - gap, y: selRect.y - panelH - gap },
-      { x: selRect.x + selRect.w + gap, y: selRect.y - panelH - gap },
-      { x: selRect.x - panelW - gap, y: selRect.y + selRect.h + gap }
-    ];
-
-    let best = null;
-    let bestScore = Number.POSITIVE_INFINITY;
-    let bestOccluderOverlap = Number.POSITIVE_INFINITY;
-    for (const cand of candidates) {
-      const x = Math.max(margin, Math.min(cand.x, mainRect.width - panelW - margin));
-      const y = Math.max(margin, Math.min(cand.y, mainRect.height - panelH - margin));
-      const panel = { x, y, w: panelW, h: panelH };
-      const targetOverlap = rectOverlapArea(panel, selRect);
-      let occluderOverlap = 0;
-      for (const occ of occluderRects) occluderOverlap += rectOverlapArea(panel, occ);
-      const dx = x - cand.x;
-      const dy = y - cand.y;
-      const dist = Math.hypot(dx, dy);
-      const score = (occluderOverlap * 40) + (targetOverlap * 6) + dist;
-      if (occluderOverlap < bestOccluderOverlap || (occluderOverlap === bestOccluderOverlap && score < bestScore)) {
-        bestOccluderOverlap = occluderOverlap;
-        bestScore = score;
-        best = { x, y };
-      }
-    }
-    if (!best) return false;
-    els.specPanel.style.left = `${Math.round(best.x)}px`;
-    els.specPanel.style.top = `${Math.round(best.y)}px`;
+    const placement = choosePanelPlacementNearSelection({
+      ds,
+      mainRect: els.main.getBoundingClientRect(),
+      panelWidth: panelRect.width || 380,
+      panelHeight: panelRect.height || 230,
+      targetBounds: selectionBounds,
+      avoidBounds: occluderBounds,
+      pointerType
+    });
+    if (!placement) return false;
+    els.specPanel.style.left = `${Math.round(placement.x)}px`;
+    els.specPanel.style.top = `${Math.round(placement.y)}px`;
     els.specPanel.style.right = "auto";
     els.specPanel.style.bottom = "auto";
     return true;

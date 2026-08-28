@@ -421,7 +421,7 @@ export function wireDrawToolInteractions(deps) {
   const isUiTarget = (target) => !!(
     target
     && target.closest
-    && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#overlayHUD,#hudControls,#analysisHistPanel,#specPanel,dialog")
+    && target.closest("[data-ui-surface]")
   );
 
   function resolveActiveViewportCenter() {

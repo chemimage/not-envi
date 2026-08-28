@@ -391,7 +391,9 @@
   }
 
   .spec-panel {
-    @apply absolute bottom-3 left-3 z-10 w-[min(380px,calc(100vw-16px))] select-none overflow-hidden rounded-sm border border-white/10 bg-gray-900 shadow-2xl shadow-black/50;
+    @apply absolute bottom-3 left-3 w-[min(380px,calc(100vw-16px))] select-none overflow-hidden;
+    height: min(330px, calc(100vh - 16px));
+    min-height: 220px;
     pointer-events: auto;
   }
 
@@ -416,7 +418,7 @@
   }
 
   .spec-canvas {
-    @apply block h-[250px] w-full bg-gray-900;
+    @apply block min-h-[160px] w-full flex-1 bg-gray-900;
     position: static;
   }
 
@@ -427,6 +429,34 @@
 
   .spec-foot {
     @apply hidden;
+  }
+
+  .floating-window {
+    @apply flex flex-col overflow-hidden rounded-sm border border-gray-700 bg-gray-900/80 shadow-2xl shadow-black/50 backdrop-blur-sm;
+    z-index: var(--layer-floating-window);
+    pointer-events: auto;
+  }
+
+  .floating-window.floating-window-active {
+    @apply border-gray-500 ring-1 ring-gray-500/25;
+  }
+
+  .floating-window-header {
+    @apply shrink-0 border-b border-gray-700/80 bg-gray-900/85;
+    cursor: move;
+    touch-action: none;
+  }
+
+  .floating-window-body {
+    @apply min-h-0 flex-1;
+  }
+
+  .floating-window-actions {
+    @apply flex shrink-0 items-center gap-1.5;
+  }
+
+  .floating-window-actions .icon-btn {
+    @apply h-7 w-7 p-0;
   }
 
   #app[data-empty="true"] #drawTools,

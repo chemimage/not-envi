@@ -75,7 +75,7 @@ describe("spectrum controller", () => {
 
     await ctrl.openSpectrumAt(ds, 10, 20);
     expect(ctrl.isOpenForDatasetId(7)).toBe(true);
-    expect(els.specPanel.style.display).toBe("block");
+    expect(els.specPanel.style.display).toBe("flex");
 
     ctrl.closeSpectrum();
     expect(ctrl.isOpenForDatasetId(7)).toBe(false);
@@ -659,7 +659,7 @@ describe("spectrum controller", () => {
     });
 
     expect(readSpectrumAtPixel).not.toHaveBeenCalled();
-    expect(els.specPanel.style.display).toBe("block");
+    expect(els.specPanel.style.display).toBe("flex");
     expect(els.specSub.textContent).toBe("Area average (computing...)");
     expect(els.specFoot.textContent).toBe("Computing 0/3 bands");
     expect(specCtx.fillText).toHaveBeenCalledWith("Computing area average...", 150, 90);

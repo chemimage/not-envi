@@ -43,7 +43,7 @@ describe("analysis-histogram-controller", () => {
     ctrl.setOpen(true);
     await Promise.resolve();
     expect(state.analysisHist.open).toBe(true);
-    expect(panel.style.display).toBe("block");
+    expect(panel.style.display).toBe("flex");
     expect(panel.getAttribute("aria-hidden")).toBe("false");
     expect(btn.classList.contains("active")).toBe(true);
     expect(btn.getAttribute("aria-pressed")).toBe("true");

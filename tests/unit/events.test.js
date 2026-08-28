@@ -371,7 +371,7 @@ describe("interaction controller", () => {
       panByPixels
     });
     const target = {
-      closest: (selector) => selector.includes("#bandDock") ? { id: "bandDock" } : null
+      closest: (selector) => selector === "[data-ui-surface]" ? { id: "bandDock" } : null
     };
 
     controller.onPointerDown({ pointerType: "mouse", clientX: 10, clientY: 20, target });

@@ -18,7 +18,7 @@
         <img id="brandLogo" src="./images/Illinois_logo_fullcolor_rgb.png" alt="Illinois logo" />
         <div id="brandVersion" aria-label="Application version"></div>
       </div>
-      <div id="drawTools" aria-label="Drawing tools">
+      <div id="drawTools" data-ui-surface aria-label="Drawing tools">
         <div class="draw-color-anchor">
           <button class="draw-color-wrap" id="drawColorPreview" type="button" title="Drawing color swatches" aria-label="Drawing color swatches" aria-expanded="false" aria-haspopup="true">
             <i class="fa-solid fa-brush" aria-hidden="true"></i>
@@ -98,7 +98,7 @@
 
     <div id="selRect"></div>
 
-    <div id="thumbDock">
+    <div id="thumbDock" data-ui-surface>
       <div id="thumbWrap">
         <div id="thumbControls">
           <button class="btn tiny icon-btn" id="btnFit" type="button" title="Fit view" aria-label="Fit view">
@@ -126,7 +126,7 @@
     </div>
 
     <div id="emptyState">
-      <div id="dropzone" class="dropzone empty-dropzone" tabindex="0" role="button" aria-label="Open ENVI or TIFF dataset files">
+      <div id="dropzone" class="dropzone empty-dropzone" data-ui-surface tabindex="0" role="button" aria-label="Open ENVI or TIFF dataset files">
         <div class="hint">
           <b>Drag & drop</b> ENVI file pairs or TIFF files, or <b>click here</b> to choose files.
         </div>
@@ -134,12 +134,12 @@
       </div>
     </div>
 
-    <div id="datasetDock">
+    <div id="datasetDock" data-ui-surface>
       <span id="datasetCount" style="display:none;">0</span>
       <div id="datasetViewport" class="dataset-viewport">
         <div id="datasetList" class="ds-list"></div>
       </div>
-      <div id="metaHoverPanel" class="meta-hover-panel" style="display:none;">
+      <div id="metaHoverPanel" class="meta-hover-panel" data-ui-surface style="display:none;">
         <div class="kv">
           <div class="k">Samples</div><div class="v" id="metaSamples">—</div>
           <div class="k">Lines</div><div class="v" id="metaLines">—</div>
@@ -155,7 +155,7 @@
       </div>
     </div>
 
-    <div id="bandDock" aria-label="Band selector">
+    <div id="bandDock" data-ui-surface aria-label="Band selector">
       <div
         id="bandSelector"
         class="band-selector"
@@ -183,7 +183,7 @@
       >Gray</button>
     </div>
 
-    <div id="rightDock">
+    <div id="rightDock" data-ui-surface>
       <aside id="right" data-open="false" data-pinned="false">
         <div class="panel-header" id="rightHeader">
           <h2>Bands</h2>
@@ -260,29 +260,49 @@
       </aside>
     </div>
 
-    <div id="analysisHistPanel" class="analysis-hist-panel" style="display:none;" aria-hidden="true">
-      <canvas id="analysisHistCanvas"></canvas>
-      <div class="analysis-hist-hover" id="analysisHistHover">Hover a bin to inspect value/count.</div>
-      <div class="analysis-hist-warning tiny" id="analysisHistWarning" style="display:none;"></div>
-      <div class="analysis-hist-stats">
-        <div class="k">N</div><div class="v" id="analysisStatN">—</div>
-        <div class="k">Min/Max</div><div class="v" id="analysisStatRange">—</div>
-        <div class="k">Mean/StdDev</div><div class="v" id="analysisStatMeanStd">—</div>
-        <div class="k">Mode</div><div class="v" id="analysisStatMode">—</div>
-        <div class="k">Bins</div><div class="v" id="analysisStatBins">—</div>
-        <div class="k">BinWidth</div><div class="v" id="analysisStatBinWidth">—</div>
+    <div id="analysisHistPanel" class="analysis-hist-panel" data-ui-surface style="display:none;" aria-hidden="true" role="dialog" aria-labelledby="analysisHistTitle">
+      <div class="analysis-hist-head floating-window-header">
+        <div class="analysis-hist-title" id="analysisHistTitle">Histogram</div>
+        <div class="floating-window-actions">
+          <button class="btn tiny icon-btn floating-window-reset" id="btnAnalysisHistReset" type="button" title="Reset floating window layout" aria-label="Reset floating window layout">
+            <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
+          </button>
+          <button class="btn tiny icon-btn" id="btnAnalysisHistClose" type="button" title="Close histogram" aria-label="Close histogram">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+      <div class="analysis-hist-body floating-window-body">
+        <canvas id="analysisHistCanvas"></canvas>
+        <div class="analysis-hist-hover" id="analysisHistHover">Hover a bin to inspect value/count.</div>
+        <div class="analysis-hist-warning tiny" id="analysisHistWarning" style="display:none;"></div>
+        <div class="analysis-hist-stats">
+          <div class="k">N</div><div class="v" id="analysisStatN">—</div>
+          <div class="k">Min/Max</div><div class="v" id="analysisStatRange">—</div>
+          <div class="k">Mean/StdDev</div><div class="v" id="analysisStatMeanStd">—</div>
+          <div class="k">Mode</div><div class="v" id="analysisStatMode">—</div>
+          <div class="k">Bins</div><div class="v" id="analysisStatBins">—</div>
+          <div class="k">BinWidth</div><div class="v" id="analysisStatBinWidth">—</div>
+        </div>
       </div>
     </div>
 
     <!-- Spectrum (z-profile) panel: double-click in the view to open -->
-    <div id="specPanel" class="spec-panel" style="display:none;">
-      <div class="spec-head">
+    <div id="specPanel" class="spec-panel" data-ui-surface style="display:none;" role="dialog" aria-labelledby="specTitle">
+      <div class="spec-head floating-window-header">
         <div class="spec-head-left">
+          <div class="spec-title" id="specTitle">Spectrum</div>
           <div class="spec-sub" id="specSub">—</div>
           <div class="spec-warning tiny" id="specWarn" style="display:none;"></div>
         </div>
-        <div class="spec-head-right">
+        <div class="spec-head-right floating-window-actions">
           <button class="btn tiny" id="btnSpecCSV" title="Export spectrum as CSV">CSV</button>
+          <button class="btn tiny icon-btn floating-window-reset" id="btnSpecReset" type="button" title="Reset floating window layout" aria-label="Reset floating window layout">
+            <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
+          </button>
+          <button class="btn tiny icon-btn" id="btnSpecClose" type="button" title="Close spectrum" aria-label="Close spectrum">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
         </div>
       </div>
       <canvas id="specCanvas" class="spec-canvas"></canvas>
@@ -292,7 +312,7 @@
 </div>
 
 <!-- Export modal -->
-<dialog id="exportDlg">
+<dialog id="exportDlg" data-ui-surface>
   <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
     <h3 id="expTitle" style="margin:0; font-size:16px;">Export</h3>
     <span class="badge" id="expEstimate">Estimated output: —</span>

@@ -61,6 +61,7 @@ import {
   resolveSelectionBoundsUnion
 } from "./selection-bounds.js";
 import { pointInPolygon } from "./draw-geometry.js";
+import { createFloatingWindowManager } from "./floating-windows.js";
 
 (() => {
   'use strict';
@@ -111,6 +112,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   // ========= Elements =========
 
   const els = collectElements();
+  const floatingWindows = createFloatingWindowManager({ container: els.main });
   function resetFilePicker() {
     if (!els.filePicker) return;
     try { els.filePicker.value = ""; } catch (_err) {}
@@ -1183,6 +1185,38 @@ import { pointInPolygon } from "./draw-geometry.js";
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });
 
+  floatingWindows.register({
+    id: "analysis-histogram",
+    element: els.analysisHistPanel,
+    dragHandle: ".analysis-hist-head",
+    minWidth: 300,
+    minHeight: 300,
+    onResize: () => analysisHistogram.redraw()
+  });
+  floatingWindows.register({
+    id: "spectrum",
+    element: els.specPanel,
+    dragHandle: ".spec-head",
+    minWidth: 300,
+    minHeight: 220,
+    onResize: () => redrawSpectrum()
+  });
+
+  function resetFloatingWindowLayout() {
+    floatingWindows.resetLayout();
+    if (state.analysisHist.open) positionAnalysisHistogramPanel();
+    redrawSpectrum();
+  }
+
+  for (const button of [els.btnAnalysisHistReset, els.btnSpecReset]) {
+    if (!button) continue;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resetFloatingWindowLayout();
+    });
+  }
+
   const areaReducer = createAreaReductionWorkerClient();
   function resetDatasetSession() {
     closeAllDatasets();
@@ -1190,6 +1224,7 @@ import { pointInPolygon } from "./draw-geometry.js";
   }
   window.addEventListener("beforeunload", () => {
     resetDatasetSession();
+    floatingWindows.destroy();
     if (areaReducer && typeof areaReducer.dispose === "function") areaReducer.dispose();
   }, { once: true });
   window.addEventListener("pagehide", (ev) => {

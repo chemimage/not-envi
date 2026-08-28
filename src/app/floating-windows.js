@@ -1,4 +1,7 @@
-import interact from "interactjs";
+import interact from "@interactjs/interact/index.prod.js";
+import autoStart from "@interactjs/auto-start/base.prod.js";
+import drag from "@interactjs/actions/drag/plugin.prod.js";
+import resize from "@interactjs/actions/resize/plugin.prod.js";
 import {
   autoUpdate,
   computePosition,
@@ -6,6 +9,10 @@ import {
   offset,
   shift
 } from "@floating-ui/dom";
+
+interact.use(autoStart);
+interact.use(drag);
+interact.use(resize);
 
 export const FLOATING_LAYOUT_VERSION = 1;
 export const FLOATING_LAYOUT_STORAGE_KEY = "hyve.floating-windows.v1";

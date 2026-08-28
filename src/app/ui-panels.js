@@ -27,6 +27,7 @@ import {
   isThreeBandDataset
 } from "./three-band-display.js";
 import { APP_CONFIG } from "./config.js";
+import { createAnchoredFloatingPositioner } from "./floating-windows.js";
 
 export function createUIPanels(deps) {
   const {
@@ -53,6 +54,7 @@ export function createUIPanels(deps) {
   let metaPinnedDatasetId = null;
   let metaPinnedRowEl = null;
   let metaHoverDatasetId = null;
+  const metaPositioner = createAnchoredFloatingPositioner();
   const bandDock = createBandDockController({
     els,
     getActive,
@@ -876,38 +878,20 @@ export function createUIPanels(deps) {
   function showMetaHover(ds, rowEl, { pinned = false } = {}) {
     if (!els.metaHoverPanel) return;
     renderMetaForDataset(ds);
-    if (pinned) {
-      const gap = 10;
-      const panelW = Math.max(280, Math.min(420, els.metaHoverPanel.offsetWidth || 340));
-      const panelH = Math.max(160, els.metaHoverPanel.offsetHeight || 220);
-      const dockRect = (els.datasetDock && els.datasetDock.getBoundingClientRect)
-        ? els.datasetDock.getBoundingClientRect()
-        : null;
-      const rawLeft = dockRect ? (dockRect.right + gap) : gap;
-      const left = Math.max(8, Math.min(rawLeft, window.innerWidth - panelW - 8));
-      const top = Math.max(8, Math.min(window.innerHeight - panelH - gap, window.innerHeight - 8));
-      els.metaHoverPanel.style.left = `${left}px`;
-      els.metaHoverPanel.style.top = `${top}px`;
-      els.metaHoverPanel.style.right = "auto";
-      els.metaHoverPanel.style.bottom = "auto";
-    } else if (rowEl) {
-      const rowRect = rowEl.getBoundingClientRect();
-      const panelW = 340;
-      const gap = 8;
-      const rawLeft = rowRect.right + gap;
-      const rawTop = rowRect.top;
-      const left = Math.max(8, Math.min(rawLeft, window.innerWidth - panelW - 8));
-      const top = Math.max(8, Math.min(rawTop, window.innerHeight - 220));
-      els.metaHoverPanel.style.top = `${top}px`;
-      els.metaHoverPanel.style.bottom = "auto";
-      els.metaHoverPanel.style.left = `${left}px`;
-      els.metaHoverPanel.style.right = "auto";
-    }
     els.metaHoverPanel.style.display = "block";
+    const anchor = rowEl || els.datasetDock;
+    if (anchor) {
+      metaPositioner.start(anchor, els.metaHoverPanel, {
+        placement: pinned ? "right-end" : "right-start",
+        offset: pinned ? 10 : 8,
+        padding: 8
+      });
+    }
   }
 
   function hideMetaHover() {
     if (!els.metaHoverPanel) return;
+    metaPositioner.stop();
     els.metaHoverPanel.style.display = "none";
   }
 

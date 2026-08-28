@@ -4,6 +4,9 @@
     --canvas-edge-pad: 10px;
     --thumb-wrap-w: 14rem;
     --thumb-hud-gap: 8px;
+    --layer-canvas-ui: 20;
+    --layer-floating-window: 40;
+    --layer-dialog: 100;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -301,16 +304,20 @@
 
 
   .analysis-hist-panel {
-    @apply fixed z-40 w-[min(380px,calc(100vw-16px))] overflow-hidden rounded-sm border border-gray-700 bg-gray-900 p-2.5 shadow-2xl shadow-black/50;
+    @apply absolute w-[min(380px,calc(100vw-16px))] overflow-hidden p-0;
     max-height: calc(100vh - 12px);
   }
 
   .analysis-hist-head {
-    @apply mb-1 flex items-center justify-between gap-2;
+    @apply flex items-center justify-between gap-2 px-2 py-1.5;
   }
 
   .analysis-hist-title {
     @apply text-xs uppercase tracking-[0.12em] text-gray-300;
+  }
+
+  .analysis-hist-body {
+    @apply min-h-0 overflow-auto p-2.5;
   }
 
   #analysisHistCanvas {

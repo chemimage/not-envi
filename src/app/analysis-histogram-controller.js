@@ -223,6 +223,7 @@ export function createAnalysisHistogramController(deps) {
 
   function positionPanel() {
     if (!els.analysisHistPanel || !els.btnToolHistogram) return;
+    if (els.analysisHistPanel.dataset?.floatingUserPlaced === "true") return;
     const ds = getActive();
     const selections = ds ? getHistogramSelectionItems(ds) : [];
     if (ds && selections.length) {
@@ -298,7 +299,7 @@ export function createAnalysisHistogramController(deps) {
     if (!els.analysisHistPanel) return;
     state.analysisHist.open = true;
     syncButtonState();
-    els.analysisHistPanel.style.display = "block";
+    els.analysisHistPanel.style.display = "flex";
     els.analysisHistPanel.setAttribute("aria-hidden", "false");
     positionPanel();
     refresh().catch(() => {});
@@ -364,6 +365,10 @@ export function createAnalysisHistogramController(deps) {
     drawCanvas(stats);
   }
 
+  function redraw() {
+    drawCanvas(state.analysisHist.stats || null);
+  }
+
   return {
     refresh,
     positionPanel,
@@ -373,6 +378,7 @@ export function createAnalysisHistogramController(deps) {
     getOpen,
     setOpen,
     onPointerMove,
-    onPointerLeave
+    onPointerLeave,
+    redraw
   };
 }
