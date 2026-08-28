@@ -47,7 +47,7 @@ export function createInteractionController(deps) {
   const isUiTarget = (target) => !!(
     target
     && target.closest
-    && target.closest("#drawTools,#rightDock,#datasetDock,#thumbDock,#overlayHUD,#hudControls,#analysisHistPanel,#specPanel,dialog")
+    && target.closest("#drawTools,#rightDock,#datasetDock,#bandDock,#thumbDock,#overlayHUD,#hudControls,#analysisHistPanel,#specPanel,dialog")
   );
 
   function clearSettledRender() {

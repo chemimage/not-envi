@@ -342,6 +342,46 @@ describe("interaction controller", () => {
     expect(render).not.toHaveBeenCalled();
   });
 
+  test("dragging the wavenumber dock does not pan the canvas", () => {
+    const render = vi.fn();
+    const panByPixels = vi.fn();
+    const ds = { view: { scale: 1, x: 0, y: 0 }, meta: { samples: 1000, lines: 1000 } };
+    const state = {
+      selection: { enabled: false, drawing: false, imgRect: null },
+      mouse: { dragging: false }
+    };
+    const els = {
+      selRect: { style: { display: "none" } },
+      main: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+      zoom: { value: "0" }
+    };
+    const controller = createInteractionController({
+      els,
+      state,
+      getActive: () => ds,
+      clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      setStatus: () => {},
+      updateHud: () => {},
+      screenToImage: (sx, sy) => ({ x: sx, y: sy }),
+      clampView: () => {},
+      render,
+      minScaleFor: () => 1,
+      scaleToSlider: (s) => s,
+      updateZoomLabel: () => {},
+      panByPixels
+    });
+    const target = {
+      closest: (selector) => selector.includes("#bandDock") ? { id: "bandDock" } : null
+    };
+
+    controller.onPointerDown({ pointerType: "mouse", clientX: 10, clientY: 20, target });
+    controller.onPointerMove({ pointerType: "mouse", clientX: 80, clientY: 20, target });
+
+    expect(state.mouse.dragging).toBe(false);
+    expect(panByPixels).not.toHaveBeenCalled();
+    expect(render).not.toHaveBeenCalled();
+  });
+
   test("zoomAt delegates linked scaling when a scale helper is provided", () => {
     const render = vi.fn();
     const clampView = vi.fn();
