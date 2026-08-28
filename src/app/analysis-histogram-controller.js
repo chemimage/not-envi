@@ -233,8 +233,10 @@ export function createAnalysisHistogramController(deps) {
     const binWidth = Number.isFinite(stats.binWidth)
       ? stats.binWidth
       : ((stats.max - stats.min) / Math.max(1, bins.length));
-    const metaLeft = plotRight - (164 * dpr);
-    const metaEqualsX = metaLeft + (82 * dpr);
+    const metaWidth = 140 * dpr;
+    const metaRight = plotRight - (6 * dpr);
+    const metaLeft = metaRight - metaWidth;
+    const metaEqualsX = metaLeft + (72 * dpr);
     const drawMetadataRow = (label, value, y) => {
       ctx.fillStyle = mutedColor;
       ctx.textAlign = "right";
@@ -247,7 +249,7 @@ export function createAnalysisHistogramController(deps) {
     };
     ctx.font = `${Math.max(10, annotationFontSize - 2) * dpr}px ${annotationFontFamily}`;
     ctx.fillStyle = overlayColor;
-    ctx.fillRect(metaLeft, plot.plotY0 + (4 * dpr), 164 * dpr, 42 * dpr);
+    ctx.fillRect(metaLeft, plot.plotY0 + (5 * dpr), metaWidth, 40 * dpr);
     drawMetadataRow("bins", fmtNoGroup(bins.length), plot.plotY0 + (8 * dpr));
     drawMetadataRow("bin width", formatNumber(binWidth), plot.plotY0 + (25 * dpr));
 
