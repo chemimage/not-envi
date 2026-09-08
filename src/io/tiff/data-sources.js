@@ -1058,37 +1058,41 @@ export class TiffBlockIndexedDataSource {
     }
     return this.#loadDecodedOnce(cacheKey, async () => {
       const raw = await this.#loadRawBlock(block);
-      const t0 = perfNow();
-      let decoded = null;
-      if (canDecodeJpegTileNatively()) {
-        decoded = await this.#decodeNativeJpegTile(raw, scaledW, scaledH);
-        if (decoded) {
-          decoded.sourceWidth = block.w;
-          decoded.sourceHeight = block.h;
+      // File reads use the shared scheduler too. Finish I/O before taking a
+      // decode slot, and schedule only the deduplicated decode operation.
+      return this.#schedule(async () => {
+        const t0 = perfNow();
+        let decoded = null;
+        if (canDecodeJpegTileNatively()) {
+          decoded = await this.#decodeNativeJpegTile(raw, scaledW, scaledH);
+          if (decoded) {
+            decoded.sourceWidth = block.w;
+            decoded.sourceHeight = block.h;
+          }
         }
-      }
-      if (!decoded) {
-        const rgb = await spec.table.image.readRGB({
-          window: [block.x0, block.y0, block.x0 + block.w, block.y0 + block.h],
-          interleave: true,
-          width: scaledW,
-          height: scaledH,
-          resampleMethod: "nearest",
-          pool: this.#getPool()
-        });
-        decoded = {
-          kind: "rgb",
-          data: rgb instanceof Uint8Array ? rgb : Uint8Array.from(rgb),
-          storageWidth: scaledW,
-          storageHeight: scaledH,
-          sourceWidth: block.w,
-          sourceHeight: block.h,
-          bytes: rgb.byteLength ?? rgb.length ?? (scaledW * scaledH * 3)
-        };
-      }
-      this.stats.decodeCalls += 1;
-      this.stats.decodeMs += perfNow() - t0;
-      return decoded;
+        if (!decoded) {
+          const rgb = await spec.table.image.readRGB({
+            window: [block.x0, block.y0, block.x0 + block.w, block.y0 + block.h],
+            interleave: true,
+            width: scaledW,
+            height: scaledH,
+            resampleMethod: "nearest",
+            pool: this.#getPool()
+          });
+          decoded = {
+            kind: "rgb",
+            data: rgb instanceof Uint8Array ? rgb : Uint8Array.from(rgb),
+            storageWidth: scaledW,
+            storageHeight: scaledH,
+            sourceWidth: block.w,
+            sourceHeight: block.h,
+            bytes: rgb.byteLength ?? rgb.length ?? (scaledW * scaledH * 3)
+          };
+        }
+        this.stats.decodeCalls += 1;
+        this.stats.decodeMs += perfNow() - t0;
+        return decoded;
+      });
     });
   }
 
@@ -1213,8 +1217,7 @@ export class TiffBlockIndexedDataSource {
 
   #shouldScheduleDecodedBlock(spec) {
     return spec?.kind === "rgb"
-      || spec?.kind === "window"
-      || spec?.kind === "native-rgb-jpeg";
+      || spec?.kind === "window";
   }
 
   async #loadDecodedBlockWithScheduling(spec, block, step = 1) {

@@ -27,6 +27,7 @@ describe("shared scheduler", () => {
     const started = [];
     let releaseA1 = null;
     let releaseB1 = null;
+    let releaseC1 = null;
 
     const a1 = scheduleSharedTask("owner-a", () => new Promise((resolve) => {
       started.push("a1");
@@ -40,16 +41,24 @@ describe("shared scheduler", () => {
       releaseB1 = resolve;
     }));
 
+    // Occupy all three slots so owner-a's second task stays queued.
+    const c1 = scheduleSharedTask("owner-c", () => new Promise((resolve) => {
+      started.push("c1");
+      releaseC1 = resolve;
+    }));
+
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(started).toContain("a1");
     expect(started).toContain("b1");
+    expect(started).toContain("c1");
     expect(started).not.toContain("a2");
 
     releaseA1?.();
     releaseB1?.();
-    await Promise.all([a1, a2, b1]);
+    releaseC1?.();
+    await Promise.all([a1, a2, b1, c1]);
 
     expect(started.indexOf("b1")).toBeLessThan(started.indexOf("a2"));
   });
@@ -61,6 +70,7 @@ describe("shared scheduler", () => {
     const started = [];
     let releaseA1 = null;
     let releaseB1 = null;
+    let releaseC1 = null;
 
     const a1 = scheduleSharedTask("owner-a", () => new Promise((resolve) => {
       started.push("a1");
@@ -74,19 +84,27 @@ describe("shared scheduler", () => {
       releaseB1 = resolve;
     }));
 
+    // Occupy all three slots so owner-a's second task stays queued.
+    const c1 = scheduleSharedTask("owner-c", () => new Promise((resolve) => {
+      started.push("c1");
+      releaseC1 = resolve;
+    }));
+
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(started).toContain("a1");
     expect(started).toContain("b1");
+    expect(started).toContain("c1");
     expect(started).not.toContain("a2");
 
     expect(cancelSharedTasks("owner-a")).toBe(1);
 
     releaseA1?.();
     releaseB1?.();
+    releaseC1?.();
     await expect(a2).rejects.toMatchObject({ name: "AbortError", message: "Task cancelled" });
-    await Promise.all([a1, b1]);
+    await Promise.all([a1, b1, c1]);
     expect(started).not.toContain("a2");
   });
 });

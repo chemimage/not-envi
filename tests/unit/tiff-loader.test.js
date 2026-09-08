@@ -482,7 +482,8 @@ describe("tiff loader", () => {
     }
   });
 
-  test("uses native JPEG tile decode for JPEG-compressed YCbCr TIFF blocks when available", async () => {
+  test.each([2, 4])("uses native JPEG tile decode with %i hardware cores without starving file reads", async (cores) => {
+    const hardwareConcurrencySpy = vi.spyOn(navigator, "hardwareConcurrency", "get").mockReturnValue(cores);
     const fakeImage = {
       getWidth: () => 1,
       getHeight: () => 1,
@@ -546,6 +547,7 @@ describe("tiff loader", () => {
       expect(fakeImage.readRGB).not.toHaveBeenCalled();
       expect(bitmapClose).toHaveBeenCalledTimes(1);
     } finally {
+      hardwareConcurrencySpy.mockRestore();
       createElementSpy.mockRestore();
       if (prevCreateImageBitmap === undefined) {
         delete globalThis.createImageBitmap;
