@@ -373,7 +373,7 @@
   }
 
   .spec-canvas {
-    @apply block min-h-[160px] w-full flex-1 bg-gray-900;
+    @apply block min-h-[160px] w-full flex-1 bg-transparent;
     position: static;
   }
 
@@ -387,7 +387,10 @@
   }
 
   .floating-window {
-    @apply flex flex-col overflow-hidden rounded-sm border border-gray-700 bg-gray-900/80 shadow-2xl shadow-black/50 backdrop-blur-sm;
+    @apply flex flex-col overflow-hidden rounded-sm border border-gray-700 shadow-2xl shadow-black/50 backdrop-blur-sm;
+    --panel-body-background: rgb(17 24 39 / 0.8);
+    --panel-header-background: rgb(17 24 39);
+    background: var(--panel-body-background);
     z-index: var(--layer-floating-window);
     pointer-events: auto;
   }
@@ -397,7 +400,8 @@
   }
 
   .floating-window-header {
-    @apply shrink-0 border-b border-gray-700/80 bg-gray-900/85;
+    @apply shrink-0 border-b border-gray-700/80;
+    background: var(--panel-header-background);
     cursor: move;
     touch-action: none;
   }

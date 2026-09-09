@@ -122,7 +122,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   const thumbCtx = els.thumb.getContext('2d', {alpha:false});
   const overlayCtx = els.overlayCanvas.getContext('2d', {alpha:true});
   const cpuCtx = els.cpuCanvas.getContext('2d', {alpha:false});
-  const specCtx = els.specCanvas.getContext('2d', {alpha:false});
+  const specCtx = els.specCanvas.getContext('2d', {alpha:true});
 
   let lastStatusKey = "";
   function setStatus(text, cls){

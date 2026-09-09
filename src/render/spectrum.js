@@ -196,8 +196,6 @@ export function createSpectrumController(deps) {
     const dpr = window.devicePixelRatio || 1;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "rgb(17, 24, 39)";
-    ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "rgba(229,231,235,0.92)";
     ctx.font = `${Math.round(12 * dpr)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     ctx.textAlign = "center";
@@ -290,8 +288,6 @@ export function createSpectrumController(deps) {
     const dpr = window.devicePixelRatio || 1;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "rgb(17, 24, 39)";
-    ctx.fillRect(0, 0, W, H);
 
     const padL = Math.round(52 * dpr);
     const padR = Math.round(12 * dpr);
