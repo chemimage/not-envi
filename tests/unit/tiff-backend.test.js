@@ -28,8 +28,7 @@ describe("tiff backend", () => {
     const blob = encodeRenderedTiff({ imageData });
     const ab = await blobToArrayBuffer(blob);
     const u8 = new Uint8Array(ab);
-    const sig = String.fromCharCode(u8[0], u8[1]);
-    expect(sig === "II" || sig === "MM").toBe(true);
+    expect(Array.from(u8.subarray(0, 4))).toEqual([0x49, 0x49, 42, 0]);
     const tiff = await fromArrayBuffer(ab);
     expect(await tiff.getImageCount()).toBe(1);
     const img = await tiff.getImage(0);
@@ -45,7 +44,14 @@ describe("tiff backend", () => {
     const blob = encodeRawMultipageTiff({ meta, width: 2, height: 2, pages });
     const ab = await blobToArrayBuffer(blob);
     const tiff = await fromArrayBuffer(ab);
+    expect(Array.from(new Uint8Array(ab, 0, 4))).toEqual([0x49, 0x49, 42, 0]);
     expect(await tiff.getImageCount()).toBe(2);
+    for (let index = 0; index < pages.length; index += 1) {
+      const image = await tiff.getImage(index);
+      expect(image.getWidth()).toBe(2);
+      expect(image.getHeight()).toBe(2);
+      expect(Array.from(await image.readRasters({ interleave: true }))).toEqual(Array.from(pages[index]));
+    }
   });
 
   test("encodeRenderedMultipageTiff creates multiple rendered pages", async () => {
@@ -79,7 +85,6 @@ describe("tiff backend", () => {
     expect(first).toBe(3);
     expect(img.fileDirectory.BitsPerSample[0]).toBe(32);
     expect(img.fileDirectory.StripByteCounts[0]).toBe(16);
-    expect(ab.byteLength).toBeGreaterThanOrEqual(16);
 
     const raster = await img.readRasters({ samples: [0] });
     const values = ArrayBuffer.isView(raster) ? raster : raster[0];

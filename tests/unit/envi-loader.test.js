@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { addDatasetFromFiles, addDatasetsFromFileList } from "../../src/io/envi-loader.js";
+import { addDatasetsFromFileList } from "../../src/io/envi-loader.js";
+import { readBandWindow } from "../../src/core/raster-io.js";
 
 const HDR_TEXT = `ENVI
 samples = 2
@@ -11,11 +12,12 @@ byte order = 0
 `;
 
 describe("envi loader", () => {
-  test("addDatasetFromFiles parses header and creates dataset object via deps", async () => {
+  test("pairs files, reports missing data, and loads a readable ENVI dataset", async () => {
     const hdr = new File([HDR_TEXT], "demo.hdr", { type: "text/plain" });
     const data = new File([new Float32Array([1, 2, 3, 4])], "demo.dat");
 
-    const ds = await addDatasetFromFiles(hdr, data, {
+    const orphanHdr = new File([HDR_TEXT], "orphan.hdr", { type: "text/plain" });
+    const result = await addDatasetsFromFileList([hdr, data, orphanHdr], {
       ioConcurrency: 2,
       createDataset: ({ meta, cached, base, hdrFile, dataFile }) => ({
         meta,
@@ -27,24 +29,16 @@ describe("envi loader", () => {
       })
     });
 
+    expect(result.headersFound).toBe(2);
+    expect(result.datasets).toHaveLength(1);
+    expect(result.missing).toEqual(["orphan.hdr"]);
+    const [ds] = result.datasets;
     expect(ds.meta.interleave).toBe("bsq");
     expect(ds.meta.samples).toBe(2);
-    expect(typeof ds.ds.read).toBe("function");
+    const pixels = await readBandWindow(ds.meta, ds.ds, 0, 0, 0, 2, 2, 1);
+    expect(Array.from(pixels)).toEqual([1, 2, 3, 4]);
+    ds.ds.close();
     expect(ds.hdrName).toBe("demo.hdr");
     expect(ds.dataName).toBe("demo.dat");
-  });
-
-  test("addDatasetsFromFileList pairs hdr and data files", async () => {
-    const hdr = new File([HDR_TEXT], "a.hdr", { type: "text/plain" });
-    const dat = new File([new Uint8Array(16)], "a.dat");
-    const orphanHdr = new File([HDR_TEXT], "b.hdr", { type: "text/plain" });
-
-    const res = await addDatasetsFromFileList([hdr, dat, orphanHdr], {
-      createDataset: ({ meta }) => ({ meta })
-    });
-
-    expect(res.headersFound).toBe(2);
-    expect(res.datasets).toHaveLength(1);
-    expect(res.missing).toEqual(["b.hdr"]);
   });
 });

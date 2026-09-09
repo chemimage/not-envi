@@ -80,15 +80,8 @@ describe("raster-io", () => {
     expect(pixelOffset(bip, 1, 2, 1)).toBe(((((2 * 4 + 1) * 2 + 1) * 2)));
   });
 
-  test("readBandWindow returns expected samples for bsq", async () => {
-    const meta = makeMeta("bsq");
-    const ds = makeDs(makeBuffer(meta));
-    const out = await readBandWindow(meta, ds, 1, 0, 0, 3, 2, 1, 2);
-    expect(Array.from(out)).toEqual([100, 101, 102, 110, 111, 112]);
-  });
-
-  test("readBandWindow returns expected samples for bil", async () => {
-    const meta = makeMeta("bil");
+  test.each(["bsq", "bil"])("reads expected samples for %s", async (interleave) => {
+    const meta = makeMeta(interleave);
     const ds = makeDs(makeBuffer(meta));
     const out = await readBandWindow(meta, ds, 1, 0, 0, 3, 2, 1, 2);
     expect(Array.from(out)).toEqual([100, 101, 102, 110, 111, 112]);
@@ -119,18 +112,13 @@ describe("raster-io", () => {
     expect(Array.from(out)).toEqual([1, 2, 11, 12]);
   });
 
-  test("readBandWindow groups contiguous full-width rows into one slab read", async () => {
-    const meta = makeMeta("bsq", 3, 4, 2);
+  test.each([
+    ["bsq", readBandWindow],
+    ["bip", readBandWindowBIP]
+  ])("reads contiguous full-width %s rows in one slab", async (interleave, readWindow) => {
+    const meta = makeMeta(interleave, 3, 4, 2);
     const ds = makeDsReadIntoOnly(makeBuffer(meta));
-    const out = await readBandWindow(meta, ds, 1, 0, 0, 3, 4, 1, 2);
-    expect(Array.from(out)).toEqual([100, 101, 102, 110, 111, 112, 120, 121, 122, 130, 131, 132]);
-    expect(ds.stats.readIntoCalls).toBe(1);
-  });
-
-  test("readBandWindowBIP groups contiguous full-width rows into one slab read", async () => {
-    const meta = makeMeta("bip", 3, 4, 2);
-    const ds = makeDsReadIntoOnly(makeBuffer(meta));
-    const out = await readBandWindowBIP(meta, ds, 1, 0, 0, 3, 4, 1, 2);
+    const out = await readWindow(meta, ds, 1, 0, 0, 3, 4, 1, 2);
     expect(Array.from(out)).toEqual([100, 101, 102, 110, 111, 112, 120, 121, 122, 130, 131, 132]);
     expect(ds.stats.readIntoCalls).toBe(1);
   });

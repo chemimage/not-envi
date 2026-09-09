@@ -15,73 +15,6 @@ describe("spectrum controller", () => {
     globalThis.requestAnimationFrame = originalRAF;
   });
 
-  test("open/close lifecycle updates panel state", async () => {
-    globalThis.requestAnimationFrame = (cb) => {
-      cb();
-      return 1;
-    };
-
-    const specCtx = {
-      clearRect: vi.fn(),
-      fillRect: vi.fn(),
-      beginPath: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      stroke: vi.fn(),
-      save: vi.fn(),
-      restore: vi.fn(),
-      arc: vi.fn(),
-      fill: vi.fn(),
-      setLineDash: vi.fn(),
-      fillText: vi.fn(),
-      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
-      textAlign: "",
-      textBaseline: "",
-      lineWidth: 1,
-      strokeStyle: "",
-      fillStyle: "",
-      font: ""
-    };
-    const els = {
-      specPanel: { style: { display: "none" } },
-      specCanvas: {
-        width: 0,
-        height: 0,
-        getBoundingClientRect: () => ({ width: 300, height: 180 })
-      },
-      specSub: { textContent: "" },
-      specWarn: { textContent: "", style: { display: "none" } },
-      specFoot: { textContent: "" }
-    };
-    const ds = {
-      id: 7,
-      name: "demo",
-      activeBand: 1,
-      meta: { bands: 3, wlUnits: "nm", scale: null, bandNames: ["a", "b", "c"] }
-    };
-
-    const ctrl = createSpectrumController({
-      els,
-      specCtx,
-      getActive: () => ds,
-      bandLabel: (_ds, b) => `B${b}`,
-      updatePerf: vi.fn(),
-      sanitizeFilePart: (s) => s,
-      downloadBlob: vi.fn(),
-      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
-      readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
-      wavelengthArrayOrNull: () => [500, 600, 700]
-    });
-
-    await ctrl.openSpectrumAt(ds, 10, 20);
-    expect(ctrl.isOpenForDatasetId(7)).toBe(true);
-    expect(els.specPanel.style.display).toBe("flex");
-
-    ctrl.closeSpectrum();
-    expect(ctrl.isOpenForDatasetId(7)).toBe(false);
-    expect(els.specPanel.style.display).toBe("none");
-  });
-
   test("bar-plot mode depends only on the configured band-count threshold", () => {
     expect(isCmInverseUnit("cm-1")).toBe(true);
     expect(isCmInverseUnit("cm^-1")).toBe(true);
@@ -111,7 +44,7 @@ describe("spectrum controller", () => {
     })).toBe(false);
   });
 
-  test("spectrum header can render with only coordinates", async () => {
+  test("opens a spectrum, switches coordinate units, displays area labels, and closes", async () => {
     globalThis.requestAnimationFrame = (cb) => {
       cb();
       return 1;
@@ -173,6 +106,8 @@ describe("spectrum controller", () => {
     });
 
     await ctrl.openSpectrumAt(ds, 1, 1);
+    expect(ctrl.isOpenForDatasetId(7)).toBe(true);
+    expect(els.specPanel.style.display).toBe("flex");
     expect(els.specSub.textContent).toBe("(1, 1)");
     expect(els.btnSpecUnitUm.disabled).toBe(true);
     ds.meta.scale = { umPerPixelX: 2, umPerPixelY: 3 };
@@ -186,6 +121,9 @@ describe("spectrum controller", () => {
     await ctrl.openSpectrumAt(ds, 4, 5, { subLabel: "Area average" });
     expect(els.specLocationUnits.hidden).toBe(true);
     expect(els.specSub.textContent).toBe("Area average");
+    ctrl.closeSpectrum();
+    expect(ctrl.isOpenForDatasetId(7)).toBe(false);
+    expect(els.specPanel.style.display).toBe("none");
   });
 
   test("discrete bar plots use a uniform non-overlapping bar width", async () => {
@@ -617,7 +555,7 @@ describe("spectrum controller", () => {
     alertSpy.mockRestore();
   });
 
-  test("pending spectrum state renders placeholder without reading data", async () => {
+  test("transitions from pending area spectrum to a sampled result without point reads", async () => {
     globalThis.requestAnimationFrame = (cb) => {
       cb();
       return 1;
@@ -687,65 +625,6 @@ describe("spectrum controller", () => {
     expect(els.specSub.textContent).toBe("Area average (computing...)");
     expect(els.specFoot.textContent).toBe("Computing 0/3 bands");
     expect(specCtx.fillText).toHaveBeenCalledWith("Computing area average...", 150, 90);
-  });
-
-  test("subsampled area average shows a warning", async () => {
-    globalThis.requestAnimationFrame = (cb) => {
-      cb();
-      return 1;
-    };
-
-    const specCtx = {
-      clearRect: vi.fn(),
-      fillRect: vi.fn(),
-      beginPath: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      stroke: vi.fn(),
-      save: vi.fn(),
-      restore: vi.fn(),
-      arc: vi.fn(),
-      fill: vi.fn(),
-      setLineDash: vi.fn(),
-      fillText: vi.fn(),
-      measureText: vi.fn((text) => ({ width: String(text).length * 6 })),
-      textAlign: "",
-      textBaseline: "",
-      lineWidth: 1,
-      strokeStyle: "",
-      fillStyle: "",
-      font: ""
-    };
-    const els = {
-      specPanel: { style: { display: "none" } },
-      specCanvas: {
-        width: 0,
-        height: 0,
-        getBoundingClientRect: () => ({ width: 300, height: 180 })
-      },
-      specSub: { textContent: "" },
-      specWarn: { textContent: "", style: { display: "none" } },
-      specFoot: { textContent: "" }
-    };
-    const ds = {
-      id: 13,
-      name: "area-demo",
-      activeBand: 0,
-      meta: { bands: 3, wlUnits: "nm", scale: null, bandNames: ["a", "b", "c"] }
-    };
-
-    const ctrl = createSpectrumController({
-      els,
-      specCtx,
-      getActive: () => ds,
-      bandLabel: (_ds, b) => `B${b}`,
-      updatePerf: vi.fn(),
-      sanitizeFilePart: (s) => s,
-      downloadBlob: vi.fn(),
-      discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
-      readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
-      wavelengthArrayOrNull: () => [500, 600, 700]
-    });
 
     await ctrl.openSpectrumAt(ds, 0, 0, {
       sourceType: "area",
@@ -757,6 +636,7 @@ describe("spectrum controller", () => {
     expect(els.specWarn.style.display).toBe("block");
     expect(els.specWarn.textContent).toContain("Approximate:");
     expect(els.specWarn.textContent).toContain("4");
+    expect(readSpectrumAtPixel).not.toHaveBeenCalled();
   });
 
   test("area spectrum waits for the canvas layout to become non-zero before drawing", async () => {

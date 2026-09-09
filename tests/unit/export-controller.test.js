@@ -46,7 +46,7 @@ describe("export dialog controller", () => {
     expect(alertFn).toHaveBeenCalledTimes(1);
   });
 
-  test("png mode forces rendered and computes estimate", () => {
+  test("switches TIFF, scaled 8-bit, PNG, and ENVI modes with matching controls and estimates", () => {
     const state = { selection: { imgRect: null }, exportKind: null };
     const els = makeEls();
     const ds = {

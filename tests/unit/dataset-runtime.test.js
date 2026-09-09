@@ -40,27 +40,6 @@ describe("dataset runtime", () => {
     expect(deps.fitToScreen).toHaveBeenCalled();
   });
 
-  test("setActiveDataset expands the selected dataset and collapses other band trees", () => {
-    const ds1 = { id: "ds1", meta: {}, view: {} };
-    const ds2 = { id: "ds2", meta: {}, view: {} };
-    const state = {
-      datasets: [ds1, ds2],
-      activeId: "ds1",
-      activePanelSlot: 1,
-      nextLinkGroupId: 1,
-      displayPanels: [
-        { slot: 1, datasetId: "ds1", view: {}, annotations: {} },
-        { slot: 2, datasetId: "ds2", view: {}, annotations: {} }
-      ]
-    };
-    const deps = makeDeps(state);
-    const rt = createDatasetRuntime(deps);
-
-    rt.setActiveDataset("ds2");
-
-    expect(state.activeId).toBe("ds2");
-  });
-
   test("closeDataset removes dataset and cleans resources", () => {
     const ds = { id: "ds2", ds: { close: vi.fn() }, baseDs: { close: vi.fn() }, pyramid: { cancelled: false } };
     const state = { datasets: [ds], activeId: "ds2", renderSeq: 4, histViewDebounce: setTimeout(() => {}, 1000) };
@@ -110,6 +89,7 @@ describe("dataset runtime", () => {
 
     rt.setActiveDataset("ds1", { panelSlot: 1 });
     rt.setActiveDataset("ds2", { panelSlot: 2 });
+    expect(state.activeId).toBe("ds2");
 
     const panel1 = getDisplayPanel(state, 1);
     const panel2 = getDisplayPanel(state, 2);
@@ -177,33 +157,6 @@ describe("dataset runtime", () => {
     expect(panel2?.view).toEqual(panel1?.view);
   });
 
-  test("overlaying a dataset already shown in both panels relinks independent panels", () => {
-    const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 0, y: 0, scale: 1 }, drawings: [{ id: 1, tool: "rect", points: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }], selectedAreaId: 1 };
-    const state = {
-      datasets: [ds1],
-      activeId: "ds1",
-      activePanelSlot: 2,
-      nextLinkGroupId: 3,
-      displayPanels: [
-        { slot: 1, datasetId: "ds1", linkGroupId: 1, activeBand: 0, annotations: { drawings: [{ id: 10 }], selectedAreaId: 10 }, view: { x: 1, y: 1, scale: 1 } },
-        { slot: 2, datasetId: "ds1", linkGroupId: 2, activeBand: 1, annotations: { drawings: [{ id: 20 }], selectedAreaId: 20 }, view: { x: 9, y: 8, scale: 3 } }
-      ]
-    };
-    const deps = makeDeps(state);
-    const rt = createDatasetRuntime(deps);
-
-    rt.cycleDatasetPanel("ds1", "both");
-
-    const panel1 = getDisplayPanel(state, 1);
-    const panel2 = getDisplayPanel(state, 2);
-    expect(state.displayCompositionMode).toBe(DISPLAY_COMPOSITION_OVERLAY);
-    expect(panel1?.linkGroupId).toBe(panel2?.linkGroupId);
-    expect(panel1?.annotations).toBe(panel2?.annotations);
-    expect(panel2?.view).toEqual(panel1?.view);
-    expect(panel1?.activeBand).toBe(0);
-    expect(panel2?.activeBand).toBe(1);
-  });
-
   test("overlay mode keeps both layers linked and only changes the active panel", () => {
     const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 0, y: 0, scale: 1 }, drawings: [], selectedAreaId: null };
     const state = {
@@ -232,7 +185,7 @@ describe("dataset runtime", () => {
     expect(deps.closeSpectrum).not.toHaveBeenCalled();
   });
 
-  test("turning off overlay restores the previous split state instead of clearing panels", () => {
+  test("overlay relinks independent panels and restores their split state when disabled", () => {
     const ds1 = { id: "ds1", meta: { samples: 64, lines: 32, bands: 3 }, view: { x: 0, y: 0, scale: 1 }, drawings: [], selectedAreaId: null };
     const state = {
       datasets: [ds1],
@@ -249,6 +202,13 @@ describe("dataset runtime", () => {
 
     rt.cycleDatasetPanel("ds1", "both");
     expect(state.displayCompositionMode).toBe(DISPLAY_COMPOSITION_OVERLAY);
+    const linked1 = getDisplayPanel(state, 1);
+    const linked2 = getDisplayPanel(state, 2);
+    expect(linked1.linkGroupId).toBe(linked2.linkGroupId);
+    expect(linked1.annotations).toBe(linked2.annotations);
+    expect(linked2.view).toEqual(linked1.view);
+    expect(linked1.activeBand).toBe(0);
+    expect(linked2.activeBand).toBe(1);
 
     rt.cycleDatasetPanel("ds1", "both");
 

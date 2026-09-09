@@ -1039,57 +1039,22 @@ describe("render-main", () => {
     expect(readBandWindow).not.toHaveBeenCalled();
   });
 
-  test("render keeps partial pyramid rasters out of stable state but refreshes the screen preview", async () => {
-    const partialRaster = {
-      band: 0,
-      w: 160,
-      h: 90,
-      dataF32: new Float32Array(160 * 90),
-      partial: true
-    };
-    const ds = {
-      id: "ds1",
-      activeBand: 0,
-      view: { x: 0, y: 0, scale: 0.5 },
-      meta: { samples: 1280, lines: 720, bands: 1, interleave: "bsq" },
-      ds: {},
-      lastRaster: null,
-      lastScreenFrame: null,
-      lastRastersByPanel: new Map()
-    };
-    const deps = makeDeps({
-      getActive: () => ds,
-      getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
-      tryRasterFromPyramid: async () => partialRaster,
-      cpuRenderGray: vi.fn(() => ({ width: 160, height: 90 })),
-      readBandWindow: vi.fn(async () => {
-        throw new Error("direct read should not run for this progressive render");
-      }),
-      clampView: () => {}
-    });
-    const renderer = createRenderer(deps);
-
-    await renderer.render();
-
-    expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
-    expect(ds.lastRaster).toBeNull();
-    expect(ds.lastScreenFrame).toBeTruthy();
-    expect(ds.lastRastersByPanel.size).toBe(0);
-  });
-
-  test("render keeps approximate pyramid rasters out of stable state but refreshes the screen preview", async () => {
+  test.each([
+    { kind: "partial", scale: 0.5, partial: true, approximate: false },
+    { kind: "approximate", scale: 2, partial: false, approximate: true }
+  ])("renders $kind pyramid previews without promoting them to stable rasters", async ({ scale, partial, approximate }) => {
     const previewRaster = {
       band: 0,
       w: 160,
       h: 90,
       dataF32: new Float32Array(160 * 90),
-      partial: false,
-      approximate: true
+      partial,
+      approximate
     };
     const ds = {
       id: "ds1",
       activeBand: 0,
-      view: { x: 0, y: 0, scale: 2 },
+      view: { x: 0, y: 0, scale },
       meta: { samples: 1280, lines: 720, bands: 1, interleave: "bsq" },
       ds: {},
       lastRaster: null,
@@ -1102,7 +1067,7 @@ describe("render-main", () => {
       tryRasterFromPyramid: async () => previewRaster,
       cpuRenderGray: vi.fn(() => ({ width: 160, height: 90 })),
       readBandWindow: vi.fn(async () => {
-        throw new Error("direct read should not run for this preview render");
+        throw new Error("direct read should not run for this progressive render");
       }),
       clampView: () => {}
     });

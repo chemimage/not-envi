@@ -1,20 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
   annotationsShareImageSpace,
-  remapAnnotationPoint,
   remapAnnotationState
 } from "../../src/app/linked-annotations.js";
 
 describe("linked annotations", () => {
-  test("maps points by normalized image position", () => {
-    const point = remapAnnotationPoint(
-      { x: 63, y: 31 },
-      { samples: 64, lines: 32 },
-      { samples: 96, lines: 48 }
-    );
-    expect(point).toEqual({ x: 95, y: 47 });
-  });
-
   test("remaps an annotation state and preserves selection ids", () => {
     const state = remapAnnotationState(
       {

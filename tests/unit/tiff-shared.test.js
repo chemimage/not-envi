@@ -41,46 +41,21 @@ function makeFakeImage() {
 }
 
 describe("resolveTiffCacheBudgets", () => {
-  test("uses standard profile for MacBook Air class hardware", () => {
-    setNavigatorValue("userAgent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)");
+  test.each([
+    { device: "MacBook Air", platform: "Macintosh; Intel Mac OS X 10_15_7", touch: 0, cores: 10, memory: 16, profile: "standard" },
+    { device: "iPad Pro", platform: "iPad; CPU OS 18_0 like Mac OS X", touch: 5, cores: 9, memory: 12, profile: "lite" },
+    { device: "MacBook Neo", platform: "Macintosh; Intel Mac OS X 10_15_7", touch: 0, cores: 6, memory: 8, profile: "lite" }
+  ])("uses the $profile cache profile for $device hardware", ({ platform, touch, cores, memory, profile }) => {
+    setNavigatorValue("userAgent", `Mozilla/5.0 (${platform})`);
     setNavigatorValue("platform", "MacIntel");
-    setNavigatorValue("maxTouchPoints", 0);
-    setNavigatorValue("hardwareConcurrency", 10);
-    setNavigatorValue("deviceMemory", 16);
+    setNavigatorValue("maxTouchPoints", touch);
+    setNavigatorValue("hardwareConcurrency", cores);
+    setNavigatorValue("deviceMemory", memory);
 
     const budgets = resolveTiffCacheBudgets({ ioConcurrency: 4 });
-
-    expect(budgets.profileName).toBe("standard");
-    expect(budgets.rawCacheBytes).toBe(APP_CONFIG.tiff.standardRawCacheBytes);
-    expect(budgets.decodedCacheBytes).toBe(APP_CONFIG.tiff.standardDecodedCacheBytes);
-  });
-
-  test("uses lite profile for iPad Pro class hardware", () => {
-    setNavigatorValue("userAgent", "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)");
-    setNavigatorValue("platform", "MacIntel");
-    setNavigatorValue("maxTouchPoints", 5);
-    setNavigatorValue("hardwareConcurrency", 9);
-    setNavigatorValue("deviceMemory", 12);
-
-    const budgets = resolveTiffCacheBudgets({ ioConcurrency: 4 });
-
-    expect(budgets.profileName).toBe("lite");
-    expect(budgets.rawCacheBytes).toBe(APP_CONFIG.tiff.liteRawCacheBytes);
-    expect(budgets.decodedCacheBytes).toBe(APP_CONFIG.tiff.liteDecodedCacheBytes);
-  });
-
-  test("uses lite profile for MacBook Neo class hardware", () => {
-    setNavigatorValue("userAgent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)");
-    setNavigatorValue("platform", "MacIntel");
-    setNavigatorValue("maxTouchPoints", 0);
-    setNavigatorValue("hardwareConcurrency", 6);
-    setNavigatorValue("deviceMemory", 8);
-
-    const budgets = resolveTiffCacheBudgets({ ioConcurrency: 4 });
-
-    expect(budgets.profileName).toBe("lite");
-    expect(budgets.rawCacheBytes).toBe(APP_CONFIG.tiff.liteRawCacheBytes);
-    expect(budgets.decodedCacheBytes).toBe(APP_CONFIG.tiff.liteDecodedCacheBytes);
+    expect(budgets.profileName).toBe(profile);
+    expect(budgets.rawCacheBytes).toBe(APP_CONFIG.tiff[`${profile}RawCacheBytes`]);
+    expect(budgets.decodedCacheBytes).toBe(APP_CONFIG.tiff[`${profile}DecodedCacheBytes`]);
   });
 });
 

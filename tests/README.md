@@ -1,0 +1,31 @@
+# Test suite
+
+Run `npm test` for unit/controller tests followed by the browser smoke workflow.
+Use `npm run test:unit -- tests/unit/<name>.test.js` for a focused unit run.
+
+## Choosing the test boundary
+
+- Combine assertions when they describe stages of the same operation on the same fixture: loading and reading a dataset, opening and closing a panel, or enabling and disabling a feature.
+- Keep intermediate assertions so a failure identifies which stage broke. Each test must create its own state; tests must not depend on another test running first.
+- Use named `test.each` cases for the same contract with different formats, hardware profiles, or rendering modes. Keep each case independently reported.
+- Retain separate tests for cancellation, concurrency, fallback implementations, boundary conditions, and distinct input gestures. Similar setup alone does not make these redundant.
+- Prefer decoded output or observable behavior over checking that a function exists, a blob is nonempty, or a configuration constant equals its current value.
+- Stub the hardware capabilities needed by a test and restore them afterward. Avoid silently returning when the host has different capabilities.
+
+## Consolidated coverage
+
+The September 2026 review covered all 51 original unit files and the browser smoke file. The changes reduced 293 unit cases to 273 and combined the two browser smoke cases into one workflow.
+
+| Area | Shared workflow or retained boundary |
+| --- | --- |
+| Cache and configuration | Hardware detection feeds concurrency/preview decisions. Memory detection, configured budget fraction, and dataset budget assignment share one test. Cached reads, eviction, and close share a lifecycle. |
+| Dataset panels | Switching datasets asserts the active ID alongside panel linking. Overlay relinking and restoration use the same original split-state fixture. Single-dataset and whole-session cleanup remain separate. |
+| ENVI | Header parsing feeds normalization. File-list pairing feeds dataset creation and actual pixel reads, while malformed headers, aliases, scale metadata, and export byte encoding retain focused cases. |
+| TIFF export | `tiff-backend.test.js` covers the underlying encoders through real decoding, signatures, page counts, and pixel values. The former header-only/nonempty-blob `tiff-encoder.test.js` is redundant. Single/multipage and Float32/UInt16 paths remain distinct. |
+| TIFF loading and scheduling | Native/fallback parsing, palette/JPEG/raw blocks, planar layout, edge padding, overviews, cancellation, handle lifetime, and low-concurrency deadlocks retain separate cases. Hardware cache profiles share a named case table. |
+| Spectrum | Open, coordinate-unit switching, area labels, and close share a panel lifecycle. Pending area results transition to sampled results on one controller. Hover modes, axis editing, deferred layout, area reduction, stale requests, and point reads retain separate coverage. |
+| Rendering | Partial and approximate pyramid previews share a fixture with separate named cases. Progressive rendering, stale/in-flight requests, panel ordering, preview sources, pyramid disposal, and geometry remain independent. |
+| Interaction and analysis | Marquee disable/enable/disable shares a lifecycle; linked-scale conversion feeds clamping; annotation remapping covers point conversion. Grid line existence is checked alongside its spacing. Draw tools, gestures, histogram controllers, and export UI retain distinct contracts. |
+| Browser smoke | One page load verifies the empty state and then opens the multi-file chooser, checking browser errors across both stages. |
+
+Small helper tests for formatting, display math, view geometry, band mapping, and HUD behavior remain where they protect a distinct result. Test count alone is not a reason to remove them.

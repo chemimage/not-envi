@@ -13,7 +13,7 @@ describe("data sources", () => {
     expect(ds.bytesRead).toBe(3);
   });
 
-  test("ChunkCacheDataSource caches and evicts", async () => {
+  test("ChunkCacheDataSource reuses cached reads, evicts, and releases resources on close", async () => {
     const data = new Uint8Array(3 * 64 * 1024);
     for (let i = 0; i < data.length; i += 1) data[i] = i % 256;
     const base = new BlobDataSource(makeFile(data));
@@ -26,6 +26,10 @@ describe("data sources", () => {
     const a = await ds.read(0, 8);
     expect(Array.from(a)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
 
+    const bytesAfterFirstRead = base.bytesRead;
+    expect(Array.from(await ds.read(0, 8))).toEqual(Array.from(a));
+    expect(base.bytesRead).toBe(bytesAfterFirstRead);
+
     const b = await ds.read(64 * 1024 + 8, 8);
     expect(Array.from(b)).toEqual([8, 9, 10, 11, 12, 13, 14, 15]);
 
@@ -34,21 +38,7 @@ describe("data sources", () => {
     expect(ds.bytesRead).toBeGreaterThan(0);
     expect(ds.stats.cacheMisses).toBeGreaterThan(0);
     expect(ds.stats.cacheEvictions).toBeGreaterThan(0);
-  });
-
-  test("ChunkCacheDataSource close clears cache and closes the base source", async () => {
-    const base = new BlobDataSource(makeFile([0, 1, 2, 3, 4, 5, 6, 7]));
-    const ds = new ChunkCacheDataSource(base, {
-      chunkSize: 4,
-      maxBytes: 8,
-      concurrency: 1
-    });
-
-    await ds.read(0, 4);
-    expect(ds.cacheBytes()).toBeGreaterThan(0);
-
     ds.close();
-
     expect(ds.cacheBytes()).toBe(0);
     expect(base.closed).toBe(true);
     await expect(ds.read(0, 1)).rejects.toThrow("Data source closed");

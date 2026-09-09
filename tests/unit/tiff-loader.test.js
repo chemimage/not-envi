@@ -47,7 +47,6 @@ describe("tiff loader", () => {
     expect(ds.meta.lines).toBe(2);
     expect(ds.meta.bands).toBe(1);
     expect(ds.meta.dataType).toBe(4);
-    expect(typeof ds.ds.read).toBe("function");
 
     const out = await readBandWindow(ds.meta, ds.ds, 0, 0, 0, 2, 2, 1, 2);
     expect(Array.from(out)).toEqual([1.5, 2.5, 3.5, 4.5]);

@@ -22,32 +22,17 @@ afterEach(() => {
 });
 
 describe("config hardware concurrency", () => {
-  test("detectHardwareCores reads navigator.hardwareConcurrency", () => {
-    Object.defineProperty(navigator, "hardwareConcurrency", {
-      configurable: true,
-      value: 12
-    });
-    expect(detectHardwareCores()).toBe(12);
-  });
-
   test("resolveHardwareConcurrencyLimit applies configurable fractions", () => {
     Object.defineProperty(navigator, "hardwareConcurrency", {
       configurable: true,
       value: 12
     });
+    expect(detectHardwareCores()).toBe(12);
     expect(resolveHardwareConcurrencyLimit({
       fraction: APP_CONFIG.io.hardwareCoreFraction,
       min: APP_CONFIG.io.hardwareParallelMin,
       max: APP_CONFIG.io.maxConcurrency
     })).toBe(9);
-  });
-
-  test("detectDeviceMemoryGiB reads navigator.deviceMemory", () => {
-    Object.defineProperty(navigator, "deviceMemory", {
-      configurable: true,
-      value: 8
-    });
-    expect(detectDeviceMemoryGiB()).toBe(8);
   });
 
   test("resolvePreviewOverviewLongEdge keeps deferred size as the default", () => {
@@ -76,9 +61,6 @@ describe("config hardware concurrency", () => {
     expect(resolvePreviewOverviewLongEdge()).toBe(APP_CONFIG.previewOverview.liteDeferredLongEdge);
     expect(resolvePreviewOverviewLongEdge({ deferred: false })).toBe(APP_CONFIG.previewOverview.liteInitialLongEdge);
     expect(resolvePreviewOverviewLongEdge({ deferred: false, bootstrap: true })).toBe(APP_CONFIG.previewOverview.liteBootstrapLongEdge);
-  });
-
-  test("spectrum discrete bar threshold is configurable in app config", () => {
-    expect(APP_CONFIG.spectrum.discreteBarMaxBands).toBe(20);
+    expect(detectDeviceMemoryGiB()).toBe(8);
   });
 });

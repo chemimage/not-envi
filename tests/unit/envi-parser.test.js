@@ -9,14 +9,15 @@ describe("ENVI parser", () => {
     expect(parseEnviValue("\"abc\"")).toBe("abc");
   });
 
-  test("parseEnviHeader parses multiline values", () => {
+  test("parses multiline headers and normalizes dimensions, interleave, and data type", () => {
     const hdr = `
 ENVI
 samples = 4
 lines = 3
 bands = 2
-interleave = bsq
+interleave = bip
 data type = 4
+byte order = 0
 wavelength = {0.45,
  0.55}
 `;
@@ -25,18 +26,8 @@ wavelength = {0.45,
     expect(parsed.lines).toBe(3);
     expect(parsed.bands).toBe(2);
     expect(parsed.wavelength).toEqual([0.45, 0.55]);
-  });
-
-  test("normalizeMeta validates required fields and maps types", () => {
-    const norm = normalizeMeta({
-      samples: 64,
-      lines: 32,
-      bands: 4,
-      interleave: "bip",
-      "data type": 4,
-      "byte order": 0
-    });
-    expect(norm.samples).toBe(64);
+    const norm = normalizeMeta(parsed);
+    expect(norm.samples).toBe(4);
     expect(norm.interleave).toBe("bip");
     expect(norm.dataTypeInfo.name).toBe("float32");
     expect(norm.littleEndian).toBe(true);
