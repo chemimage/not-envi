@@ -167,6 +167,10 @@ export const APP_CONFIG = Object.freeze({
   spectrum: Object.freeze({
     discreteBarMaxBands: 20
   }),
+  lineProfile: Object.freeze({
+    maxSamples: 1024,
+    concurrency: 3
+  }),
   tiff: Object.freeze({
     // `standard` is sized around a current desktop / laptop with at least
     // 16GB RAM, and is comfortable on 24GB-class machines.

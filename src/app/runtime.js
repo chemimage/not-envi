@@ -41,6 +41,7 @@ import { createOverlayRenderer } from "../render/overlay.js";
 import { createPyramidController } from "../render/pyramid-cache.js";
 import { createRenderer } from "../render/render-main.js";
 import { createSpectrumController } from "../render/spectrum.js";
+import { createLineProfileController } from "../render/line-profile.js";
 import { readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
 import { createThumbnailController } from "../render/thumbnail.js";
 import { clamp, fmt, fmtNoGroup, humanBytes } from "../core/utils.js";
@@ -437,6 +438,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   // ========= Dataset helpers =========
 
   let datasetRuntime = null;
+  let lineProfile = null;
   function getActive(){ return datasetRuntime ? datasetRuntime.getActive() : null; }
   function setActivePanel(slot, opts){ return datasetRuntime ? datasetRuntime.setActivePanel(slot, opts) : false; }
   function cycleDatasetPanel(id, slot, opts){ return datasetRuntime ? datasetRuntime.cycleDatasetPanel(id, slot, opts) : false; }
@@ -459,6 +461,9 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     screenToImage,
     render,
     drawOverlays,
+    onLineProfileRequested: (ds, item) => {
+      if (item) lineProfile?.open({ dsId: ds.id, itemId: item.id, slot: getActivePanel()?.slot || 1 });
+    },
     getSpectrumOpenForDatasetId: (dsId) => !!(spectrum && spectrum.isOpenForDatasetId(dsId)),
     openSpectrumAt: (ds, ix, iy, opts) => openSpectrumAt(ds, ix, iy, opts),
     positionAnalysisHistogramPanel,
@@ -573,6 +578,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
       updateMetaUI();
       updatePerf();
       updateDisplayUI(true);
+      lineProfile?.refresh();
       const ds = getActive();
       if (ds) updateSelectionHistogramForDataset(ds);
       else if (state.analysisHist.open) refreshAnalysisHistogram().catch(() => {});
@@ -1013,6 +1019,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   });
 
   function drawOverlays(){
+    lineProfile?.refresh();
     selectionSync?.ensureMarqueeTicker?.();
     syncLinkedAnnotationsFromActivePanel();
     overlayRenderer.clearOverlay();
@@ -1183,6 +1190,35 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });
 
+  lineProfile = createLineProfileController({
+    els,
+    bandLabel,
+    ...APP_CONFIG.lineProfile,
+    getTarget: ({ dsId, itemId, slot }) => {
+      const panel = getDisplayPanel(state, slot);
+      const ds = state.datasets.find((dataset) => dataset.id === dsId);
+      if (!ds || panel?.datasetId !== dsId) return null;
+      const item = panel.annotations?.drawings?.find((drawing) => drawing.id === itemId);
+      if (!item || !["ruler", "line"].includes(item.tool)) return null;
+      return { ds, item, band: resolveDisplayPanelBand(panel, ds) };
+    },
+    onShow: () => {
+      const profileWindow = floatingWindows.get("line-profile");
+      if (profileWindow) {
+        profileWindow.place(profileWindow.getGeometry());
+        profileWindow.bringToFront();
+      }
+    }
+  });
+  floatingWindows.register({
+    id: "line-profile",
+    element: els.lineProfilePanel,
+    dragHandle: ".floating-window-header",
+    minWidth: 300,
+    minHeight: 290,
+    onResize: () => lineProfile.redraw()
+  });
+
   floatingWindows.register({
     id: "analysis-histogram",
     element: els.analysisHistPanel,
@@ -1203,6 +1239,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   const areaReducer = createAreaReductionWorkerClient();
   function resetDatasetSession() {
+    lineProfile?.close();
     closeAllDatasets();
     resetFilePicker();
   }

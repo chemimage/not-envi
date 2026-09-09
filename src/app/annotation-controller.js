@@ -18,7 +18,8 @@ export function createAnnotationController(deps) {
     shouldAnimateMarquee,
     refreshAnalysisHistogram,
     isAnalysisHistogramOpen,
-    isDatasetActive
+    isDatasetActive,
+    onLineProfileRequested
   } = deps;
 
   function renderWithRasterReuse() {
@@ -1351,6 +1352,7 @@ export function createAnnotationController(deps) {
     }
     if (rulerProfileDrag && rulerProfileDrag.dsId === ds.id) {
       updateDrawingAtPointer(ev);
+      onLineProfileRequested?.(ds, ds.drawings[rulerProfileDrag.drawingIndex]);
       state.draw.activePointerId = null;
       state.draw.rulerProfileDrag = null;
       state.draw.rulerProfileHover = null;
@@ -1360,6 +1362,7 @@ export function createAnnotationController(deps) {
     }
     if (rulerMove && rulerMove.dsId === ds.id) {
       updateDrawingAtPointer(ev);
+      onLineProfileRequested?.(ds, ds.drawings[rulerMove.drawingIndex]);
       state.draw.activePointerId = null;
       state.draw.rulerMove = null;
       state.draw.rulerProfileDrag = null;
@@ -1370,6 +1373,7 @@ export function createAnnotationController(deps) {
     }
     if (rulerDrag && rulerDrag.dsId === ds.id) {
       updateDrawingAtPointer(ev);
+      onLineProfileRequested?.(ds, ds.drawings[rulerDrag.drawingIndex]);
       state.draw.activePointerId = null;
       state.draw.rulerDrag = null;
       state.draw.rulerMove = null;
@@ -1414,6 +1418,7 @@ export function createAnnotationController(deps) {
         points: points.slice()
       };
       ds.drawings.push(newItem);
+      if (draft.tool === "ruler") onLineProfileRequested?.(ds, newItem);
       if (draft.tool === "rect" || draft.tool === "shape") {
         const annotationState = resolveAnnotationState(ds);
         annotationState.selectedAreaId = newItem.id;

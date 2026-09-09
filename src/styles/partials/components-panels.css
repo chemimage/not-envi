@@ -296,11 +296,33 @@
     @apply absolute left-0 top-0 m-0 h-full w-full bg-transparent;
   }
 
-  .spec-panel {
+  .spec-panel,
+  .line-profile-panel {
     @apply absolute bottom-3 left-3 w-[min(380px,calc(100vw-16px))] select-none overflow-hidden;
     height: min(330px, calc(100vh - 16px));
     min-height: 220px;
     pointer-events: auto;
+  }
+
+  .line-profile-panel {
+    left: auto;
+    right: 0.75rem;
+  }
+
+  .line-profile-meta {
+    @apply shrink-0 flex-col gap-1;
+  }
+
+  .line-profile-coordinates {
+    @apply font-mono text-sm leading-5 text-gray-200;
+  }
+
+  .line-profile-details {
+    @apply flex w-full items-center justify-between gap-2 text-xs text-gray-400;
+  }
+
+  .line-profile-status {
+    @apply shrink-0 px-2.5 pb-2 text-[11px] leading-4 text-gray-400;
   }
 
   .spec-head {
@@ -372,7 +394,8 @@
     @apply mt-0.5 text-[11px] leading-4 text-amber-300;
   }
 
-  .spec-canvas {
+  .spec-canvas,
+  .line-profile-canvas {
     @apply block min-h-[160px] w-full flex-1 bg-transparent;
     position: static;
   }
@@ -432,6 +455,7 @@
   #app[data-empty="true"] #bandDock,
   #app[data-empty="true"] #displayDock,
   #app[data-empty="true"] #analysisHistPanel,
+  #app[data-empty="true"] #lineProfilePanel,
   #app[data-empty="true"] #specPanel {
     display: none;
   }

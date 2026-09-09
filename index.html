@@ -261,6 +261,29 @@
       </div>
     </div>
 
+    <div id="lineProfilePanel" class="line-profile-panel" data-ui-surface style="display:none;" role="dialog" aria-labelledby="lineProfileTitle" aria-hidden="true">
+      <div class="analysis-hist-head floating-window-header">
+        <div class="analysis-hist-title" id="lineProfileTitle">Line Profile</div>
+        <div class="floating-window-actions">
+          <button class="btn tiny icon-btn" id="btnLineProfileClose" type="button" title="Close line profile" aria-label="Close line profile">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+      <div class="panel-meta line-profile-meta">
+        <div class="line-profile-coordinates" id="lineProfileCoordinates"></div>
+        <div class="line-profile-details">
+          <span id="lineProfileBand"></span>
+          <div class="panel-unit-switch" role="group" aria-label="Line profile distance units">
+            <button type="button" id="btnLineProfileUm" aria-pressed="false">&micro;m</button>
+            <button type="button" id="btnLineProfilePx" aria-pressed="true">px</button>
+          </div>
+        </div>
+      </div>
+      <canvas id="lineProfileCanvas" class="line-profile-canvas" aria-label="Pixel value versus distance along the line"></canvas>
+      <div class="line-profile-status" id="lineProfileStatus" role="status"></div>
+    </div>
+
     <!-- Spectrum (z-profile) panel: double-click in the view to open -->
     <div id="specPanel" class="spec-panel" data-ui-surface style="display:none;" role="dialog" aria-labelledby="specTitle" aria-hidden="true">
       <div class="spec-head floating-window-header">
