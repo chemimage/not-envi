@@ -1201,21 +1201,6 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     onResize: () => redrawSpectrum()
   });
 
-  function resetFloatingWindowLayout() {
-    floatingWindows.resetLayout();
-    if (state.analysisHist.open) positionAnalysisHistogramPanel();
-    redrawSpectrum();
-  }
-
-  for (const button of [els.btnAnalysisHistReset, els.btnSpecReset]) {
-    if (!button) continue;
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      resetFloatingWindowLayout();
-    });
-  }
-
   const areaReducer = createAreaReductionWorkerClient();
   function resetDatasetSession() {
     closeAllDatasets();

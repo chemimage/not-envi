@@ -327,8 +327,45 @@
     @apply shrink-0 text-xs uppercase tracking-[0.12em] text-gray-300;
   }
 
+  /* Shared metadata spacing and unit controls for analysis panels. */
+  .panel-meta {
+    @apply mb-1 flex items-start justify-between gap-3 px-2.5 pt-2.5;
+  }
+
+  .spec-meta {
+    @apply shrink-0 flex-col gap-1;
+  }
+
+  .spec-location {
+    @apply flex min-w-0 items-center gap-2;
+  }
+
+  .panel-unit-switch {
+    @apply inline-flex shrink-0 overflow-hidden rounded-sm border border-gray-700 bg-gray-950/40;
+  }
+
+  .panel-unit-switch[hidden] {
+    display: none;
+  }
+
+  .panel-unit-switch button {
+    @apply px-1.5 py-0.5 font-mono text-xs leading-4 text-gray-400;
+  }
+
+  .panel-unit-switch button[aria-pressed="true"] {
+    @apply bg-gray-700 text-gray-100;
+  }
+
+  .panel-unit-switch button:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+
+  .panel-unit-switch button:focus-visible {
+    @apply outline-none ring-1 ring-inset ring-blue-400;
+  }
+
   .spec-sub {
-    @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-sm text-gray-300;
+    @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-sm leading-5 text-gray-200;
   }
 
   .spec-warning {
@@ -373,8 +410,11 @@
     @apply flex shrink-0 items-center gap-1.5;
   }
 
-  .floating-window-actions .icon-btn {
-    @apply h-7 w-7 p-0;
+  .floating-window-actions .btn.icon-btn {
+    @apply shrink-0 p-0;
+    width: var(--panel-action-size, 28px);
+    height: var(--panel-action-size, 28px);
+    margin: 0;
   }
 
   .spec-csv-btn {
@@ -411,8 +451,7 @@
     stroke-width: 2.5;
   }
 
-  .ds-item .actions .icon-btn,
-  .spec-head-right .icon-btn {
+  .ds-item .actions .icon-btn {
     @apply h-8 w-8 shrink-0 p-0;
     margin: 0;
   }

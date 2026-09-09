@@ -147,19 +147,43 @@ export function createSpectrumController(deps) {
     setSpecWarn(`Approximate: area average is sampled every ${fmtNoGroup(step)} pixels, not every raw pixel.`);
   }
 
-  function applySpectrumSubLabel(ds, ix, iy, opts = {}) {
-    if (opts.subLabel && String(opts.subLabel).trim()) {
-      setSpecSub(String(opts.subLabel));
-      return;
-    }
+  let locationUnit = "px";
+  let locationLabel = null;
+
+  function renderSpectrumLocation() {
+    if (!locationLabel) return;
+    const { ds, ix, iy, opts } = locationLabel;
+    const customLabel = String(opts.subLabel || "").trim();
     const sc = ds.meta.scale;
-    if (sc && Number.isFinite(sc.umPerPixelX) && Number.isFinite(sc.umPerPixelY)) {
-      const xUm = ix * Number(sc.umPerPixelX);
-      const yUm = iy * Number(sc.umPerPixelY);
-      setSpecSub(`x:${fmtUm(xUm)} µm  y:${fmtUm(yUm)} µm  (px ${ix},${iy})`);
-      return;
+    const calibrated = sc && Number.isFinite(sc.umPerPixelX) && sc.umPerPixelX > 0
+      && Number.isFinite(sc.umPerPixelY) && sc.umPerPixelY > 0;
+    if (!calibrated) locationUnit = "px";
+    if (els.specLocationUnits) els.specLocationUnits.hidden = !!customLabel;
+    if (els.btnSpecUnitUm) {
+      els.btnSpecUnitUm.disabled = !calibrated;
+      els.btnSpecUnitUm.title = calibrated ? "Show micrometers" : "Spatial calibration unavailable";
+      els.btnSpecUnitUm.setAttribute("aria-pressed", String(locationUnit === "um"));
     }
-    setSpecSub(`px ${ix}, ${iy}`);
+    els.btnSpecUnitPx?.setAttribute("aria-pressed", String(locationUnit === "px"));
+    if (customLabel) {
+      setSpecSub(customLabel);
+    } else if (locationUnit === "um") {
+      setSpecSub(`(${fmtUm(ix * sc.umPerPixelX)}, ${fmtUm(iy * sc.umPerPixelY)})`);
+    } else {
+      setSpecSub(`(${ix}, ${iy})`);
+    }
+  }
+
+  for (const [button, unit] of [[els.btnSpecUnitUm, "um"], [els.btnSpecUnitPx, "px"]]) {
+    button?.addEventListener("click", () => {
+      locationUnit = unit;
+      renderSpectrumLocation();
+    });
+  }
+
+  function applySpectrumSubLabel(ds, ix, iy, opts = {}) {
+    locationLabel = { ds, ix, iy, opts };
+    renderSpectrumLocation();
   }
 
   function drawSpectrumPlaceholder(message = "Computing spectrum...") {

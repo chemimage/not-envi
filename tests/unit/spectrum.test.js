@@ -139,6 +139,9 @@ describe("spectrum controller", () => {
       font: ""
     };
     const els = {
+      specLocationUnits: document.createElement("div"),
+      btnSpecUnitUm: document.createElement("button"),
+      btnSpecUnitPx: document.createElement("button"),
       specPanel: { style: { display: "none" } },
       specCanvas: {
         width: 0,
@@ -170,7 +173,19 @@ describe("spectrum controller", () => {
     });
 
     await ctrl.openSpectrumAt(ds, 1, 1);
-    expect(els.specSub.textContent).toContain("px 1, 1");
+    expect(els.specSub.textContent).toBe("(1, 1)");
+    expect(els.btnSpecUnitUm.disabled).toBe(true);
+    ds.meta.scale = { umPerPixelX: 2, umPerPixelY: 3 };
+    await ctrl.openSpectrumAt(ds, 4, 5);
+    expect(els.specSub.textContent).toBe("(4, 5)");
+    els.btnSpecUnitUm.click();
+    expect(els.specSub.textContent).toBe("(8, 15)");
+    expect(els.btnSpecUnitUm.getAttribute("aria-pressed")).toBe("true");
+    els.btnSpecUnitPx.click();
+    expect(els.specSub.textContent).toBe("(4, 5)");
+    await ctrl.openSpectrumAt(ds, 4, 5, { subLabel: "Area average" });
+    expect(els.specLocationUnits.hidden).toBe(true);
+    expect(els.specSub.textContent).toBe("Area average");
   });
 
   test("discrete bar plots use a uniform non-overlapping bar width", async () => {

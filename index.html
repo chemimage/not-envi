@@ -243,16 +243,13 @@
       <div class="analysis-hist-head floating-window-header">
         <div class="analysis-hist-title" id="analysisHistTitle">Spatial Histogram</div>
         <div class="floating-window-actions">
-          <button class="btn tiny icon-btn floating-window-reset" id="btnAnalysisHistReset" type="button" title="Reset floating window layout" aria-label="Reset floating window layout">
-            <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
-          </button>
           <button class="btn tiny icon-btn" id="btnAnalysisHistClose" type="button" title="Close histogram" aria-label="Close histogram">
             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
           </button>
         </div>
       </div>
       <div class="analysis-hist-body floating-window-body">
-        <div class="analysis-hist-meta">
+        <div class="analysis-hist-meta panel-meta">
           <div class="analysis-hist-summary">
             <div class="k">N =</div><div class="v" id="analysisStatN">—</div>
             <div class="k">mode =</div><div class="v" id="analysisStatMode">—</div>
@@ -270,19 +267,24 @@
         <div class="spec-head-left">
           <div class="spec-title-row">
             <div class="spec-title" id="specTitle">Spectrum</div>
-            <div class="spec-sub" id="specSub">—</div>
           </div>
-          <div class="spec-warning tiny" id="specWarn" style="display:none;"></div>
         </div>
         <div class="spec-head-right floating-window-actions">
           <button class="btn tiny icon-btn spec-csv-btn" id="btnSpecCSV" type="button" title="Export spectrum as CSV" aria-label="Export spectrum as CSV">CSV</button>
-          <button class="btn tiny icon-btn floating-window-reset" id="btnSpecReset" type="button" title="Reset floating window layout" aria-label="Reset floating window layout">
-            <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
-          </button>
           <button class="btn tiny icon-btn" id="btnSpecClose" type="button" title="Close spectrum" aria-label="Close spectrum">
             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
           </button>
         </div>
+      </div>
+      <div class="spec-meta panel-meta">
+        <div class="spec-location">
+          <span class="spec-sub" id="specSub">&mdash;</span>
+          <div class="panel-unit-switch" id="specLocationUnits" role="group" aria-label="Location units">
+            <button type="button" id="btnSpecUnitUm" aria-pressed="false">&micro;m</button>
+            <button type="button" id="btnSpecUnitPx" aria-pressed="true">px</button>
+          </div>
+        </div>
+        <div class="spec-warning tiny" id="specWarn" style="display:none;"></div>
       </div>
       <canvas id="specCanvas" class="spec-canvas"></canvas>
       <div class="spec-foot tiny" id="specFoot">Double‑click another point to update.</div>
