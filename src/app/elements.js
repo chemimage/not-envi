@@ -22,6 +22,8 @@ export function collectElements() {
     datasetList: $("#datasetList"),
     bandDock: $("#bandDock"),
     bandSelector: $("#bandSelector"),
+    bandDockInput: $("#bandDockInput"),
+    bandDockCandidates: $("#bandDockCandidates"),
     bandDockTrack: $("#bandDockTrack"),
     bandDockMin: $("#bandDockMin"),
     bandDockMax: $("#bandDockMax"),

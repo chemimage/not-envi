@@ -124,11 +124,66 @@ export function createBandDockController(deps) {
   const track = els?.bandDockTrack;
   const valueOutput = els?.bandDockValue;
   const previewOutput = els?.bandDockPreview;
+  const input = els?.bandDockInput;
+  const candidates = els?.bandDockCandidates;
   let entries = [];
   let datasetId = null;
   let hoverBand = null;
   let hoverFraction = null;
   let draggingPointerId = null;
+  let pressStart = null;
+  let lastClick = null;
+  let editing = false;
+
+  function matchingEntries(query) {
+    const typed = query.trim().toLowerCase();
+    return typed ? entries.filter((entry) => entry.label.toLowerCase().includes(typed)).slice(0, 8) : [];
+  }
+
+  function renderCandidates() {
+    if (!candidates || !input) return;
+    const matches = matchingEntries(input.value);
+    candidates.replaceChildren(...matches.map((entry) => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "band-dock-candidate";
+      option.setAttribute("role", "option");
+      option.textContent = entry.label;
+      option.addEventListener("pointerdown", (event) => event.preventDefault());
+      option.addEventListener("click", () => finishEditing(entry));
+      return option;
+    }));
+    candidates.hidden = !matches.length;
+  }
+
+  function finishEditing(entry = null) {
+    if (!editing) return;
+    const ds = getActive?.() || null;
+    editing = false;
+    lastClick = null;
+    selector.classList.remove("editing");
+    if (input) input.hidden = true;
+    if (candidates) candidates.hidden = true;
+    hoverBand = null;
+    hoverFraction = null;
+    if (entry && ds && activeBand(ds) !== entry.band) onSelectBand?.(ds, entry.band);
+    else renderTicks(ds);
+  }
+
+  function submitEditing() {
+    const query = input?.value.trim() || "";
+    if (!query) return finishEditing();
+    const exact = entries.find((entry) => entry.label.toLowerCase() === query.toLowerCase());
+    const matches = matchingEntries(query);
+    let entry = exact || matches[0];
+    if (!entry) {
+      const target = Number(query);
+      if (!Number.isFinite(target)) return;
+      entry = entries.reduce((best, next) =>
+        !best || Math.abs(next.value - target) < Math.abs(best.value - target) ? next : best, null);
+    }
+    finishEditing(entry);
+  }
 
   function activeBand(ds) {
     const band = Number(ds?.activeBand);
@@ -188,7 +243,7 @@ export function createBandDockController(deps) {
     const visibleBands = new Set();
     const magnificationCenter = showMagnification
       ? (finiteNumber(hoverFraction) ?? focusEntry?.fraction ?? null)
-      : null;
+      : selectedEntry?.fraction ?? null;
     for (const entry of visible) {
       const key = String(entry.band);
       visibleBands.add(key);
@@ -226,6 +281,7 @@ export function createBandDockController(deps) {
     if (!selector || !track) return;
     const ds = getActive?.() || null;
     if (!ds) {
+      finishEditing();
       entries = [];
       datasetId = null;
       hoverBand = null;
@@ -235,6 +291,7 @@ export function createBandDockController(deps) {
       return;
     }
     if (String(datasetId || "") !== String(ds.id || "")) {
+      finishEditing();
       datasetId = ds.id;
       hoverBand = null;
       hoverFraction = null;
@@ -288,7 +345,14 @@ export function createBandDockController(deps) {
   }
 
   if (selector) {
+    input?.addEventListener("input", renderCandidates);
+    input?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); submitEditing(); }
+      else if (event.key === "Escape") { event.preventDefault(); finishEditing(); }
+    });
+    input?.addEventListener("blur", () => finishEditing());
     selector.addEventListener("pointerenter", (event) => {
+      if (editing) return;
       const ds = getActive?.() || null;
       if (!ds || isThreeBandColorMode(ds)) return;
       selector.classList.add("hovering");
@@ -297,6 +361,7 @@ export function createBandDockController(deps) {
       renderTicks(ds);
     });
     selector.addEventListener("pointermove", (event) => {
+      if (editing) return;
       const ds = getActive?.() || null;
       if (!ds || isThreeBandColorMode(ds)) return;
       if (draggingPointerId != null && event.pointerId === draggingPointerId) {
@@ -318,9 +383,27 @@ export function createBandDockController(deps) {
       renderTicks(getActive?.() || null);
     });
     selector.addEventListener("pointerdown", (event) => {
+      if (editing) return;
       const ds = getActive?.() || null;
       if (!ds || isThreeBandColorMode(ds)) return;
       event.preventDefault();
+      const now = Date.now();
+      if (input && lastClick && now - lastClick.time < 500
+        && Math.hypot(event.clientX - lastClick.x, event.clientY - lastClick.y) < 12
+        && event.pointerType === lastClick.pointerType) {
+        lastClick = null;
+        editing = true;
+        selector.classList.add("editing");
+        hoverBand = null;
+        hoverFraction = null;
+        input.hidden = false;
+        input.value = "";
+        if (candidates) candidates.hidden = true;
+        input.focus();
+        return;
+      }
+      lastClick = null;
+      pressStart = { x: event.clientX, y: event.clientY };
       draggingPointerId = event.pointerId;
       selector.classList.add("dragging", "hovering");
       try { selector.setPointerCapture(event.pointerId); } catch (_err) {}
@@ -330,6 +413,11 @@ export function createBandDockController(deps) {
       if (draggingPointerId == null || event.pointerId !== draggingPointerId) return;
       try { selector.releasePointerCapture(event.pointerId); } catch (_err) {}
       draggingPointerId = null;
+      lastClick = commit && pressStart
+        && Math.hypot(event.clientX - pressStart.x, event.clientY - pressStart.y) < 12
+        ? { time: Date.now(), x: event.clientX, y: event.clientY, pointerType: event.pointerType }
+        : null;
+      pressStart = null;
       selector.classList.remove("dragging");
       const ds = getActive?.() || null;
       if (commit && ds && hoverBand != null && activeBand(ds) !== hoverBand) {
@@ -341,6 +429,7 @@ export function createBandDockController(deps) {
     selector.addEventListener("pointerup", finishDrag);
     selector.addEventListener("pointercancel", (event) => finishDrag(event, false));
     selector.addEventListener("keydown", (event) => {
+      if (editing) return;
       const ds = getActive?.() || null;
       if (!ds || isThreeBandColorMode(ds) || !entries.length) return;
       const current = entryForBand(activeBand(ds)) || entries[0];

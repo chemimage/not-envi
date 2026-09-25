@@ -541,6 +541,65 @@
     box-shadow: 0 8px 22px rgb(0 0 0 / 0.34), 0 0 0 1px rgb(226 232 240 / 0.1);
   }
 
+  .band-dock-input {
+    position: absolute;
+    z-index: 6;
+    top: 6px;
+    bottom: 6px;
+    left: 60px;
+    right: 60px;
+    width: calc(100% - 120px);
+    border: 1px solid rgb(103 232 249 / 0.8);
+    border-radius: 3px;
+    background: rgb(3 7 18 / 0.95);
+    color: white;
+    text-align: center;
+    font: 600 18px ui-monospace, monospace;
+    outline: none;
+  }
+
+  .band-dock-input[hidden],
+  .band-dock-candidates[hidden] { display: none; }
+
+  .band-dock-candidates {
+    position: absolute;
+    z-index: 7;
+    bottom: calc(100% + 4px);
+    left: 60px;
+    width: calc(100% - 120px);
+    max-height: 192px;
+    overflow-y: auto;
+    border: 1px solid rgb(75 85 99);
+    border-radius: 3px;
+    background: rgb(17 24 39 / 0.98);
+    box-shadow: 0 8px 20px rgb(0 0 0 / 0.45);
+  }
+
+  .band-dock-candidate {
+    display: block;
+    width: 100%;
+    padding: 4px 8px;
+    color: rgb(229 231 235);
+    text-align: center;
+    font: 13px ui-monospace, monospace;
+  }
+
+  .band-dock-candidate:hover,
+  .band-dock-candidate:focus-visible {
+    background: rgb(55 65 81);
+  }
+
+  .band-selector.editing .band-dock-track,
+  .band-selector.editing .band-dock-value,
+  .band-selector.editing .band-dock-preview {
+    visibility: hidden;
+  }
+
+  #bandDock.has-color-mode .band-dock-input,
+  #bandDock.has-color-mode .band-dock-candidates {
+    width: calc(100% - 163px);
+  }
+
   .band-selector.locked .band-dock-value,
   .band-selector.locked .band-dock-preview {
     display: none;

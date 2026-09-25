@@ -85,6 +85,7 @@ describe("band dock", () => {
     expect(document.querySelector("#value").textContent).toBe("500");
     expect(document.querySelector("#value").style.left).toBe("50px");
     expect(document.querySelectorAll(".band-dock-tick.hovered")).toHaveLength(0);
+    expect(track.querySelector('[data-band="0"]').style.getPropertyValue("--band-tick-scale")).toBe("3");
 
     const hover = new Event("pointerenter", { bubbles: true });
     Object.defineProperties(hover, { clientX: { value: 200 }, pointerId: { value: 1 } });
@@ -93,6 +94,10 @@ describe("band dock", () => {
     expect(document.querySelector("#preview").textContent).toBe("1000");
     expect(selector.classList.contains("previewing")).toBe(true);
     expect(document.querySelectorAll(".band-dock-tick.hovered")).toHaveLength(1);
+
+    selector.dispatchEvent(new Event("pointerleave"));
+    expect(track.querySelector('[data-band="0"]').style.getPropertyValue("--band-tick-scale")).toBe("3");
+    expect(track.querySelector('[data-band="1"]').style.getPropertyValue("--band-tick-scale")).toBe("1");
 
     const down = new Event("pointerdown", { bubbles: true, cancelable: true });
     Object.defineProperties(down, { clientX: { value: 300 }, pointerId: { value: 1 } });
@@ -144,6 +149,57 @@ describe("band dock", () => {
     expect(track.querySelector('[data-band="50"]')).toBe(stableTick);
     expect(Number(stableTick.style.getPropertyValue("--band-tick-scale"))).toBeGreaterThan(1);
     expect(Number(stableTick.style.getPropertyValue("--band-tick-scale"))).toBeLessThan(3);
+  });
+
+  test("edits wavenumber with matching candidates and nearest numeric fallback", () => {
+    document.body.innerHTML = `<div id="dock"><div id="selector"><div id="track"></div>
+      <input id="input" hidden><div id="candidates" hidden></div></div></div>`;
+    const ds = { id: "edit", activeBand: 0, meta: { bands: 4, wavelengths: [500, 1000, 1250, 1500] } };
+    const selector = document.querySelector("#selector");
+    const input = document.querySelector("#input");
+    const candidates = document.querySelector("#candidates");
+    const selected = [];
+    const controller = createBandDockController({
+      els: { bandDock: document.querySelector("#dock"), bandSelector: selector,
+        bandDockTrack: document.querySelector("#track"), bandDockInput: input,
+        bandDockCandidates: candidates },
+      getActive: () => ds,
+      onSelectBand: (_dataset, band) => { selected.push(band); ds.activeBand = band; controller.sync(); }
+    });
+    controller.sync();
+    const doublePress = (target) => {
+      for (let count = 0; count < 2; count += 1) {
+        for (const type of ["pointerdown", "pointerup"]) {
+          const event = new Event(type, { bubbles: true, cancelable: true });
+          Object.defineProperties(event, {
+            clientX: { value: 120 }, clientY: { value: 10 }, pointerId: { value: 1 }, pointerType: { value: "mouse" }
+          });
+          target.dispatchEvent(event);
+        }
+      }
+    };
+    doublePress(document.querySelector("#track .band-dock-tick"));
+    expect(input.hidden).toBe(false);
+    expect(selector.classList.contains("editing")).toBe(true);
+    input.value = "12";
+    input.dispatchEvent(new Event("input"));
+    expect([...candidates.children].map((option) => option.textContent)).toEqual(["1250"]);
+    candidates.querySelector("button").click();
+    expect(selected).toEqual([3, 2]);
+    expect(input.hidden).toBe(true);
+
+    doublePress(selector);
+    input.value = "1380";
+    input.dispatchEvent(new Event("input"));
+    expect(candidates.hidden).toBe(true);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(selected).toEqual([3, 2, 3]);
+    expect(input.hidden).toBe(true);
+
+    doublePress(selector);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(selected).toEqual([3, 2, 3]);
+    expect(selector.classList.contains("editing")).toBe(false);
   });
 
   test("locks selection in color mode and exposes the composite mode button", () => {
