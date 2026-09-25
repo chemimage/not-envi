@@ -66,7 +66,7 @@ describe("flyout panel wiring", () => {
     expect(btnPin.dataset.pinned).toBe("false");
     expect(btnPin.querySelector("i")?.classList.contains("fa-thumbtack-slash")).toBe(true);
 
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     panel.dispatchEvent(new Event("pointerleave"));
     vi.advanceTimersByTime(160);
     expect(panel.dataset.open).toBe("false");
@@ -83,7 +83,7 @@ describe("flyout panel wiring", () => {
   });
 
   test("desktop hover stays open in the right gutter instead of rapidly toggling", () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1000

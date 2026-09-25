@@ -313,7 +313,7 @@ describe("app wiring", () => {
   });
 
   test("touch double-tap on eraser clears all annotations and keeps eraser active", () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { els, clearAllAnnotations, getActiveTool, windowAdd } = setupEraserHarness();
 
     const dispatchTouchPointerUp = (timeStamp) => {
