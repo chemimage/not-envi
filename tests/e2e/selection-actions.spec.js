@@ -23,7 +23,7 @@ test("point selection offers a spectrum on the right and preserves the target", 
   await expect(toolbar).toBeVisible();
   await expect(toolbar).toHaveAttribute("data-placement", "right");
   const position = await toolbar.boundingBox();
-  expect(position.x).toBeGreaterThan(550);
+  expect(position.x - 595).toBeCloseTo(8, 0);
   await expect(page.getByRole("button", { name: "Spatial histogram", exact: true })).toBeHidden();
   await expect(page.locator("#specPanel")).toBeHidden();
   await page.getByRole("button", { name: "Spectrum", exact: true }).click();
@@ -49,7 +49,10 @@ test("dragged regions offer both analyses and follow the image during zoom", asy
   await expect(toolbar).toBeVisible();
   await expect(toolbar).toHaveAttribute("data-placement", "right");
   const regionActions = await toolbar.boundingBox();
-  expect(regionActions.x).toBeGreaterThan(620);
+  const spectrumButton = await page.locator("#btnToolSpectral").boundingBox();
+  const spatialButton = await page.locator("#btnToolHistogram").boundingBox();
+  const buttonGap = spatialButton.y - spectrumButton.y - spectrumButton.height;
+  expect(regionActions.x - 620).toBeCloseTo(buttonGap, 0);
   expect(regionActions.y).toBeCloseTo(290, 0);
   await page.screenshot({ path: testInfo.outputPath("selection-actions.png") });
   await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
@@ -111,9 +114,8 @@ test.describe("high DPI", () => {
     const toolbar = page.locator("#selectionActions");
     await expect(toolbar).toBeVisible();
     const box = await toolbar.boundingBox();
-    expect(box.x).toBeGreaterThan(550);
-    expect(box.x).toBeLessThan(580);
-    expect(box.y).toBeCloseTo(340, 0);
+    expect(box.x - 595).toBeCloseTo(8, 0);
+    expect(box.y).toBeCloseTo(305, 0);
     await page.getByRole("button", { name: "Spectrum", exact: true }).click();
     await expect(page.locator("#specSub")).toContainText("(45, 34)");
   });
