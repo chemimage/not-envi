@@ -83,19 +83,20 @@
           <i class="fa-solid fa-eraser" aria-hidden="true"></i>
         </button>
         <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
-        <button class="draw-tool-btn" id="btnToolSpectral" type="button" title="Spectral" aria-label="Spectral" aria-pressed="false">
-          <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
-        </button>
-        <button class="draw-tool-btn" id="btnToolHistogram" type="button" title="Spatial" aria-label="Spatial">
-          <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
-        </button>
-        <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
         <button class="draw-tool-btn" id="btnToolExport" type="button" title="Export" aria-label="Export">
           <i class="fa-solid fa-download" aria-hidden="true"></i>
         </button>
       </div>
     </div>
 
+    <div id="selectionActions" data-ui-surface role="toolbar" aria-label="Selection analysis" hidden>
+      <button class="selection-action" id="btnToolSpectral" type="button" title="Spectrum" aria-label="Spectrum" aria-pressed="false">
+        <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+      </button>
+      <button class="selection-action" id="btnToolHistogram" type="button" title="Spatial histogram" aria-label="Spatial histogram" aria-pressed="false">
+        <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
+      </button>
+    </div>
     <div id="selRect"></div>
 
     <div id="thumbDock" data-ui-surface>

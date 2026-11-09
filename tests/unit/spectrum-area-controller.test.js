@@ -2,6 +2,20 @@ import { describe, expect, test, vi } from "vitest";
 import { createSpectrumAreaController } from "../../src/app/spectrum-area-controller.js";
 
 describe("spectrum-area-controller", () => {
+  test("explicit point selection bypasses existing region averages", async () => {
+    const ds = { id: 7 };
+    const openSpy = vi.fn(async () => {});
+    const readBandWindow = vi.fn();
+    const ctrl = createSpectrumAreaController({
+      spectrum: { openSpectrumAt: openSpy },
+      getHistogramSelectionItems: () => [{ id: 1, tool: "rect" }],
+      readBandWindow
+    });
+    await ctrl.openSpectrumAt(ds, 12, 34, { forcePoint: true });
+    expect(openSpy).toHaveBeenCalledWith(ds, 12, 34, { forcePoint: true });
+    expect(readBandWindow).not.toHaveBeenCalled();
+  });
+
   test("openSpectrumAt uses area-averaged spectrum when selection is present", async () => {
     const selection = { id: 1, tool: "rect", points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] };
     const ds = {

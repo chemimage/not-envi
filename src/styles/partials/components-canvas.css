@@ -754,3 +754,22 @@
     to { background-position: -8px 0, 8px 100%, 0 8px, 100% -8px; }
   }
 }
+
+@layer components {
+  #selectionActions {
+    @apply absolute z-30 flex flex-col gap-1 rounded-sm border border-gray-600 bg-gray-900 p-1 shadow-lg;
+  }
+
+  #selectionActions[hidden],
+  #selectionActions button[hidden] {
+    display: none;
+  }
+
+  .selection-action {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-sm border border-transparent text-gray-100 hover:border-gray-400 hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white;
+  }
+
+  .selection-action[aria-pressed="true"] {
+    @apply border-gray-300 bg-gray-700;
+  }
+}

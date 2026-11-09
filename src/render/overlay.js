@@ -415,7 +415,7 @@ export function createOverlayRenderer(deps) {
       drawOneAnnotation(ds, items[i], eff, dpr, viewport, i, rulerProfileHover, selectionIds, marqueeOffset, opts);
     }
     if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, viewport, -1, null, null, 0, opts);
-    drawSpectrumPointCrosshair(ds, viewport, drawData.spectrumPoint || null, dpr);
+    if (opts.active !== false) drawSpectrumPointCrosshair(ds, viewport, drawData.spectrumPoint || null, dpr);
   }
 
   function snapToDecimal125Step(value) {

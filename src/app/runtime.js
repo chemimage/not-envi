@@ -4,6 +4,7 @@ import { createCacheRuntime } from "./cache-runtime.js";
 import { collectElements } from "./elements.js";
 import { createUIPanels } from "./ui-panels.js";
 import { createViewControls } from "./view-controls.js";
+import { createSelectionActionsController } from "./selection-actions.js";
 import { wireApp } from "./wiring.js";
 import {
   computeDisplayPanelLayout,
@@ -200,6 +201,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     histMode: 'whole',
     histViewDebounce: null,
     spectrumPickEnabled: false,
+    contextPoint: null,
     areaSelectionMode: "single",
     analysisHist: { open: false, hoverBin: -1, stats: null },
     draw: { tool: "none", color: "#ff2d2d", shapeMode: "rect", activePointerId: null, draft: null, rulerDrag: null, rulerMove: null, rulerProfileDrag: null, rulerProfileHover: null, rulerHover: null, areaMove: null, nextItemId: 1 },
@@ -439,6 +441,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   let datasetRuntime = null;
   let lineProfile = null;
+  let selectionActions = null;
   function getActive(){ return datasetRuntime ? datasetRuntime.getActive() : null; }
   function setActivePanel(slot, opts){ return datasetRuntime ? datasetRuntime.setActivePanel(slot, opts) : false; }
   function cycleDatasetPanel(id, slot, opts){ return datasetRuntime ? datasetRuntime.cycleDatasetPanel(id, slot, opts) : false; }
@@ -518,7 +521,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   function eraseDrawingAtPointer(ev) { return annotation.eraseDrawingAtPointer(ev); }
   function clearAllAnnotations() { return annotation.clearAllAnnotations(); }
   function isDrawingPointer(pointerId) { return annotation.isDrawingPointer(pointerId); }
-  function beginDrawingAtPointer(ev) { return annotation.beginDrawingAtPointer(ev); }
+  function beginDrawingAtPointer(ev, opts) { return annotation.beginDrawingAtPointer(ev, opts); }
   function updateDrawingAtPointer(ev) { return annotation.updateDrawingAtPointer(ev); }
   function finishDrawingAtPointer(ev) { return annotation.finishDrawingAtPointer(ev); }
   function cancelDrawing() { return annotation.cancelDrawing(); }
@@ -1019,6 +1022,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   });
 
   function drawOverlays(){
+    selectionActions?.refresh();
     lineProfile?.refresh();
     selectionSync?.ensureMarqueeTicker?.();
     syncLinkedAnnotationsFromActivePanel();
@@ -1374,7 +1378,18 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   analysisHistogram.setOpen(!!state.analysisHist.open);
 
+  selectionActions = createSelectionActionsController({
+    state, els, getActive, getActivePanel, getPanelRectDevice,
+    getHistogramSelectionItems, screenToImage,
+    beginDrawingAtPointer, updateDrawingAtPointer, finishDrawingAtPointer, cancelDrawing,
+    beginAreaMoveAtPointer, updateAreaMoveAtPointer, finishAreaMoveAtPointer, cancelAreaMove,
+    selectAreaAtPointer, openSpectrumAt, openSpectrumForEffectiveArea,
+    closeSpectrum, setAnalysisHistogramOpen, closeAnalysisHistogramPanel,
+    drawOverlays, onPointerDown
+  });
+
   wireApp({
+    selectionActions,
     state,
     els,
     clamp,

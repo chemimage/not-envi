@@ -50,6 +50,7 @@ export function collectElements() {
     overlayCanvas: $("#overlayCanvas"),
     brandVersion: $("#brandVersion"),
     drawTools: $("#drawTools"),
+    selectionActions: $("#selectionActions"),
     toolRuler: $("#toolRuler"),
     toolRect: $("#toolRect"),
     shapeModeAnchor: $("#shapeModeAnchor"),
