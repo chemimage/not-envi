@@ -466,16 +466,16 @@ export function createOverlayRenderer(deps) {
     const fontPx = 12 * dpr;
     overlayCtx.save();
     overlayCtx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
-    overlayCtx.textAlign = "right";
+    overlayCtx.textAlign = "center";
     overlayCtx.textBaseline = "top";
     const textW = overlayCtx.measureText(label).width;
     const boxW = Math.max(barDevPx, textW) + (inset * 2);
     const boxH = (fontPx + tickLen + (inset * 1.8));
-    const x1 = viewport.x + viewport.w - inset;
-    const x0 = x1 - boxW;
-    const y0 = viewport.y + inset;
-    const barX1 = x1 - inset;
-    const barX0 = barX1 - barDevPx;
+    const centerX = viewport.x + viewport.w / 2;
+    const x0 = centerX - boxW / 2;
+    const y0 = viewport.y + viewport.h - boxH - inset;
+    const barX0 = centerX - barDevPx / 2;
+    const barX1 = centerX + barDevPx / 2;
     const barY = y0 + inset * 0.5;
 
     overlayCtx.fillStyle = "rgba(0,0,0,0.55)";
@@ -493,7 +493,7 @@ export function createOverlayRenderer(deps) {
     overlayCtx.lineTo(barX1, barY + tickLen);
     overlayCtx.stroke();
     overlayCtx.fillStyle = "rgba(255,255,255,0.92)";
-    overlayCtx.fillText(label, x1 - inset, barY + tickLen + (3 * dpr));
+    overlayCtx.fillText(label, centerX, barY + tickLen + (3 * dpr));
     overlayCtx.restore();
   }
 
