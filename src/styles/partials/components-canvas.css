@@ -768,7 +768,7 @@
   }
 
   .selection-action {
-    @apply inline-flex h-9 w-9 items-center justify-center rounded-sm border border-transparent text-gray-100 hover:border-gray-400 hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white;
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-sm border border-gray-700 bg-gray-900/80 text-gray-100 backdrop-blur-sm hover:border-gray-400 hover:bg-gray-700/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white;
   }
 
   .selection-action i {
@@ -776,6 +776,6 @@
   }
 
   .selection-action[aria-pressed="true"] {
-    @apply border-gray-300 bg-gray-700;
+    @apply border-gray-300 bg-gray-700/80;
   }
 }
