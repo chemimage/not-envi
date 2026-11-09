@@ -757,7 +757,7 @@
 
 @layer components {
   #selectionActions {
-    --selection-action-gap: 8px;
+    --selection-action-gap: 4px;
     @apply absolute z-30 flex flex-col;
     gap: var(--selection-action-gap);
   }

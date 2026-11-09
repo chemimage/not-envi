@@ -12,7 +12,7 @@ async function loadImage(page) {
   await expect(page.locator("#displayDock")).toBeVisible();
 }
 
-test("point selection offers a spectrum on the right and preserves the target", async ({ page }) => {
+test("point selection places its action in quadrant IV and preserves the target", async ({ page }, testInfo) => {
   await loadImage(page);
   const errors = [];
   page.on("pageerror", (err) => errors.push(String(err)));
@@ -23,7 +23,9 @@ test("point selection offers a spectrum on the right and preserves the target", 
   await expect(toolbar).toBeVisible();
   await expect(toolbar).toHaveAttribute("data-placement", "right");
   const position = await toolbar.boundingBox();
-  expect(position.x - 595).toBeCloseTo(8, 0);
+  expect(position.x - 555).toBeCloseTo(4, 0);
+  expect(position.y - 345).toBeCloseTo(4, 0);
+  await page.screenshot({ path: testInfo.outputPath("point-actions.png") });
   await expect(page.getByRole("button", { name: "Spatial histogram", exact: true })).toBeHidden();
   await expect(page.locator("#specPanel")).toBeHidden();
   await page.getByRole("button", { name: "Spectrum", exact: true }).click();
@@ -52,6 +54,7 @@ test("dragged regions offer both analyses and follow the image during zoom", asy
   const spectrumButton = await page.locator("#btnToolSpectral").boundingBox();
   const spatialButton = await page.locator("#btnToolHistogram").boundingBox();
   const buttonGap = spatialButton.y - spectrumButton.y - spectrumButton.height;
+  expect(buttonGap).toBeCloseTo(4, 0);
   expect(regionActions.x - 620).toBeCloseTo(buttonGap, 0);
   expect(regionActions.y).toBeCloseTo(290, 0);
   await page.screenshot({ path: testInfo.outputPath("selection-actions.png") });
@@ -114,8 +117,8 @@ test.describe("high DPI", () => {
     const toolbar = page.locator("#selectionActions");
     await expect(toolbar).toBeVisible();
     const box = await toolbar.boundingBox();
-    expect(box.x - 595).toBeCloseTo(8, 0);
-    expect(box.y).toBeCloseTo(305, 0);
+    expect(box.x - 555).toBeCloseTo(4, 0);
+    expect(box.y - 345).toBeCloseTo(4, 0);
     await page.getByRole("button", { name: "Spectrum", exact: true }).click();
     await expect(page.locator("#specSub")).toContainText("(45, 34)");
   });

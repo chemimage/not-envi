@@ -57,10 +57,8 @@ export function createSelectionActionsController(deps) {
     const pixelCenter = current.point ? 0.5 : 0;
     const xs = current.points.map((p) => vp.x + (p.x + pixelCenter - view.x) * view.scale);
     const ys = current.points.map((p) => vp.y + (p.y + pixelCenter - view.y) * view.scale);
-    // Match the visible crosshair arms, rather than anchoring inside the marker.
-    const radius = current.point ? Math.min(vp.w, vp.h) * 0.05 : 0;
-    const left = Math.min(...xs) - radius, right = Math.max(...xs) + radius;
-    const top = Math.min(...ys) - radius, bottom = Math.max(...ys) + radius;
+    const left = Math.min(...xs), right = Math.max(...xs);
+    const top = Math.min(...ys), bottom = Math.max(...ys);
     if (right < vp.x || left > vp.x + vp.w || bottom < vp.y || top > vp.y + vp.h) {
       toolbar.hidden = true;
       return;
@@ -69,12 +67,12 @@ export function createSelectionActionsController(deps) {
     toolbar.hidden = false;
     els.btnToolSpectral.setAttribute("aria-pressed", String(!!state.spectrumPickEnabled));
     els.btnToolHistogram.setAttribute("aria-pressed", String(!!state.analysisHist.open));
-    const gap = Number.parseFloat(window.getComputedStyle(toolbar).gap) || 8;
+    const gap = Number.parseFloat(window.getComputedStyle(toolbar).gap) || 4;
     const width = toolbar.offsetWidth || 36;
     const height = toolbar.offsetHeight || (current.point ? 36 : 72 + gap);
     const inset = 8;
     let x = right + gap;
-    let y = top;
+    let y = current.point ? top + gap : top;
     const above = x + width > vp.x + vp.w - inset;
     if (above) {
       x = left;
