@@ -187,16 +187,11 @@
     </div>
 
     <div id="displayDock" data-ui-surface>
-      <aside id="displayPanel" data-open="false" data-pinned="false">
-        <div class="panel-header display-header" id="displayHeader">
+      <aside id="displayPanel" data-open="false">
+        <div class="panel-header display-header" id="displayHeader" role="button" tabindex="0" aria-expanded="false" aria-controls="displayBody">
           <h2>Display</h2>
-          <div class="panel-header-actions">
-            <button class="btn tiny ghost panel-pin-btn" id="btnDisplayPin" type="button" aria-pressed="false" title="Auto-hide: panel hides after cursor leaves" aria-label="Auto-hide: panel hides after cursor leaves">
-              <i class="fa-solid fa-thumbtack-slash" aria-hidden="true"></i>
-            </button>
-          </div>
         </div>
-        <div class="display-body">
+        <div class="display-body" id="displayBody">
           <div class="display-hist-wrap">
             <canvas id="hist"></canvas>
             <button class="hist-range-lock-btn" id="btnHistRangeLock" type="button" title="Use same min/max for all bands" aria-label="Use same min/max for all bands" aria-pressed="false">

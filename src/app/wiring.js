@@ -503,8 +503,7 @@ export function wireApp(deps) {
   setGpuBadgeAvailable();
   wireFlyoutPanel({
     panel: els.displayPanel,
-    header: els.displayHeader,
-    btnPin: els.btnDisplayPin
+    header: els.displayHeader
   });
 }
 

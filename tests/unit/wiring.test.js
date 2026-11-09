@@ -15,7 +15,7 @@ function setupEraserHarness() {
     <button id="toolEraser" type="button"></button>
     <div id="main"></div>
     <aside id="displayPanel" data-open="false" data-pinned="false">
-      <div id="displayHeader"><h2>Display</h2><button id="btnDisplayPin" type="button"><i></i></button></div>
+      <div id="displayHeader"><h2>Display</h2></div>
     </aside>
     <canvas id="thumb"></canvas>
     <input id="zoom" />
@@ -54,7 +54,6 @@ function setupEraserHarness() {
     main: document.querySelector("#main"),
     displayPanel: document.querySelector("#displayPanel"),
     displayHeader: document.querySelector("#displayHeader"),
-    btnDisplayPin: document.querySelector("#btnDisplayPin"),
     thumb: document.querySelector("#thumb"),
     zoom: document.querySelector("#zoom"),
     chkGrid: document.querySelector("#chkGrid"),

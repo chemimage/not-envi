@@ -90,7 +90,6 @@ export function collectElements() {
     thumb: $("#thumb"),
     displayPanel: $("#displayPanel"),
     displayHeader: $("#displayHeader"),
-    btnDisplayPin: $("#btnDisplayPin"),
     specPanel: $("#specPanel"),
     specCanvas: $("#specCanvas"),
     specTitle: $("#specTitle"),
