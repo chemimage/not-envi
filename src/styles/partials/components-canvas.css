@@ -757,7 +757,7 @@
 
 @layer components {
   #selectionActions {
-    @apply absolute z-30 flex flex-col gap-1 rounded-sm border border-gray-600 bg-gray-900 p-1 shadow-lg;
+    @apply absolute z-30 flex flex-col gap-1;
   }
 
   #selectionActions[hidden],
@@ -767,6 +767,10 @@
 
   .selection-action {
     @apply inline-flex h-9 w-9 items-center justify-center rounded-sm border border-transparent text-gray-100 hover:border-gray-400 hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white;
+  }
+
+  .selection-action i {
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.9));
   }
 
   .selection-action[aria-pressed="true"] {

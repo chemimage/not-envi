@@ -66,8 +66,8 @@ export function createSelectionActionsController(deps) {
     toolbar.hidden = false;
     els.btnToolSpectral.setAttribute("aria-pressed", String(!!state.spectrumPickEnabled));
     els.btnToolHistogram.setAttribute("aria-pressed", String(!!state.analysisHist.open));
-    const width = toolbar.offsetWidth || 46;
-    const height = toolbar.offsetHeight || (current.point ? 46 : 86);
+    const width = toolbar.offsetWidth || 36;
+    const height = toolbar.offsetHeight || (current.point ? 36 : 76);
     const inset = 8, gap = 12;
     let x = right + gap;
     let y = top;
