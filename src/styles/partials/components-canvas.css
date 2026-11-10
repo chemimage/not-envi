@@ -127,10 +127,20 @@
     height: var(--tool-btn-size);
   }
 
-  .draw-mode-anchor {
+  .region-tool-anchor {
     position: relative;
     width: var(--tool-btn-size);
     height: var(--tool-btn-size);
+  }
+
+  .draw-mode-anchor {
+    position: absolute;
+    left: calc(100% + var(--tool-boundary-gap) + 4px);
+    top: 0;
+    width: 24px;
+    height: var(--tool-btn-size);
+    display: flex;
+    align-items: center;
   }
 
   .draw-color-wrap {
@@ -164,7 +174,17 @@
   }
 
   .draw-mode-trigger {
+    @apply inline-flex h-7 w-6 items-center justify-center rounded-sm border border-gray-600 bg-gray-900/80 text-gray-100 hover:border-gray-400;
+    touch-action: manipulation;
+  }
+
+  .draw-mode-trigger i {
     font-size: 12px;
+    pointer-events: none;
+  }
+
+  .draw-mode-trigger.active {
+    @apply border-gray-200 bg-gray-700/80;
   }
 
   .draw-mode-art {
@@ -202,15 +222,15 @@
     pointer-events: none;
   }
 
-  #toolShape .draw-mode-ratio:empty {
+  #toolRect .draw-mode-ratio:empty {
     display: none;
   }
 
-  #toolShape.draw-mode-trigger-polygon .draw-mode-art i {
+  #toolRect.draw-mode-trigger-polygon .draw-mode-art i {
     display: inline-flex;
   }
 
-  #toolShape.draw-mode-trigger-polygon .draw-mode-ratio {
+  #toolRect.draw-mode-trigger-polygon .draw-mode-ratio {
     display: none;
   }
 

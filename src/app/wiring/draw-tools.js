@@ -139,8 +139,9 @@ export function wireDrawToolInteractions(deps) {
         els.toolShapeIcon.classList.add("fa-regular", "fa-square");
       }
     }
-    if (els.toolShape && els.toolShape.classList) {
-      els.toolShape.classList.toggle("draw-mode-trigger-polygon", shapeMode === "polygon");
+    if (els.toolRect) {
+      els.toolRect.classList.toggle("draw-mode-trigger-polygon", shapeMode === "polygon");
+      els.toolRect.title = `Shape: ${shapeModeMeta.title}`;
     }
     if (els.toolShape) {
       els.toolShape.classList.toggle("active", shapeModeFlyoutOpen);
