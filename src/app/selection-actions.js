@@ -207,7 +207,6 @@ export function createSelectionActionsController(deps) {
   async function openSpectral() {
     const current = target();
     if (!current) return;
-    closeAnalysisHistogramPanel();
     state.spectrumPickEnabled = true;
     const box = els.selectionActions.getBoundingClientRect();
     const anchor = { clientX: box.right, clientY: box.top, pointerType: "mouse" };
@@ -218,8 +217,6 @@ export function createSelectionActionsController(deps) {
 
   function openSpatial() {
     if (!target() || target().point) return;
-    state.spectrumPickEnabled = false;
-    closeSpectrum();
     setAnalysisHistogramOpen(true);
     refresh();
   }

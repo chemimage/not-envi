@@ -4,6 +4,7 @@ import { createCacheRuntime } from "./cache-runtime.js";
 import { collectElements } from "./elements.js";
 import { createUIPanels } from "./ui-panels.js";
 import { createViewControls } from "./view-controls.js";
+import { createAnalysisPanelLayout } from "./analysis-panel-layout.js";
 import { createSelectionActionsController } from "./selection-actions.js";
 import { wireApp } from "./wiring.js";
 import {
@@ -442,6 +443,10 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   let datasetRuntime = null;
   let lineProfile = null;
   let selectionActions = null;
+  let analysisPanelLayout = null;
+  const arrangeAnalysisPanels = () => analysisPanelLayout?.arrange() || false;
+  let overlayFrame = null;
+  let pendingRasterRender = false;
   function getActive(){ return datasetRuntime ? datasetRuntime.getActive() : null; }
   function setActivePanel(slot, opts){ return datasetRuntime ? datasetRuntime.setActivePanel(slot, opts) : false; }
   function cycleDatasetPanel(id, slot, opts){ return datasetRuntime ? datasetRuntime.cycleDatasetPanel(id, slot, opts) : false; }
@@ -463,7 +468,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     getActivePanel,
     screenToImage,
     render,
-    drawOverlays,
+    drawOverlays: scheduleOverlayDraw,
     onLineProfileRequested: (ds, item) => {
       if (item) lineProfile?.open({ dsId: ds.id, itemId: item.id, slot: getActivePanel()?.slot || 1 });
     },
@@ -635,6 +640,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   function applyHistogramDrag(ds, kind, clientX){ histogram.applyHistogramDrag(ds, kind, clientX); }
 
   const analysisHistogram = createAnalysisHistogramController({
+    arrangeAnalysisPanels,
     state,
     els,
     clamp,
@@ -1021,7 +1027,23 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     getDrawData,
   });
 
+  function scheduleOverlayDraw() {
+    if (overlayFrame !== null) return;
+    overlayFrame = requestAnimationFrame(() => {
+      overlayFrame = null;
+      drawOverlays();
+    });
+  }
+
   function drawOverlays(){
+    if (pendingRasterRender && !isAnnotationGestureActive()) {
+      pendingRasterRender = false;
+      scheduleRender();
+    }
+    if (overlayFrame !== null) {
+      cancelAnimationFrame(overlayFrame);
+      overlayFrame = null;
+    }
     selectionActions?.refresh();
     lineProfile?.refresh();
     selectionSync?.ensureMarqueeTicker?.();
@@ -1077,7 +1099,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     getSpectrumOpenForDatasetId: (dsId) => !!(spectrum && spectrum.isOpenForDatasetId(dsId)),
     openSpectrumForEffectiveArea,
     refreshAreaSpectrumIfOpen,
-    drawOverlays,
+    drawOverlays: scheduleOverlayDraw,
     shouldAnimateMarquee: () => getVisibleDatasetPanels().length < 2
   });
 
@@ -1089,7 +1111,17 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   let renderer = null;
   function resizeCanvases(){ if (renderer) renderer.resizeCanvases(); }
   function schedulePreviewRender(){ if (renderer) renderer.schedulePreview(); }
-  function scheduleRender(){ if (renderer) renderer.scheduleRender(); }
+  function isAnnotationGestureActive() {
+    return !!(state.draw.draft || state.draw.areaMove || state.draw.rulerDrag
+      || state.draw.rulerMove || state.draw.rulerProfileDrag);
+  }
+  function scheduleRender(){
+    if (isAnnotationGestureActive()) {
+      pendingRasterRender = true;
+      return;
+    }
+    if (renderer) renderer.scheduleRender();
+  }
   async function render(opts = {}){
     syncLinkedAnnotationsFromActivePanel();
     if (renderer) await renderer.render(opts);
@@ -1181,6 +1213,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   // ========= Spectrum (z-profile) panel =========
 
   const spectrum = createSpectrumController({
+    arrangeAnalysisPanels,
     els,
     specCtx,
     getActive,
@@ -1240,6 +1273,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     minHeight: 220,
     onResize: () => redrawSpectrum()
   });
+
+  analysisPanelLayout = createAnalysisPanelLayout({ els, getWindow: (id) => floatingWindows.get(id) });
 
   const areaReducer = createAreaReductionWorkerClient();
   function resetDatasetSession() {

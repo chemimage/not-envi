@@ -61,11 +61,26 @@ test("dragged regions offer both analyses and follow the image during zoom", asy
   await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
   await expect(page.locator("#analysisHistPanel")).toBeVisible();
   await expect(page.locator("#analysisStatN")).toHaveText("368");
-  await page.locator("#btnAnalysisHistClose").click();
   await page.getByRole("button", { name: "Spectrum", exact: true }).click();
   await expect(page.locator("#specPanel")).toBeVisible();
   await expect(page.locator("#specSub")).toContainText("Area");
+  await expect(page.locator("#specFoot")).toContainText("Mean");
+  await expect(page.locator("#analysisHistPanel")).toBeVisible();
+  await expect.poll(async () => {
+    const a = await page.locator("#specPanel").boundingBox();
+    const b = await page.locator("#analysisHistPanel").boundingBox();
+    return a.x + a.width <= b.x || b.x + b.width <= a.x
+      || a.y + a.height <= b.y || b.y + b.height <= a.y;
+  }).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("both-analysis-panels.png") });
+  await page.locator("#btnAnalysisHistClose").click();
+  await expect(page.locator("#specPanel")).toBeVisible();
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(page.locator("#analysisHistPanel")).toBeVisible();
+  await expect(page.locator("#specPanel")).toBeVisible();
   await page.locator("#btnSpecClose").click();
+  await expect(page.locator("#analysisHistPanel")).toBeVisible();
+  await page.locator("#btnAnalysisHistClose").click();
   const before = await toolbar.boundingBox();
   await page.mouse.move(500, 350);
   for (let i = 0; i < 3; i++) {

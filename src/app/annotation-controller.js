@@ -12,7 +12,6 @@ export function createAnnotationController(deps) {
     drawOverlays,
     getSpectrumOpenForDatasetId,
     openSpectrumAt,
-    positionAnalysisHistogramPanel,
     updateSelectionHistogramForDataset,
     ensureMarqueeTicker,
     shouldAnimateMarquee,
@@ -407,7 +406,6 @@ export function createAnnotationController(deps) {
     if (ds && target === "single") ensureSelectedAreaId(ds, { preferLatest: true });
     if (ds) {
       updateSelectionHistogramForDataset(ds);
-      refreshAreaSpectrumIfOpen(ds, null, false);
     }
     ensureMarqueeTicker();
     render({ reuseRaster: true });
@@ -423,7 +421,6 @@ export function createAnnotationController(deps) {
     if (changed) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
-      refreshAreaSpectrumIfOpen(ds, ev, false);
       render({ reuseRaster: true });
     }
     return true;
@@ -444,10 +441,6 @@ export function createAnnotationController(deps) {
       : findAreaHitAtPointer(ds, ev);
     if (!hit) return false;
     const changed = setSelectedAreaId(ds, hit.item.id);
-    if (changed) {
-      updateSelectionHistogramForDataset(ds);
-      ensureMarqueeTicker();
-    }
     let mode = "move";
     let resizeHandle = null;
     if (toolFilter === "rect" && hit.item.tool === "rect") {
@@ -464,23 +457,12 @@ export function createAnnotationController(deps) {
       lastPoint: hit.point,
       startPoint: hit.point,
       startBounds: bounds ? { ...bounds } : null,
+      startPoints: hit.item.points.map((point) => ({ ...point })),
       moved: false,
-      lastRefreshMs: 0
+      selectionChanged: changed
     };
-    if (changed) render({ reuseRaster: true });
+    if (changed) refreshOverlayOnly();
     return true;
-  }
-
-  function refreshSelectionProductsForManipulation(ds, ev, moveState) {
-    const wantsSpatial = !!(isAnalysisHistogramOpen && isAnalysisHistogramOpen() && isDatasetActive && isDatasetActive(ds));
-    const wantsSpectral = !!(state.spectrumPickEnabled && getSpectrumOpenForDatasetId && getSpectrumOpenForDatasetId(ds.id));
-    if (wantsSpatial && positionAnalysisHistogramPanel) positionAnalysisHistogramPanel();
-    const nowMs = performance.now();
-    if ((wantsSpatial || wantsSpectral) && (!Number.isFinite(moveState.lastRefreshMs) || (nowMs - moveState.lastRefreshMs) >= 120)) {
-      moveState.lastRefreshMs = nowMs;
-      if (wantsSpatial) updateSelectionHistogramForDataset(ds);
-      if (wantsSpectral) refreshAreaSpectrumIfOpen(ds, ev, false);
-    }
   }
 
   function updateRectResizeAtPointer(ev, ds, move, item) {
@@ -510,7 +492,6 @@ export function createAnnotationController(deps) {
       item.points[item.points.length - 1] = { x: x1, y: y1 };
       move.lastPoint = p;
       move.moved = true;
-      refreshSelectionProductsForManipulation(ds, ev, move);
       refreshOverlayOnly();
       return true;
     }
@@ -553,7 +534,6 @@ export function createAnnotationController(deps) {
     item.points[item.points.length - 1] = { x: x1, y: y1 };
     move.lastPoint = p;
     move.moved = true;
-    refreshSelectionProductsForManipulation(ds, ev, move);
     refreshOverlayOnly();
     return true;
   }
@@ -602,7 +582,6 @@ export function createAnnotationController(deps) {
     }
     move.lastPoint = p;
     move.moved = true;
-    refreshSelectionProductsForManipulation(ds, ev, move);
     refreshOverlayOnly();
     return true;
   }
@@ -611,21 +590,27 @@ export function createAnnotationController(deps) {
     const move = state.draw.areaMove;
     if (!move || move.activePointerId !== ev.pointerId) return false;
     const ds = getActive();
-    const moved = !!move.moved;
+    // Statistics stay unchanged while moving; compute the final region once on release.
+    updateAreaMoveAtPointer(ev);
+    const moved = !!move.moved || !!move.selectionChanged;
     state.draw.areaMove = null;
     if (moved && ds && ds.id === move.dsId) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
-      refreshAreaSpectrumIfOpen(ds, ev, false);
     }
-    renderWithRasterReuse();
+    refreshOverlayOnly();
     return true;
   }
 
   function cancelAreaMove(pointerId = null) {
     if (!state.draw.areaMove) return false;
     if (Number.isFinite(pointerId) && state.draw.areaMove.activePointerId !== pointerId) return false;
+    const move = state.draw.areaMove;
+    const ds = getActive();
+    const item = ds?.id === move.dsId ? ds.drawings.find((drawing) => drawing.id === move.itemId) : null;
+    if (item && move.startPoints) item.points = move.startPoints;
     state.draw.areaMove = null;
+    if (ds && move.selectionChanged) updateSelectionHistogramForDataset(ds);
     refreshOverlayOnly();
     return true;
   }
@@ -1362,7 +1347,7 @@ export function createAnnotationController(deps) {
       state.draw.rulerProfileDrag = null;
       state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
-      renderWithRasterReuse();
+      refreshOverlayOnly();
       return;
     }
     if (rulerMove && rulerMove.dsId === ds.id) {
@@ -1373,7 +1358,7 @@ export function createAnnotationController(deps) {
       state.draw.rulerProfileDrag = null;
       state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
-      renderWithRasterReuse();
+      refreshOverlayOnly();
       return;
     }
     if (rulerDrag && rulerDrag.dsId === ds.id) {
@@ -1385,7 +1370,7 @@ export function createAnnotationController(deps) {
       state.draw.rulerProfileDrag = null;
       state.draw.rulerProfileHover = null;
       state.draw.areaMove = null;
-      renderWithRasterReuse();
+      refreshOverlayOnly();
       return;
     }
 
@@ -1439,7 +1424,7 @@ export function createAnnotationController(deps) {
     state.draw.rulerProfileHover = null;
     state.draw.areaMove = null;
     ensureMarqueeTicker();
-    renderWithRasterReuse();
+    refreshOverlayOnly();
   }
 
   function cancelDrawing() {
