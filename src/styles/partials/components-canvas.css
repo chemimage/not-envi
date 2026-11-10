@@ -176,7 +176,8 @@
   }
 
   .draw-mode-trigger {
-    @apply inline-flex h-7 w-6 items-center justify-center rounded-sm border border-gray-600 bg-gray-900/80 text-gray-100 hover:border-gray-400;
+    @apply inline-flex w-6 items-center justify-center rounded-sm border border-gray-600 bg-gray-900/80 text-gray-100 hover:border-gray-400;
+    height: var(--tool-btn-size);
     touch-action: manipulation;
   }
 
@@ -239,7 +240,7 @@
   .draw-mode-flyout {
     --mode-size: var(--tool-btn-size);
     position: absolute;
-    left: calc(100% + var(--tool-boundary-gap));
+    left: 0;
     top: 0;
     z-index: 30;
     padding: 0;
@@ -251,6 +252,10 @@
     grid-auto-columns: var(--mode-size);
     gap: 6px;
     align-items: start;
+  }
+
+  #drawTools.shape-mode-open .draw-mode-trigger {
+    display: none;
   }
 
   #drawTools.shape-mode-open .draw-mode-flyout {

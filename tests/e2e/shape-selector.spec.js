@@ -22,11 +22,17 @@ test("shape mode opens from a side button and updates the main selector", async 
   expect(side.x).toBeGreaterThan(rail.x + rail.width);
   expect(side.y + side.height / 2).toBeCloseTo(main.y + main.height / 2, 0);
   expect(side.width).toBeLessThan(main.width);
+  expect(side.height).toBe(main.height);
   await sideButton.click();
   await expect(flyout).toBeVisible();
+  await expect(sideButton).toBeHidden();
+  const options = await flyout.boundingBox();
+  expect(options.x).toBe(side.x);
+  expect(options.y).toBe(main.y);
   await expect(sideButton).toHaveAttribute("aria-expanded", "true");
   await flyout.locator('[data-shape-mode="3:4"]').click();
   await expect(flyout).toBeHidden();
+  await expect(sideButton).toBeVisible();
   await expect(selector.locator("#toolShapeLabel")).toHaveText("3:4");
   await expect(selector).toHaveAttribute("title", "Shape: Aspect ratio 3:4 or 4:3");
   await expect(selector).toHaveClass(/active/);
@@ -44,6 +50,8 @@ test("shape mode opens from a side button and updates the main selector", async 
   await expect(flyout).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(flyout).toBeHidden();
+  await expect(sideButton).toBeVisible();
+  await expect(sideButton).toBeFocused();
   await sideButton.click();
   await page.getByRole("button", { name: "Ruler", exact: true }).click();
   await expect(sideButton).toBeHidden();

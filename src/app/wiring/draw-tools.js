@@ -90,6 +90,7 @@ export function wireDrawToolInteractions(deps) {
   }
 
   function setShapeModeFlyoutOpen(nextOpen) {
+    const restoreFocus = !nextOpen && els.shapeModeFlyout?.contains(document.activeElement);
     shapeModeFlyoutOpen = !!nextOpen;
     if (els.drawTools && els.drawTools.classList) {
       if (typeof els.drawTools.classList.toggle === "function") {
@@ -105,6 +106,11 @@ export function wireDrawToolInteractions(deps) {
     }
     if (els.shapeModeFlyout && els.shapeModeFlyout.setAttribute) {
       els.shapeModeFlyout.setAttribute("aria-hidden", shapeModeFlyoutOpen ? "false" : "true");
+    }
+    if (shapeModeFlyoutOpen) {
+      els.shapeModeFlyout?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+    } else if (restoreFocus) {
+      els.toolShape?.focus({ preventScroll: true });
     }
   }
 
