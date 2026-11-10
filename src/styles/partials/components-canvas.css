@@ -7,6 +7,8 @@
     --layer-canvas-ui: 20;
     --layer-floating-window: 40;
     --layer-dialog: 100;
+    --analysis-panel-width: 400px;
+    --analysis-panel-height: 330px;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -324,10 +326,8 @@
 
 
   .analysis-hist-panel {
-    @apply absolute w-[min(380px,calc(100vw-16px))] overflow-hidden p-0;
-    height: fit-content !important;
-    min-height: 0 !important;
-    max-height: calc(100vh - 12px);
+    @apply absolute overflow-hidden p-0;
+    max-height: calc(100vh - 16px);
   }
 
   .analysis-hist-head {
@@ -339,11 +339,11 @@
   }
 
   .analysis-hist-body {
-    @apply min-h-0 flex-none overflow-auto p-0;
+    @apply flex min-h-0 flex-1 flex-col overflow-auto p-0;
   }
 
   #analysisHistCanvas {
-    @apply block h-[228px] w-full bg-transparent font-mono text-sm text-gray-200;
+    @apply block min-h-[140px] w-full flex-1 bg-transparent font-mono text-sm text-gray-200;
     --hist-accent: rgb(34 211 238 / 0.96);
     --hist-accent-muted: rgb(34 211 238 / 0.72);
     --hist-accent-region: rgb(34 211 238 / 0.14);

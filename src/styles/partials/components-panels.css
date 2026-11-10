@@ -304,6 +304,13 @@
     pointer-events: auto;
   }
 
+  .spec-panel,
+  .analysis-hist-panel {
+    width: min(var(--analysis-panel-width), calc(100vw - 16px));
+    height: min(var(--analysis-panel-height), calc(100vh - 16px));
+    min-height: 220px;
+  }
+
   .line-profile-panel {
     left: auto;
     right: 0.75rem;

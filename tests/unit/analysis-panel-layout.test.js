@@ -2,8 +2,8 @@ import { describe, test, expect } from "vitest";
 import { chooseAnalysisPanelLayout } from "../../src/app/analysis-panel-layout.js";
 
 const panels = [
-  { id: "spectrum", width: 380, height: 330 },
-  { id: "histogram", width: 380, height: 340 }
+  { id: "spectrum", width: 400, height: 330 },
+  { id: "histogram", width: 400, height: 330 }
 ];
 function verify(layout, bounds) {
   const [a, b] = layout;
@@ -24,7 +24,7 @@ describe("analysis panel layout", () => {
   });
   test("places an automatic panel beside a manually positioned panel", () => {
     const bounds = { width: 1200, height: 800 };
-    const fixed = { ...panels[0], x: 400, y: 300, fixed: true };
+    const fixed = { ...panels[0], x: 420, y: 300, fixed: true };
     const layout = chooseAnalysisPanelLayout({ bounds, panels: [fixed, panels[1]] });
     expect(layout.find((panel) => panel.id === fixed.id)).toEqual(fixed);
     verify(layout, bounds);

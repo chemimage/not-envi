@@ -72,6 +72,12 @@ test("dragged regions offer both analyses and follow the image during zoom", asy
     return a.x + a.width <= b.x || b.x + b.width <= a.x
       || a.y + a.height <= b.y || b.y + b.height <= a.y;
   }).toBe(true);
+  const spectrumSize = await page.locator("#specPanel").boundingBox();
+  const histogramSize = await page.locator("#analysisHistPanel").boundingBox();
+  expect(spectrumSize.width).toBe(400);
+  expect(spectrumSize.height).toBe(330);
+  expect(histogramSize.width).toBe(spectrumSize.width);
+  expect(histogramSize.height).toBe(spectrumSize.height);
   await page.screenshot({ path: testInfo.outputPath("both-analysis-panels.png") });
   await page.locator("#btnAnalysisHistClose").click();
   await expect(page.locator("#specPanel")).toBeVisible();
