@@ -2,6 +2,17 @@ import { describe, expect, test, vi } from "vitest";
 import { createInteractionController } from "../../src/ui/events.js";
 
 describe("interaction controller", () => {
+  test("window dragging does not update image hover or pan state", () => {
+    const updateHud = vi.fn();
+    const controller = createInteractionController({
+      isUiInteractionActive: () => true,
+      updateHud,
+      getActive: vi.fn(() => { throw new Error("Image interactions must stay idle"); })
+    });
+    controller.onPointerMove({ clientX: 200, clientY: 100 });
+    expect(updateHud).not.toHaveBeenCalled();
+  });
+
   test("clearSelection resets selection and hides rectangle", () => {
     const state = {
       selection: { drawing: true, imgRect: { x0: 1, y0: 1, x1: 2, y1: 2 } },

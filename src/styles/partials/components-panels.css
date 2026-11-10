@@ -418,6 +418,15 @@
     pointer-events: auto;
   }
 
+  .floating-window-dragging {
+    will-change: transform;
+    backdrop-filter: none;
+  }
+
+  .floating-window-dragging .floating-window-header {
+    cursor: grabbing;
+  }
+
   .floating-window.floating-window-active {
     @apply border-gray-500 ring-1 ring-gray-500/25;
   }

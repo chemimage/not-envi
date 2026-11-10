@@ -115,7 +115,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   // ========= Elements =========
 
   const els = collectElements();
-  const floatingWindows = createFloatingWindowManager({ container: els.main });
+  const floatingWindows = createFloatingWindowManager({ container: els.main, onInteractionEnd: () => drawOverlays() });
   function resetFilePicker() {
     if (!els.filePicker) return;
     try { els.filePicker.value = ""; } catch (_err) {}
@@ -1028,6 +1028,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   });
 
   function scheduleOverlayDraw() {
+    if (floatingWindows.isInteracting()) return;
     if (overlayFrame !== null) return;
     overlayFrame = requestAnimationFrame(() => {
       overlayFrame = null;
@@ -1036,6 +1037,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   }
 
   function drawOverlays(){
+    if (floatingWindows.isInteracting()) return;
     if (pendingRasterRender && !isAnnotationGestureActive()) {
       pendingRasterRender = false;
       scheduleRender();
@@ -1116,7 +1118,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
       || state.draw.rulerMove || state.draw.rulerProfileDrag);
   }
   function scheduleRender(){
-    if (isAnnotationGestureActive()) {
+    if (isAnnotationGestureActive() || floatingWindows.isInteracting()) {
       pendingRasterRender = true;
       return;
     }
@@ -1128,6 +1130,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   }
 
   renderer = createRenderer({
+    shouldDeferRender: () => isAnnotationGestureActive() || floatingWindows.isInteracting(),
+    onDeferredRender: () => { pendingRasterRender = true; },
     state,
     els,
     now,
@@ -1336,6 +1340,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 // ========= Mouse interaction =========
 
   const interactions = createInteractionController({
+    isUiInteractionActive: () => floatingWindows.isInteracting(),
     els,
     state,
     getActive,
