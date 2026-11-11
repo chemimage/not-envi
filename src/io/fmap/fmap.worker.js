@@ -17,6 +17,12 @@ const PROTOCOL_VERSION = 1;
 const state = { file: null, meta: null, generation: 0, pageSize: 0, exports: null, closed: true,
   jobs: [], scheduled: false, order: 0, stats: {} };
 
+// The worker pulls queued jobs between bounded batches. A local message task
+// yields to incoming requests/cancellation without chained timers' minimum
+// delay. Only one wake-up is outstanding; the UI never acknowledges batches.
+const batchChannel = new MessageChannel();
+batchChannel.port1.onmessage = runBatch;
+
 function integer(value, label) {
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`Invalid fmap ${label}.`);
   return value;
@@ -306,7 +312,7 @@ function* readRange(message) {
 function schedule() {
   if (state.scheduled || !state.jobs.length) return;
   state.scheduled = true;
-  setTimeout(runBatch, 0);
+  batchChannel.port2.postMessage(null);
 }
 
 function runBatch() {
