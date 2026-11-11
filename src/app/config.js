@@ -84,7 +84,7 @@ export const APP_CONFIG = Object.freeze({
   fmap: Object.freeze({
     enabledByDefault: false,
     pageSizeBytes: 256 * KIB,
-    poolBytes: 64 * MIB,
+    poolBytes: 512 * MIB,
     maxInflightBytes: 8 * MIB,
     maxInflightRequests: 2,
     maxResultBytes: 4 * MIB,
