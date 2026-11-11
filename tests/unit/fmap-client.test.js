@@ -210,23 +210,141 @@ describe("fmap client", () => {
     }
   );
 
-  test("bounds queued count and bytes before dispatch", async () => {
+  test("waits through more than 64 demands while admitted count and bytes stay bounded", async () => {
     const worker = new ManualWorker();
     const source = createSource(worker, { concurrency: 1, maxQueuedRequests: 1, maxQueuedBytes: 4104, maxResultBytes: 16 });
     await source.ready;
-    const first = source.readSpectrumAtPixel(meta(), 0, 0);
-    const second = source.readSpectrumAtPixel(meta(), 1, 0);
+    const reads = Array.from({ length: 100 }, () => source.readSpectrumAtPixel(meta(), 0, 0));
     await Promise.resolve();
     expect(source.stats.queuedRequests).toBe(1);
     expect(source.stats.queuedBytes).toBe(4104);
-    await expect(source.readSpectrumAtPixel(meta(), 1, 1)).rejects.toMatchObject({ name: "AbortError" });
-    await expect(source.readBandWindow(meta(), 0, 0, 0, 3, 3, 1)).rejects.toMatchObject({ name: "AbortError" });
+    expect(source.stats.waitingRequests).toBe(98);
     expect(worker.requests()).toHaveLength(1);
+    for (let index = 0; index < reads.length; index += 1) {
+      worker.respond(worker.requests()[index]);
+      expect(Array.from(await reads[index])).toEqual([3, 7]);
+    }
+    expect(source.stats.peakQueuedRequests).toBe(1);
+    expect(source.stats.peakQueuedBytes).toBe(4104);
+    expect(source.stats.waitingRequests).toBe(0);
+    expect(source.stats.rejectedRequests).toBe(0);
+    expect(source.stats.inflightBytes).toBe(0);
+    source.close();
+  });
+
+  test("waits for logical output capacity before allocating a result and gives foreground precedence", async () => {
+    let allocations = 0;
+    class Output extends Float32Array { constructor(length) { super(length); allocations += 1; } }
+    const rasterMeta = { ...meta(), dataTypeInfo: { bytes: 4, ctor: Output } };
+    const worker = new ManualWorker();
+    const source = createTypedSource(worker, rasterMeta, { concurrency: 1, maxLogicalBytes: 16 });
+    await source.ready;
+    const first = source.readBandWindow(rasterMeta, 0, 0, 0, 2, 2, 1);
+    const background = source.readBandWindow(rasterMeta, 0, 0, 0, 2, 2, 1, null, { priority: "background" });
+    const foreground = source.readBandWindow(rasterMeta, 1, 0, 0, 2, 2, 1);
+    await Promise.resolve();
+    expect(allocations).toBe(1);
+    expect(source.stats.waitingLogicalRequests).toBe(2);
+    expect(source.stats.logicalBytesReserved).toBe(16);
+    worker.respond(worker.requests()[0], { buffer: new Float32Array(4).buffer });
+    await first;
+    await Promise.resolve();
+    expect(worker.requests()[1].band).toBe(1);
+    expect(allocations).toBe(2);
+    worker.respond(worker.requests()[1], { buffer: new Float32Array(4).buffer });
+    await foreground;
+    await Promise.resolve();
+    worker.respond(worker.requests()[2], { buffer: new Float32Array(4).buffer });
+    await background;
+    expect(source.stats.peakLogicalBytes).toBe(16);
+    expect(source.stats.logicalBytesReserved).toBe(0);
+    source.close();
+  });
+
+  test("control stats bypass a saturated data queue without consuming execution bytes", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1, maxQueuedRequests: 1, maxQueuedBytes: 4104 });
+    await source.ready;
+    const reads = Array.from({ length: 3 }, () => source.readSpectrumAtPixel(meta(), 0, 0));
+    await Promise.resolve();
+    const before = source.stats.inflightBytes;
+    const stats = source.getStats();
+    await Promise.resolve();
+    const message = worker.messages.find((request) => request.type === "stats");
+    expect(message).toBeDefined();
+    expect(source.stats.activeRequests).toBe(1);
+    expect(source.stats.inflightBytes).toBe(before);
+    worker.respond(message, {});
+    await stats;
+    for (let index = 0; index < reads.length; index += 1) {
+      worker.respond(worker.requests()[index]);
+      await reads[index];
+    }
+    source.close();
+  });
+
+  test("rejects a single impossible logical reservation instead of waiting forever", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { maxLogicalBytes: 4 });
+    await source.ready;
+    await expect(source.readSpectrumAtPixel(meta(), 0, 0)).rejects.toThrow(/assembly budget/);
+    expect(source.stats.waitingLogicalRequests).toBe(0);
+    expect(worker.requests()).toEqual([]);
+    source.close();
+  });
+
+  test("an aborted descriptor beyond the admitted queue never reaches the worker", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1, maxQueuedRequests: 1 });
+    await source.ready;
+    const first = source.readSpectrumAtPixel(meta(), 0, 0);
+    const second = source.readSpectrumAtPixel(meta(), 1, 0);
+    const controller = new AbortController();
+    const waiting = source.readSpectrumAtPixel(meta(), 1, 1, { signal: controller.signal });
+    const outcome = expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    await Promise.resolve();
+    expect(source.stats.waitingRequests).toBe(1);
+    controller.abort();
+    await outcome;
+    expect(source.stats.waitingRequests).toBe(0);
     worker.respond(worker.requests()[0]);
     await first;
     worker.respond(worker.requests()[1]);
     await second;
-    expect(source.stats.inflightBytes).toBe(0);
+    expect(worker.requests()).toHaveLength(2);
+    source.close();
+  });
+
+  test.each(["abort", "clear", "close", "supersede", "callback"])("cancels a logical descriptor waiting for capacity: %s", async (kind) => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1, maxLogicalBytes: 8 });
+    await source.ready;
+    const active = source.readSpectrumAtPixel(meta(), 0, 0);
+    const activeOutcome = active.catch((error) => error);
+    const controller = new AbortController();
+    let cancelled = false;
+    const options = { signal: controller.signal, cancelled: () => cancelled, supersedeKey: "waiting" };
+    const waiting = source.readSpectrumAtPixel(meta(), 1, 0, options);
+    const outcome = expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(source.stats.waitingLogicalRequests).toBe(1);
+    let replacement;
+    if (kind === "abort") controller.abort();
+    if (kind === "clear") source.clear();
+    if (kind === "close") source.close();
+    if (kind === "supersede") replacement = source.readSpectrumAtPixel(meta(), 1, 1, { supersedeKey: "waiting" });
+    if (kind === "callback") cancelled = true;
+    await outcome;
+    expect(worker.requests()).toHaveLength(1);
+    if (kind !== "close") worker.respond(worker.requests()[0]);
+    await activeOutcome;
+    if (replacement) {
+      await Promise.resolve();
+      worker.respond(worker.requests()[1]);
+      await replacement;
+    }
+    expect(source.stats.waitingLogicalRequests).toBe(0);
     source.close();
   });
 

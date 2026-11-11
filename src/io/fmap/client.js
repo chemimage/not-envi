@@ -6,6 +6,7 @@ import {
 
 let nextSourceId = 1;
 const now = () => performance.now();
+const controlTypes = new Set(["open", "stats", "mapRegion", "unmapRegion", "mappingStats"]);
 
 function limit(value, fallback, minimum = 1) {
   const number = Number(value ?? fallback);
@@ -60,7 +61,9 @@ function rasterDescriptor(meta) {
  * released only after a worker reply. clear() advances the source generation;
  * close() terminates the worker. clear() before initial readiness is a no-op;
  * concurrent stats polls share one request. setMaxBytes() records a requested budget;
- * shrinking allocated WASM memory requires worker recreation.
+ * cache eviction reuses slots; shrinking WASM capacity requires a fresh memory
+ * and instance, not necessarily a new worker. Congestion waits as lightweight
+ * descriptors before output allocation; admitted work remains byte/count bounded.
  *
  * Status and follow-up work: https://github.com/chemimage/Hyve/issues/23
  */
@@ -110,6 +113,8 @@ export class FmapDataSource {
     this.latestSupersedeGroups = new Map();
     this.active = 0;
     this.queue = [];
+    this.waitingRequests = [];
+    this.logicalWaiters = [];
     this.pending = new Map();
     this.pollTimer = null;
     this.statsRequest = null;
@@ -163,7 +168,7 @@ export class FmapDataSource {
   }
 
   #updateStats() {
-    this.active = [...this.pending.values()].filter((request) => request.type !== "stats").length;
+    this.active = [...this.pending.values()].filter((request) => !controlTypes.has(request.type)).length;
     this.stats.activeRequests = this.active;
     this.stats.inflightRequests = this.active;
     this.stats.queuedRequests = this.queue.length;
@@ -172,6 +177,8 @@ export class FmapDataSource {
     this.stats.peakQueuedBytes = Math.max(this.stats.peakQueuedBytes, this.stats.queuedBytes);
     this.stats.peakQueuedRequests = Math.max(this.stats.peakQueuedRequests, this.queue.length);
     this.stats.peakInflightBytes = Math.max(this.stats.peakInflightBytes, this.stats.inflightBytes);
+    this.stats.waitingRequests = this.waitingRequests.length;
+    this.stats.waitingLogicalRequests = this.logicalWaiters.length;
   }
 
   #settle(request, error, result) {
@@ -189,6 +196,8 @@ export class FmapDataSource {
     this.#settle(request, createAbortError(reason));
     const index = this.queue.indexOf(request);
     if (index !== -1) this.queue.splice(index, 1);
+    const waitingIndex = this.waitingRequests.indexOf(request);
+    if (waitingIndex !== -1) this.waitingRequests.splice(waitingIndex, 1);
     // Hold active reservations until the worker acknowledges cancellation.
     if (this.pending.has(request.id)) this.worker?.postMessage({ type: "cancel", id: request.id, generation: request.generation });
     this.#updateStats();
@@ -221,29 +230,37 @@ export class FmapDataSource {
     if (this.pollTimer || this.closed) return;
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
-      for (const request of [...this.queue, ...this.pending.values()]) {
+      for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) {
         if (request.cancelled) continue;
         if (this.#cancelledByCallback(request)) this.#cancel(request);
         else if (now() - request.createdAt > request.maxAgeMs) this.#cancel(request, "fmap request expired.");
       }
+      this.#drainLogical();
       this.#pump();
     }, 16);
   }
 
   #beginLogicalRequest(options = {}) {
-    const logical = { ...(options || {}), groupId: ++this.logicalRequestId };
+    const logical = { ...(options || {}), groupId: ++this.logicalRequestId, generation: this.generation,
+      createdAt: now() };
     if (logical.supersedeKey != null) {
       this.latestSupersedeGroups.set(logical.supersedeKey, logical.groupId);
-      for (const request of [...this.queue, ...this.pending.values()]) {
+      for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) {
         if (request.supersedeKey === logical.supersedeKey && request.groupId !== logical.groupId) this.#cancel(request);
       }
+      this.#drainLogical();
       this.#pump();
     }
     return logical;
   }
 
   #requireLogicalCurrent(options) {
+    if (this.closed) throw createAbortError("fmap source is closed.");
+    if (options.generation !== undefined && options.generation !== this.generation) throw createAbortError("fmap cache cleared.");
     if (options.signal?.aborted || options.cancelled?.()) throw createAbortError();
+    if (now() - options.createdAt > (options.maxAgeMs ?? (options.priority === "background" ? 1000 : Infinity))) {
+      throw createAbortError("fmap request expired.");
+    }
     if (options.supersedeKey != null
       && this.latestSupersedeGroups.get(options.supersedeKey) !== options.groupId) {
       this.stats.cancelledRequests += 1;
@@ -254,37 +271,26 @@ export class FmapDataSource {
   #enqueue(type, fields, outputBytes, options = {}, transfer = []) {
     options ||= {};
     if (this.closed) return Promise.reject(new Error("fmap source is closed."));
-    if (options.signal?.aborted || options.cancelled?.()) return Promise.reject(createAbortError());
+    try { this.#requireLogicalCurrent(options); } catch (error) { return Promise.reject(error); }
     if (options.supersedeKey != null
       && this.latestSupersedeGroups.get(options.supersedeKey) !== options.groupId) {
       this.stats.cancelledRequests += 1;
       return Promise.reject(createAbortError("fmap request was superseded."));
     }
-    const bytes = ["open", "stats", "configureRaster"].includes(type) ? 0 : outputBytes + this.pageSize;
-    if (outputBytes > this.maxResultBytes || bytes > this.maxInflightBytes) {
+    const bytes = ["open", "stats", "configureRaster", "mapRegion", "unmapRegion", "mappingStats"].includes(type) ? 0 : outputBytes + this.pageSize;
+    if (outputBytes > this.maxResultBytes || bytes > this.maxInflightBytes || bytes > this.maxQueuedBytes) {
       this.stats.rejectedRequests += 1;
       return Promise.reject(new RangeError("fmap result exceeds its request budget; split the operation into smaller windows."));
     }
-    for (const request of [...this.queue, ...this.pending.values()]) {
+    for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) {
       if (!request.cancelled && (this.#cancelledByCallback(request) || now() - request.createdAt > request.maxAgeMs)) {
         this.#cancel(request);
       }
     }
     if (options.supersedeKey != null) {
-      for (const request of [...this.queue, ...this.pending.values()]) {
+      for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) {
         if (request.supersedeKey === options.supersedeKey && request.groupId !== options.groupId) this.#cancel(request);
       }
-    }
-    if (options.priority !== "background") {
-      while (this.queue.length >= this.maxQueuedRequests || this.stats.queuedBytes + bytes > this.maxQueuedBytes) {
-        const speculative = this.queue.findLast((request) => request.priority === 1);
-        if (!speculative) break;
-        this.#cancel(speculative, "fmap background queue yielded to foreground work.");
-      }
-    }
-    if (this.queue.length >= this.maxQueuedRequests || this.stats.queuedBytes + bytes > this.maxQueuedBytes) {
-      this.stats.rejectedRequests += 1;
-      return Promise.reject(createAbortError("fmap request queue is full."));
     }
     return new Promise((resolve, reject) => {
       const request = { id: ++this.requestId, type, generation: this.generation, fields, transfer,
@@ -294,8 +300,8 @@ export class FmapDataSource {
         groupId: options.groupId, cancelledCheck: options.cancelled, cancelled: false, settled: false };
       request.onAbort = () => { this.#cancel(request); this.#pump(); };
       request.signal?.addEventListener("abort", request.onAbort, { once: true });
-      this.queue.push(request);
-      this.queue.sort((a, b) => a.priority - b.priority || a.id - b.id);
+      this.waitingRequests.push(request);
+      this.waitingRequests.sort((a, b) => a.priority - b.priority || a.id - b.id);
       this.#updateStats();
       this.#pump();
     });
@@ -303,7 +309,15 @@ export class FmapDataSource {
 
   #pump() {
     if (!this.worker || this.closed) return;
-    const foreground = this.queue.find((request) => request.priority === 0 && request.type !== "stats");
+    // Mapping release must reach the worker even when every data execution
+    // slot is occupied: it may be the operation which cancels those reads.
+    for (const request of [...this.waitingRequests]) {
+      if (!controlTypes.has(request.type) || (request.type !== "open" && !this.readySettled)) continue;
+      this.waitingRequests.splice(this.waitingRequests.indexOf(request), 1);
+      this.#dispatch(request);
+    }
+    this.#admitRequests();
+    const foreground = [...this.queue, ...this.waitingRequests].find((request) => request.priority === 0 && request.type !== "stats");
     if (foreground && (this.active >= this.concurrency
       || foreground.bytes + this.stats.inflightBytes > this.maxInflightBytes)) {
       const speculative = [...this.pending.values()].find((request) => request.priority === 1 && !request.cancelled);
@@ -322,24 +336,54 @@ export class FmapDataSource {
         this.#cancel(request, "Obsolete fmap request.");
         continue;
       }
-      this.pending.set(request.id, request);
-      this.stats.queueWaitMs += now() - request.createdAt;
-      this.#updateStats();
-      try {
-        this.worker.postMessage({ id: request.id, type: request.type, generation: request.generation,
-          priority: request.priority, ...request.fields }, request.transfer);
-      } catch (error) {
-        this.pending.delete(request.id);
-        this.#settle(request, error);
-        this.#updateStats();
-      }
+      this.#dispatch(request);
+      this.#admitRequests();
     }
-    if ([...this.queue, ...this.pending.values()].some((request) => !request.cancelled
-      && (request.cancelledCheck || Number.isFinite(request.maxAgeMs)))) this.#watchCancellation();
+    if ([...this.waitingRequests, ...this.queue, ...this.pending.values()].some((request) => !request.cancelled
+      && (request.cancelledCheck || Number.isFinite(request.maxAgeMs)))
+      || this.logicalWaiters.some((waiter) => waiter.options.cancelled || Number.isFinite(waiter.options.maxAgeMs)
+        || waiter.options.priority === "background")) this.#watchCancellation();
+  }
+
+  #dispatch(request) {
+    this.pending.set(request.id, request);
+    this.stats.queueWaitMs += now() - request.createdAt;
+    this.#updateStats();
+    try {
+      this.worker.postMessage({ id: request.id, type: request.type, generation: request.generation,
+        priority: request.priority, ...request.fields }, request.transfer);
+    } catch (error) {
+      this.pending.delete(request.id);
+      this.#settle(request, error);
+      this.#updateStats();
+    }
+  }
+
+  #admitRequests() {
+    while (this.waitingRequests.length) {
+      const request = this.waitingRequests[0];
+      if (now() - request.createdAt > request.maxAgeMs || this.#cancelledByCallback(request)) {
+        this.#cancel(request);
+        continue;
+      }
+      while (request.priority === 0 && (this.queue.length >= this.maxQueuedRequests
+        || this.stats.queuedBytes + request.bytes > this.maxQueuedBytes)) {
+        const speculative = this.queue.findLast((queued) => queued.priority === 1);
+        if (!speculative) break;
+        this.#cancel(speculative, "fmap background queue yielded to foreground work.");
+      }
+      if (this.queue.length >= this.maxQueuedRequests || this.stats.queuedBytes + request.bytes > this.maxQueuedBytes) break;
+      this.waitingRequests.shift();
+      this.queue.push(request);
+      this.queue.sort((a, b) => a.priority - b.priority || a.id - b.id);
+      this.#updateStats();
+    }
   }
 
   #fatal(error) {
-    for (const request of [...this.queue, ...this.pending.values()]) this.#settle(request, error);
+    for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) this.#settle(request, error);
+    this.waitingRequests.length = 0;
+    for (const waiter of this.logicalWaiters.splice(0)) { waiter.cleanup(); waiter.reject(error); }
     this.queue.length = 0;
     this.pending.clear();
     this.#dispose();
@@ -364,19 +408,58 @@ export class FmapDataSource {
     return values;
   }
 
-  #reserveLogical(bytes) {
-    if (bytes > this.maxLogicalResultBytes || this.logicalBytesReserved + bytes > this.maxLogicalBytes) {
+  #reserveLogical(bytes, options) {
+    if (bytes > this.maxLogicalResultBytes || bytes > this.maxLogicalBytes) {
       this.stats.rejectedRequests += 1;
       throw new RangeError("fmap logical result exceeds its bounded assembly budget.");
     }
+    if (this.logicalWaiters.length || this.logicalBytesReserved + bytes > this.maxLogicalBytes) {
+      return new Promise((resolve, reject) => {
+        const waiter = { bytes, options, resolve, reject, cleanup: () => {} };
+        const abort = () => { this.#drainLogical(); this.#pump(); };
+        waiter.cleanup = () => options.signal?.removeEventListener("abort", abort);
+        options.signal?.addEventListener("abort", abort, { once: true });
+        this.logicalWaiters.push(waiter);
+        this.logicalWaiters.sort((a, b) => (a.options.priority === "background") - (b.options.priority === "background")
+          || a.options.groupId - b.options.groupId);
+        this.#drainLogical();
+        this.#pump();
+      });
+    }
+    this.#chargeLogical(bytes);
+    return null;
+  }
+
+  #chargeLogical(bytes) {
     this.logicalBytesReserved += bytes;
     this.stats.logicalBytesReserved = this.logicalBytesReserved;
     this.stats.peakLogicalBytes = Math.max(this.stats.peakLogicalBytes, this.logicalBytesReserved);
   }
 
+  #drainLogical() {
+    for (const waiter of [...this.logicalWaiters]) {
+      try { this.#requireLogicalCurrent(waiter.options); }
+      catch (error) {
+        this.logicalWaiters.splice(this.logicalWaiters.indexOf(waiter), 1);
+        waiter.cleanup();
+        waiter.reject(error);
+      }
+    }
+    while (this.logicalWaiters.length) {
+      const waiter = this.logicalWaiters[0];
+      if (this.logicalBytesReserved + waiter.bytes > this.maxLogicalBytes) break;
+      this.logicalWaiters.shift();
+      waiter.cleanup();
+      this.#chargeLogical(waiter.bytes);
+      waiter.resolve();
+    }
+    this.#updateStats();
+  }
+
   #releaseLogical(bytes) {
     this.logicalBytesReserved = Math.max(0, this.logicalBytesReserved - bytes);
     this.stats.logicalBytesReserved = this.logicalBytesReserved;
+    this.#drainLogical();
   }
 
   /** Bind a validated linear TIFF raster to this same file session and pool. */
@@ -402,8 +485,10 @@ export class FmapDataSource {
     const logicalOptions = this.#beginLogicalRequest(options);
     if (logicalOptions.supersedeKey != null) await Promise.resolve();
     this.#requireLogicalCurrent(logicalOptions);
-    this.#reserveLogical(logicalBytes);
+    const admission = this.#reserveLogical(logicalBytes, logicalOptions);
+    if (admission) await admission;
     try {
+      this.#requireLogicalCurrent(logicalOptions);
       const values = out && out.length >= totalValues ? out : new Ctor(totalValues);
       if (!window.outW || !window.outH) return values;
 
@@ -449,8 +534,10 @@ export class FmapDataSource {
     const logicalOptions = this.#beginLogicalRequest(options);
     if (logicalOptions.supersedeKey != null) await Promise.resolve();
     this.#requireLogicalCurrent(logicalOptions);
-    this.#reserveLogical(logicalBytes);
+    const admission = this.#reserveLogical(logicalBytes, logicalOptions);
+    if (admission) await admission;
     try {
+      this.#requireLogicalCurrent(logicalOptions);
       const values = new Float32Array(meta.bands);
       const bytesPerTransportValue = transportBytes(meta);
       const maxValues = this.#maxChunkValues(bytesPerTransportValue);
@@ -475,13 +562,18 @@ export class FmapDataSource {
     const logicalOptions = this.#beginLogicalRequest(options);
     if (logicalOptions.supersedeKey != null) await Promise.resolve();
     this.#requireLogicalCurrent(logicalOptions);
-    this.#reserveLogical(count);
+    const admission = this.#reserveLogical(count, logicalOptions);
+    if (admission) await admission;
     try {
+      this.#requireLogicalCurrent(logicalOptions);
       const values = out && out.length >= count ? out : new Uint8Array(count);
       const maxValues = this.#maxChunkValues(1);
       for (let written = 0; written < count; written += maxValues) {
         const chunkLength = Math.min(maxValues, count - written);
-        const result = await this.#enqueue("range", { offset: start + written, length: chunkLength },
+        const result = await this.#enqueue("range", { offset: start + written, length: chunkLength,
+          ...(logicalOptions.mappingId != null ? {
+            mappingId: logicalOptions.mappingId, virtualAddress: logicalOptions.virtualAddress + written
+          } : {}) },
           chunkLength, logicalOptions);
         values.set(new Uint8Array(result.buffer), written);
       }
@@ -529,7 +621,14 @@ export class FmapDataSource {
     this.generation += 1;
     this.statsRequest = null;
     this.latestSupersedeGroups.clear();
-    for (const request of [...this.queue, ...this.pending.values()]) this.#cancel(request, "fmap cache cleared.");
+    for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) {
+      // Cache generations retire byte reads, not mapping lifetimes. A mapping
+      // control already posted precedes clear in worker message order; keep its
+      // acknowledgement so a committed mapping cannot become an orphan.
+      if (request.type === "mapRegion" || request.type === "unmapRegion") request.generation = this.generation;
+      else this.#cancel(request, "fmap cache cleared.");
+    }
+    this.#drainLogical();
     this.worker.postMessage({ id: ++this.requestId, type: "clear", generation: this.generation });
     this.#updateStats();
   }
