@@ -138,8 +138,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     console.info(`[state${suffix}] ${statusText || "idle"}`);
   }
 
-  async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, out = null){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out); }
-  async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, out = null){ return readBandWindowBIPCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out); }
+  async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, out = null, options = null){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out, options); }
+  async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, out = null, options = null){ return readBandWindowBIPCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out, options); }
   function toFloat32(arr){ return toFloat32Core(arr); }
 
   // ========= Pyramid cache (per-band tiles) =========
@@ -1227,7 +1227,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     downloadBlob,
     setActiveBand,
     discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
-    readSpectrumAtPixel: (ds, ix, iy) => readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY),
+    readSpectrumAtPixel: (ds, ix, iy, options = null) => readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY, options),
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });
 
