@@ -96,6 +96,7 @@ function loadPage(pageIndex, generation) {
     throw new Error(`fmap WASM could not commit page ${pageIndex} (status ${commitStatus}).`);
   }
   state.stats.browserBytes += bytes.byteLength;
+  state.stats.copiedBytes += bytes.byteLength;
   state.stats.cacheHits = Number(callExport("fmap_hits"));
   state.stats.cacheMisses = Number(callExport("fmap_misses"));
   state.stats.cacheEvictions = Number(callExport("fmap_evictions"));

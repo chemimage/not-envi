@@ -30,6 +30,8 @@ export class FmapDataSource {
     this.ownerId = `fmap:${nextSourceId++}`;
     this.pageSize = Math.max(4096, Math.floor(Number(options.pageSize) || (64 * 1024)));
     this.maxBytes = Math.max(this.pageSize, Math.floor(Number(options.poolBytes) || (64 * 1024 * 1024)));
+    this.residentBytes = this.maxBytes;
+    this.requestedMaxBytes = this.maxBytes;
     this.concurrency = Math.max(1, Math.floor(Number(options.concurrency) || 2));
     this.generation = 1;
     this.closed = false;
@@ -76,7 +78,7 @@ export class FmapDataSource {
     this.worker = this.#createWorker();
     this.worker.onmessage = (event) => this.#handleMessage(event?.data || {});
     this.worker.onerror = (event) => this.#failAll(event instanceof Error ? event : new Error("fmap worker crashed."));
-    return this.#enqueue("open", {
+    const opened = await this.#enqueue("open", {
       protocolVersion: FMAP_PROTOCOL_VERSION,
       file: this.file,
       meta: {
@@ -90,6 +92,9 @@ export class FmapDataSource {
       poolBytes: this.maxBytes,
       wasmBytes
     }, [wasmBytes], true);
+    const residentBytes = Number(opened?.residentBytes);
+    if (Number.isFinite(residentBytes) && residentBytes > 0) this.residentBytes = residentBytes;
+    return opened;
   }
 
   #handleMessage(data) {
@@ -219,11 +224,11 @@ export class FmapDataSource {
 
   setMaxBytes(value) {
     const next = Math.floor(Number(value));
-    if (Number.isFinite(next) && next >= this.pageSize) this.maxBytes = next;
+    if (Number.isFinite(next) && next >= this.pageSize) this.requestedMaxBytes = next;
   }
 
   cacheBytes() {
-    return this.closed ? 0 : this.maxBytes;
+    return this.closed ? 0 : this.residentBytes;
   }
 
   clear() {
