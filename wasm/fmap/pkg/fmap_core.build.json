@@ -1,6 +1,7 @@
 {
   "module": "fmap_core",
   "language": "C11",
+  "sourceSha256": "9ffdb8b5f0f3c100e4d0b83107feec80f2867644f4a74550aa8a880038305f3e",
   "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
   "target": "wasm32-unknown-unknown",
   "optimization": "-O2 -flto",

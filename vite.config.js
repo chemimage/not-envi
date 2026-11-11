@@ -13,8 +13,11 @@ function verifiedFmapWasm() {
   const bytes = readFileSync(fmapWasmUrl);
   const build = JSON.parse(readFileSync(fmapBuildUrl, "utf8"));
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  if (sha256 !== build.sha256 || bytes.length !== build.bytes) {
-    throw new Error("The committed fmap WASM artifact does not match its build manifest. Run npm run build:fmap.");
+  const source = readFileSync(new URL("./wasm/fmap/src/fmap_core.c", import.meta.url));
+  // Git checkouts may use LF or CRLF; source text is normalized for this check.
+  const sourceSha256 = createHash("sha256").update(source.toString("utf8").replace(/\r\n/g, "\n")).digest("hex");
+  if (sha256 !== build.sha256 || bytes.length !== build.bytes || sourceSha256 !== build.sourceSha256) {
+    throw new Error("The fmap source or WASM artifact does not match its build manifest. Run npm run build:fmap.");
   }
   if (!bytes.subarray(0, 4).equals(Buffer.from([0, 97, 115, 109]))) {
     throw new Error("The committed fmap artifact is not WebAssembly.");
