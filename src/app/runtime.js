@@ -910,9 +910,9 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   function resolveDisplayRange(ds, band, fallbackArray){ return resolveDisplayRangeCore(ds, band, fallbackArray, getBandSettings); }
 
-  async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null){
+  async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null, options = {}){
     ds.__pyrPreferImmediate = !!state.mouse.dragging;
-    return pyramid.tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
+    return pyramid.tryRasterFromPyramid(ds, band, eff, viewportW, viewportH, options);
   }
 
   function buildGrayCanvas(rasterF32, w, h, params, opts = {}){

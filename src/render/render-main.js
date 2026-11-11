@@ -349,6 +349,14 @@ export function createRenderer(deps) {
       Number(compositeRaster?.refineFactor) || 1
     );
     const approximate = !!(raster?.approximate || compositeRaster?.approximate);
+    // Pyramid reads have no direct-read refinement key. Tile completion wakes
+    // the renderer; polling an unchanged preview just repeats composition and
+    // histograms while competing with the pyramid's idle work scheduler.
+    if (!currentRenderKey) {
+      setPanelRefineState(ds, panelSlot, null);
+      setForcedFullRenderKey(ds, panelSlot, null);
+      return false;
+    }
     if (!approximate) {
       if (currentRenderKey && getForcedFullRenderKey(ds, panelSlot) === currentRenderKey) {
         setForcedFullRenderKey(ds, panelSlot, null);
@@ -443,7 +451,9 @@ export function createRenderer(deps) {
   async function readRasterForBand(ds, band, eff, viewportW, viewportH, options = null) {
     const stats = ensureRenderStats(ds);
     stats.pyramidAttempts += 1;
-    let raster = await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
+    let raster = options?.pyramidBands
+      ? await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH, { bands: options.pyramidBands })
+      : await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
     if (raster) {
       stats.pyramidHits += 1;
     }
@@ -604,7 +614,9 @@ export function createRenderer(deps) {
       }
     }
     if (!rasters) {
-      rasters = await Promise.all(sourceBands.map((band) => readRasterForBand(ds, band, eff, viewportW, viewportH, options)));
+      rasters = await Promise.all(sourceBands.map((band) => readRasterForBand(ds, band, eff, viewportW, viewportH, {
+        ...options, pyramidBands: sourceBands
+      })));
     }
     const rasterByBand = new Map(rasters.map((raster) => [raster.band, raster]));
     return {
