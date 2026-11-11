@@ -1,7 +1,6 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { describe, expect, test } from "vitest";
 import { openTiffBackend } from "../../src/io/tiff/backend/index.js";
-import { describeTiffDataset } from "../../src/io/tiff/describe.js";
 
 describe("native TIFF metadata bounds", () => {
   test("rejects a forged BigTIFF directory count before allocating its table", async () => {
@@ -45,8 +44,6 @@ describe("native TIFF metadata bounds", () => {
     view.setUint32(18, 1_000_000, true);
     view.setUint32(22, 0, true);
     const file = new NodeBlob([bytes], { type: "image/tiff" });
-    const backend = await openTiffBackend(file);
-    await expect(describeTiffDataset(backend, file)).rejects.toThrow(/SamplesPerPixel.*supported limit/i);
-    backend.close();
+    await expect(openTiffBackend(file)).rejects.toThrow(/SamplesPerPixel.*supported limit/i);
   });
 });
