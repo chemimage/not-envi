@@ -85,4 +85,113 @@ describe("data sources", () => {
       { offset: 2 * chunkSize, bytes: [0, 1] }
     ]);
   });
+
+  test("ChunkCacheDataSource returns consistent short reads at EOF", async () => {
+    const chunkSize = 64 * 1024;
+    const data = new Uint8Array(chunkSize + 2).fill(7);
+    const ds = new ChunkCacheDataSource(new BlobDataSource(makeFile(data)), {
+      chunkSize,
+      maxBytes: 2 * chunkSize
+    });
+
+    expect(Array.from(await ds.read(chunkSize, 8))).toEqual([7, 7]);
+    expect(Array.from(await ds.read(chunkSize - 2, 8))).toEqual([7, 7, 7, 7]);
+    expect(await ds.readInto(chunkSize + 2, new Uint8Array(4))).toBe(0);
+  });
+
+  test("ChunkCacheDataSource returns owned bytes instead of mutable cache views", async () => {
+    const chunkSize = 64 * 1024;
+    const ds = new ChunkCacheDataSource(
+      new BlobDataSource(makeFile(new Uint8Array(chunkSize).fill(11))),
+      { chunkSize, maxBytes: 2 * chunkSize }
+    );
+
+    const first = await ds.read(0, 1);
+    first[0] = 99;
+    expect(Array.from(await ds.read(0, 1))).toEqual([11]);
+    expect(first.buffer.byteLength).toBe(1);
+  });
+
+  test("ChunkCacheDataSource visits a large range incrementally", async () => {
+    const chunkSize = 64 * 1024;
+    let sourceReads = 0;
+    const source = {
+      size: 6 * chunkSize,
+      async read(_offset, length) {
+        sourceReads += 1;
+        return new Uint8Array(length);
+      }
+    };
+    const ds = new ChunkCacheDataSource(source, {
+      chunkSize,
+      maxBytes: 2 * chunkSize,
+      concurrency: 4
+    });
+    const readsSeenByVisitor = [];
+
+    await ds.visitPages(0, source.size, () => {
+      readsSeenByVisitor.push(sourceReads);
+    });
+
+    expect(readsSeenByVisitor[0]).toBe(1);
+    expect(readsSeenByVisitor).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(ds.cacheBytes()).toBeLessThanOrEqual(2 * chunkSize);
+  });
+
+  test("clear prevents an older in-flight read from repopulating the cache", async () => {
+    const chunkSize = 64 * 1024;
+    let release;
+    const source = {
+      size: chunkSize,
+      read: () => new Promise((resolve) => { release = resolve; })
+    };
+    const ds = new ChunkCacheDataSource(source, {
+      chunkSize,
+      maxBytes: 2 * chunkSize
+    });
+
+    const pending = ds.read(0, 1);
+    await Promise.resolve();
+    await Promise.resolve();
+    ds.clear();
+    release(new Uint8Array(chunkSize).fill(3));
+
+    expect(Array.from(await pending)).toEqual([3]);
+    expect(ds.cacheBytes()).toBe(0);
+  });
+
+  test("concurrency limits aggregate source reads across independent calls", async () => {
+    const chunkSize = 64 * 1024;
+    let active = 0;
+    let maxActive = 0;
+    const source = {
+      size: 4 * chunkSize,
+      async read(_offset, length) {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return new Uint8Array(length);
+      }
+    };
+    const ds = new ChunkCacheDataSource(source, {
+      chunkSize,
+      maxBytes: 2 * chunkSize,
+      concurrency: 1
+    });
+
+    await Promise.all([0, 1, 2, 3].map((index) => ds.read(index * chunkSize, 1)));
+    expect(maxActive).toBe(1);
+  });
+
+  test("source instances receive distinct cancellation owners", () => {
+    const file = makeFile([1, 2, 3]);
+    const first = new BlobDataSource(file);
+    const second = new BlobDataSource(file);
+    expect(first.ownerId).not.toBe(second.ownerId);
+
+    const firstCache = new ChunkCacheDataSource(first);
+    const secondCache = new ChunkCacheDataSource(second);
+    expect(firstCache.ownerId).not.toBe(secondCache.ownerId);
+  });
 });

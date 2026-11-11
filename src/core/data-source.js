@@ -5,16 +5,20 @@ import { cancelSharedTasks, scheduleSharedTask } from "./shared-scheduler.js";
 let nextDataSourceOwnerId = 1;
 
 function resolveOwnerId(source, options = {}) {
-  const explicit = String(options?.ownerId || source?.ownerId || "").trim();
+  const explicit = String(options?.ownerId || "").trim();
   if (explicit) return explicit;
-  const file = source?.file || options?.file || null;
-  const fileName = String(file?.name || "").trim();
-  if (fileName) {
-    const size = Number(file?.size || 0);
-    const lastModified = Number(file?.lastModified || 0);
-    return `file:${fileName}:${size}:${lastModified}`;
-  }
   return `datasource:${nextDataSourceOwnerId++}`;
+}
+
+function normalizeRange(size, offset, length) {
+  const sourceSize = Math.max(0, Number(size) || 0);
+  const start = Math.max(0, Math.trunc(Number(offset) || 0));
+  const requested = Math.max(0, Math.trunc(Number(length) || 0));
+  if (start >= sourceSize || requested <= 0) return { offset: start, length: 0 };
+  return {
+    offset: start,
+    length: Math.min(requested, sourceSize - start)
+  };
 }
 
 export class BlobDataSource {
@@ -29,9 +33,11 @@ export class BlobDataSource {
 
   async read(offset, length) {
     if (this.closed || !this.file) throw new Error("Data source closed");
-    const safeOffset = Math.max(0, Number(offset) || 0);
-    const safeLength = Math.max(0, Number(length) || 0);
-    const end = Math.min(this.size, safeOffset + safeLength);
+    const range = normalizeRange(this.size, offset, length);
+    const safeOffset = range.offset;
+    const safeLength = range.length;
+    if (safeLength <= 0) return new Uint8Array(0);
+    const end = safeOffset + safeLength;
     const slice = this.file.slice(safeOffset, end);
     const ab = await blobToArrayBuffer(slice);
     const u8 = new Uint8Array(ab);
@@ -56,8 +62,9 @@ export class BlobDataSource {
 
   async visitPages(offset, length, visitor) {
     if (this.closed || !this.file) throw new Error("Data source closed");
-    const safeOffset = Math.max(0, Number(offset) || 0);
-    const safeLength = Math.max(0, Number(length) || 0);
+    const range = normalizeRange(this.size, offset, length);
+    const safeOffset = range.offset;
+    const safeLength = range.length;
     if (safeLength <= 0 || typeof visitor !== "function") return 0;
     this.stats.visitPagesCalls += 1;
     const u8 = await this.read(safeOffset, safeLength);
@@ -103,6 +110,9 @@ export class ChunkCacheDataSource {
     this.bytesRead = 0;
     this.stats = createDataSourceStats();
     this.closed = false;
+    this.generation = 0;
+    this.activeLoads = 0;
+    this.loadWaiters = [];
   }
 
   setMaxBytes(bytes) {
@@ -125,6 +135,7 @@ export class ChunkCacheDataSource {
   }
 
   clear() {
+    this.generation += 1;
     this.cache.clear();
     this.inflight.clear();
     this.cacheSizeBytes = 0;
@@ -156,8 +167,12 @@ export class ChunkCacheDataSource {
   async #loadChunk(chunkIndex) {
     if (this.closed || !this.source) throw new Error("Data source closed");
     const offset = chunkIndex * this.chunkSize;
-    const len = Math.min(this.chunkSize, this.size - offset);
-    const u8 = await scheduleSharedTask(this.ownerId, () => this.source.read(offset, len));
+    const len = Math.max(0, Math.min(this.chunkSize, this.size - offset));
+    if (len <= 0) return new Uint8Array(0);
+    const source = this.source;
+    const u8 = await this.#withLoadPermit(() => (
+      scheduleSharedTask(this.ownerId, () => source.read(offset, len))
+    ));
     this.bytesRead += u8.byteLength;
     this.stats.bytesRead = this.bytesRead;
     return u8;
@@ -176,9 +191,10 @@ export class ChunkCacheDataSource {
     if (inflight) return inflight;
     this.stats.cacheMisses += 1;
 
+    const generation = this.generation;
     const p = this.#loadChunk(chunkIndex).then((u8) => {
-      if (this.closed) {
-        this.inflight.delete(key);
+      if (this.closed || generation !== this.generation) {
+        if (this.inflight.get(key) === p) this.inflight.delete(key);
         return u8;
       }
       const again = this.cache.get(key);
@@ -189,10 +205,10 @@ export class ChunkCacheDataSource {
       this.#touch(key);
       this.#evictIfNeeded();
       this.stats.cacheBytes = this.cacheSizeBytes;
-      this.inflight.delete(key);
+      if (this.inflight.get(key) === p) this.inflight.delete(key);
       return u8;
     }).catch((err) => {
-      this.inflight.delete(key);
+      if (this.inflight.get(key) === p) this.inflight.delete(key);
       throw err;
     });
 
@@ -200,29 +216,27 @@ export class ChunkCacheDataSource {
     return p;
   }
 
-  async #loadChunkRange(first, last) {
-    const idxs = [];
-    for (let ci = first; ci <= last; ci += 1) idxs.push(ci);
-    const chunks = new Array(idxs.length);
-    let next = 0;
-    const worker = async () => {
-      while (true) {
-        const i = next++;
-        if (i >= idxs.length) break;
-        chunks[i] = await this.#getChunk(idxs[i]);
-      }
-    };
-    const nWorkers = Math.min(this.concurrency, idxs.length);
-    const workers = [];
-    for (let i = 0; i < nWorkers; i += 1) workers.push(worker());
-    await Promise.all(workers);
-    return { idxs, chunks };
+  async #withLoadPermit(task) {
+    if (this.closed) throw new Error("Data source closed");
+    if (this.activeLoads >= this.concurrency) {
+      await new Promise((resolve, reject) => this.loadWaiters.push({ resolve, reject }));
+    }
+    if (this.closed) throw new Error("Data source closed");
+    this.activeLoads += 1;
+    try {
+      return await task();
+    } finally {
+      this.activeLoads = Math.max(0, this.activeLoads - 1);
+      const waiter = this.loadWaiters.shift();
+      if (waiter) waiter.resolve();
+    }
   }
 
   async visitPages(offset, length, visitor) {
     if (this.closed || !this.source) throw new Error("Data source closed");
-    const safeOffset = Math.max(0, Number(offset) || 0);
-    const safeLength = Math.max(0, Number(length) || 0);
+    const range = normalizeRange(this.size, offset, length);
+    const safeOffset = range.offset;
+    const safeLength = range.length;
     if (safeLength <= 0 || typeof visitor !== "function") return 0;
     this.stats.visitPagesCalls += 1;
 
@@ -234,21 +248,20 @@ export class ChunkCacheDataSource {
       const chunk = await this.#getChunk(first);
       const base = first * this.chunkSize;
       const startIn = safeOffset - base;
-      const view = chunk.subarray(startIn, startIn + safeLength);
+      const view = chunk.slice(startIn, startIn + safeLength);
       await visitor(view, safeOffset);
       return view.byteLength;
     }
 
-    const { idxs, chunks } = await this.#loadChunkRange(first, last);
     let visited = 0;
-    for (let i = 0; i < idxs.length; i += 1) {
-      const ci = idxs[i];
-      const chunk = chunks[i];
+    for (let ci = first; ci <= last; ci += 1) {
+      const chunk = await this.#getChunk(ci);
       const base = ci * this.chunkSize;
       const start = Math.max(safeOffset, base);
       const stop = Math.min(end, base + chunk.byteLength);
+      if (stop <= start) break;
       const sIn = start - base;
-      const view = chunk.subarray(sIn, sIn + (stop - start));
+      const view = chunk.slice(sIn, sIn + (stop - start));
       await visitor(view, start);
       visited += view.byteLength;
     }
@@ -261,7 +274,8 @@ export class ChunkCacheDataSource {
     this.stats.readIntoCalls += 1;
     const dstOffset = Math.max(0, Number(destOffset) || 0);
     const maxLen = Math.max(0, dest.byteLength - dstOffset);
-    const wantLen = length == null ? maxLen : Math.max(0, Math.min(maxLen, Number(length) || 0));
+    const requested = length == null ? maxLen : Math.max(0, Math.min(maxLen, Number(length) || 0));
+    const wantLen = normalizeRange(this.size, offset, requested).length;
     if (wantLen <= 0) return 0;
 
     let writeOffset = dstOffset;
@@ -276,31 +290,23 @@ export class ChunkCacheDataSource {
 
   async read(offset, length) {
     if (this.closed || !this.source) throw new Error("Data source closed");
-    const safeOffset = Math.max(0, Number(offset) || 0);
-    const safeLength = Math.max(0, Number(length) || 0);
+    const range = normalizeRange(this.size, offset, length);
+    const safeOffset = range.offset;
+    const safeLength = range.length;
     if (safeLength <= 0) return new Uint8Array(0);
     this.stats.readCalls += 1;
 
-    const end = safeOffset + safeLength;
-    const first = Math.floor(safeOffset / this.chunkSize);
-    const last = Math.floor((end - 1) / this.chunkSize);
-
-    if (first === last) {
-      const chunk = await this.#getChunk(first);
-      const base = first * this.chunkSize;
-      const startIn = safeOffset - base;
-      return chunk.subarray(startIn, startIn + safeLength);
-    }
-
     const out = new Uint8Array(safeLength);
-    await this.readInto(safeOffset, out, 0, safeLength);
-    return out;
+    const bytesRead = await this.readInto(safeOffset, out, 0, safeLength);
+    return bytesRead === out.byteLength ? out : out.slice(0, bytesRead);
   }
 
   close() {
     this.closed = true;
     this.clear();
     this.size = 0;
+    const closeError = new Error("Data source closed");
+    for (const waiter of this.loadWaiters.splice(0)) waiter.reject(closeError);
     cancelSharedTasks(this.ownerId);
     const base = this.source;
     this.source = null;
