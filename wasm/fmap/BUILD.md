@@ -3,7 +3,9 @@
 The fmap core is freestanding C compiled directly to WebAssembly. It owns a
 fixed resident page pool, page metadata, pin counts, LRU selection, counters,
 one page-sized scratch region for exact cold reads, and a bounded Float32
-output buffer. Browser code remains responsible for file range I/O.
+compatibility/Float64 numeric output buffer. The generic ABI decodes all nine
+supported ENVI scalar types in either byte order; browser code remains
+responsible for file range I/O.
 
 ## Pinned build
 

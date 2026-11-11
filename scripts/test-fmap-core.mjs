@@ -20,15 +20,24 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
     "fmap_slot_ptr",
     "fmap_extract_f32",
     "fmap_extract_f32_le",
+    "fmap_extract_numeric",
+    "fmap_output_f64_ptr",
+    "fmap_output_f64_capacity",
     "fmap_scratch_ptr",
     "fmap_scratch_capacity_bytes",
-    "fmap_extract_scratch_f32"
+    "fmap_extract_scratch_f32",
+    "fmap_extract_scratch_numeric"
   ]) {
     assert.ok(exportNames.has(name), `missing required ABI export ${name}`);
   }
   const { exports: wasm } = await WebAssembly.instantiate(module, {});
   const view = () => new DataView(wasm.memory.buffer);
   const output = count => new Float32Array(wasm.memory.buffer, wasm.fmap_output_ptr(), count);
+  const numericOutput = count => new Float64Array(
+    wasm.memory.buffer,
+    wasm.fmap_output_f64_ptr(),
+    count
+  );
 
   assert.equal(wasm.fmap_init(0, 2), -6, "reject zero-sized pages");
   assert.equal(wasm.fmap_init(64, 2), 0);
@@ -37,6 +46,8 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
   assert.equal(wasm.fmap_resident_bytes(), 128);
   assert.equal(wasm.fmap_scratch_capacity_bytes(), 64);
   assert.equal(wasm.fmap_output_capacity_f32(), 16);
+  assert.equal(wasm.fmap_output_f64_capacity(), 8);
+  assert.equal(wasm.fmap_output_f64_ptr() % 8, 0, "Float64 output is naturally aligned");
   const memoryAfterInit = wasm.memory.buffer.byteLength;
 
   const highPage = 0x1_0000_0001n;
@@ -59,6 +70,48 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
   assert.deepEqual(Array.from(output(2)), [1.25, -3.5]);
   assert.equal(wasm.fmap_extract_f32_le(first, 8, 2, 8), -5, "exact valid-byte bound");
 
+  const numericCases = [
+    { type: 1, size: 1, value: 241, set: (data, at, value) => data.setUint8(at, value) },
+    { type: 2, size: 2, value: -12345, set: (data, at, value, le) => data.setInt16(at, value, le) },
+    { type: 3, size: 4, value: -123456789, set: (data, at, value, le) => data.setInt32(at, value, le) },
+    { type: 4, size: 4, value: -12.5, set: (data, at, value, le) => data.setFloat32(at, value, le) },
+    { type: 5, size: 8, value: Math.PI, set: (data, at, value, le) => data.setFloat64(at, value, le) },
+    { type: 12, size: 2, value: 54321, set: (data, at, value, le) => data.setUint16(at, value, le) },
+    { type: 13, size: 4, value: 4_000_000_000, set: (data, at, value, le) => data.setUint32(at, value, le) },
+    {
+      type: 14,
+      size: 8,
+      value: -(2n ** 53n + 3n),
+      set: (data, at, value, le) => data.setBigInt64(at, value, le)
+    },
+    {
+      type: 15,
+      size: 8,
+      value: 2n ** 63n + 12345n,
+      set: (data, at, value, le) => data.setBigUint64(at, value, le)
+    }
+  ];
+  for (const testCase of numericCases) {
+    for (const littleEndian of [false, true]) {
+      testCase.set(view(), firstPtr + 1, testCase.value, littleEndian);
+      assert.equal(wasm.fmap_commit_page(first, testCase.size + 1), 0);
+      assert.equal(
+        wasm.fmap_extract_numeric(first, 1, 1, testCase.size, testCase.type, Number(littleEndian)),
+        1,
+        `extract ENVI type ${testCase.type} (${littleEndian ? "LE" : "BE"})`
+      );
+      assert.equal(numericOutput(1)[0], Number(testCase.value));
+    }
+  }
+  assert.equal(wasm.fmap_extract_numeric(first, 1, 1, 1, 99, 1), -7, "reject unknown type");
+  assert.equal(wasm.fmap_extract_numeric(first, 1, 2, 8, 5, 1), -5, "bound typed reads");
+  assert.equal(wasm.fmap_extract_numeric(first, 0, 9, 1, 1, 1), -4, "bound Float64 output");
+  view().setUint16(firstPtr, 1234, true);
+  view().setUint16(firstPtr + 4, 5678, true);
+  assert.equal(wasm.fmap_commit_page(first, 6), 0);
+  assert.equal(wasm.fmap_extract_numeric(first, 0, 2, 4, 12, 1), 2);
+  assert.deepEqual(Array.from(numericOutput(2)), [1234, 5678], "support strided typed reads");
+
   const scratchPtr = wasm.fmap_scratch_ptr();
   view().setFloat32(scratchPtr, 2.5, true);
   view().setFloat32(scratchPtr + 4, -7.25, true);
@@ -68,6 +121,10 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
   view().setFloat32(scratchPtr, 13.75, false);
   assert.equal(wasm.fmap_extract_scratch_f32(0, 1, 4, 0, 4), 1);
   assert.deepEqual(Array.from(output(1)), [13.75], "decode big-endian Float32 from scratch");
+  view().setBigInt64(scratchPtr + 2, -(2n ** 60n + 7n), false);
+  assert.equal(wasm.fmap_extract_scratch_numeric(2, 1, 8, 14, 0, 10), 1);
+  assert.equal(numericOutput(1)[0], Number(-(2n ** 60n + 7n)));
+  assert.equal(wasm.fmap_extract_scratch_numeric(2, 1, 8, 14, 0, 9), -5);
 
   const second = wasm.fmap_acquire_page(2n);
   assert.equal(second, 1);
