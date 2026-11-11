@@ -3,6 +3,7 @@ import { choosePanelPlacementNearSelection } from "./panel-placement.js";
 export function createAnalysisHistogramController(deps) {
   const {
     state,
+    arrangeAnalysisPanels,
     els,
     clamp,
     fmtNoGroup,
@@ -283,6 +284,7 @@ export function createAnalysisHistogramController(deps) {
   }
 
   function positionPanel() {
+    if (arrangeAnalysisPanels?.()) return;
     if (!els.analysisHistPanel || !els.btnToolHistogram) return;
     if (els.analysisHistPanel.dataset?.floatingUserPlaced === "true") return;
     const ds = getActive();
@@ -352,6 +354,7 @@ export function createAnalysisHistogramController(deps) {
       drawCanvas(null);
       setStatus("ready", "ok");
     } finally {
+      positionPanel();
       setBusy(false);
     }
   }

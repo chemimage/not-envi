@@ -39,55 +39,50 @@
         <button class="draw-tool-btn" id="toolRuler" type="button" title="Ruler" aria-label="Ruler">
           <i class="fa-solid fa-ruler" aria-hidden="true"></i>
         </button>
-        <button class="draw-tool-btn" id="toolRect" type="button" title="Shape" aria-label="Shape">
-          <i class="fa-regular fa-square" aria-hidden="true"></i>
-        </button>
-        <div class="draw-mode-anchor" id="shapeModeAnchor" style="display:none;">
-          <button class="draw-tool-btn draw-mode-trigger" id="toolShape" type="button" title="Shape mode" aria-label="Shape mode" aria-expanded="false" aria-haspopup="true">
+        <div class="region-tool-anchor">
+          <button class="draw-tool-btn" id="toolRect" type="button" title="Shape: Free rectangle" aria-label="Shape">
             <span class="draw-mode-art" id="toolShapeArt">
               <i class="fa-regular fa-square" id="toolShapeIcon" aria-hidden="true"></i>
               <span id="toolShapeLabel" class="draw-mode-ratio" aria-hidden="true"></span>
             </span>
           </button>
-          <div id="shapeModeFlyout" class="draw-mode-flyout" role="group" aria-label="Shape mode options" aria-hidden="true">
-            <button class="draw-mode-option active" type="button" data-shape-mode="rect" aria-pressed="true" title="Free rectangle">
-              <span class="draw-mode-art">
-                <i class="fa-regular fa-square" aria-hidden="true"></i>
-                <span class="draw-mode-ratio" aria-hidden="true"></span>
-              </span>
+          <div class="draw-mode-anchor" id="shapeModeAnchor" style="display:none;">
+            <button class="draw-mode-trigger" id="toolShape" type="button" title="Shape mode" aria-label="Shape mode" aria-expanded="false" aria-haspopup="true" aria-controls="shapeModeFlyout">
+              <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
             </button>
-            <button class="draw-mode-option" type="button" data-shape-mode="1:1" aria-pressed="false" title="Square 1:1">
-              <span class="draw-mode-art">
-                <i class="fa-regular fa-square" aria-hidden="true"></i>
-                <span class="draw-mode-ratio" aria-hidden="true">1:1</span>
-              </span>
-            </button>
-            <button class="draw-mode-option" type="button" data-shape-mode="3:4" aria-pressed="false" title="Aspect ratio 3:4 or 4:3">
-              <span class="draw-mode-art">
-                <i class="fa-regular fa-square" aria-hidden="true"></i>
-                <span class="draw-mode-ratio" aria-hidden="true">3:4</span>
-              </span>
-            </button>
-            <button class="draw-mode-option" type="button" data-shape-mode="9:16" aria-pressed="false" title="Aspect ratio 9:16 or 16:9">
-              <span class="draw-mode-art">
-                <i class="fa-regular fa-square" aria-hidden="true"></i>
-                <span class="draw-mode-ratio" aria-hidden="true">9:16</span>
-              </span>
-            </button>
-            <button class="draw-mode-option draw-mode-option-polygon" type="button" data-shape-mode="polygon" aria-pressed="false" title="Polygon">
-              <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>
-            </button>
+            <div id="shapeModeFlyout" class="draw-mode-flyout" role="group" aria-label="Shape mode options" aria-hidden="true">
+              <button class="draw-mode-option active" type="button" data-shape-mode="rect" aria-pressed="true" title="Free rectangle">
+                <span class="draw-mode-art">
+                  <i class="fa-regular fa-square" aria-hidden="true"></i>
+                  <span class="draw-mode-ratio" aria-hidden="true"></span>
+                </span>
+              </button>
+              <button class="draw-mode-option" type="button" data-shape-mode="1:1" aria-pressed="false" title="Square 1:1">
+                <span class="draw-mode-art">
+                  <i class="fa-regular fa-square" aria-hidden="true"></i>
+                  <span class="draw-mode-ratio" aria-hidden="true">1:1</span>
+                </span>
+              </button>
+              <button class="draw-mode-option" type="button" data-shape-mode="3:4" aria-pressed="false" title="Aspect ratio 3:4 or 4:3">
+                <span class="draw-mode-art">
+                  <i class="fa-regular fa-square" aria-hidden="true"></i>
+                  <span class="draw-mode-ratio" aria-hidden="true">3:4</span>
+                </span>
+              </button>
+              <button class="draw-mode-option" type="button" data-shape-mode="9:16" aria-pressed="false" title="Aspect ratio 9:16 or 16:9">
+                <span class="draw-mode-art">
+                  <i class="fa-regular fa-square" aria-hidden="true"></i>
+                  <span class="draw-mode-ratio" aria-hidden="true">9:16</span>
+                </span>
+              </button>
+              <button class="draw-mode-option draw-mode-option-polygon" type="button" data-shape-mode="polygon" aria-pressed="false" title="Polygon">
+                <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>
+              </button>
+            </div>
           </div>
         </div>
         <button class="draw-tool-btn" id="toolEraser" type="button" title="Erase nearby drawing (double-click or double-tap to clear all)" aria-label="Eraser (double-click or double-tap to clear all)">
           <i class="fa-solid fa-eraser" aria-hidden="true"></i>
-        </button>
-        <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
-        <button class="draw-tool-btn" id="btnToolSpectral" type="button" title="Spectral" aria-label="Spectral" aria-pressed="false">
-          <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
-        </button>
-        <button class="draw-tool-btn" id="btnToolHistogram" type="button" title="Spatial" aria-label="Spatial">
-          <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
         </button>
         <div class="draw-tools-separator" role="separator" aria-orientation="horizontal"></div>
         <button class="draw-tool-btn" id="btnToolExport" type="button" title="Export" aria-label="Export">
@@ -96,6 +91,14 @@
       </div>
     </div>
 
+    <div id="selectionActions" data-ui-surface role="toolbar" aria-label="Selection analysis" hidden>
+      <button class="selection-action" id="btnToolSpectral" type="button" title="Spectrum" aria-label="Spectrum" aria-pressed="false">
+        <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+      </button>
+      <button class="selection-action" id="btnToolHistogram" type="button" title="Spatial histogram" aria-label="Spatial histogram" aria-pressed="false">
+        <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
+      </button>
+    </div>
     <div id="selRect"></div>
 
     <div id="thumbDock" data-ui-surface>
@@ -187,16 +190,11 @@
     </div>
 
     <div id="displayDock" data-ui-surface>
-      <aside id="displayPanel" data-open="false" data-pinned="false">
-        <div class="panel-header display-header" id="displayHeader">
+      <aside id="displayPanel" data-open="false">
+        <div class="panel-header display-header" id="displayHeader" role="button" tabindex="0" aria-expanded="false" aria-controls="displayBody">
           <h2>Display</h2>
-          <div class="panel-header-actions">
-            <button class="btn tiny ghost panel-pin-btn" id="btnDisplayPin" type="button" aria-pressed="false" title="Auto-hide: panel hides after cursor leaves" aria-label="Auto-hide: panel hides after cursor leaves">
-              <i class="fa-solid fa-thumbtack-slash" aria-hidden="true"></i>
-            </button>
-          </div>
         </div>
-        <div class="display-body">
+        <div class="display-body" id="displayBody">
           <div class="display-hist-wrap">
             <canvas id="hist"></canvas>
             <button class="hist-range-lock-btn" id="btnHistRangeLock" type="button" title="Use same min/max for all bands" aria-label="Use same min/max for all bands" aria-pressed="false">

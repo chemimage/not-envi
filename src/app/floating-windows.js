@@ -110,7 +110,8 @@ export function createFloatingWindowManager({
   storage = (typeof window !== "undefined" ? window.localStorage : null),
   storageKey = FLOATING_LAYOUT_STORAGE_KEY,
   interactFactory = interact,
-  baseZIndex = 40
+  baseZIndex = 40,
+  onInteractionEnd
 } = {}) {
   const windows = new Map();
   const layout = readStoredLayout(storage, storageKey);
@@ -146,6 +147,52 @@ export function createFloatingWindowManager({
     return { ...entry.geometry };
   }
 
+  const requestFrame = (callback) => typeof requestAnimationFrame === "function"
+    ? requestAnimationFrame(callback) : setTimeout(callback, 16);
+  const cancelFrame = (frame) => typeof cancelAnimationFrame === "function"
+    ? cancelAnimationFrame(frame) : clearTimeout(frame);
+
+  function startDrag(entry) {
+    const bounds = resolveContainerSize(container);
+    entry.geometry = clampFloatingGeometry(elementGeometry(entry.element, container), bounds, entry.options);
+    entry.motion = { origin: { ...entry.geometry }, bounds, frame: null };
+    entry.interaction = "drag";
+    applyElementGeometry(entry.element, entry.geometry);
+    entry.element.dataset.floatingUserPlaced = "true";
+    entry.element.classList.add("floating-window-dragging");
+    bringToFront(entry);
+  }
+
+  function paintDrag(entry) {
+    if (!entry.motion) return;
+    entry.motion.frame = null;
+    const dx = entry.geometry.x - entry.motion.origin.x;
+    const dy = entry.geometry.y - entry.motion.origin.y;
+    entry.element.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    entry.options.onGeometryChange?.(entry.geometry);
+  }
+
+  function moveDrag(entry, event) {
+    if (!entry.motion) return;
+    entry.geometry = clampFloatingGeometry({ ...entry.geometry,
+      x: entry.geometry.x + finite(event?.dx, 0),
+      y: entry.geometry.y + finite(event?.dy, 0)
+    }, entry.motion.bounds, entry.options);
+    if (entry.motion.frame === null) entry.motion.frame = requestFrame(() => paintDrag(entry));
+  }
+
+  function endDrag(entry) {
+    if (!entry.motion) return;
+    if (entry.motion.frame !== null) cancelFrame(entry.motion.frame);
+    entry.motion = null;
+    entry.element.style.transform = "";
+    applyElementGeometry(entry.element, entry.geometry);
+    entry.element.classList.remove("floating-window-dragging");
+    entry.interaction = null;
+    persistEntry(entry);
+    onInteractionEnd?.();
+  }
+
   function register(options = {}) {
     const id = String(options.id || "").trim();
     const element = options.element;
@@ -165,6 +212,8 @@ export function createFloatingWindowManager({
         onGeometryChange: options.onGeometryChange
       },
       geometry: null,
+      motion: null,
+      interaction: null,
       interactable: null,
       abortController: typeof AbortController !== "undefined" ? new AbortController() : null,
       api: null
@@ -191,19 +240,9 @@ export function createFloatingWindowManager({
           allowFrom: options.dragHandle || ".floating-window-header",
           ignoreFrom: "button,input,select,textarea,a,canvas,[data-no-window-drag]",
           listeners: {
-            start: () => {
-              entry.geometry = resolveEntryGeometry(entry);
-              bringToFront(entry);
-            },
-            move: (event) => {
-              const current = resolveEntryGeometry(entry);
-              updateEntry(entry, {
-                ...current,
-                x: current.x + finite(event?.dx, 0),
-                y: current.y + finite(event?.dy, 0)
-              }, { userPlaced: true });
-            },
-            end: () => persistEntry(entry)
+            start: () => startDrag(entry),
+            move: (event) => moveDrag(entry, event),
+            end: () => endDrag(entry)
           }
         });
       }
@@ -212,6 +251,7 @@ export function createFloatingWindowManager({
           edges: options.resizeEdges || { left: true, right: true, bottom: true, top: true },
           listeners: {
             start: () => {
+              entry.interaction = "resize";
               entry.geometry = resolveEntryGeometry(entry);
               bringToFront(entry);
             },
@@ -224,7 +264,11 @@ export function createFloatingWindowManager({
                 height: finite(event?.rect?.height, current.height)
               }, { userPlaced: true, notifyResize: true });
             },
-            end: () => persistEntry(entry)
+            end: () => {
+              entry.interaction = null;
+              persistEntry(entry);
+              onInteractionEnd?.();
+            }
           }
         });
       }
@@ -261,6 +305,9 @@ export function createFloatingWindowManager({
   function unregister(id) {
     const entry = windows.get(String(id || ""));
     if (!entry) return;
+    if (entry.motion?.frame != null) cancelFrame(entry.motion.frame);
+    entry.element.style.transform = "";
+    entry.element.classList.remove("floating-window-dragging");
     entry.abortController?.abort?.();
     entry.interactable?.unset?.();
     entry.element?.classList?.remove("floating-window", "floating-window-active");
@@ -293,6 +340,7 @@ export function createFloatingWindowManager({
 
   return {
     register,
+    isInteracting: () => [...windows.values()].some((entry) => !!entry.interaction),
     reflow,
     resetLayout,
     destroy,

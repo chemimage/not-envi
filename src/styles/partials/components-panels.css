@@ -304,6 +304,13 @@
     pointer-events: auto;
   }
 
+  .spec-panel,
+  .analysis-hist-panel {
+    width: min(var(--analysis-panel-width), calc(100vw - 16px));
+    height: min(var(--analysis-panel-height), calc(100vh - 16px));
+    min-height: 220px;
+  }
+
   .line-profile-panel {
     left: auto;
     right: 0.75rem;
@@ -416,6 +423,15 @@
     background: var(--panel-body-background);
     z-index: var(--layer-floating-window);
     pointer-events: auto;
+  }
+
+  .floating-window-dragging {
+    will-change: transform;
+    backdrop-filter: none;
+  }
+
+  .floating-window-dragging .floating-window-header {
+    cursor: grabbing;
   }
 
   .floating-window.floating-window-active {

@@ -7,6 +7,8 @@
     --layer-canvas-ui: 20;
     --layer-floating-window: 40;
     --layer-dialog: 100;
+    --analysis-panel-width: 400px;
+    --analysis-panel-height: 330px;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -127,10 +129,20 @@
     height: var(--tool-btn-size);
   }
 
-  .draw-mode-anchor {
+  .region-tool-anchor {
     position: relative;
     width: var(--tool-btn-size);
     height: var(--tool-btn-size);
+  }
+
+  .draw-mode-anchor {
+    position: absolute;
+    left: calc(100% + var(--tool-boundary-gap) + 4px);
+    top: 0;
+    width: 24px;
+    height: var(--tool-btn-size);
+    display: flex;
+    align-items: center;
   }
 
   .draw-color-wrap {
@@ -164,7 +176,18 @@
   }
 
   .draw-mode-trigger {
+    @apply inline-flex w-6 items-center justify-center rounded-sm border border-gray-600 bg-gray-900/80 text-gray-100 hover:border-gray-400;
+    height: var(--tool-btn-size);
+    touch-action: manipulation;
+  }
+
+  .draw-mode-trigger i {
     font-size: 12px;
+    pointer-events: none;
+  }
+
+  .draw-mode-trigger.active {
+    @apply border-gray-200 bg-gray-700/80;
   }
 
   .draw-mode-art {
@@ -202,22 +225,22 @@
     pointer-events: none;
   }
 
-  #toolShape .draw-mode-ratio:empty {
+  #toolRect .draw-mode-ratio:empty {
     display: none;
   }
 
-  #toolShape.draw-mode-trigger-polygon .draw-mode-art i {
+  #toolRect.draw-mode-trigger-polygon .draw-mode-art i {
     display: inline-flex;
   }
 
-  #toolShape.draw-mode-trigger-polygon .draw-mode-ratio {
+  #toolRect.draw-mode-trigger-polygon .draw-mode-ratio {
     display: none;
   }
 
   .draw-mode-flyout {
     --mode-size: var(--tool-btn-size);
     position: absolute;
-    left: calc(100% + var(--tool-boundary-gap));
+    left: 0;
     top: 0;
     z-index: 30;
     padding: 0;
@@ -229,6 +252,10 @@
     grid-auto-columns: var(--mode-size);
     gap: 6px;
     align-items: start;
+  }
+
+  #drawTools.shape-mode-open .draw-mode-trigger {
+    display: none;
   }
 
   #drawTools.shape-mode-open .draw-mode-flyout {
@@ -304,10 +331,8 @@
 
 
   .analysis-hist-panel {
-    @apply absolute w-[min(380px,calc(100vw-16px))] overflow-hidden p-0;
-    height: fit-content !important;
-    min-height: 0 !important;
-    max-height: calc(100vh - 12px);
+    @apply absolute overflow-hidden p-0;
+    max-height: calc(100vh - 16px);
   }
 
   .analysis-hist-head {
@@ -319,11 +344,11 @@
   }
 
   .analysis-hist-body {
-    @apply min-h-0 flex-none overflow-auto p-0;
+    @apply flex min-h-0 flex-1 flex-col overflow-auto p-0;
   }
 
   #analysisHistCanvas {
-    @apply block h-[228px] w-full bg-transparent font-mono text-sm text-gray-200;
+    @apply block min-h-[140px] w-full flex-1 bg-transparent font-mono text-sm text-gray-200;
     --hist-accent: rgb(34 211 238 / 0.96);
     --hist-accent-muted: rgb(34 211 238 / 0.72);
     --hist-accent-region: rgb(34 211 238 / 0.14);
@@ -752,5 +777,30 @@
   @keyframes sel-marquee-backward {
     from { background-position: 0 0, 0 100%, 0 0, 100% 0; }
     to { background-position: -8px 0, 8px 100%, 0 8px, 100% -8px; }
+  }
+}
+
+@layer components {
+  #selectionActions {
+    --selection-action-gap: 4px;
+    @apply absolute z-30 flex flex-col;
+    gap: var(--selection-action-gap);
+  }
+
+  #selectionActions[hidden],
+  #selectionActions button[hidden] {
+    display: none;
+  }
+
+  .selection-action {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-sm border border-gray-700 bg-gray-900/80 text-gray-100 backdrop-blur-sm hover:border-gray-400 hover:bg-gray-700/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white;
+  }
+
+  .selection-action i {
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.9));
+  }
+
+  .selection-action[aria-pressed="true"] {
+    @apply border-gray-300 bg-gray-700/80;
   }
 }

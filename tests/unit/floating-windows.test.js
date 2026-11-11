@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   FLOATING_LAYOUT_STORAGE_KEY,
   clampFloatingGeometry,
@@ -6,7 +6,46 @@ import {
   createFloatingWindowManager
 } from "../../src/app/floating-windows.js";
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("floating windows", () => {
+  test("dragging batches transforms without rereading bounds or resizing the panel", () => {
+    const frames = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const container = document.createElement("div");
+    Object.defineProperties(container, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
+    const bounds = vi.fn(() => ({ left: 0, top: 0, width: 800, height: 600 }));
+    container.getBoundingClientRect = bounds;
+    const element = document.createElement("section");
+    element.getBoundingClientRect = () => ({ left: 10, top: 20, width: 300, height: 200 });
+    let drag;
+    const onInteractionEnd = vi.fn();
+    const manager = createFloatingWindowManager({ container, storage: null, onInteractionEnd,
+      interactFactory: () => ({ draggable: (config) => { drag = config; }, unset: vi.fn() }) });
+    manager.register({ id: "spectrum", element, resizable: false });
+    drag.listeners.start();
+    const initialReads = bounds.mock.calls.length;
+    for (let i = 0; i < 60; i++) drag.listeners.move({ dx: 1, dy: 0.5 });
+    expect(manager.isInteracting()).toBe(true);
+    expect(bounds).toHaveBeenCalledTimes(initialReads);
+    expect(frames).toHaveLength(1);
+    expect(element.style.left).toBe("10px");
+    expect(element.style.top).toBe("20px");
+    expect(element.style.width).toBe("300px");
+    frames[0]();
+    expect(element.style.transform).toBe("translate3d(60px, 30px, 0)");
+    drag.listeners.end();
+    expect(manager.isInteracting()).toBe(false);
+    expect(element.style.transform).toBe("");
+    expect(element.style.left).toBe("70px");
+    expect(element.style.top).toBe("50px");
+    expect(onInteractionEnd).toHaveBeenCalledOnce();
+    manager.destroy();
+  });
+
   test("clamps geometry and size inside the container", () => {
     expect(clampFloatingGeometry(
       { x: -20, y: 900, width: 900, height: 50 },

@@ -1,6 +1,7 @@
 export function wireDrawToolInteractions(deps) {
   const {
     state,
+    selectionActions,
     els,
     getActive,
     activatePanelAtClientPoint,
@@ -89,6 +90,7 @@ export function wireDrawToolInteractions(deps) {
   }
 
   function setShapeModeFlyoutOpen(nextOpen) {
+    const restoreFocus = !nextOpen && els.shapeModeFlyout?.contains(document.activeElement);
     shapeModeFlyoutOpen = !!nextOpen;
     if (els.drawTools && els.drawTools.classList) {
       if (typeof els.drawTools.classList.toggle === "function") {
@@ -104,6 +106,11 @@ export function wireDrawToolInteractions(deps) {
     }
     if (els.shapeModeFlyout && els.shapeModeFlyout.setAttribute) {
       els.shapeModeFlyout.setAttribute("aria-hidden", shapeModeFlyoutOpen ? "false" : "true");
+    }
+    if (shapeModeFlyoutOpen) {
+      els.shapeModeFlyout?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+    } else if (restoreFocus) {
+      els.toolShape?.focus({ preventScroll: true });
     }
   }
 
@@ -138,8 +145,9 @@ export function wireDrawToolInteractions(deps) {
         els.toolShapeIcon.classList.add("fa-regular", "fa-square");
       }
     }
-    if (els.toolShape && els.toolShape.classList) {
-      els.toolShape.classList.toggle("draw-mode-trigger-polygon", shapeMode === "polygon");
+    if (els.toolRect) {
+      els.toolRect.classList.toggle("draw-mode-trigger-polygon", shapeMode === "polygon");
+      els.toolRect.title = `Shape: ${shapeModeMeta.title}`;
     }
     if (els.toolShape) {
       els.toolShape.classList.toggle("active", shapeModeFlyoutOpen);
@@ -183,6 +191,7 @@ export function wireDrawToolInteractions(deps) {
         }
       }
     }
+    selectionActions?.refresh();
   }
 
   function setSpatialActive(active) {
@@ -329,7 +338,8 @@ export function wireDrawToolInteractions(deps) {
   }
   if (els.btnToolSpectral && setSpectrumPickEnabled) {
     els.btnToolSpectral.onclick = () => {
-      toggleSpectralMode();
+      if (selectionActions) selectionActions.openSpectral().catch((err) => console.warn("Spectrum failed", err));
+      else toggleSpectralMode();
     };
   }
   if (els.toolEraser) {
@@ -378,7 +388,8 @@ export function wireDrawToolInteractions(deps) {
   });
   if (els.btnToolHistogram) {
     els.btnToolHistogram.onclick = () => {
-      toggleSpatialMode();
+      if (selectionActions) selectionActions.openSpatial();
+      else toggleSpatialMode();
     };
   }
   if (els.btnAnalysisHistClose) {
@@ -445,8 +456,11 @@ export function wireDrawToolInteractions(deps) {
     }, true);
   }
 
+  selectionActions?.bind();
+
   if (els.main && (beginAreaMoveAtPointer || selectAreaAtPointer)) {
     els.main.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0 || selectionActions?.isPanGesture(ev)) return;
       if (!getActive()) return;
       const areaToolEnabled = isAreaToolEnabled();
       if (!areaToolEnabled && isDrawingEnabled()) return;
@@ -496,6 +510,7 @@ export function wireDrawToolInteractions(deps) {
 
   if (els.main && (beginDrawingAtPointer || eraseDrawingAtPointer)) {
     els.main.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0 || selectionActions?.isPanGesture(ev)) return;
       if (!isDrawingEnabled()) return;
       if (els.specPanel && els.specPanel.contains(ev.target)) return;
       if (isUiTarget(ev.target)) return;
@@ -570,7 +585,7 @@ export function wireDrawToolInteractions(deps) {
     });
   }
 
-  if (els.main) {
+  if (els.main && !selectionActions) {
     els.main.addEventListener("pointerdown", (ev) => {
       if (!getSpectrumPickEnabled || !getSpectrumPickEnabled()) return;
       if (isDrawingEnabled()) return;
@@ -647,7 +662,7 @@ export function wireDrawToolInteractions(deps) {
   }
 
   els.main.addEventListener("pointerdown", (ev) => {
-    if (!els.specPanel || els.specPanel.style.display === "none") return;
+    if (selectionActions || !els.specPanel || els.specPanel.style.display === "none") return;
     if (els.specPanel.contains(ev.target)) return;
     const hasAreas = !!(getEffectiveAreaSelectionCount && getEffectiveAreaSelectionCount() > 0);
     if (getSpectrumPickEnabled && getSpectrumPickEnabled() && hasAreas) return;
