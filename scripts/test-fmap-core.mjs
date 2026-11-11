@@ -23,6 +23,8 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
     "fmap_mapping_bytes",
     "fmap_mapping_reset",
     "fmap_mapping_find_gap",
+    "fmap_mapping_gap_nodes_visited",
+    "fmap_mapping_gap_entries_visited",
     "fmap_acquire_page",
     "fmap_commit_page",
     "fmap_commit_range",
