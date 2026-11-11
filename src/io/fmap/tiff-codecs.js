@@ -10,6 +10,13 @@ function abortError() {
   return error;
 }
 
+function abortSignals(options) {
+  return Array.from(new Set([
+    options?.signal,
+    ...(Array.isArray(options?.signals) ? options.signals : [])
+  ].filter((signal) => signal && typeof signal.addEventListener === "function")));
+}
+
 function transferableInput(buffer) {
   if (buffer instanceof ArrayBuffer) return buffer;
   if (ArrayBuffer.isView(buffer)
@@ -33,7 +40,8 @@ function codecDirectory(fileDirectory) {
 
 /** Decode in a disposable inline worker; Node/unit environments use the same bounded core directly. */
 export function decodeBoundedTiffBlock(fileDirectory, buffer, expectedBytes, options = {}) {
-  if (options.signal?.aborted || options.cancelled?.()) return Promise.reject(abortError());
+  const signals = abortSignals(options);
+  if (signals.some((signal) => signal.aborted) || options.cancelled?.()) return Promise.reject(abortError());
   if (typeof Worker === "undefined") {
     return Promise.resolve().then(() => decodeBoundedTiffBlockDirect(
       fileDirectory,
@@ -44,23 +52,35 @@ export function decodeBoundedTiffBlock(fileDirectory, buffer, expectedBytes, opt
   }
 
   return new Promise((resolve, reject) => {
+    let input;
+    try {
+      input = transferableInput(buffer);
+    } catch (error) {
+      reject(error);
+      return;
+    }
     const worker = new InlineTiffCodecWorker();
-    const input = transferableInput(buffer);
     let settled = false;
     let timer = null;
     const finish = (error, result) => {
       if (settled) return;
       settled = true;
-      options.signal?.removeEventListener?.("abort", onAbort);
+      for (const signal of signals) signal.removeEventListener?.("abort", onAbort);
       if (timer != null) clearInterval(timer);
-      worker.terminate();
+      try { worker.terminate(); } catch (_error) {}
       if (error) reject(error);
       else resolve(result);
     };
     const onAbort = () => finish(abortError());
-    options.signal?.addEventListener?.("abort", onAbort, { once: true });
+    for (const signal of signals) signal.addEventListener("abort", onAbort, { once: true });
     if (typeof options.cancelled === "function") {
-      timer = setInterval(() => { if (options.cancelled()) onAbort(); }, 16);
+      timer = setInterval(() => {
+        try {
+          if (options.cancelled()) onAbort();
+        } catch (error) {
+          finish(error);
+        }
+      }, 16);
     }
     worker.onerror = () => finish(new Error("Bounded TIFF codec worker crashed."));
     worker.onmessage = (event) => {
@@ -73,13 +93,21 @@ export function decodeBoundedTiffBlock(fileDirectory, buffer, expectedBytes, opt
         finish(null, data.buffer);
       }
     };
-    worker.postMessage({
-      id: 1,
-      fileDirectory: codecDirectory(fileDirectory),
-      buffer: input,
-      expectedBytes,
-      littleEndian: options.littleEndian
-    }, [input]);
+    if (signals.some((signal) => signal.aborted)) {
+      onAbort();
+      return;
+    }
+    try {
+      worker.postMessage({
+        id: 1,
+        fileDirectory: codecDirectory(fileDirectory),
+        buffer: input,
+        expectedBytes,
+        littleEndian: options.littleEndian
+      }, [input]);
+    } catch (error) {
+      finish(error);
+    }
   });
 }
 

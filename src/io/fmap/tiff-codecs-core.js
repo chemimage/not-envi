@@ -10,6 +10,9 @@ const LZW_EOI = 257;
 const LZW_TABLE_SIZE = 4096;
 const DEFLATE_CHUNK_BYTES = 64 * 1024;
 const DEFLATE_WINDOW_BYTES = 32 * 1024;
+// Pako 2.1 Inflate owns about 9 KiB of lens/work/dynamic/fixed Huffman tables.
+// Reserve 16 KiB conservatively; this estimate intentionally excludes JS runtime/module overhead.
+const DEFLATE_TABLE_BYTES = 16 * 1024;
 
 function abortError() {
   const error = new Error("TIFF block decode aborted.");
@@ -18,7 +21,8 @@ function abortError() {
 }
 
 function throwIfCancelled(options) {
-  if (options?.signal?.aborted || options?.cancelled?.()) throw abortError();
+  const signals = [options?.signal, ...(Array.isArray(options?.signals) ? options.signals : [])];
+  if (signals.some((signal) => signal?.aborted) || options?.cancelled?.()) throw abortError();
 }
 
 function safeExpectedBytes(value) {
@@ -311,7 +315,8 @@ function decodeDeflate(input, expected, options) {
   const output = new Uint8Array(expected);
   let written = 0;
   let callbackError = null;
-  const inflator = new Inflate({ chunkSize: DEFLATE_CHUNK_BYTES });
+  // TIFF Deflate is zlib-wrapped. Supplying windowBits prevents pako's gzip autodetection path.
+  const inflator = new Inflate({ chunkSize: DEFLATE_CHUNK_BYTES, windowBits: 15 });
   inflator.onData = (chunk) => {
     try {
       throwIfCancelled(options);
@@ -346,7 +351,7 @@ export function estimateBoundedTiffScratchBytes(fileDirectory) {
       break;
     case TIFF_COMPRESSION_DEFLATE:
     case TIFF_COMPRESSION_DEFLATE_OLD:
-      bytes = DEFLATE_CHUNK_BYTES + DEFLATE_WINDOW_BYTES;
+      bytes = DEFLATE_CHUNK_BYTES + DEFLATE_WINDOW_BYTES + DEFLATE_TABLE_BYTES;
       break;
     default:
       throw new Error(`Unsupported bounded TIFF compression ${compressionOf(fileDirectory)}.`);
