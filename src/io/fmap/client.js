@@ -71,6 +71,10 @@ export class FmapDataSource {
     this.batchBytes = Math.min(this.pageSize, limit(options.batchBytes, 64 * 1024));
     this.sparseReadThresholdBytes = limit(options.sparseReadThresholdBytes, Math.min(32 * 1024, this.pageSize / 8), 0);
     this.sparseReadMaxGapBytes = limit(options.sparseReadMaxGapBytes, 4096, 0);
+    this.maxCoalescedOverreadRatio = Number(options.maxCoalescedOverreadRatio ?? 14);
+    if (!Number.isFinite(this.maxCoalescedOverreadRatio) || this.maxCoalescedOverreadRatio < 1) {
+      throw new RangeError("Invalid fmap coalesced overread ratio.");
+    }
     this.file = file;
     this.meta = meta;
     this.mode = mode;
@@ -124,7 +128,8 @@ export class FmapDataSource {
         littleEndian: this.meta.littleEndian } : null,
       pageSize: this.pageSize, poolBytes: this.maxBytes, maxResultBytes: this.maxResultBytes,
       batchBytes: this.batchBytes, sparseReadThresholdBytes: this.sparseReadThresholdBytes,
-      sparseReadMaxGapBytes: this.sparseReadMaxGapBytes, wasmBytes
+      sparseReadMaxGapBytes: this.sparseReadMaxGapBytes,
+      maxCoalescedOverreadRatio: this.maxCoalescedOverreadRatio, wasmBytes
     }, 0, {}, [wasmBytes]);
     this.residentBytes = opened.residentBytes;
     this.readySettled = true;

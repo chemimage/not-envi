@@ -311,6 +311,7 @@ describe("fmap client", () => {
     expect(source.stats.browserBytes).toBe(8);
     expect(worker.messages[0].file).toBeInstanceOf(Blob);
     expect(worker.messages[0].protocolVersion).toBe(1);
+    expect(worker.messages[0].maxCoalescedOverreadRatio).toBe(14);
     expect(worker.messages[0].wasmBytes).toBeInstanceOf(ArrayBuffer);
   });
 

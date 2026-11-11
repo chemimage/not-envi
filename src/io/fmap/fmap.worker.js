@@ -97,10 +97,10 @@ function extractPage(slot, inPage, take, stride, spec) {
     take === 1 ? spec.sampleBytes : stride, spec.dataType, state.meta.littleEndian ? 1 : 0));
 }
 
-function extractScratch(take, stride, length, spec) {
-  if (spec.float32) return Number(call("fmap_extract_scratch_f32", 0, take,
+function extractScratch(byteOffset, take, stride, length, spec) {
+  if (spec.float32) return Number(call("fmap_extract_scratch_f32", byteOffset, take,
     take === 1 ? spec.sampleBytes : stride, state.meta.littleEndian ? 1 : 0, length));
-  return Number(call("fmap_extract_scratch_numeric", 0, take,
+  return Number(call("fmap_extract_scratch_numeric", byteOffset, take,
     take === 1 ? spec.sampleBytes : stride, spec.dataType, state.meta.littleEndian ? 1 : 0, length));
 }
 
@@ -144,7 +144,7 @@ function* readValues(offset, count, stride, target, targetOffset, preferPage, ge
       const length = ((take - 1) * stride) + spec.sampleBytes;
       const bytes = readFile(offset, length);
       new Uint8Array(state.exports.memory.buffer, call("fmap_scratch_ptr"), length).set(bytes);
-      const result = extractScratch(take, stride, length, spec);
+      const result = extractScratch(0, take, stride, length, spec);
       if (result !== take) throw new Error(`fmap sparse extraction failed (status ${result}).`);
       copyExtracted(target, targetOffset, take, spec);
       state.stats.sparseReads += 1;
@@ -173,6 +173,63 @@ function output(count) {
   return spec.float32 ? new Float32Array(count) : new Float64Array(count);
 }
 
+function rangeIsResident(offset, length) {
+  const first = Math.floor(offset / state.pageSize);
+  const last = Math.floor((offset + Math.max(0, length - 1)) / state.pageSize);
+  for (let page = first; page <= last; page += 1) {
+    if (Number(call("fmap_find_page", BigInt(page))) < 0) return false;
+  }
+  return true;
+}
+
+function chooseRowSlabRows(remainingRows, rowSourceStride, rowSpan, usefulRowBytes) {
+  const maxSpan = Math.min(state.pageSize, state.batchBytes);
+  let rows = 1;
+  while (rows < remainingRows) {
+    const candidate = rows + 1;
+    const span = ((candidate - 1) * rowSourceStride) + rowSpan;
+    const useful = candidate * usefulRowBytes;
+    if (span > maxSpan || span > useful * state.maxCoalescedOverreadRatio) break;
+    rows = candidate;
+  }
+  return rows;
+}
+
+function* readWindowRows(message, values, spec, stride) {
+  const { x0, y0, outW, outH, requestedW, step, band, generation } = message;
+  const row0 = pixelOffset(x0, y0, band);
+  const row1 = outH > 1 ? pixelOffset(x0, y0 + step, band) : row0;
+  const rowSourceStride = outH > 1 ? row1 - row0 : 0;
+  const rowSpan = outW ? ((outW - 1) * stride) + spec.sampleBytes : 0;
+  const usefulRowBytes = outW * spec.sampleBytes;
+  const capacity = numericCapacity(spec);
+
+  for (let row = 0; row < outH;) {
+    requireGeneration(generation);
+    const offset = pixelOffset(x0, y0 + row * step, band);
+    const slabRows = rowSourceStride > 0 && outW <= capacity
+      ? chooseRowSlabRows(outH - row, rowSourceStride, rowSpan, usefulRowBytes) : 1;
+    const slabLength = slabRows > 1 ? ((slabRows - 1) * rowSourceStride) + rowSpan : rowSpan;
+    if (slabRows > 1 && !rangeIsResident(offset, slabLength)) {
+      const bytes = readFile(offset, slabLength);
+      new Uint8Array(state.exports.memory.buffer, call("fmap_scratch_ptr"), slabLength).set(bytes);
+      state.stats.requestedBytes += slabRows * usefulRowBytes;
+      for (let localRow = 0; localRow < slabRows; localRow += 1) {
+        const result = extractScratch(localRow * rowSourceStride, outW, stride, slabLength, spec);
+        if (result !== outW) throw new Error(`fmap row-slab extraction failed (status ${result}).`);
+        copyExtracted(values, (row + localRow) * requestedW, outW, spec);
+      }
+      state.stats.sparseReads += 1;
+      state.stats.copiedBytes += slabLength + (slabRows * outW * spec.transportBytes);
+      row += slabRows;
+      yield slabLength;
+      continue;
+    }
+    yield* readValues(offset, outW, stride, values, row * requestedW, false, generation);
+    row += 1;
+  }
+}
+
 function* readWindow(message) {
   const { x0, y0, outW, outH, requestedW, requestedH, step, band, generation } = message;
   for (const value of [x0, y0, outW, outH, requestedW, requestedH, step, band]) integer(value, "window field");
@@ -185,11 +242,15 @@ function* readWindow(message) {
   const pixelStride = meta.interleave === "bip" ? meta.bands * spec.sampleBytes : spec.sampleBytes;
   const stride = step * pixelStride;
   const useful = outW * spec.sampleBytes;
-  const preferPage = useful * outH >= state.sparseReadThresholdBytes
-    && stride === spec.sampleBytes;
-  for (let row = 0; row < outH; row += 1) {
-    yield* readValues(pixelOffset(x0, y0 + row * step, band), outW, stride,
-      values, row * requestedW, preferPage, generation);
+  const preferPage = state.sparseReadThresholdBytes === 0
+    || (useful * outH >= state.sparseReadThresholdBytes && stride === spec.sampleBytes);
+  if (preferPage) {
+    for (let row = 0; row < outH; row += 1) {
+      yield* readValues(pixelOffset(x0, y0 + row * step, band), outW, stride,
+        values, row * requestedW, true, generation);
+    }
+  } else {
+    yield* readWindowRows(message, values, spec, stride);
   }
   state.stats.usefulValues += outW * outH;
   return values;
@@ -307,6 +368,10 @@ async function open(message) {
   state.batchBytes = Math.max(4, integer(message.batchBytes, "batch limit"));
   state.sparseReadThresholdBytes = integer(message.sparseReadThresholdBytes, "sparse threshold");
   state.sparseReadMaxGapBytes = integer(message.sparseReadMaxGapBytes, "sparse gap");
+  state.maxCoalescedOverreadRatio = Number(message.maxCoalescedOverreadRatio);
+  if (!Number.isFinite(state.maxCoalescedOverreadRatio) || state.maxCoalescedOverreadRatio < 1) {
+    throw new RangeError("Invalid fmap coalesced overread ratio.");
+  }
   state.closed = false;
   state.stats = { requestedBytes: 0, browserBytes: 0, copiedBytes: 0, usefulValues: 0,
     readCalls: 0, sparseReads: 0, outputBytes: 0, batches: 0, peakBatchBytes: 0, maxBatchMs: 0, workerCancelledRequests: 0 };
