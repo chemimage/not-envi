@@ -1,4 +1,4 @@
-import { deflate } from "pako";
+import { deflate, gzip } from "pako";
 import { describe, expect, test } from "vitest";
 import {
   decodeBoundedTiffBlock,
@@ -131,6 +131,9 @@ describe("bounded TIFF Deflate", () => {
     expect(() => decodeBoundedTiffBlockDirect(
       { Compression: COMPRESSION_DEFLATE }, deflate(Uint8Array.from([1, 2])), 3
     )).toThrow(/produced 2 bytes; expected exactly 3/);
+    expect(() => decodeBoundedTiffBlockDirect(
+      { Compression: COMPRESSION_DEFLATE }, gzip(Uint8Array.from([1, 2])), 2
+    )).toThrow(/Invalid TIFF Deflate/);
   });
 });
 
@@ -184,14 +187,14 @@ describe("bounded TIFF codec contract", () => {
   test("reports bounded codec and Predictor 3 scratch", () => {
     expect(estimateBoundedTiffScratchBytes({ Compression: COMPRESSION_PACKBITS })).toBe(0);
     expect(estimateBoundedTiffScratchBytes({ Compression: COMPRESSION_LZW })).toBe(16384);
-    expect(estimateBoundedTiffScratchBytes({ Compression: COMPRESSION_DEFLATE })).toBe(98304);
+    expect(estimateBoundedTiffScratchBytes({ Compression: COMPRESSION_DEFLATE })).toBe(114688);
     expect(estimateBoundedTiffScratchBytes({
       Compression: COMPRESSION_DEFLATE,
       Predictor: 3,
       BitsPerSample: [32, 32, 32],
       SamplesPerPixel: 3,
       ImageWidth: 10
-    })).toBe(98304 + 120);
+    })).toBe(114688 + 120);
   });
 
   test("rejects unsafe lengths, unsupported compression, and cancellation", () => {
