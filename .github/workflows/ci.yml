@@ -30,6 +30,7 @@ jobs:
       - run: npm run test:fmap-large
       - run: npm run test:fmap-packaged
       - run: npm run benchmark:fmap-browser -- --output test-results/fmap-performance.json
+      - run: npm run benchmark:fmap-queues -- --output test-results/fmap-queues.json
       - run: npm run lint
       - run: npm run build
       - uses: actions/upload-artifact@v4
@@ -39,4 +40,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: fmap-performance
-          path: test-results/fmap-performance.json
+          path: |
+            test-results/fmap-performance.json
+            test-results/fmap-queues.json

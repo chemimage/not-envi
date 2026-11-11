@@ -21,6 +21,7 @@
     "build": "npm run build:bundle && npm run build:inline && npm run build:assert",
     "benchmark:fmap": "node scripts/benchmark-fmap.mjs",
     "benchmark:fmap-browser": "node scripts/benchmark-fmap-browser.mjs",
+    "benchmark:fmap-queues": "node scripts/benchmark-fmap-queues.mjs",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:fmap-large": "node scripts/run-fmap-large-test.mjs",
