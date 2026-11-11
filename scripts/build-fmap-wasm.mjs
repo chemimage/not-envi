@@ -11,13 +11,15 @@ const manifest = path.join(root, "wasm", "fmap", "Cargo.toml");
 const outputDir = path.join(root, "wasm", "fmap", "pkg");
 const compiled = path.join(root, "wasm", "fmap", "target", "wasm32-unknown-unknown", "release", "fmap_core.wasm");
 const output = path.join(outputDir, "fmap_core.wasm");
+const cargoEnv = { ...process.env, RUSTUP_TOOLCHAIN: pinnedRust };
 
 function run(args, options = {}) {
-  return execFileSync(cargo, args, { cwd: root, stdio: "inherit", ...options });
+  return execFileSync(cargo, args, { cwd: root, stdio: "inherit", env: cargoEnv, ...options });
 }
 
 const rustcVersion = execFileSync(cargo, ["rustc", "--manifest-path", manifest, "--", "--version"], {
   cwd: root,
+  env: cargoEnv,
   encoding: "utf8"
 }).trim();
 if (!rustcVersion.startsWith(`rustc ${pinnedRust} `)) {
