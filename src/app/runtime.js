@@ -154,6 +154,13 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     onProgressiveRender: () => scheduleRender(),
     getActiveDatasetId: () => state.activeId,
     getVisibleDatasetIds: () => getVisibleDatasetPanels().map((entry) => entry?.dataset?.id).filter((id) => id != null),
+    getVisibleViews: (ds) => getVisibleDatasetPanels()
+      .filter((entry) => entry.dataset === ds)
+      .map(({ panel }) => {
+        const viewport = getPanelRectDevice(panel.slot);
+        return { view: panel.view, bands: isThreeBandColorMode(ds) ? [0, 1, 2] : [resolveDisplayPanelBand(panel, ds)],
+          eff: panel.view.scale * (window.devicePixelRatio || 1), width: viewport.w, height: viewport.h };
+      }),
     getDevicePixelRatio: () => window.devicePixelRatio || 1,
     getViewportSize: () => ({ width: els.cpuCanvas.width, height: els.cpuCanvas.height }),
     getIOConcurrency: () => IO_CONCURRENCY

@@ -9,12 +9,12 @@ import {
   viewTileBounds
 } from "../../src/render/pyramid-cache.js";
 
-async function heldTileHarness() {
+async function heldTileHarness(getVisibleViews) {
   const idle = [], reads = [];
   let hold = false;
   const controller = createPyramidController({
     now: () => performance.now(), requestIdle: (task) => { idle.push(task); return idle.length; }, cancelIdle: () => {},
-    getActiveDatasetId: () => 1, getIOConcurrency: () => 1,
+    getActiveDatasetId: () => 1, getIOConcurrency: () => 1, getVisibleViews,
     readBandWindow: async (_meta, _source, band, x, y, w, h, step, _out, options) => {
       if (!hold) return new Float32Array(w * h).fill(1);
       // Deliberately ignore AbortSignal: stale results must still be rejected
@@ -49,6 +49,27 @@ async function heldTileHarness() {
 }
 
 describe("pyramid-cache", () => {
+  test("a second visible panel retains useful work until that panel is removed", async () => {
+    let visible = [{ view: { x: 1024, y: 1024 }, bands: [0], eff: 0.25, width: 384, height: 384 }];
+    const h = await heldTileHarness(() => visible);
+    const oldPending = [...h.pyr.pending.values()];
+    try {
+      h.ds.view.x = 6144; h.ds.view.y = 6144;
+      await h.view();
+      expect(h.reads[0].options.signal.aborted).toBe(false);
+      expect(h.pyr.readAdmission.waiting).toBe(1);
+      visible = [];
+      h.ds.view.x += 512;
+      await h.view();
+      expect(h.reads[0].options.signal.aborted).toBe(true);
+      expect(h.pyr.readAdmission.waiting).toBe(0);
+      h.reads[0].resolve();
+      const outcomes = await Promise.allSettled(oldPending);
+      expect(outcomes.every((outcome) => outcome.status === "rejected" && outcome.reason.name === "AbortError")).toBe(true);
+      expect(h.reads).toHaveLength(1);
+    } finally { await h.cleanup(); }
+  });
+
   test("an obsolete overview await cannot start more tile reads after switching bands", async () => {
     const held = [], bandsRead = [];
     const controller = createPyramidController({
