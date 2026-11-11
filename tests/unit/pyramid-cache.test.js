@@ -186,7 +186,7 @@ describe("pyramid-cache", () => {
     expect(out.coverage).toBe(1);
     expect(typeof out.approximate).toBe("boolean");
     expect(Number.isNaN(out.dataF32[out.dataF32.length - 1])).toBe(false);
-    expect(readOptions?.priority).toBe("background");
+    expect(readOptions?.priority).toBe("foreground");
     expect(readOptions?.cancelled()).toBe(false);
     controller.disposePyramid(ds.pyramid);
     expect(readOptions?.cancelled()).toBe(true);
@@ -355,6 +355,7 @@ describe("pyramid-cache", () => {
   test("background pyramid work runs for visible non-active datasets", async () => {
     let readCalls = 0;
     let idleUsed = false;
+    const readPriorities = [];
     const controller = createPyramidController({
       now: () => 0,
       requestIdle: (cb) => {
@@ -365,8 +366,9 @@ describe("pyramid-cache", () => {
         return 1;
       },
       cancelIdle: () => {},
-      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => {
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH, _step, _out, options) => {
         readCalls += 1;
+        readPriorities.push(options?.priority);
         const data = new Float32Array(outW * outH);
         data.fill(3);
         return data;
@@ -410,6 +412,55 @@ describe("pyramid-cache", () => {
     expect(out).toBeTruthy();
     expect(out.partial).toBe(true);
     expect(readCalls).toBeGreaterThan(0);
+    expect(readPriorities).toContain("foreground");
+  });
+
+  test("speculative qLo prefetch uses background reader priority", async () => {
+    let idleUsed = false;
+    const readPriorities = [];
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: (cb) => {
+        if (!idleUsed) {
+          idleUsed = true;
+          cb();
+        }
+        return 1;
+      },
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH, _step, _out, options) => {
+        readPriorities.push(options?.priority);
+        return new Float32Array(outW * outH);
+      },
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => "ds",
+      getVisibleDatasetIds: () => ["ds"],
+      getViewportSize: () => ({ width: 128, height: 128 }),
+      getIOConcurrency: () => 2
+    });
+    const ds = {
+      id: "ds",
+      meta: { samples: 128, lines: 128, bands: 2, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 1 },
+      activeBand: 0,
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+    ds.pyramid.maxLevel = 0;
+    const data = new Float32Array(128 * 128);
+    ds.pyramid.tiles.set(bandTileKey(0, 0, 0, 0), {
+      band: 0, level: 0, tx: 0, ty: 0, data, w: 128, h: 128, bytes: data.byteLength, t: 0
+    });
+    ds.pyramid.totalBytes = data.byteLength;
+
+    await controller.tryRasterFromPyramid(ds, 0, 1, 128, 128);
+    await Promise.resolve();
+
+    expect(readPriorities).toContain("background");
+    expect(readPriorities).not.toContain("foreground");
   });
 
   test("tryRasterFromPyramid tolerates pyramid disposal during async overview fills", async () => {

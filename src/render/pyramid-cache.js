@@ -609,7 +609,7 @@ export function createPyramidController(deps) {
     for (const task of plan) enqueueBandTask(ds, task.band, task.level, task.tx, task.ty, false);
   }
 
-  async function getBandTile(ds, band, level, tx, ty) {
+  async function getBandTile(ds, band, level, tx, ty, priority = "foreground") {
     ensurePyramid(ds);
     const pyr = ds.pyramid;
     if (!pyr || pyr.cancelled) return null;
@@ -638,7 +638,7 @@ export function createPyramidController(deps) {
       let data;
       const readOptions = {
         cancelled: () => ds.pyramid !== pyr || pyr.cancelled,
-        priority: "background"
+        priority: priority === "background" ? "background" : "foreground"
       };
       if (ds.meta.interleave === "bip") {
         data = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, null, readOptions);
@@ -683,10 +683,11 @@ export function createPyramidController(deps) {
 
       const maxInflight = pyr.maxInflight || 2;
       while (pyr.inflight && pyr.inflight.size < maxInflight) {
-        const task = (pyr.qHi.length ? pyr.qHi.shift() : pyr.qLo.shift()) || null;
+        const highPriority = pyr.qHi.length > 0;
+        const task = (highPriority ? pyr.qHi.shift() : pyr.qLo.shift()) || null;
         if (!task) break;
 
-        const p = getBandTile(ds, task.band, task.level, task.tx, task.ty)
+        const p = getBandTile(ds, task.band, task.level, task.tx, task.ty, highPriority ? "foreground" : "background")
           .catch(() => {})
           .finally(() => {
             try { if (pyr.inflight) pyr.inflight.delete(p); } catch (_err) {}
