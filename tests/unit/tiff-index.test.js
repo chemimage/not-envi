@@ -110,6 +110,39 @@ describe("compact TIFF structural index", () => {
     } finally { backend.close(); }
   });
 
+  test("associates reduced-first main-chain images with a following compatible base", () => {
+    const reduced = summary(4, 4, 8, { newSubfileType: 1 });
+    const smallest = summary(2, 2, 256, { newSubfileType: 1 });
+    const base = summary(8, 8, 512);
+    const ordinaryPage = summary(8, 8, 768);
+    const catalog = buildTiffImageCatalog([reduced, smallest, base, ordinaryPage], [reduced, smallest, base, ordinaryPage]);
+    expect(catalog.families.map((family) => family.base)).toEqual([base, ordinaryPage]);
+    expect(catalog.families[0].levels.map((level) => level.fileDirectory.__ifdOffset)).toEqual([512, 8, 256]);
+    expect(catalog.families[1].levels).toEqual([ordinaryPage]);
+  });
+
+  test("uses page provenance before nearest-base order in interleaved families", () => {
+    const page0 = summary(8, 8, 8, { pageNumber: [0, 2] });
+    const reduced1 = summary(4, 4, 256, { newSubfileType: 1, pageNumber: [1, 2] });
+    const page1 = summary(8, 8, 512, { pageNumber: [1, 2] });
+    const reduced0 = summary(4, 4, 768, { newSubfileType: 1, pageNumber: [0, 2] });
+    const orphan = summary(4, 4, 1024, { newSubfileType: 1, pageNumber: [2, 3] });
+    const pages = [page0, reduced1, page1, reduced0, orphan];
+    const catalog = buildTiffImageCatalog(pages, pages);
+    expect(catalog.families.map((family) => family.base)).toEqual([page0, page1, orphan]);
+    expect(catalog.families[0].levels.map((level) => level.fileDirectory.__ifdOffset)).toEqual([8, 768]);
+    expect(catalog.families[1].levels.map((level) => level.fileDirectory.__ifdOffset)).toEqual([512, 256]);
+    expect(catalog.families[2].levels).toEqual([orphan]);
+  });
+
+  test("prefers the nearest preceding compatible base when page provenance is absent", () => {
+    const a = summary(8, 8, 8), b = summary(8, 8, 256);
+    const reduced = summary(4, 4, 512, { newSubfileType: 1 });
+    const catalog = buildTiffImageCatalog([a, b, reduced], [a, b, reduced]);
+    expect(catalog.families[0].levels).toEqual([a]);
+    expect(catalog.families[1].levels.map((level) => level.fileDirectory.__ifdOffset)).toEqual([256, 512]);
+  });
+
   test("rejects a main-chain cycle rather than repeatedly parsing metadata", async () => {
     const { file } = structuralFile([{ offset: 8, width: 8, height: 8, next: 8 }]);
     await expect(openNativeTiffBackend(file)).rejects.toThrow(/cyclic/);
