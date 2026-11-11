@@ -16,6 +16,7 @@ import {
   isRawCompatibleGrayscale,
   isRawCompatibleSummary,
   isUncompressedSingleStrip,
+  listTagValues,
   loadImageSummaries,
   loadSubIfdOverviewSummaries,
   needsRgbWindowSource,
@@ -26,25 +27,82 @@ import {
   validateRawCandidate
 } from "./shared.js";
 
+const FMAP_BLOCK_COMPRESSIONS = new Set([1, 5, 8, 32946, 32773]);
+
+function supportsFmapBlockPath(summary) {
+  return isRawCompatibleSummary(summary) && FMAP_BLOCK_COMPRESSIONS.has(Number(summary?.compression) || 1);
+}
+
+function checkedBytes(...values) {
+  let total = 0;
+  for (const value of values) {
+    const bytes = Math.max(0, Math.floor(Number(value) || 0));
+    total += bytes;
+    if (!Number.isSafeInteger(total)) throw new RangeError("TIFF fallback working set exceeds the browser's exact integer range.");
+  }
+  return total;
+}
+
+function checkedProduct(...values) {
+  let total = 1;
+  for (const value of values) {
+    total *= Math.max(0, Math.floor(Number(value) || 0));
+    if (!Number.isSafeInteger(total)) throw new RangeError("TIFF fallback working set exceeds the browser's exact integer range.");
+  }
+  return total;
+}
+
+function fallbackBlockWorkingSet(summary, sampleType) {
+  const directory = summary?.fileDirectory || {};
+  const tiled = Array.isArray(summary?.tileOffsets) && summary.tileOffsets.length > 0;
+  const blockWidth = tiled ? Number(directory.TileWidth) || summary.width : summary.width;
+  const blockHeight = tiled
+    ? Number(directory.TileLength) || summary.height
+    : Math.min(summary.height, Number(summary.rowsPerStrip) || summary.height);
+  const decoded = checkedProduct(blockWidth, blockHeight, summary.samplesPerPixel, sampleType.dataTypeInfo.bytes);
+  const counts = tiled ? listTagValues(directory.TileByteCounts) : summary.stripByteCounts;
+  const encoded = Math.max(0, ...counts.map((value) => Number(value) || 0));
+  return { encoded, decoded, total: checkedBytes(encoded, decoded, decoded) };
+}
+
+function requireBoundedFallback(images, sampleType, deps) {
+  const limit = Math.max(1, Number(
+    deps?.tiffFmapOptions?.maxWorkingSetBytes ?? APP_CONFIG.fmap.maxQueuedBytes
+  ) || 0);
+  for (const summary of images) {
+    const estimate = fallbackBlockWorkingSet(summary, sampleType);
+    if (estimate.total > limit) {
+      throw new Error(
+        `TIFF fallback block requires about ${estimate.total} bytes (${estimate.encoded} encoded + `
+        + `${estimate.decoded} decoded + ${estimate.decoded} scratch), exceeding the ${limit}-byte working-set limit. `
+        + "Use a native overview or re-encode with smaller tiles/strips."
+      );
+    }
+  }
+}
+
 function createChunkCache(file, deps) {
+  if (deps?.tiffFmapRangeSource) {
+    return { base: null, cached: deps.tiffFmapRangeSource, sharedFmapSource: true };
+  }
   const base = new BlobDataSource(file);
   const cached = new ChunkCacheDataSource(base, {
     chunkSize: deps?.chunkSize ?? APP_CONFIG.io.defaultChunkSizeBytes,
     maxBytes: deps?.cacheBytes ?? APP_CONFIG.io.defaultDatasetCacheBytes,
     concurrency: deps?.ioConcurrency ?? APP_CONFIG.io.defaultConcurrency
   });
-  return { base, cached };
+  return { base, cached, sharedFmapSource: false };
 }
 
 function createLinearSingleSource(summary, sampleType, file, deps) {
   if (!isRawCompatibleSummary(summary) || !isUncompressedSingleStrip(summary)) return null;
   const bytesPerSample = sampleType.dataTypeInfo.bytes;
   const { width, height, samplesPerPixel, planarConfiguration } = summary;
-  const { base, cached } = createChunkCache(file, deps);
+  const { base, cached, sharedFmapSource } = createChunkCache(file, deps);
   const description = String(file?.name || "TIFF");
   const stripOffset = firstSafeOffsetOrNull(summary.stripOffsets);
   if (stripOffset == null) {
-    cached.close();
+    if (!sharedFmapSource) cached.close();
     return null;
   }
 
@@ -56,6 +114,7 @@ function createLinearSingleSource(summary, sampleType, file, deps) {
     return {
       base,
       cached,
+      sharedFmapSource,
       meta: buildMeta({
         width,
         height,
@@ -78,6 +137,7 @@ function createLinearSingleSource(summary, sampleType, file, deps) {
     return {
       base,
       cached,
+      sharedFmapSource,
       meta: buildMeta({
         width,
         height,
@@ -96,7 +156,7 @@ function createLinearSingleSource(summary, sampleType, file, deps) {
     };
   }
 
-  cached.close();
+  if (!sharedFmapSource) cached.close();
   return null;
 }
 
@@ -108,7 +168,7 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
   if (first.samplesPerPixel !== 1 && first.samplesPerPixel !== 3) {
     throw new Error("Only grayscale TIFF or 3-band TIFF images are supported.");
   }
-  if (isHugeCompressedSingleStrip(first, sampleType, file)) {
+  if (isHugeCompressedSingleStrip(first, sampleType, file) && !deps?.tiffFmapRangeSource) {
     throw new Error("Single huge compressed-strip TIFF is not supported. Re-save it as tiled/striped TIFF or uncompressed TIFF for fast access.");
   }
 
@@ -127,6 +187,7 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
         file,
         tiff,
         meta,
+        rangeSource: deps?.tiffFmapRangeSource || null,
         bandSpecs: buildRgbBandSpecs(first, 0),
         overviewSummaries,
         budgets,
@@ -144,13 +205,13 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
     ) {
       return { raw, meta: linear.meta, mode: "linear", base: linear.base, cached: linear.cached };
     }
-    linear.cached.close();
+    if (!linear.sharedFmapSource) linear.cached.close();
     preferWindowBlocks = true;
   }
 
   const bandOffsets = buildBandOffsetSpecs(first, sampleType);
   if (bandOffsets) {
-    const { cached } = createChunkCache(file, deps);
+    const { cached, sharedFmapSource } = createChunkCache(file, deps);
     const meta = buildMeta({
       width: first.width,
       height: first.height,
@@ -172,7 +233,7 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
     ) {
       return { raw, meta, mode: "band-offset", base: null, cached: source };
     }
-    source.close();
+    if (!sharedFmapSource) source.close();
     preferWindowBlocks = true;
   }
 
@@ -199,6 +260,7 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
         file,
         tiff,
         meta,
+        rangeSource: deps?.tiffFmapRangeSource || null,
         overviewSummaries,
         bandSpecs: preferWindowBlocks
           ? buildWindowBandSpecs(first, 0)
@@ -221,7 +283,7 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
     if (summary.samplesPerPixel !== 1) {
       throw new Error("Multi-page TIFF support is currently limited to grayscale pages.");
     }
-    if (isHugeCompressedSingleStrip(summary, sampleType, file)) {
+    if (isHugeCompressedSingleStrip(summary, sampleType, file) && !deps?.tiffFmapRangeSource) {
       throw new Error("Single huge compressed-strip TIFF page is not supported. Re-save it as tiled/striped TIFF or uncompressed TIFF for fast access.");
     }
     if (!isRawCompatibleGrayscale(summary)) {
@@ -244,7 +306,7 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
   });
 
   if (simplePages.every((offset) => Number.isFinite(Number(offset)))) {
-    const { base, cached } = createChunkCache(file, deps);
+    const { base, cached, sharedFmapSource } = createChunkCache(file, deps);
     const contiguous = simplePages.every((offset, index) => offset === (simplePages[0] + (index * bandBytes)));
     const meta = buildMeta({
       width: first.width,
@@ -264,7 +326,7 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
       ) {
         return { raw, meta, mode: "linear", base, cached };
       }
-      cached.close();
+      if (!sharedFmapSource) cached.close();
       preferWindowBlocks = true;
     } else {
       const source = new BandOffsetTiffDataSource(cached, meta, simplePages);
@@ -274,7 +336,7 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
       ) {
         return { raw, meta, mode: "band-offset", base: null, cached: source };
       }
-      source.close();
+      if (!sharedFmapSource) source.close();
       preferWindowBlocks = true;
     }
   }
@@ -298,6 +360,7 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
       file,
       tiff,
       meta,
+      rangeSource: deps?.tiffFmapRangeSource || null,
       bandSpecs: preferWindowBlocks
         ? images.flatMap((summary, index) => buildWindowBandSpecs(summary, index))
         : images.flatMap((summary, index) => buildRawBandSpecs(summary, sampleType, index)),
@@ -313,18 +376,40 @@ export async function describeTiffDataset(tiff, file, deps = {}) {
   const first = images[0];
   const sampleType = resolveUniformSampleType(first, "TIFF image");
   const budgets = resolveTiffCacheBudgets(deps);
+  const requestedFmapSource = deps?.tiffFmapRangeSource || null;
+  const useFmap = !!requestedFmapSource && images.every(supportsFmapBlockPath);
+  if (requestedFmapSource && !useFmap) {
+    try {
+      requireBoundedFallback(images, sampleType, deps);
+    } catch (error) {
+      requestedFmapSource.close?.();
+      throw error;
+    }
+  }
+  const effectiveDeps = useFmap ? deps : { ...deps, tiffFmapRangeSource: null };
   const raw = {
     format: "tiff",
     imageCount: images.length,
     bigTiff: !!tiff.bigTiff,
-    photometricInterpretation: first.photometricInterpretation
+    photometricInterpretation: first.photometricInterpretation,
+    fmap: useFmap
   };
-
-  if (images.length === 1) {
-    raw.overviewCount = 0;
-    const desc = await describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets);
-    raw.overviewCount = Number(desc?.cached?.overviewCount || 0);
-    return desc;
+  if (requestedFmapSource && !useFmap) {
+    const unsupported = images.find((summary) => !supportsFmapBlockPath(summary)) || first;
+    raw.fmapReason = isRawCompatibleSummary(unsupported)
+      ? `compression ${Number(unsupported.compression) || 1} uses the bounded TIFF fallback`
+      : `${photometricName(unsupported.photometricInterpretation)} conversion uses the bounded TIFF fallback`;
   }
-  return describeMultiPageDataset(tiff, images, file, deps, raw, sampleType, budgets);
+
+  try {
+    if (images.length === 1) {
+      raw.overviewCount = 0;
+      const desc = await describeSingleImageDataset(tiff, images, file, effectiveDeps, raw, sampleType, budgets);
+      raw.overviewCount = Number(desc?.cached?.overviewCount || 0);
+      return desc;
+    }
+    return await describeMultiPageDataset(tiff, images, file, effectiveDeps, raw, sampleType, budgets);
+  } finally {
+    if (requestedFmapSource && !useFmap) requestedFmapSource.close?.();
+  }
 }
