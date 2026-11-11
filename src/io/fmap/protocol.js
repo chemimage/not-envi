@@ -1,5 +1,13 @@
 export const FMAP_PROTOCOL_VERSION = 1;
 
+export function checkedResultBytes(width, height = 1) {
+  const w = assertSafeFileInteger(width, "result width");
+  const h = assertSafeFileInteger(height, "result height");
+  const bytes = w * h * 4;
+  if (!Number.isSafeInteger(bytes)) throw new RangeError("fmap result exceeds the exact integer range.");
+  return bytes;
+}
+
 export function assertSafeFileInteger(value, label = "file offset") {
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < 0) {
@@ -21,6 +29,7 @@ export function expectedEnviPayloadBytes(meta) {
   const lines = assertSafeFileInteger(meta?.lines, "ENVI lines");
   const bands = assertSafeFileInteger(meta?.bands, "ENVI bands");
   const bytes = assertSafeFileInteger(meta?.dataTypeInfo?.bytes, "ENVI bytes per sample");
+  if (!samples || !lines || !bands || !bytes) throw new RangeError("ENVI dimensions and sample size must be positive.");
   const headerOffset = assertSafeFileInteger(meta?.headerOffset || 0, "ENVI header offset");
   const samplesPerFile = samples * lines;
   if (!Number.isSafeInteger(samplesPerFile)) throw new RangeError("ENVI dimensions exceed the browser's exact integer range.");
@@ -48,9 +57,12 @@ export function normalizeFmapWindow(meta, x0, y0, outW, outH, step) {
   const lines = assertSafeFileInteger(meta?.lines, "ENVI lines");
   const x = Math.min(samples - 1, Math.max(0, Math.floor(Number(x0) || 0)));
   const y = Math.min(lines - 1, Math.max(0, Math.floor(Number(y0) || 0)));
-  const stride = Math.max(1, Math.floor(Number(step) || 1));
-  const requestedW = Math.max(0, Math.floor(Number(outW) || 0));
-  const requestedH = Math.max(0, Math.floor(Number(outH) || 0));
+  const stride = Math.max(1, assertSafeFileInteger(Math.floor(Number(step ?? 1)), "window step"));
+  const requestedW = assertSafeFileInteger(Math.max(0, Math.floor(Number(outW))), "window width");
+  const requestedH = assertSafeFileInteger(Math.max(0, Math.floor(Number(outH))), "window height");
+  assertSafeFileInteger(x, "window x");
+  assertSafeFileInteger(y, "window y");
+  checkedResultBytes(requestedW, requestedH);
   const width = Math.min(requestedW, Math.ceil((samples - x) / stride));
   const height = Math.min(requestedH, Math.ceil((lines - y) / stride));
   return { x0: x, y0: y, outW: width, outH: height, requestedW, requestedH, step: stride };

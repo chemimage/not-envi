@@ -116,9 +116,16 @@ export async function addDatasetFromFiles(hdrFile, dataFile, deps) {
       pageSize: options.pageSizeBytes,
       poolBytes: options.poolBytes,
       concurrency: deps?.ioConcurrency ?? options.maxInflightRequests,
+      maxInflightBytes: options.maxInflightBytes,
+      maxResultBytes: options.maxResultBytes,
+      maxQueuedRequests: options.maxQueuedRequests,
+      maxQueuedBytes: options.maxQueuedBytes,
+      batchBytes: options.batchBytes,
+      sparseReadThresholdBytes: options.sparseReadThresholdBytes,
+      sparseReadMaxGapBytes: options.sparseReadMaxGapBytes,
       wasmBytes
     });
-    await cached.ready;
+    try { await cached.ready; } catch (error) { cached.close(); throw error; }
   } else {
     base = new BlobDataSource(dataFile);
     const source = new ChunkCacheDataSource(base, {

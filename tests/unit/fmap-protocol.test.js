@@ -49,4 +49,11 @@ describe("fmap protocol", () => {
       step: 2
     });
   });
+
+  test("rejects zero dimensions and non-finite or overflowing result requests", () => {
+    expect(() => assertFmapBsqFloat32Meta(meta({ samples: 0 }), 112)).toThrow(/positive/);
+    expect(() => normalizeFmapWindow(meta(), 0, 0, Infinity, 1, 1)).toThrow(/safe integer/);
+    expect(() => normalizeFmapWindow(meta(), 0, 0, 1, 1, Infinity)).toThrow(/safe integer/);
+    expect(() => normalizeFmapWindow(meta(), 0, 0, Number.MAX_SAFE_INTEGER, 4, 1)).toThrow(/exact integer/);
+  });
 });
