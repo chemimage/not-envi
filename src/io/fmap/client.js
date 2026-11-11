@@ -38,6 +38,12 @@ function transportBytes(meta) {
   return transportCtor(meta).BYTES_PER_ELEMENT;
 }
 
+function rasterDescriptor(meta) {
+  return { samples: meta.samples, lines: meta.lines, bands: meta.bands,
+    headerOffset: meta.headerOffset, interleave: meta.interleave, dataType: meta.dataType,
+    bytesPerValue: meta.dataTypeInfo.bytes, littleEndian: meta.littleEndian };
+}
+
 /**
  * A per-open ENVI source backed by a dedicated C/WASM worker.
  *
@@ -133,10 +139,7 @@ export class FmapDataSource {
     const opened = await this.#enqueue("open", {
       protocolVersion: FMAP_PROTOCOL_VERSION, file: this.file,
       mode: this.mode,
-      meta: this.meta ? { samples: this.meta.samples, lines: this.meta.lines, bands: this.meta.bands,
-        headerOffset: this.meta.headerOffset, interleave: this.meta.interleave,
-        dataType: this.meta.dataType, bytesPerValue: this.meta.dataTypeInfo.bytes,
-        littleEndian: this.meta.littleEndian } : null,
+      meta: this.meta ? rasterDescriptor(this.meta) : null,
       pageSize: this.pageSize, poolBytes: this.residentBytes, maxResultBytes: this.maxResultBytes,
       batchBytes: this.batchBytes, sparseReadThresholdBytes: this.sparseReadThresholdBytes,
       sparseReadMaxGapBytes: this.sparseReadMaxGapBytes,
@@ -257,7 +260,7 @@ export class FmapDataSource {
       this.stats.cancelledRequests += 1;
       return Promise.reject(createAbortError("fmap request was superseded."));
     }
-    const bytes = type === "open" || type === "stats" ? 0 : outputBytes + this.pageSize;
+    const bytes = ["open", "stats", "configureRaster"].includes(type) ? 0 : outputBytes + this.pageSize;
     if (outputBytes > this.maxResultBytes || bytes > this.maxInflightBytes) {
       this.stats.rejectedRequests += 1;
       return Promise.reject(new RangeError("fmap result exceeds its request budget; split the operation into smaller windows."));
@@ -374,6 +377,18 @@ export class FmapDataSource {
   #releaseLogical(bytes) {
     this.logicalBytesReserved = Math.max(0, this.logicalBytesReserved - bytes);
     this.stats.logicalBytesReserved = this.logicalBytesReserved;
+  }
+
+  /** Bind a validated linear TIFF raster to this same file session and pool. */
+  async configureRaster(meta) {
+    await this.ready;
+    if (this.mode !== "range") throw new Error("fmap raster metadata is already configured.");
+    assertFmapEnviMeta(meta, this.size);
+    await this.#enqueue("configureRaster", { meta: rasterDescriptor(meta) }, 0);
+    this.meta = meta;
+    this.mode = "envi";
+    this.managesWindowOutput = true;
+    return this;
   }
 
   async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null, options = {}) {

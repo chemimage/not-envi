@@ -37,6 +37,7 @@ class FakeFmapWorker {
         this.meta = message.meta;
         result = { slotCount: message.poolBytes / message.pageSize, residentBytes: message.poolBytes };
       }
+      if (message.type === "configureRaster") this.meta = message.meta;
       if (message.type === "window") {
         const Ctor = Number(this.meta?.dataType) === 4 ? Float32Array : Float64Array;
         const values = new Ctor(message.requestedW * message.requestedH);
@@ -94,6 +95,22 @@ function createTypedSource(worker, typedMeta, options = {}) {
 }
 
 describe("fmap client", () => {
+  test("binds raster metadata to an existing range worker without creating another pool", async () => {
+    const worker = new FakeFmapWorker();
+    const source = createFmapRangeDataSource(new Blob([new Uint8Array(32)]), {
+      wasmBytes: new Uint8Array([0, 97, 115, 109]), workerFactory: () => worker,
+      pageSize: 4096, poolBytes: 8192
+    });
+    try {
+      await source.configureRaster({ ...meta(), dataTypeInfo: { bytes: 4, ctor: Float32Array } });
+      expect(source.managesWindowOutput).toBe(true);
+      expect(Array.from(await source.readBandWindow(source.meta, 0, 0, 0, 2, 2, 1))).toEqual([1, 2, 3, 4]);
+      expect(worker.messages.filter((message) => message.type === "open")).toHaveLength(1);
+      expect(worker.messages.filter((message) => message.type === "configureRaster")).toHaveLength(1);
+      await expect(source.configureRaster(meta())).rejects.toThrow("already configured");
+    } finally { source.close(); }
+  });
+
   test("clear before a delayed open leaves initialization and later reads usable", async () => {
     const worker = new ManualWorker();
     worker.postMessage = (message) => worker.messages.push(message);
