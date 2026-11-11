@@ -710,6 +710,54 @@ EXPORT("fmap_mapping_count") uint32_t fmap_mapping_count(void) { return g_map_co
 EXPORT("fmap_mapping_bytes") uint32_t fmap_mapping_bytes(void) { return (uint32_t)(g_map_heap_end - g_map_heap_base); }
 EXPORT("fmap_mapping_reset") void fmap_mapping_reset(void) { mapping_reset_internal(); }
 
+typedef struct {
+    uint64_t candidate, length, alignment, limit, result;
+    uint32_t done;
+} fmap_gap_search;
+
+static uint64_t mapping_align(uint64_t value, uint64_t alignment) {
+    uint64_t remainder = value % alignment;
+    uint64_t increment = remainder ? alignment - remainder : 0;
+    return value > U64_MAX_VALUE - increment ? U64_MAX_VALUE : value + increment;
+}
+
+/* Ordered sparse traversal: O(R) worst-case time and O(log R) stack, without
+ * allocating metadata for holes. Subtree maximum-gap augmentation could prune
+ * this search later; current map/unmap and address lookups remain balanced. */
+static void mapping_find_gap_node(fmap_map_node *node, fmap_gap_search *search) {
+    uint32_t index;
+    if (!node || search->done) return;
+    for (index = 0; index <= node->count && !search->done; index++) {
+        fmap_mapping *entry;
+        if (!node->leaf) mapping_find_gap_node(node->children[index], search);
+        if (search->done || index == node->count) break;
+        entry = &node->entries[index];
+        if (entry->end <= search->candidate) continue;
+        if (entry->start >= search->candidate
+            && search->length <= entry->start - search->candidate) {
+            search->result = search->candidate;
+            search->done = 1;
+            return;
+        }
+        search->candidate = mapping_align(entry->end, search->alignment);
+        if (search->candidate >= search->limit
+            || search->length > search->limit - search->candidate) search->done = 1;
+    }
+}
+
+EXPORT("fmap_mapping_find_gap")
+uint64_t fmap_mapping_find_gap(uint64_t length, uint64_t alignment, uint64_t minimum, uint64_t limit) {
+    fmap_gap_search search;
+    if (!g_initialized || !length || !alignment || minimum >= limit) return U64_MAX_VALUE;
+    search.candidate = mapping_align(minimum, alignment);
+    if (search.candidate >= limit || length > limit - search.candidate) return U64_MAX_VALUE;
+    search.length = length; search.alignment = alignment; search.limit = limit;
+    search.result = U64_MAX_VALUE; search.done = 0;
+    mapping_find_gap_node(g_map_root, &search);
+    if (!search.done) return search.candidate;
+    return search.result;
+}
+
 EXPORT("fmap_reset")
 int32_t fmap_reset(void) {
     uint32_t index;
