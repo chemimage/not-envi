@@ -178,6 +178,26 @@ describe("fmap client", () => {
     source.close();
   });
 
+  test("reclaims obsolete queued work before admitting a new viewport", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1, maxQueuedRequests: 1 });
+    await source.ready;
+    let obsolete = false;
+    const active = source.readSpectrumAtPixel(meta(), 0, 0);
+    const oldView = source.readSpectrumAtPixel(meta(), 1, 0, { cancelled: () => obsolete });
+    await Promise.resolve();
+    obsolete = true;
+    const newView = source.readSpectrumAtPixel(meta(), 0, 1);
+    await expect(oldView).rejects.toMatchObject({ name: "AbortError" });
+    worker.respond(worker.requests()[0]);
+    await active;
+    expect(worker.requests()[1]).toMatchObject({ x: 0, y: 1 });
+    worker.respond(worker.requests()[1]);
+    await newView;
+    expect(source.stats.rejectedRequests).toBe(0);
+    source.close();
+  });
+
   test("expires background work without leaking reservations and closes fatally crashed workers", async () => {
     vi.useFakeTimers();
     try {
