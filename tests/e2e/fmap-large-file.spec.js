@@ -53,7 +53,7 @@ test("worker reads known Float32 markers beyond 4 GiB from a sparse on-disk file
         await source.ready;
         const first = Array.from(await source.readSpectrumAtPixel(meta, 0, 0));
         const second = Array.from(await source.readSpectrumAtPixel(meta, 0, 0));
-        return { first, second, stats: source.stats, residentBytes: source.cacheBytes(), fileSize: file.size };
+        return { first, second, stats: await source.getStats(), residentBytes: source.cacheBytes(), fileSize: file.size };
       } finally {
         source.close();
       }
@@ -62,8 +62,8 @@ test("worker reads known Float32 markers beyond 4 GiB from a sparse on-disk file
     expect(result.fileSize).toBe(headerOffset + markers.byteLength);
     expect(result.first).toEqual(Array.from(markers));
     expect(result.second).toEqual(Array.from(markers));
-    expect(result.stats.browserBytes).toBeLessThanOrEqual(8192);
-    expect(result.stats.cacheHits).toBeGreaterThan(0);
+    expect(result.stats.browserBytes).toBeLessThanOrEqual(32);
+    expect(result.stats.sparseReads).toBeGreaterThan(0);
     expect(result.residentBytes).toBe(8192);
   } finally {
     rmSync(directory, { recursive: true, force: true });

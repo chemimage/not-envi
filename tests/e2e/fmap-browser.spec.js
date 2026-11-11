@@ -1,0 +1,408 @@
+import { expect, test } from "@playwright/test";
+
+test.describe("fmap browser integration", () => {
+  test("real WASM reads unaligned BSQ Float32 windows and spectra in both byte orders", async ({ page }) => {
+    await page.goto("/?fmap=1");
+
+    const result = await page.evaluate(async () => {
+      const { createFmapDataSource } = await import("/src/io/fmap/index.js");
+      const wasmResponse = await fetch("/wasm/fmap/pkg/fmap_core.wasm");
+      if (!wasmResponse.ok) throw new Error(`WASM fetch failed (${wasmResponse.status})`);
+      const wasmBytes = await wasmResponse.arrayBuffer();
+      const samples = 7;
+      const lines = 5;
+      const bands = 3;
+      const headerOffset = 4093;
+      const valueAt = (band, x, y) => {
+        if (band === 0 && y === 0 && x === 0) return Number.NaN;
+        if (band === 0 && y === 0 && x === 1) return Number.POSITIVE_INFINITY;
+        if (band === 0 && y === 0 && x === 2) return Number.NEGATIVE_INFINITY;
+        return (band * 1000) + (y * 100) + x + 0.25;
+      };
+
+      const run = async (littleEndian) => {
+        const byteLength = headerOffset + (samples * lines * bands * 4);
+        const bytes = new Uint8Array(byteLength);
+        bytes.fill(0xa5, 0, headerOffset);
+        const view = new DataView(bytes.buffer);
+        let offset = headerOffset;
+        for (let band = 0; band < bands; band += 1) {
+          for (let y = 0; y < lines; y += 1) {
+            for (let x = 0; x < samples; x += 1) {
+              view.setFloat32(offset, valueAt(band, x, y), littleEndian);
+              offset += 4;
+            }
+          }
+        }
+
+        const file = new File([bytes], littleEndian ? "little.dat" : "big.dat");
+        const meta = {
+          samples,
+          lines,
+          bands,
+          headerOffset,
+          interleave: "bsq",
+          dataType: 4,
+          littleEndian,
+          dataTypeInfo: { bytes: 4 }
+        };
+        const source = createFmapDataSource(file, meta, {
+          pageSize: 4096,
+          poolBytes: 8192,
+          maxQueuedRequests: 8,
+          maxQueuedBytes: 2 * 1024 * 1024,
+          maxInflightBytes: 1024 * 1024,
+          maxResultBytes: 1024 * 1024,
+          batchBytes: 4096,
+          sparseReadThresholdBytes: 0,
+          wasmBytes
+        });
+        try {
+          await source.ready;
+          const headerCrossing = await source.readBandWindow(meta, 0, 0, 0, 3, 1, 1);
+          const window = Array.from(await source.readBandWindow(
+            meta, 1, 1, 1, 3, 2, 2, null,
+            { priority: "foreground", supersedeKey: `viewport-${littleEndian}` }
+          ));
+          const spectrum = Array.from(await source.readSpectrumAtPixel(
+            meta, 6, 4, { priority: "foreground" }
+          ));
+          const stats = await source.getStats();
+          return {
+            headerCrossing: [
+              Number.isNaN(headerCrossing[0]),
+              headerCrossing[1] === Number.POSITIVE_INFINITY,
+              headerCrossing[2] === Number.NEGATIVE_INFINITY
+            ],
+            window,
+            spectrum,
+            stats,
+            residentBytes: source.cacheBytes()
+          };
+        } finally {
+          source.close();
+        }
+      };
+
+      let eofError = null;
+      try {
+        const meta = {
+          samples,
+          lines,
+          bands,
+          headerOffset,
+          interleave: "bsq",
+          dataType: 4,
+          littleEndian: true,
+          dataTypeInfo: { bytes: 4 }
+        };
+        createFmapDataSource(
+          new File([new Uint8Array(headerOffset + (samples * lines * bands * 4) - 1)], "short.dat"),
+          meta,
+          { pageSize: 4096, poolBytes: 8192, wasmBytes }
+        );
+      } catch (error) {
+        eofError = String(error?.message || error);
+      }
+
+      return { little: await run(true), big: await run(false), eofError };
+    });
+
+    const expectedWindow = [1101.25, 1103.25, 1105.25, 1301.25, 1303.25, 1305.25];
+    const expectedSpectrum = [406.25, 1406.25, 2406.25];
+    for (const endian of [result.little, result.big]) {
+      expect(endian.headerCrossing).toEqual([true, true, true]);
+      expect(endian.window).toEqual(expectedWindow);
+      expect(endian.spectrum).toEqual(expectedSpectrum);
+      expect(endian.stats.browserBytes).toBeGreaterThan(0);
+      expect(endian.stats.copiedBytes).toBeGreaterThanOrEqual(endian.stats.browserBytes);
+      expect(endian.residentBytes).toBe(8192);
+    }
+    expect(result.eofError).toBe("Truncated ENVI data: expected at least 4513 bytes, found 4512.");
+  });
+
+  test("ENVI loader preserves every supported type, layout, and endian path", async ({ page }) => {
+    await page.goto("/?fmap=1");
+
+    const results = await page.evaluate(async () => {
+      const { addDatasetFromFiles } = await import("/src/io/envi-loader.js");
+      const { readBandWindow, readBandWindowBIP } = await import("/src/core/raster-io.js");
+      const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+      const samples = 4;
+      const lines = 3;
+      const bands = 3;
+      const headerOffset = 3;
+      const types = [
+        { dataType: 1, bytes: 1, setter: "setUint8" },
+        { dataType: 2, bytes: 2, setter: "setInt16" },
+        { dataType: 3, bytes: 4, setter: "setInt32" },
+        { dataType: 4, bytes: 4, setter: "setFloat32", fractional: true },
+        { dataType: 5, bytes: 8, setter: "setFloat64", fractional: true },
+        { dataType: 12, bytes: 2, setter: "setUint16" },
+        { dataType: 13, bytes: 4, setter: "setUint32" },
+        { dataType: 14, bytes: 8, setter: "setBigInt64", bigint: true },
+        { dataType: 15, bytes: 8, setter: "setBigUint64", bigint: true }
+      ];
+      const cases = types.flatMap((type) => ["bsq", "bil", "bip"].flatMap((interleave) => (
+        [true, false].map((littleEndian) => ({ ...type, interleave, littleEndian }))
+      )));
+      const valueAt = (item, band, x, y) => (
+        (band * 100) + (y * 10) + x + (item.fractional ? 0.25 : 0)
+      );
+
+      const encode = (item) => {
+        const { interleave, bytes, setter, littleEndian, bigint } = item;
+        const output = new ArrayBuffer(samples * lines * bands * bytes);
+        const view = new DataView(output);
+        let index = 0;
+        const write = (value) => {
+          const encoded = bigint ? BigInt(value) : value;
+          if (bytes === 1) view[setter](index * bytes, encoded);
+          else view[setter](index * bytes, encoded, littleEndian);
+          index += 1;
+        };
+        if (interleave === "bsq") {
+          for (let band = 0; band < bands; band += 1) {
+            for (let y = 0; y < lines; y += 1) for (let x = 0; x < samples; x += 1) write(valueAt(item, band, x, y));
+          }
+        } else if (interleave === "bil") {
+          for (let y = 0; y < lines; y += 1) {
+            for (let band = 0; band < bands; band += 1) for (let x = 0; x < samples; x += 1) write(valueAt(item, band, x, y));
+          }
+        } else {
+          for (let y = 0; y < lines; y += 1) {
+            for (let x = 0; x < samples; x += 1) for (let band = 0; band < bands; band += 1) write(valueAt(item, band, x, y));
+          }
+        }
+        return output;
+      };
+
+      let fmapCases = 0;
+      let fallbackCases = 0;
+      for (const item of cases) {
+        const suffix = `${item.interleave}-${item.dataType}-${item.littleEndian ? "le" : "be"}`;
+        const header = `ENVI\nsamples = ${samples}\nlines = ${lines}\nbands = ${bands}\nheader offset = ${headerOffset}\ninterleave = ${item.interleave}\ndata type = ${item.dataType}\nbyte order = ${item.littleEndian ? 0 : 1}\n`;
+        const descriptor = await addDatasetFromFiles(
+          new File([header], `${suffix}.hdr`, { type: "text/plain" }),
+          new File([new Uint8Array(headerOffset), encode(item)], `${suffix}.dat`),
+          {
+            fmapEnabled: true,
+            fmapWasmBytes: wasmBytes,
+            fmapOptions: { pageSizeBytes: 4096, poolBytes: 8192, maxInflightRequests: 1 },
+            createDataset: (value) => value
+          }
+        );
+        try {
+          const reader = item.interleave === "bip" ? readBandWindowBIP : readBandWindow;
+          const values = await reader(descriptor.meta, descriptor.cached, 2, 1, 0, 2, 2, 1, 2);
+          const actual = Array.from(values, Number);
+          const expected = [
+            valueAt(item, 2, 1, 0), valueAt(item, 2, 2, 0),
+            valueAt(item, 2, 1, 1), valueAt(item, 2, 2, 1)
+          ];
+          if (actual.some((value, index) => value !== expected[index])) {
+            throw new Error(`${suffix} parity mismatch: ${actual.join(",")}`);
+          }
+          const usesFmap = descriptor.cached.constructor.name === "FmapDataSource";
+          const expectedFmap = item.interleave === "bsq" && item.dataType === 4;
+          if (usesFmap !== expectedFmap) throw new Error(`${suffix} selected the wrong data source`);
+          if (usesFmap) fmapCases += 1;
+          else fallbackCases += 1;
+        } finally {
+          descriptor.cached.close();
+        }
+      }
+      return { total: cases.length, fmapCases, fallbackCases };
+    });
+
+    expect(results).toEqual({ total: 54, fmapCases: 2, fallbackCases: 52 });
+  });
+
+  test("TIFF loading remains on its existing backend when fmap is requested", async ({ page }) => {
+    await page.goto("/?fmap=1");
+
+    const result = await page.evaluate(async () => {
+      const { addDatasetsFromFileList } = await import("/src/io/dataset-loader.js");
+      const { readBandWindowBIP } = await import("/src/core/raster-io.js");
+      const pixels = new Uint8Array([
+        255, 0, 0, 0, 255, 0,
+        10, 20, 30, 40, 50, 60
+      ]);
+      const encodeRgbTiff = () => {
+        const entries = [
+          [256, 4, 1, 2], [257, 4, 1, 2], [258, 3, 3, 0],
+          [259, 3, 1, 1], [262, 3, 1, 2], [273, 4, 2, 0],
+          [277, 3, 1, 3], [278, 4, 1, 1], [279, 4, 2, 0],
+          [284, 3, 1, 1]
+        ];
+        const ifdOffset = 8;
+        const ifdBytes = 2 + (entries.length * 12) + 4;
+        const bitsOffset = ifdOffset + ifdBytes;
+        const stripOffsetsOffset = bitsOffset + 6;
+        const stripByteCountsOffset = stripOffsetsOffset + 8;
+        const pixelOffset = stripByteCountsOffset + 8;
+        const buffer = new ArrayBuffer(pixelOffset + pixels.byteLength);
+        const view = new DataView(buffer);
+        view.setUint8(0, 0x49);
+        view.setUint8(1, 0x49);
+        view.setUint16(2, 42, true);
+        view.setUint32(4, ifdOffset, true);
+        view.setUint16(ifdOffset, entries.length, true);
+        let offset = ifdOffset + 2;
+        for (const [tag, type, count, originalValue] of entries) {
+          let value = originalValue;
+          if (tag === 258) value = bitsOffset;
+          if (tag === 273) value = stripOffsetsOffset;
+          if (tag === 279) value = stripByteCountsOffset;
+          view.setUint16(offset, tag, true);
+          view.setUint16(offset + 2, type, true);
+          view.setUint32(offset + 4, count, true);
+          view.setUint32(offset + 8, value, true);
+          offset += 12;
+        }
+        view.setUint32(offset, 0, true);
+        view.setUint16(bitsOffset, 8, true);
+        view.setUint16(bitsOffset + 2, 8, true);
+        view.setUint16(bitsOffset + 4, 8, true);
+        view.setUint32(stripOffsetsOffset, pixelOffset, true);
+        view.setUint32(stripOffsetsOffset + 4, pixelOffset + 6, true);
+        view.setUint32(stripByteCountsOffset, 6, true);
+        view.setUint32(stripByteCountsOffset + 4, 6, true);
+        new Uint8Array(buffer, pixelOffset).set(pixels);
+        return new Blob([buffer], { type: "image/tiff" });
+      };
+      const loaded = await addDatasetsFromFileList(
+        [new File([encodeRgbTiff()], "fmap-regression.tiff", { type: "image/tiff" })],
+        {
+          fmapEnabled: true,
+          createDataset: ({ meta: datasetMeta, cached, base }) => ({ meta: datasetMeta, ds: cached, base })
+        }
+      );
+      const dataset = loaded.datasets[0];
+      try {
+        return {
+          directFound: loaded.directFound,
+          sourceFormat: dataset.meta.sourceFormat,
+          sourceClass: dataset.ds.constructor.name,
+          red: Array.from(await readBandWindowBIP(dataset.meta, dataset.ds, 0, 0, 0, 2, 2, 1, 2))
+        };
+      } finally {
+        dataset.ds.close();
+      }
+    });
+
+    expect(result.directFound).toBe(1);
+    expect(result.sourceFormat).toBe("tiff");
+    expect(result.sourceClass).not.toBe("FmapDataSource");
+    expect(result.red).toEqual([255, 0, 10, 40]);
+  });
+
+  test("AbortSignal and supersedeKey cancel stale browser work without poisoning the source", async ({ page }) => {
+    await page.goto("/?fmap=1");
+
+    const result = await page.evaluate(async () => {
+      const { createFmapDataSource } = await import("/src/io/fmap/index.js");
+      const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+      const samples = 1024;
+      const lines = 1024;
+      const meta = {
+        samples,
+        lines,
+        bands: 1,
+        headerOffset: 0,
+        interleave: "bsq",
+        dataType: 4,
+        littleEndian: true,
+        dataTypeInfo: { bytes: 4 }
+      };
+      const values = new Float32Array(samples * lines);
+      values.fill(7.25);
+      const source = createFmapDataSource(new File([values], "cancel.dat"), meta, {
+        pageSize: 64 * 1024,
+        poolBytes: 256 * 1024,
+        maxQueuedRequests: 4,
+        maxQueuedBytes: 8 * 1024 * 1024,
+        maxInflightBytes: 8 * 1024 * 1024,
+        maxResultBytes: 4 * 1024 * 1024,
+        batchBytes: 64 * 1024,
+        wasmBytes
+      });
+      const rejectedName = async (promise) => {
+        try {
+          await promise;
+          return "resolved";
+        } catch (error) {
+          return String(error?.name || "Error");
+        }
+      };
+      try {
+        await source.ready;
+        const preAborted = new AbortController();
+        preAborted.abort();
+        const aborted = await rejectedName(source.readBandWindow(
+          meta, 0, 0, 0, 16, 16, 1, null, { signal: preAborted.signal }
+        ));
+
+        const stale = source.readBandWindow(
+          meta, 0, 0, 0, 1024, 1024, 1, null,
+          { priority: "background", supersedeKey: "viewport" }
+        );
+        const newest = source.readBandWindow(
+          meta, 0, 12, 34, 1, 1, 1, null,
+          { priority: "foreground", supersedeKey: "viewport" }
+        );
+        const [superseded, newestValue] = await Promise.all([
+          rejectedName(stale),
+          newest.then((output) => output[0])
+        ]);
+
+        const beforeActive = await source.getStats();
+        const activeController = new AbortController();
+        const active = source.readBandWindow(
+          meta, 0, 0, 0, 1024, 1024, 1, null,
+          { priority: "background", signal: activeController.signal }
+        );
+        let observedBatch = false;
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          const progress = await source.getStats();
+          if (progress.batches > beforeActive.batches) {
+            observedBatch = true;
+            break;
+          }
+        }
+        activeController.abort();
+        const activeCancelled = await rejectedName(active);
+        const afterActive = await source.getStats();
+        const probe = await source.readBandWindow(meta, 0, 91, 17, 1, 1, 1);
+        const stats = await source.getStats();
+        return {
+          aborted,
+          superseded,
+          newestValue,
+          observedBatch,
+          activeCancelled,
+          activeBrowserBytes: afterActive.browserBytes - beforeActive.browserBytes,
+          workerCancellations: afterActive.workerCancelledRequests - beforeActive.workerCancelledRequests,
+          probeValue: probe[0],
+          stats
+        };
+      } finally {
+        source.close();
+      }
+    });
+
+    expect(result.aborted).toBe("AbortError");
+    expect(result.superseded).toBe("AbortError");
+    expect(result.newestValue).toBe(7.25);
+    expect(result.observedBatch).toBe(true);
+    expect(result.activeCancelled).toBe("AbortError");
+    expect(result.activeBrowserBytes).toBeGreaterThan(0);
+    expect(result.activeBrowserBytes).toBeLessThan(1024 * 1024 * 4);
+    expect(result.workerCancellations).toBeGreaterThan(0);
+    expect(result.probeValue).toBe(7.25);
+    expect(result.stats.cancelledRequests).toBeGreaterThanOrEqual(2);
+    expect(result.stats.queuedRequests).toBe(0);
+    expect(result.stats.activeRequests).toBe(0);
+  });
+});
