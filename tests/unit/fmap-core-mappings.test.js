@@ -20,6 +20,10 @@ function randomGenerator(seed) {
   };
 }
 
+function findGap(core, ...args) {
+  return BigInt.asUintN(64, core.fmap_mapping_find_gap(...args));
+}
+
 function assertMapping(core, { start, length, offset, id }) {
   expect(core.fmap_lookup_mapping(start)).toBe(id);
   expect(core.fmap_lookup_mapping(start + length - 1n)).toBe(id);
@@ -29,6 +33,61 @@ function assertMapping(core, { start, length, offset, id }) {
 }
 
 describe("C sparse Maple-style mapping index", () => {
+  test("finds aligned first-fit gaps before, between and after sparse mappings and reuses freed ranges", async () => {
+    const core = await createCore();
+    const noFit = (1n << 64n) - 1n;
+    expect(findGap(core, 4096n, 4096n, 0n, 65536n)).toBe(0n);
+    expect(core.fmap_map_region(4096n, 4096n, 0n, 1n)).toBe(0);
+    expect(core.fmap_map_region(12288n, 9000n, 0n, 2n)).toBe(0);
+    expect(findGap(core, 4096n, 4096n, 0n, 65536n)).toBe(0n);
+    expect(findGap(core, 4096n, 4096n, 1n, 65536n)).toBe(8192n);
+    expect(findGap(core, 8192n, 4096n, 0n, 65536n)).toBe(24576n);
+    expect(findGap(core, 8192n, 4096n, 0n, 30000n)).toBe(noFit);
+    expect(core.fmap_unmap_region(1n)).toBe(0);
+    expect(findGap(core, 8192n, 4096n, 0n, 30000n)).toBe(0n);
+    const high = BigInt(Number.MAX_SAFE_INTEGER) - 4095n;
+    expect(core.fmap_map_region(high, 4095n, 0n, 3n)).toBe(0);
+    expect(findGap(core, 4096n, 4096n, 0n, BigInt(Number.MAX_SAFE_INTEGER))).toBe(0n);
+    expect(findGap(core, 1n, 3n, 7n, 20n)).toBe(9n);
+    expect(findGap(core, 1n, 0n, 0n, 20n)).toBe(noFit);
+    expect(findGap(core, 0n, 3n, 0n, 20n)).toBe(noFit);
+    expect(findGap(core, 1n, 4096n, noFit - 1n, noFit)).toBe(noFit);
+    expect(findGap(core, 10n, 1n, noFit - 10n, noFit)).toBe(noFit - 10n);
+    expect(findGap(core, noFit, 1n, 0n, noFit)).toBe(noFit);
+  });
+
+  test("first-fit gap search matches a brute-force oracle through fragmented ranges", async () => {
+    const core = await createCore();
+    const noFit = (1n << 64n) - 1n;
+    const random = randomGenerator(0xabc123);
+    const occupied = [];
+    for (let index = 0; index < 600; index += 1) {
+      const start = index * 32 + 3;
+      const length = random() % 20 + 1;
+      occupied.push({ start, end: start + length, id: BigInt(index + 1) });
+      expect(core.fmap_map_region(BigInt(start), BigInt(length), 0n, BigInt(index + 1))).toBe(0);
+    }
+    for (let iteration = 0; iteration < 300; iteration += 1) {
+      const minimum = random() % 18000;
+      const length = random() % 50 + 1;
+      const alignment = random() % 17 + 1;
+      const limit = minimum + random() % 1500;
+      let expected = noFit;
+      for (let candidate = minimum; candidate + length <= limit; candidate += 1) {
+        if (candidate % alignment) continue;
+        if (occupied.every((range) => candidate + length <= range.start || candidate >= range.end)) {
+          expected = BigInt(candidate);
+          break;
+        }
+      }
+      expect(findGap(core, BigInt(length), BigInt(alignment), BigInt(minimum), BigInt(limit))).toBe(expected);
+      if (iteration % 7 === 0 && occupied.length) {
+        const [range] = occupied.splice(random() % occupied.length, 1);
+        expect(core.fmap_unmap_region(range.id)).toBe(0);
+      }
+    }
+  });
+
   test("stores sparse u64 ranges independently of resident bytes and preserves exact boundaries", async () => {
     const core = await createCore();
     const first = { start: 0n, length: 3n, offset: (4n << 30n) + 11n, id: 1n };
@@ -138,3 +197,4 @@ describe("C sparse Maple-style mapping index", () => {
     expect(core.fmap_release_page(slot)).toBe(0);
   });
 });
+
