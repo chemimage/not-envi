@@ -186,6 +186,19 @@ export class FmapTiffDataSource {
     return { ...this.stats, isFmap: true };
   }
 
+  /** Bind an accepted linear TIFF layout to the shared numeric fmap planner. */
+  async configureRaster(meta) {
+    await this.ready;
+    if (typeof this.source?.configureRaster !== "function") {
+      throw new Error("TIFF fmap range source cannot configure raster metadata.");
+    }
+    await this.source.configureRaster(meta);
+    this.managesWindowOutput = true;
+    this.readBandWindow = this.source.readBandWindow.bind(this.source);
+    this.readBandWindowBIP = this.readBandWindow;
+    return this;
+  }
+
   clear() {
     this.source?.clear?.();
     this.generation += 1;

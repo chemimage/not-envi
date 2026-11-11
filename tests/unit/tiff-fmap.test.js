@@ -64,6 +64,23 @@ function fmapSource(bytes, options = {}) {
   };
 }
 
+test("TIFF range wrapper exposes numeric windows only after raster configuration", async () => {
+  const range = new MemoryRangeSource(new Uint8Array(16));
+  range.configureRaster = vi.fn(async () => range);
+  range.readBandWindow = vi.fn(async () => new Uint8Array([7]));
+  const source = new FmapTiffDataSource(range, { maxWorkingSetBytes: 256 });
+  expect(source.readBandWindow).toBeUndefined();
+  expect(source.readBandWindowBIP).toBeUndefined();
+
+  const imageMeta = meta(4, 4, 1);
+  await source.configureRaster(imageMeta);
+  expect(range.configureRaster).toHaveBeenCalledWith(imageMeta);
+  expect(source.managesWindowOutput).toBe(true);
+  expect(Array.from(await source.readBandWindow(imageMeta, 0, 0, 0, 1, 1, 1))).toEqual([7]);
+  expect(range.readBandWindow).toHaveBeenCalledTimes(1);
+  source.close();
+});
+
 test("TIFF forwards page-fill queue counters alongside decoder reservations", async () => {
   const { source, range } = fmapSource(new Uint8Array(16));
   Object.assign(range.stats, { pageFillReads: 3, pageFillDeduplications: 2,
@@ -402,5 +419,42 @@ describe("TIFF fmap fallback policy", () => {
     expect(result.raw.fmap).toBe(false);
     expect(result.cached.isFmap).toBe(false);
     result.cached.close();
+  });
+
+  test("configures an accepted linear fmap TIFF on the shared numeric planner", async () => {
+    const width = 8192;
+    const height = 8192;
+    const image = {
+      getWidth: () => width,
+      getHeight: () => height,
+      getSamplesPerPixel: () => 3,
+      getBitsPerSample: () => 8,
+      getSampleFormat: () => 1,
+      getFileDirectory: () => ({
+        Compression: 1,
+        RowsPerStrip: height,
+        StripOffsets: [65536],
+        StripByteCounts: [width * height * 3],
+        PhotometricInterpretation: 2,
+        PlanarConfiguration: 1
+      })
+    };
+    const tiff = {
+      littleEndian: true,
+      bigTiff: true,
+      getImageCount: async () => 1,
+      getImage: async () => image
+    };
+    const fmap = {
+      configureRaster: vi.fn(async () => {}),
+      close: vi.fn()
+    };
+    const file = new File([new Uint8Array(1)], "linear-rgb.tif", { type: "image/tiff" });
+    Object.defineProperty(file, "size", { value: 256 * 1024 * 1024 });
+
+    const result = await describeTiffDataset(tiff, file, { tiffFmapRangeSource: fmap });
+    expect(result.mode).toBe("linear");
+    expect(result.meta).toMatchObject({ samples: width, lines: height, bands: 3, interleave: "bip" });
+    expect(fmap.configureRaster).toHaveBeenCalledWith(result.meta);
   });
 });
