@@ -35,7 +35,7 @@ class FakeFmapWorker {
       let result = {};
       if (message.type === "open") {
         this.meta = message.meta;
-        result = { slotCount: 2, residentBytes: 8192 };
+        result = { slotCount: message.poolBytes / message.pageSize, residentBytes: message.poolBytes };
       }
       if (message.type === "window") {
         const Ctor = Number(this.meta?.dataType) === 4 ? Float32Array : Float64Array;
@@ -94,6 +94,23 @@ function createTypedSource(worker, typedMeta, options = {}) {
 }
 
 describe("fmap client", () => {
+  test.each([[32, 4096], [4097, 8192], [12289, 8192]])(
+    "allocates a bounded page-rounded pool for a %i-byte file",
+    async (fileBytes, allocatedBytes) => {
+      const worker = new FakeFmapWorker();
+      const source = createFmapRangeDataSource(new Blob([new Uint8Array(fileBytes)]), {
+        wasmBytes: new Uint8Array([0, 97, 115, 109]), workerFactory: () => worker,
+        pageSize: 4096, poolBytes: 8192
+      });
+      try {
+        await source.ready;
+        expect(worker.messages.find((message) => message.type === "open").poolBytes).toBe(allocatedBytes);
+        expect(source.cacheBytes()).toBe(allocatedBytes);
+        expect(source.maxBytes).toBe(8192);
+      } finally { source.close(); }
+    }
+  );
+
   test("bounds queued count and bytes before dispatch", async () => {
     const worker = new ManualWorker();
     const source = createSource(worker, { concurrency: 1, maxQueuedRequests: 1, maxQueuedBytes: 4104, maxResultBytes: 16 });

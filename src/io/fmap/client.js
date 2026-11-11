@@ -60,7 +60,7 @@ export class FmapDataSource {
     const mode = options.mode === "range" ? "range" : "envi";
     if (mode === "envi") assertFmapEnviMeta(meta, file.size);
     this.pageSize = limit(options.pageSize, 256 * 1024, 4096);
-    this.maxBytes = limit(options.poolBytes, 64 * 1024 * 1024, this.pageSize);
+    this.maxBytes = limit(options.poolBytes, 512 * 1024 * 1024, this.pageSize);
     this.maxResultBytes = limit(options.maxResultBytes, 4 * 1024 * 1024);
     this.maxInflightBytes = limit(options.maxInflightBytes, 8 * 1024 * 1024, this.pageSize + 4);
     this.maxQueuedBytes = limit(options.maxQueuedBytes, 32 * 1024 * 1024);
@@ -84,7 +84,12 @@ export class FmapDataSource {
     this.size = file.size;
     this.ownerId = `fmap:${nextSourceId++}`;
     this.chunkSize = this.pageSize;
-    this.residentBytes = Math.floor(this.maxBytes / this.pageSize) * this.pageSize;
+    // poolBytes is a per-file target, not a tab quota. Small files need only
+    // their page-rounded size; larger files keep a bounded resident subset.
+    this.residentBytes = Math.min(
+      Math.floor(this.maxBytes / this.pageSize),
+      Math.max(1, Math.ceil(file.size / this.pageSize))
+    ) * this.pageSize;
     this.requestedMaxBytes = this.maxBytes;
     this.concurrency = limit(options.concurrency, 2);
     this.generation = 1;
@@ -129,7 +134,7 @@ export class FmapDataSource {
         headerOffset: this.meta.headerOffset, interleave: this.meta.interleave,
         dataType: this.meta.dataType, bytesPerValue: this.meta.dataTypeInfo.bytes,
         littleEndian: this.meta.littleEndian } : null,
-      pageSize: this.pageSize, poolBytes: this.maxBytes, maxResultBytes: this.maxResultBytes,
+      pageSize: this.pageSize, poolBytes: this.residentBytes, maxResultBytes: this.maxResultBytes,
       batchBytes: this.batchBytes, sparseReadThresholdBytes: this.sparseReadThresholdBytes,
       sparseReadMaxGapBytes: this.sparseReadMaxGapBytes,
       maxCoalescedOverreadRatio: this.maxCoalescedOverreadRatio, wasmBytes
