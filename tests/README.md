@@ -4,6 +4,12 @@ Run `npm test` for unit/controller tests followed by the browser smoke workflow.
 Use `npm run test:unit -- tests/unit/<name>.test.js` for a focused unit run.
 Use `npm run benchmark:fmap` for the deterministic 8 GiB logical-source pager microbenchmark.
 Use `npm run test:fmap-large` for the opt-in sparse-file browser gate; it creates a temporary file with markers beyond 4 GiB and removes it afterward.
+Use `npm run test:fmap-core` for the C/WASM ABI and fixed-pool tests.
+Use `npm run test:fmap-browser` for the format/cancellation matrix on desktop and mobile Chromium emulation profiles.
+Use `npm run test:fmap-packaged` to build the single HTML and load an ENVI dataset offline.
+Use `npm run benchmark:fmap-browser -- --output test-results/fmap-performance.json` for checked browser workloads, p50/p95 latency, and a sparse-spectrum comparison with the chunk cache.
+
+The format matrix covers all nine supported ENVI numeric types, three layouts, and both byte orders. BSQ Float32 uses fmap; the other cases verify the existing fallback. It also checks TIFF fallback pixel values. Mobile emulation checks browser behavior at mobile viewport/touch settings; physical device validation is tracked in [the device protocol](../docs/FMAP_DEVICE_TESTS.md).
 
 ## Choosing the test boundary
 

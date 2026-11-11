@@ -54,6 +54,7 @@ const sha256 = createHash("sha256").update(bytes).digest("hex");
 const build = {
   module: "fmap_core",
   language: "C11",
+  sourceSha256: createHash("sha256").update(readFileSync(source, "utf8").replace(/\r\n/g, "\n")).digest("hex"),
   compiler: clangVersion.split(/\r?\n/, 1)[0],
   target: "wasm32-unknown-unknown",
   optimization: "-O2 -flto",

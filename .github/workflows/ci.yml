@@ -14,16 +14,29 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-      - name: Install pinned fmap Rust toolchain
-        run: rustup toolchain install 1.85.1 --profile minimal --target wasm32-unknown-unknown
+      - name: Install pinned fmap C toolchain
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-x86_64-linux.tar.gz --output "$RUNNER_TEMP/wasi-sdk.tar.gz"
+          printf '%s  %s\n' c6c38aab56e5de88adf6c1ebc9c3ae8da72f88ec2b656fb024eda8d4167a0bc5 "$RUNNER_TEMP/wasi-sdk.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/wasi-sdk.tar.gz" -C "$RUNNER_TEMP"
+          echo "FMAP_CLANG=$RUNNER_TEMP/wasi-sdk-24.0-x86_64-linux/bin/clang" >> "$GITHUB_ENV"
       - run: npm install
       - run: npx playwright install --with-deps chromium
       - run: npm run build:fmap
       - run: npm run test:unit
       - run: npm run test:e2e
+      - run: npm run test:fmap-browser
       - run: npm run test:fmap-large
+      - run: npm run test:fmap-packaged
+      - run: npm run benchmark:fmap-browser -- --output test-results/fmap-performance.json
+      - run: npm run lint
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
           name: site-dist
           path: dist/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fmap-performance
+          path: test-results/fmap-performance.json

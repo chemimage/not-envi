@@ -1,6 +1,6 @@
 # fmap implementation roadmap
 
-Status: proposed implementation handoff for GPT-5.6 Sol, 2026-11-10.
+Status: implementation in progress, 2026-11-10. The initial feature branch now uses C/WASM with cancellable batches and sparse BSQ read planning. See [implementation evidence](FMAP_INITIAL_IMPLEMENTATION.md).
 Baseline: release `v1.10.0`, commit `f4ab87f` (application behavior from `3380e3e`).
 fmap ("fake map") is the proposed subsystem name, not a claim of operating-system mmap support.
 
@@ -27,7 +27,9 @@ WASM owns resident storage and compute over it. JavaScript bridges browser file 
 
 Start with one worker and no SharedArrayBuffer requirement. Do not make cross-origin isolation or WASM threads prerequisites. Benchmark asynchronous `Blob.slice().arrayBuffer()` against worker-only `FileReaderSync` as transport choices. Both require explicit copying into ordinary WASM linear memory; count the temporary read allocation. Emscripten WORKERFS is a useful baseline for synchronous file reads, not a demand-paged mmap implementation.
 
-Use a reproducible, pinned WASM toolchain. Prefer a small Rust `wasm32-unknown-unknown` core with explicit buffer/span APIs unless a measured dependency need favors Emscripten. Document the decision and generated-artifact policy in the first implementation PR. File offsets use u64 independently of wasm32 pointers. At the JavaScript Blob boundary, convert only after checking exact safe-integer representability; reject unsupported offsets clearly. Never apply JavaScript bitwise coercion to file sizes or offsets.
+Use a reproducible, pinned WASM toolchain. The selected implementation is freestanding C11 compiled with WASI SDK 24 / Clang 18.1.2, following the maintainer's preference for C. The module has no WASI/libc imports. Build instructions and the generated-artifact policy live in `wasm/fmap/BUILD.md`. File offsets use 64-bit integers independently of wasm32 pointers. At the JavaScript Blob boundary, convert only after checking exact safe-integer representability; reject unsupported offsets clearly. Never apply JavaScript bitwise coercion to file sizes or offsets.
+
+Current priorities: finish bounded scheduling, useful cancellation, and read-policy improvements; add format/fallback, packaged HTML, mobile-emulation, and performance coverage. Whole-application budget integration (M3) is deferred at the maintainer's request. Per-source request/output limits remain enforced while that larger allocator is pending. Physical-device validation remains a separate manual gate.
 
 ## Required contracts
 
