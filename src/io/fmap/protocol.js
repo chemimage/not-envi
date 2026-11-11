@@ -1,15 +1,29 @@
 /**
  * Validate exact file ranges and result sizes before worker admission.
  * Worker messages carry source generation, request identity, priority, and
- * scalar window/probe fields. Completion transfers an owned Float32 buffer;
+ * scalar window/probe fields. Completion transfers an owned numeric buffer;
  * cancellation callbacks and AbortSignal objects stay on the main thread.
  */
 export const FMAP_PROTOCOL_VERSION = 1;
 
-export function checkedResultBytes(width, height = 1) {
+export const FMAP_ENVI_TYPE_BYTES = Object.freeze({
+  1: 1,
+  2: 2,
+  3: 4,
+  4: 4,
+  5: 8,
+  12: 2,
+  13: 4,
+  14: 8,
+  15: 8
+});
+
+export function checkedResultBytes(width, height = 1, bytesPerValue = 4) {
   const w = assertSafeFileInteger(width, "result width");
   const h = assertSafeFileInteger(height, "result height");
-  const bytes = w * h * 4;
+  const elementBytes = assertSafeFileInteger(bytesPerValue, "result bytes per value");
+  if (!elementBytes) throw new RangeError("result bytes per value must be positive.");
+  const bytes = w * h * elementBytes;
   if (!Number.isSafeInteger(bytes)) throw new RangeError("fmap result exceeds the exact integer range.");
   return bytes;
 }
@@ -46,10 +60,12 @@ export function expectedEnviPayloadBytes(meta) {
   return checkedAdd(headerOffset, payload, "ENVI payload");
 }
 
-export function assertFmapBsqFloat32Meta(meta, fileSize) {
-  if (meta?.interleave !== "bsq" || Number(meta?.dataType) !== 4 || Number(meta?.dataTypeInfo?.bytes) !== 4) {
-    throw new Error("fmap currently supports BSQ Float32 ENVI data only.");
-  }
+export function assertFmapEnviMeta(meta, fileSize) {
+  const dataType = Number(meta?.dataType);
+  const expectedBytes = FMAP_ENVI_TYPE_BYTES[dataType];
+  const actualBytes = Number(meta?.dataTypeInfo?.bytes);
+  if (!expectedBytes || actualBytes !== expectedBytes) throw new Error(`Unsupported fmap ENVI data type: ${dataType}.`);
+  if (!["bsq", "bil", "bip"].includes(meta?.interleave)) throw new Error(`Unsupported fmap ENVI interleave: ${meta?.interleave}.`);
   const expected = expectedEnviPayloadBytes(meta);
   const actual = assertSafeFileInteger(fileSize, "file size");
   if (actual < expected) {
@@ -57,6 +73,10 @@ export function assertFmapBsqFloat32Meta(meta, fileSize) {
   }
   return expected;
 }
+
+// Kept for callers compiled against the initial slice; validation now covers
+// every ENVI type and interleave tracked by issue #23.
+export const assertFmapBsqFloat32Meta = assertFmapEnviMeta;
 
 export function normalizeFmapWindow(meta, x0, y0, outW, outH, step) {
   const samples = assertSafeFileInteger(meta?.samples, "ENVI samples");

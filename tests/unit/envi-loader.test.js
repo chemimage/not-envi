@@ -56,7 +56,7 @@ describe("envi loader", () => {
     expect(ds.dataName).toBe("demo.dat");
   });
 
-  test("selects fmap only for the opt-in BSQ Float32 slice", async () => {
+  test("selects fmap for every supported ENVI layout and numeric type when opted in", async () => {
     const hdr = new File([HDR_TEXT], "large.hdr", { type: "text/plain" });
     const data = new File([new Float32Array([1, 2, 3, 4])], "large.dat");
     const fmapSource = {
@@ -81,6 +81,11 @@ describe("envi loader", () => {
     expect(received.file).toBe(data);
     expect(received.options.pageSize).toBe(4096);
     expect(supportsFmap(received.meta)).toBe(true);
-    expect(supportsFmap({ ...received.meta, interleave: "bil" })).toBe(false);
+    for (const interleave of ["bsq", "bil", "bip"]) {
+      for (const dataType of [1, 2, 3, 4, 5, 12, 13, 14, 15]) {
+        expect(supportsFmap({ ...received.meta, interleave, dataType })).toBe(true);
+      }
+    }
+    expect(supportsFmap({ ...received.meta, dataType: 6 })).toBe(false);
   });
 });

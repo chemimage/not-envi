@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createFmapDataSource } from "../../src/io/fmap/client.js";
+import { createFmapDataSource, createFmapRangeDataSource } from "../../src/io/fmap/client.js";
 
 function meta() {
   return {
@@ -33,13 +33,23 @@ class FakeFmapWorker {
     const respond = () => {
       this.active -= 1;
       let result = {};
-      if (message.type === "open") result = { slotCount: 2, residentBytes: 8192 };
+      if (message.type === "open") {
+        this.meta = message.meta;
+        result = { slotCount: 2, residentBytes: 8192 };
+      }
       if (message.type === "window") {
-        const values = new Float32Array(message.requestedW * message.requestedH);
+        const Ctor = Number(this.meta?.dataType) === 4 ? Float32Array : Float64Array;
+        const values = new Ctor(message.requestedW * message.requestedH);
         values.set([1, 2, 3, 4].slice(0, values.length));
         result = { buffer: values.buffer, stats: { requestedBytes: 16, browserBytes: 8, copiedBytes: 16, usefulValues: 4 } };
       }
-      if (message.type === "spectrum") result = { buffer: new Float32Array([3, 7]).buffer };
+      if (message.type === "spectrum") {
+        const Ctor = Number(this.meta?.dataType) === 4 ? Float32Array : Float64Array;
+        result = { buffer: new Ctor([3, 7].slice(0, message.bandCount ?? 2)).buffer };
+      }
+      if (message.type === "range") {
+        result = { buffer: Uint8Array.from({ length: message.length }, (_v, i) => message.offset + i).buffer };
+      }
       this.onmessage?.({ data: { id: message.id, generation: message.generation, result } });
     };
     if (this.delay) setTimeout(respond, this.delay);
@@ -75,8 +85,16 @@ function createSource(worker, options = {}) {
   });
 }
 
+function createTypedSource(worker, typedMeta, options = {}) {
+  const bytes = typedMeta.samples * typedMeta.lines * typedMeta.bands * typedMeta.dataTypeInfo.bytes;
+  return createFmapDataSource(new Blob([new Uint8Array(bytes)]), typedMeta, {
+    wasmBytes: new Uint8Array([0, 97, 115, 109]), workerFactory: () => worker,
+    pageSize: 4096, poolBytes: 8192, ...options
+  });
+}
+
 describe("fmap client", () => {
-  test("bounds queued count and bytes, and rejects oversized output before dispatch", async () => {
+  test("bounds queued count and bytes before dispatch", async () => {
     const worker = new ManualWorker();
     const source = createSource(worker, { concurrency: 1, maxQueuedRequests: 1, maxQueuedBytes: 4104, maxResultBytes: 16 });
     await source.ready;
@@ -86,13 +104,58 @@ describe("fmap client", () => {
     expect(source.stats.queuedRequests).toBe(1);
     expect(source.stats.queuedBytes).toBe(4104);
     await expect(source.readSpectrumAtPixel(meta(), 1, 1)).rejects.toMatchObject({ name: "AbortError" });
-    await expect(source.readBandWindow(meta(), 0, 0, 0, 3, 3, 1)).rejects.toThrow(/request budget/);
+    await expect(source.readBandWindow(meta(), 0, 0, 0, 3, 3, 1)).rejects.toMatchObject({ name: "AbortError" });
     expect(worker.requests()).toHaveLength(1);
     worker.respond(worker.requests()[0]);
     await first;
     worker.respond(worker.requests()[1]);
     await second;
     expect(source.stats.inflightBytes).toBe(0);
+    source.close();
+  });
+
+  test("assembles oversized windows from bounded chunks and accounts logical output", async () => {
+    const worker = new FakeFmapWorker();
+    const source = createSource(worker, { maxResultBytes: 8, maxInflightBytes: 4104, maxLogicalResultBytes: 64 });
+    await source.ready;
+
+    const destination = new Float32Array(9);
+    const values = await source.readBandWindow(meta(), 0, 0, 0, 3, 3, 1, destination, { supersedeKey: "viewport" });
+
+    expect(values).toBeInstanceOf(Float32Array);
+    expect(Array.from(values)).toEqual([1, 2, 0, 1, 2, 0, 0, 0, 0]);
+    const chunks = worker.messages.filter((message) => message.type === "window");
+    expect(chunks).toHaveLength(2);
+    expect(chunks.every((message) => message.requestedW * message.requestedH * 4 <= 8)).toBe(true);
+    expect(source.stats.peakLogicalBytes).toBe(36);
+    expect(source.stats.logicalBytesReserved).toBe(0);
+    source.close();
+  });
+
+  test("rejects logical output above its assembly cap before worker dispatch", async () => {
+    const worker = new FakeFmapWorker();
+    const source = createSource(worker, { maxLogicalResultBytes: 8 });
+    await source.ready;
+
+    await expect(source.readBandWindow(meta(), 0, 0, 0, 2, 2, 1)).rejects.toThrow(/assembly budget/);
+    expect(worker.messages.filter((message) => message.type === "window")).toHaveLength(0);
+    expect(source.stats.logicalBytesReserved).toBe(0);
+    source.close();
+  });
+
+  test("neutral range source returns owned bytes and chunks at the result cap", async () => {
+    const worker = new FakeFmapWorker();
+    const source = createFmapRangeDataSource(new Blob([new Uint8Array(32)]), {
+      wasmBytes: new Uint8Array([0, 97, 115, 109]), workerFactory: () => worker,
+      pageSize: 4096, poolBytes: 8192, maxResultBytes: 5, maxInflightBytes: 4101
+    });
+    await source.ready;
+
+    const values = await source.readRange(3, 12);
+
+    expect(Array.from(values)).toEqual([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    expect(worker.messages.filter((message) => message.type === "range")).toHaveLength(3);
+    await expect(source.readRange(30, 3)).rejects.toThrow(/EOF/);
     source.close();
   });
 
@@ -139,6 +202,23 @@ describe("fmap client", () => {
     expect(worker.requests()[2]).toMatchObject({ x: 1, y: 0, priority: 1 });
     worker.respond(worker.requests()[2]);
     await background;
+    source.close();
+  });
+
+  test("a replacement reclaims the superseded logical-result reservation", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1, maxLogicalResultBytes: 8, maxLogicalBytes: 8 });
+    await source.ready;
+    const first = source.readSpectrumAtPixel(meta(), 0, 0, { supersedeKey: "probe" });
+    const latest = source.readSpectrumAtPixel(meta(), 1, 1, { supersedeKey: "probe" });
+
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    expect(source.stats.logicalBytesReserved).toBe(8);
+    await Promise.resolve();
+    expect(worker.requests()).toHaveLength(1);
+    worker.respond(worker.requests()[0]);
+    await latest;
+    expect(source.stats.logicalBytesReserved).toBe(0);
     source.close();
   });
 
@@ -232,6 +312,33 @@ describe("fmap client", () => {
     expect(worker.messages[0].file).toBeInstanceOf(Blob);
     expect(worker.messages[0].protocolVersion).toBe(1);
     expect(worker.messages[0].wasmBytes).toBeInstanceOf(ArrayBuffer);
+  });
+
+  test.each([
+    [1, 1, Uint8Array], [2, 2, Int16Array], [3, 4, Int32Array], [4, 4, Float32Array],
+    [5, 8, Float64Array], [12, 2, Uint16Array], [13, 4, Uint32Array],
+    [14, 8, Float64Array], [15, 8, Float64Array]
+  ])("data type %i returns the released backend window type", async (dataType, bytes, Expected) => {
+    const worker = new FakeFmapWorker();
+    const typedMeta = { ...meta(), dataType, dataTypeInfo: { bytes, ctor: [14, 15].includes(dataType) ? null : Expected }, interleave: "bip" };
+    const source = createTypedSource(worker, typedMeta);
+    await source.ready;
+
+    const values = await source.readBandWindow(typedMeta, 0, 0, 0, 2, 2, 1);
+
+    expect(values).toBeInstanceOf(Expected);
+    expect(Array.from(values)).toEqual([1, 2, 3, 4]);
+    expect(await source.readSpectrumAtPixel(typedMeta, 0, 0)).toBeInstanceOf(Float32Array);
+    source.close();
+  });
+
+  test("uses Float64 windows when metadata has no native constructor", async () => {
+    const worker = new FakeFmapWorker();
+    const typedMeta = { ...meta(), dataType: 1, dataTypeInfo: { bytes: 1 } };
+    const source = createTypedSource(worker, typedMeta);
+    await source.ready;
+    expect(await source.readBandWindow(typedMeta, 0, 0, 0, 2, 2, 1)).toBeInstanceOf(Float64Array);
+    source.close();
   });
 
   test("bounds aggregate worker requests by source concurrency", async () => {

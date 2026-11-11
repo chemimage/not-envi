@@ -3,23 +3,11 @@ import { normalizeMeta, parseEnviHeader } from "../core/envi-parser.js";
 import { APP_CONFIG } from "../app/config.js";
 import { EnviDataSource } from "./envi-data-source.js";
 import { createFmapDataSource } from "./fmap/index.js";
-import fmapWasmUrl from "../../wasm/fmap/pkg/fmap_core.wasm?url";
+import { loadFmapWasmBytes } from "./fmap/wasm.js";
 
 const COMMON_ENVI_DATA_EXTS = [
   ".dat", "", ".img", ".raw", ".bin", ".bip", ".bil", ".bsq"
 ];
-
-let fmapWasmBytesPromise = null;
-
-async function loadFmapWasmBytes() {
-  if (!fmapWasmBytesPromise) {
-    fmapWasmBytesPromise = fetch(fmapWasmUrl).then((response) => {
-      if (!response.ok) throw new Error(`Unable to load fmap WASM (${response.status}).`);
-      return response.arrayBuffer();
-    });
-  }
-  return fmapWasmBytesPromise;
-}
 
 export function fileExtLower(name) {
   const m = /\.[^.]+$/.exec(name);
@@ -120,6 +108,8 @@ export async function addDatasetFromFiles(hdrFile, dataFile, deps) {
       maxResultBytes: options.maxResultBytes,
       maxQueuedRequests: options.maxQueuedRequests,
       maxQueuedBytes: options.maxQueuedBytes,
+      maxLogicalResultBytes: options.maxLogicalResultBytes,
+      maxLogicalBytes: options.maxLogicalBytes,
       batchBytes: options.batchBytes,
       sparseReadThresholdBytes: options.sparseReadThresholdBytes,
       sparseReadMaxGapBytes: options.sparseReadMaxGapBytes,
@@ -150,9 +140,8 @@ export async function addDatasetFromFiles(hdrFile, dataFile, deps) {
 }
 
 export function supportsFmap(meta) {
-  return meta?.interleave === "bsq"
-    && Number(meta?.dataType) === 4
-    && Number(meta?.dataTypeInfo?.bytes) === 4;
+  return ["bsq", "bil", "bip"].includes(meta?.interleave)
+    && [1, 2, 3, 4, 5, 12, 13, 14, 15].includes(Number(meta?.dataType));
 }
 
 export function validateEnviPayload(meta, fileSize) {
