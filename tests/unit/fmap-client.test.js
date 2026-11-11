@@ -51,6 +51,19 @@ class FakeFmapWorker {
   }
 }
 
+class ManualWorker {
+  messages = [];
+  postMessage(message) {
+    this.messages.push(message);
+    if (message.type === "open") queueMicrotask(() => this.respond(message, { residentBytes: 8192 }));
+  }
+  respond(message, result = { buffer: new Float32Array([3, 7]).buffer }) {
+    this.onmessage({ data: { id: message.id, generation: message.generation, result } });
+  }
+  terminate() {}
+  requests() { return this.messages.filter((message) => message.type === "spectrum" || message.type === "window"); }
+}
+
 function createSource(worker, options = {}) {
   const file = new Blob([new Uint8Array(32)]);
   return createFmapDataSource(file, meta(), {
@@ -63,6 +76,129 @@ function createSource(worker, options = {}) {
 }
 
 describe("fmap client", () => {
+  test("bounds queued count and bytes, and rejects oversized output before dispatch", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1, maxQueuedRequests: 1, maxQueuedBytes: 4104, maxResultBytes: 16 });
+    await source.ready;
+    const first = source.readSpectrumAtPixel(meta(), 0, 0);
+    const second = source.readSpectrumAtPixel(meta(), 1, 0);
+    await Promise.resolve();
+    expect(source.stats.queuedRequests).toBe(1);
+    expect(source.stats.queuedBytes).toBe(4104);
+    await expect(source.readSpectrumAtPixel(meta(), 1, 1)).rejects.toMatchObject({ name: "AbortError" });
+    await expect(source.readBandWindow(meta(), 0, 0, 0, 3, 3, 1)).rejects.toThrow(/request budget/);
+    expect(worker.requests()).toHaveLength(1);
+    worker.respond(worker.requests()[0]);
+    await first;
+    worker.respond(worker.requests()[1]);
+    await second;
+    expect(source.stats.inflightBytes).toBe(0);
+    source.close();
+  });
+
+  test("keeps cancelled active bytes reserved until ACK and isolates queued aborts", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 2, maxInflightBytes: 4104 });
+    await source.ready;
+    const activeAbort = new AbortController();
+    const queuedAbort = new AbortController();
+    const active = source.readSpectrumAtPixel(meta(), 0, 0, { signal: activeAbort.signal });
+    const queued = source.readSpectrumAtPixel(meta(), 1, 0, { signal: queuedAbort.signal });
+    await Promise.resolve();
+    queuedAbort.abort();
+    await expect(queued).rejects.toMatchObject({ name: "AbortError" });
+    activeAbort.abort();
+    await expect(active).rejects.toMatchObject({ name: "AbortError" });
+    expect(source.stats.inflightBytes).toBe(4104);
+    const newest = source.readSpectrumAtPixel(meta(), 1, 1);
+    await Promise.resolve();
+    expect(worker.requests()).toHaveLength(1);
+    worker.respond(worker.requests()[0]);
+    expect(worker.requests()).toHaveLength(2);
+    worker.respond(worker.requests()[1]);
+    await newest;
+    expect(source.stats.peakInflightBytes).toBeLessThanOrEqual(4104);
+    source.close();
+  });
+
+  test("dispatches foreground ahead of background and supersedes only matching keys", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1 });
+    await source.ready;
+    const active = source.readSpectrumAtPixel(meta(), 0, 0);
+    const background = source.readSpectrumAtPixel(meta(), 1, 0, { priority: "background" });
+    const obsolete = source.readSpectrumAtPixel(meta(), 1, 1, { supersedeKey: "panel-1" });
+    await Promise.resolve();
+    const latest = source.readSpectrumAtPixel(meta(), 0, 1, { supersedeKey: "panel-1" });
+    await expect(obsolete).rejects.toMatchObject({ name: "AbortError" });
+    worker.respond(worker.requests()[0]);
+    await active;
+    expect(worker.requests()[1]).toMatchObject({ x: 0, y: 1, priority: 0 });
+    worker.respond(worker.requests()[1]);
+    await latest;
+    expect(worker.requests()[2]).toMatchObject({ x: 1, y: 0, priority: 1 });
+    worker.respond(worker.requests()[2]);
+    await background;
+    source.close();
+  });
+
+  test("foreground preempts background blocked by the byte limit and waits for its ACK", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 2, maxInflightBytes: 4104 });
+    await source.ready;
+    const background = source.readSpectrumAtPixel(meta(), 0, 0, { priority: "background" });
+    await Promise.resolve();
+    const foreground = source.readSpectrumAtPixel(meta(), 1, 0);
+    await expect(background).rejects.toMatchObject({ name: "AbortError" });
+    expect(worker.requests()).toHaveLength(1);
+    expect(worker.messages.at(-1).type).toBe("cancel");
+    expect(source.stats.inflightBytes).toBe(4104);
+    worker.respond(worker.requests()[0]);
+    expect(worker.requests()).toHaveLength(2);
+    worker.respond(worker.requests()[1]);
+    await foreground;
+    expect(source.stats.inflightBytes).toBe(0);
+    source.close();
+  });
+
+  test("diagnostic snapshots do not preempt an active background job", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1 });
+    await source.ready;
+    const background = source.readSpectrumAtPixel(meta(), 0, 0, { priority: "background" });
+    await Promise.resolve();
+    const snapshot = source.getStats();
+    await Promise.resolve();
+    expect(worker.messages.some((message) => message.type === "cancel")).toBe(false);
+    const statsMessage = worker.messages.find((message) => message.type === "stats");
+    worker.respond(statsMessage, { stats: { browserBytes: 4 } });
+    expect((await snapshot).activeRequests).toBe(1);
+    worker.respond(worker.requests()[0]);
+    await background;
+    source.close();
+  });
+
+  test("expires background work without leaking reservations and closes fatally crashed workers", async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new ManualWorker();
+      const source = createSource(worker, { concurrency: 1 });
+      await vi.advanceTimersByTimeAsync(0);
+      await source.ready;
+      const active = source.readSpectrumAtPixel(meta(), 0, 0);
+      const expired = source.readSpectrumAtPixel(meta(), 1, 0, { priority: "background", maxAgeMs: 5 });
+      const rejected = expect(expired).rejects.toMatchObject({ name: "AbortError" });
+      await vi.advanceTimersByTimeAsync(20);
+      await rejected;
+      expect(worker.requests()).toHaveLength(1);
+      const failed = expect(active).rejects.toThrow(/crashed/);
+      worker.onerror();
+      await failed;
+      expect(source.closed).toBe(true);
+      expect(source.stats.inflightBytes).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
   test("opens a user Blob and exposes BSQ Float32 window and spectrum operations", async () => {
     const worker = new FakeFmapWorker();
     const source = createSource(worker);

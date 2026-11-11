@@ -86,7 +86,13 @@ export const APP_CONFIG = Object.freeze({
     pageSizeBytes: 256 * KIB,
     poolBytes: 64 * MIB,
     maxInflightBytes: 8 * MIB,
-    maxInflightRequests: 2
+    maxInflightRequests: 2,
+    maxResultBytes: 4 * MIB,
+    maxQueuedRequests: 64,
+    maxQueuedBytes: 32 * MIB,
+    batchBytes: 64 * KIB,
+    sparseReadThresholdBytes: 32 * KIB,
+    sparseReadMaxGapBytes: 4096
   }),
   io: Object.freeze({
     parallelEnabledByDefault: true,
