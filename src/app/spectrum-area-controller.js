@@ -250,7 +250,7 @@ export function createSpectrumAreaController(deps) {
   async function openSpectrumAt(ds, ix, iy, opts = {}) {
     if (!ds) return;
     const selections = getHistogramSelectionItems(ds);
-    const useArea = !!(opts.forceArea || selections.length);
+    const useArea = !opts.forcePoint && !!(opts.forceArea || selections.length);
     if (!useArea) {
       nonAreaSeq += 1;
       await spectrum.openSpectrumAt(ds, ix, iy, opts);

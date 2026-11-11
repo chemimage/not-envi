@@ -215,7 +215,43 @@ describe("annotation-controller", () => {
     expect(render).not.toHaveBeenCalled();
 
     ann.finishDrawingAtPointer({ pointerId: 88, pointerType: "mouse", clientX: 30, clientY: 24 });
-    expect(render).toHaveBeenCalledTimes(1);
+    expect(render).not.toHaveBeenCalled();
+    expect(drawOverlays).toHaveBeenCalledTimes(4);
+  });
+
+  test("region moves paint overlays but defer analysis and raster work until release", () => {
+    const { state, ds, deps, render, drawOverlays } = makeBase();
+    state.spectrumPickEnabled = true;
+    ds.selectedAreaId = 1;
+    deps.getSpectrumOpenForDatasetId = () => true;
+    deps.isAnalysisHistogramOpen = () => true;
+    deps.openSpectrumAt = vi.fn(async () => {});
+    const ann = createAnnotationController(deps);
+    ann.beginAreaMoveAtPointer({ pointerId: 11, pointerType: "mouse", clientX: 4, clientY: 4 });
+    for (let i = 1; i <= 60; i++) {
+      ann.updateAreaMoveAtPointer({ pointerId: 11, pointerType: "mouse", clientX: 4 + i / 10, clientY: 4 });
+    }
+    expect(deps.updateSelectionHistogramForDataset).not.toHaveBeenCalled();
+    expect(deps.openSpectrumAt).not.toHaveBeenCalled();
+    expect(render).not.toHaveBeenCalled();
+    expect(drawOverlays).toHaveBeenCalled();
+    ann.finishAreaMoveAtPointer({ pointerId: 11, pointerType: "mouse", clientX: 11, clientY: 4 });
+    expect(deps.updateSelectionHistogramForDataset).toHaveBeenCalledTimes(1);
+    expect(ds.drawings[0].points[0]).toEqual({ x: 9, y: 2 });
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  test("cancelling a region move restores the geometry retained by its statistics", () => {
+    const { state, ds, deps } = makeBase();
+    state.spectrumPickEnabled = true;
+    ds.selectedAreaId = 1;
+    const original = structuredClone(ds.drawings[0].points);
+    const ann = createAnnotationController(deps);
+    ann.beginAreaMoveAtPointer({ pointerId: 22, pointerType: "mouse", clientX: 4, clientY: 4 });
+    ann.updateAreaMoveAtPointer({ pointerId: 22, pointerType: "mouse", clientX: 9, clientY: 8 });
+    ann.cancelAreaMove(22);
+    expect(ds.drawings[0].points).toEqual(original);
+    expect(deps.updateSelectionHistogramForDataset).not.toHaveBeenCalled();
   });
 
   test("rect tool allows dragging an area from interior", () => {

@@ -53,6 +53,24 @@ function makeDeps(overrides = {}) {
 }
 
 describe("render-main", () => {
+  test("defers queued renders during a window interaction and renders again afterward", async () => {
+    let dragging = true;
+    const onDeferredRender = vi.fn();
+    const deps = makeDeps({ shouldDeferRender: () => dragging, onDeferredRender });
+    const renderer = createRenderer(deps);
+    let frame;
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { frame = callback; return 1; });
+    renderer.scheduleRender();
+    await frame();
+    expect(onDeferredRender).toHaveBeenCalledOnce();
+    expect(deps.els.cpuCanvas.getContext().fillRect).not.toHaveBeenCalled();
+    dragging = false;
+    renderer.scheduleRender();
+    await frame();
+    expect(deps.els.cpuCanvas.getContext().fillRect).toHaveBeenCalledOnce();
+    raf.mockRestore();
+  });
+
   test("render clears canvases when there is no active dataset", async () => {
     const deps = makeDeps();
     const renderer = createRenderer(deps);

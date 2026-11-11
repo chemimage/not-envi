@@ -4,6 +4,8 @@ import { createCacheRuntime } from "./cache-runtime.js";
 import { collectElements } from "./elements.js";
 import { createUIPanels } from "./ui-panels.js";
 import { createViewControls } from "./view-controls.js";
+import { createAnalysisPanelLayout } from "./analysis-panel-layout.js";
+import { createSelectionActionsController } from "./selection-actions.js";
 import { wireApp } from "./wiring.js";
 import {
   computeDisplayPanelLayout,
@@ -113,7 +115,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   // ========= Elements =========
 
   const els = collectElements();
-  const floatingWindows = createFloatingWindowManager({ container: els.main });
+  const floatingWindows = createFloatingWindowManager({ container: els.main, onInteractionEnd: () => drawOverlays() });
   function resetFilePicker() {
     if (!els.filePicker) return;
     try { els.filePicker.value = ""; } catch (_err) {}
@@ -200,6 +202,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     histMode: 'whole',
     histViewDebounce: null,
     spectrumPickEnabled: false,
+    contextPoint: null,
     areaSelectionMode: "single",
     analysisHist: { open: false, hoverBin: -1, stats: null },
     draw: { tool: "none", color: "#ff2d2d", shapeMode: "rect", activePointerId: null, draft: null, rulerDrag: null, rulerMove: null, rulerProfileDrag: null, rulerProfileHover: null, rulerHover: null, areaMove: null, nextItemId: 1 },
@@ -439,6 +442,11 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   let datasetRuntime = null;
   let lineProfile = null;
+  let selectionActions = null;
+  let analysisPanelLayout = null;
+  const arrangeAnalysisPanels = () => analysisPanelLayout?.arrange() || false;
+  let overlayFrame = null;
+  let pendingRasterRender = false;
   function getActive(){ return datasetRuntime ? datasetRuntime.getActive() : null; }
   function setActivePanel(slot, opts){ return datasetRuntime ? datasetRuntime.setActivePanel(slot, opts) : false; }
   function cycleDatasetPanel(id, slot, opts){ return datasetRuntime ? datasetRuntime.cycleDatasetPanel(id, slot, opts) : false; }
@@ -460,7 +468,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     getActivePanel,
     screenToImage,
     render,
-    drawOverlays,
+    drawOverlays: scheduleOverlayDraw,
     onLineProfileRequested: (ds, item) => {
       if (item) lineProfile?.open({ dsId: ds.id, itemId: item.id, slot: getActivePanel()?.slot || 1 });
     },
@@ -518,7 +526,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   function eraseDrawingAtPointer(ev) { return annotation.eraseDrawingAtPointer(ev); }
   function clearAllAnnotations() { return annotation.clearAllAnnotations(); }
   function isDrawingPointer(pointerId) { return annotation.isDrawingPointer(pointerId); }
-  function beginDrawingAtPointer(ev) { return annotation.beginDrawingAtPointer(ev); }
+  function beginDrawingAtPointer(ev, opts) { return annotation.beginDrawingAtPointer(ev, opts); }
   function updateDrawingAtPointer(ev) { return annotation.updateDrawingAtPointer(ev); }
   function finishDrawingAtPointer(ev) { return annotation.finishDrawingAtPointer(ev); }
   function cancelDrawing() { return annotation.cancelDrawing(); }
@@ -632,6 +640,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   function applyHistogramDrag(ds, kind, clientX){ histogram.applyHistogramDrag(ds, kind, clientX); }
 
   const analysisHistogram = createAnalysisHistogramController({
+    arrangeAnalysisPanels,
     state,
     els,
     clamp,
@@ -1018,7 +1027,26 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     getDrawData,
   });
 
+  function scheduleOverlayDraw() {
+    if (floatingWindows.isInteracting()) return;
+    if (overlayFrame !== null) return;
+    overlayFrame = requestAnimationFrame(() => {
+      overlayFrame = null;
+      drawOverlays();
+    });
+  }
+
   function drawOverlays(){
+    if (floatingWindows.isInteracting()) return;
+    if (pendingRasterRender && !isAnnotationGestureActive()) {
+      pendingRasterRender = false;
+      scheduleRender();
+    }
+    if (overlayFrame !== null) {
+      cancelAnimationFrame(overlayFrame);
+      overlayFrame = null;
+    }
+    selectionActions?.refresh();
     lineProfile?.refresh();
     selectionSync?.ensureMarqueeTicker?.();
     syncLinkedAnnotationsFromActivePanel();
@@ -1073,7 +1101,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     getSpectrumOpenForDatasetId: (dsId) => !!(spectrum && spectrum.isOpenForDatasetId(dsId)),
     openSpectrumForEffectiveArea,
     refreshAreaSpectrumIfOpen,
-    drawOverlays,
+    drawOverlays: scheduleOverlayDraw,
     shouldAnimateMarquee: () => getVisibleDatasetPanels().length < 2
   });
 
@@ -1085,13 +1113,25 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   let renderer = null;
   function resizeCanvases(){ if (renderer) renderer.resizeCanvases(); }
   function schedulePreviewRender(){ if (renderer) renderer.schedulePreview(); }
-  function scheduleRender(){ if (renderer) renderer.scheduleRender(); }
+  function isAnnotationGestureActive() {
+    return !!(state.draw.draft || state.draw.areaMove || state.draw.rulerDrag
+      || state.draw.rulerMove || state.draw.rulerProfileDrag);
+  }
+  function scheduleRender(){
+    if (isAnnotationGestureActive() || floatingWindows.isInteracting()) {
+      pendingRasterRender = true;
+      return;
+    }
+    if (renderer) renderer.scheduleRender();
+  }
   async function render(opts = {}){
     syncLinkedAnnotationsFromActivePanel();
     if (renderer) await renderer.render(opts);
   }
 
   renderer = createRenderer({
+    shouldDeferRender: () => isAnnotationGestureActive() || floatingWindows.isInteracting(),
+    onDeferredRender: () => { pendingRasterRender = true; },
     state,
     els,
     now,
@@ -1177,6 +1217,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   // ========= Spectrum (z-profile) panel =========
 
   const spectrum = createSpectrumController({
+    arrangeAnalysisPanels,
     els,
     specCtx,
     getActive,
@@ -1224,7 +1265,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     element: els.analysisHistPanel,
     dragHandle: ".analysis-hist-head",
     minWidth: 300,
-    minHeight: 1,
+    minHeight: 220,
     resizeEdges: { left: true, right: true, top: false, bottom: false },
     onResize: () => analysisHistogram.redraw()
   });
@@ -1236,6 +1277,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     minHeight: 220,
     onResize: () => redrawSpectrum()
   });
+
+  analysisPanelLayout = createAnalysisPanelLayout({ els, getWindow: (id) => floatingWindows.get(id) });
 
   const areaReducer = createAreaReductionWorkerClient();
   function resetDatasetSession() {
@@ -1297,6 +1340,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 // ========= Mouse interaction =========
 
   const interactions = createInteractionController({
+    isUiInteractionActive: () => floatingWindows.isInteracting(),
     els,
     state,
     getActive,
@@ -1374,7 +1418,18 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   analysisHistogram.setOpen(!!state.analysisHist.open);
 
+  selectionActions = createSelectionActionsController({
+    state, els, getActive, getActivePanel, getPanelRectDevice,
+    getHistogramSelectionItems, screenToImage,
+    beginDrawingAtPointer, updateDrawingAtPointer, finishDrawingAtPointer, cancelDrawing,
+    beginAreaMoveAtPointer, updateAreaMoveAtPointer, finishAreaMoveAtPointer, cancelAreaMove,
+    selectAreaAtPointer, openSpectrumAt, openSpectrumForEffectiveArea,
+    closeSpectrum, setAnalysisHistogramOpen, closeAnalysisHistogramPanel,
+    drawOverlays, onPointerDown
+  });
+
   wireApp({
+    selectionActions,
     state,
     els,
     clamp,
