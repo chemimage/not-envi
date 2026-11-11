@@ -332,6 +332,7 @@ export function createPyramidController(deps) {
     onProgressiveRender,
     getActiveDatasetId,
     getVisibleDatasetIds,
+    getVisibleViews,
     getViewportSize,
     getIOConcurrency
   } = deps;
@@ -465,14 +466,14 @@ export function createPyramidController(deps) {
     request.controller.abort();
   }
 
-  function tileStillUseful(ds, request, bands, minLevel, eff, width, height) {
+  function tileStillUseful(ds, request, bands, minLevel, eff, width, height, view = ds.view) {
     const pyr = ds.pyramid;
     if (!bands.includes(request.band)) return false;
     // Complete overview tiles remain useful across pans. Visible overlapping
     // tiles keep their original request/lease rather than restarting the read.
     if (isPinnedOverviewLevel(pyr, request.level)) return true;
     if (request.level < minLevel) return false;
-    const bounds = viewTileBounds(ds, pyr, request.level, eff, width, height);
+    const bounds = viewTileBounds({ meta: ds.meta, view }, pyr, request.level, eff, width, height);
     return !!bounds && request.tx >= bounds.tx0 && request.tx <= bounds.tx1
       && request.ty >= bounds.ty0 && request.ty <= bounds.ty1;
   }
@@ -588,8 +589,12 @@ export function createPyramidController(deps) {
     if (pyr.focus?.key !== key) {
       pyr.focusEpoch += 1;
       clearQueuedFocusTasks(pyr);
+      const visibleViews = getVisibleViews?.(ds) || [];
       for (const request of pyr.requests.values()) {
-        if (!tileStillUseful(ds, request, bands, minLevel, eff, viewportW, viewportH)) cancelTileRequest(pyr, request);
+        const useful = tileStillUseful(ds, request, bands, minLevel, eff, viewportW, viewportH)
+          || visibleViews.some((visible) => tileStillUseful(ds, request, visible.bands,
+            pyramidLevelForEff(ds, visible.eff), visible.eff, visible.width, visible.height, visible.view));
+        if (!useful) cancelTileRequest(pyr, request);
       }
     }
     pyr.focus = {
