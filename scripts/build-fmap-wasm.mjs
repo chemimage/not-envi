@@ -3,11 +3,15 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { collectFmapSources } from "./fmap-sources.mjs";
 
 const pinnedClang = "18.1.2";
 const clang = process.env.FMAP_CLANG || "clang";
 const root = process.cwd();
-const source = path.join(root, "wasm", "fmap", "src", "fmap_core.c");
+const sourceDirectory = path.join(root, "wasm", "fmap", "src");
+const sourceManifest = collectFmapSources(sourceDirectory);
+const sources = sourceManifest.sources.filter((entry) => /\.c$/i.test(entry.path))
+  .map((entry) => path.join(sourceDirectory, entry.path));
 const buildDir = path.join(root, "wasm", "fmap", "build");
 const outputDir = path.join(root, "wasm", "fmap", "pkg");
 const output = path.join(outputDir, "fmap_core.wasm");
@@ -31,7 +35,8 @@ const command = [
   "-Wextra",
   "-Werror",
   "-nostdlib",
-  source,
+  "-x", "c",
+  ...sources,
   "-Wl,--no-entry",
   "-Wl,--export-memory",
   "-Wl,--initial-memory=131072",
@@ -54,7 +59,7 @@ const sha256 = createHash("sha256").update(bytes).digest("hex");
 const build = {
   module: "fmap_core",
   language: "C11",
-  sourceSha256: createHash("sha256").update(readFileSync(source, "utf8").replace(/\r\n/g, "\n")).digest("hex"),
+  ...sourceManifest,
   compiler: clangVersion.split(/\r?\n/, 1)[0],
   target: "wasm32-unknown-unknown",
   optimization: "-O2 -flto",

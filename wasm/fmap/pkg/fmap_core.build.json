@@ -1,7 +1,26 @@
 {
   "module": "fmap_core",
   "language": "C11",
-  "sourceSha256": "d1aa5fb2ad7cda08a346a047a4fa4cc053b69d473583603372272961ae3f7a21",
+  "sourceHashFormat": "fmap-source-set-v1",
+  "sources": [
+    {
+      "path": "fmap_core.c",
+      "sha256": "330e5242002e099b013c77f34ec77e0fd26f6f24628411413ba55953926fefed"
+    },
+    {
+      "path": "fmap_internal.h",
+      "sha256": "60c2dc98355ac1f08d99edbae5c3fbf8f4257c6ba90b2c28e8174f82a49251bc"
+    },
+    {
+      "path": "fmap_mappings.c",
+      "sha256": "e81561e64f71aa95081cf59a6196eeae081e28c73666d82c1c749c79505b987a"
+    },
+    {
+      "path": "fmap_memory.c",
+      "sha256": "935ccace2f0b618f2506affb1a7301194d23b60683303cbe85d2fb2c51890af8"
+    }
+  ],
+  "sourceSha256": "c5499a631649f3d91a3389e23ec7a74a73b04eadd96b2819cf8a285c4ec99a15",
   "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
   "target": "wasm32-unknown-unknown",
   "optimization": "-O2 -flto",
@@ -18,7 +37,11 @@
     "-Wextra",
     "-Werror",
     "-nostdlib",
+    "-x",
+    "c",
     "wasm\\fmap\\src\\fmap_core.c",
+    "wasm\\fmap\\src\\fmap_mappings.c",
+    "wasm\\fmap\\src\\fmap_memory.c",
     "-Wl,--no-entry",
     "-Wl,--export-memory",
     "-Wl,--initial-memory=131072",
@@ -27,8 +50,8 @@
     "-o",
     "wasm\\fmap\\pkg\\fmap_core.wasm"
   ],
-  "bytes": 21614,
-  "sha256": "296d1e6e52806b2354034f0e87d05c280564a41a51bf89a214565673b4bccc28",
+  "bytes": 21731,
+  "sha256": "b51480f9c5773c62e22b6e861cd0e5bdddc56ddd3ead901bfe24262880b98471",
   "exports": [
     "fmap_acquire_page",
     "fmap_commit_page",

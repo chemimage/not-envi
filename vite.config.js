@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
+import { verifyFmapArtifact } from "./scripts/fmap-sources.mjs";
 
 const packageJson = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8")
@@ -12,17 +12,7 @@ const fmapBuildUrl = new URL("./wasm/fmap/pkg/fmap_core.build.json", import.meta
 function verifiedFmapWasm() {
   const bytes = readFileSync(fmapWasmUrl);
   const build = JSON.parse(readFileSync(fmapBuildUrl, "utf8"));
-  const sha256 = createHash("sha256").update(bytes).digest("hex");
-  const source = readFileSync(new URL("./wasm/fmap/src/fmap_core.c", import.meta.url));
-  // Git checkouts may use LF or CRLF; source text is normalized for this check.
-  const sourceSha256 = createHash("sha256").update(source.toString("utf8").replace(/\r\n/g, "\n")).digest("hex");
-  if (sha256 !== build.sha256 || bytes.length !== build.bytes || sourceSha256 !== build.sourceSha256) {
-    throw new Error("The fmap source or WASM artifact does not match its build manifest. Run npm run build:fmap.");
-  }
-  if (!bytes.subarray(0, 4).equals(Buffer.from([0, 97, 115, 109]))) {
-    throw new Error("The committed fmap artifact is not WebAssembly.");
-  }
-  return bytes;
+  return verifyFmapArtifact(bytes, build, new URL("./wasm/fmap/src/", import.meta.url));
 }
 
 verifiedFmapWasm();

@@ -7,6 +7,14 @@ compatibility/Float64 numeric output buffer. The generic ABI decodes all nine
 supported ENVI scalar types in either byte order; browser code remains
 responsible for file range I/O.
 
+The C sources separate three responsibilities: `fmap_core.c` owns resident pages
+and numeric extraction, `fmap_mappings.c` owns the sparse mapping tree, handle
+index and gap summaries, and `fmap_memory.c` supplies shared memory helpers.
+`fmap_internal.h` declares their small internal interface; mutable state stays
+private to its owning module. Pool initialization establishes one layout and
+places mapping allocations after the pool, scratch and output regions. Cache
+reset preserves mappings; successful pool reinitialization resets them.
+
 ## Pinned build
 
 The build is pinned to WASI SDK 24.0 (Clang/LLVM 18.1.2). The core does not use
@@ -45,12 +53,17 @@ node scripts/test-fmap-core.mjs
 
 The `.wasm` file and build manifest are committed so the JavaScript build can
 remain offline and reproduce the single-file application. Do not hand-edit
-them. Regenerate both through the build script after changing `fmap_core.c`,
+them. Regenerate both through the build script after changing any C source or header,
 then review the recorded compiler, command, exports, size, and SHA-256.
-The manifest also hashes normalized C source text; Vite rejects a stale binary
-after a C source edit until the artifact is regenerated.
+The build discovers and compiles every `.c` file under `wasm/fmap/src`, including
+subdirectories. The manifest records every `.c` and `.h` path and its normalized
+LF source hash, plus a deterministic hash of that complete sorted source set.
+Build and Vite verification use the same discovery and hashing helper. Vite
+rejects a stale binary after a source/header edit, addition, removal or rename
+until the artifact is regenerated; CRLF versus LF checkouts hash identically.
 
 This core is single-threaded and does not require `SharedArrayBuffer` or
 cross-origin isolation. It grows linear memory once to establish the requested
-fixed pool. Reinitializing reuses the same heap base and does not accumulate
-resident pools; WASM memory itself cannot shrink.
+fixed pool, and can grow further for sparse mapping metadata. Reinitializing
+reuses the same heap base and does not accumulate resident pools; WASM memory
+itself cannot shrink.
