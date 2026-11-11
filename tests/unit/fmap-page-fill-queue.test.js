@@ -284,27 +284,130 @@ describe("FmapPageFillQueue", () => {
     h.queue.close();
   });
 
-  test("rejects waiter count and byte overflow before provider I/O", async () => {
-    const countLimited = await harness({ maxQueuedRequests: 1, maxQueuedBytes: PAGE_SIZE });
-    const retained = countLimited.queue.request({ pageIndex: 0, offset: 0, length: 8, generation: 1, requestId: 1 });
-    const retainedOutcome = settled(retained.promise);
-    expect(() => countLimited.queue.request({
-      pageIndex: 1, offset: 0, length: 8, generation: 1, requestId: 2
-    })).toThrow(/budget exceeded/i);
-    expect(countLimited.readFile).not.toHaveBeenCalled();
-    retained.cancel();
-    expect((await retainedOutcome).error).toMatchObject({ name: "AbortError" });
-    countLimited.queue.close();
+  test("parks excess faults and completes them within admitted count and byte limits", async () => {
+    const h = await harness({ slots: 1, concurrency: 2, maxQueuedRequests: 1, maxQueuedBytes: 12 });
+    const requests = Array.from({ length: 6 }, (_v, pageIndex) => h.queue.request({ pageIndex, offset: 0, length: 8 }));
+    expect(h.queue.getStats()).toMatchObject({ fillQueueRequests: 1, fillQueueBytes: 8, fillParkedRequests: 5 });
+    expect(h.readFile).not.toHaveBeenCalled();
+    expect(Number(h.core.fmap_pinned_bytes())).toBe(0);
+    await h.runTasks();
+    for (let index = 0; index < requests.length; index += 1) {
+      expect(h.reads).toHaveLength(index + 1);
+      await h.finishRead(h.reads[index]);
+      const lease = await requests[index].promise;
+      expect(h.leaseBytes(lease)).toEqual(Array.from(h.fileBytes.subarray(index * PAGE_SIZE, index * PAGE_SIZE + 8)));
+      lease.release();
+      await h.runTasks();
+    }
+    expect(h.queue.getStats()).toMatchObject({ fillQueueRequests: 0, fillQueueBytes: 0, fillParkedRequests: 0,
+      peakFillQueueRequests: 1, peakFillQueueBytes: 8, peakFillParkedRequests: 5 });
+    expect(Number(h.core.fmap_pinned_bytes())).toBe(0);
+    h.queue.close();
+  });
 
-    const byteLimited = await harness({ maxQueuedRequests: 4, maxQueuedBytes: 12 });
-    const bytes = byteLimited.queue.request({ pageIndex: 0, offset: 0, length: 8, generation: 1, requestId: 1 });
-    const bytesOutcome = settled(bytes.promise);
-    expect(() => byteLimited.queue.request({
-      pageIndex: 0, offset: 8, length: 5, generation: 1, requestId: 2
-    })).toThrow(/budget exceeded/i);
-    expect(byteLimited.readFile).not.toHaveBeenCalled();
-    bytes.cancel();
-    expect((await bytesOutcome).error).toMatchObject({ name: "AbortError" });
-    byteLimited.queue.close();
+  test("cancels parked faults before any read or resident reservation", async () => {
+    const h = await harness({ maxQueuedRequests: 1 });
+    const active = h.queue.request({ pageIndex: 0, offset: 0, length: 8 });
+    const parked = h.queue.request({ pageIndex: 1, offset: 0, length: 8 });
+    const outcome = settled(parked.promise);
+    parked.cancel();
+    expect((await outcome).error).toMatchObject({ name: "AbortError" });
+    expect(h.queue.getStats().fillParkedRequests).toBe(0);
+    await h.runTasks();
+    await h.finishRead();
+    (await active.promise).release();
+    await h.runTasks();
+    expect(h.reads).toHaveLength(1);
+    h.queue.close();
+  });
+
+  test("byte capacity parks a demand even when descriptor count has capacity", async () => {
+    const h = await harness({ maxQueuedRequests: 4, maxQueuedBytes: 12, concurrency: 1 });
+    const first = h.queue.request({ pageIndex: 0, offset: 0, length: 8 });
+    const second = h.queue.request({ pageIndex: 0, offset: 8, length: 5 });
+    expect(h.queue.getStats()).toMatchObject({ fillQueueRequests: 1, fillQueueBytes: 8, fillParkedRequests: 1 });
+    await h.runTasks();
+    expect(h.reads).toHaveLength(1);
+    await h.finishRead();
+    (await first.promise).release();
+    await h.runTasks();
+    expect(h.reads[1]).toMatchObject({ offset: 8, length: 5 });
+    await h.finishRead();
+    (await second.promise).release();
+    expect(h.queue.getStats().peakFillQueueBytes).toBeLessThanOrEqual(12);
+    h.queue.close();
+  });
+
+  test("foreground promotion preserves a same-page admitted demand for one merged read", async () => {
+    const h = await harness({ maxQueuedRequests: 2, concurrency: 1 });
+    const otherPage = h.queue.request({ pageIndex: 1, offset: 0, length: 16, priority: 1 });
+    const background = h.queue.request({ pageIndex: 0, offset: 0, length: 16, priority: 1 });
+    const foreground = h.queue.request({ pageIndex: 0, offset: 8, length: 8, priority: 0 });
+    await h.runTasks();
+    expect(h.reads[0]).toMatchObject({ offset: 0, length: 16 });
+    await h.finishRead();
+    for (const lease of await Promise.all([background.promise, foreground.promise])) lease.release();
+    await h.runTasks();
+    expect(h.reads[1]).toMatchObject({ offset: PAGE_SIZE, length: 16 });
+    await h.finishRead();
+    (await otherPage.promise).release();
+    expect(h.reads).toHaveLength(2);
+    h.queue.close();
+  });
+
+  test("clear and close reject parked faults and never revive them", async () => {
+    for (const operation of ["clear", "close"]) {
+      const h = await harness({ maxQueuedRequests: 1 });
+      const active = h.queue.request({ pageIndex: 0, offset: 0, length: 8 });
+      const parked = h.queue.request({ pageIndex: 1, offset: 0, length: 8 });
+      const outcomes = [settled(active.promise), settled(parked.promise)];
+      await h.runTasks();
+      if (operation === "clear") h.queue.clear(2);
+      else h.queue.close();
+      for (const outcome of outcomes) expect((await outcome).error).toMatchObject({ name: "AbortError" });
+      expect(h.queue.getStats()).toMatchObject({ fillQueueRequests: 0, fillParkedRequests: 0, fillActiveReads: 1 });
+      await h.finishRead();
+      expect(h.reads).toHaveLength(1);
+      expect(h.queue.getStats().fillActiveReads).toBe(0);
+      h.queue.close();
+    }
+  });
+
+  test("foreground parked work displaces unstarted background work without cancelling it", async () => {
+    const h = await harness({ concurrency: 1, maxQueuedRequests: 1, maxQueuedBytes: 16 });
+    const background = h.queue.request({ pageIndex: 1, offset: 0, length: 16, priority: 1 });
+    const foreground = h.queue.request({ pageIndex: 0, offset: 0, length: 16, priority: 0 });
+    await h.runTasks();
+    expect(h.reads[0]).toMatchObject({ offset: 0, length: 16 });
+    await h.finishRead();
+    (await foreground.promise).release();
+    await h.runTasks();
+    expect(h.reads[1]).toMatchObject({ offset: PAGE_SIZE, length: 16 });
+    await h.finishRead();
+    (await background.promise).release();
+    expect(h.queue.getStats().pageFillCancelledWaiters).toBe(0);
+    h.queue.close();
+  });
+
+  test("a parked overlapping demand reuses the completed fill without another read", async () => {
+    const h = await harness({ concurrency: 1, maxQueuedRequests: 1 });
+    const background = h.queue.request({ pageIndex: 0, offset: 0, length: 32, priority: 1 });
+    await h.runTasks();
+    const foreground = h.queue.request({ pageIndex: 0, offset: 8, length: 16, priority: 0 });
+    expect(h.queue.getStats().fillParkedRequests).toBe(1);
+    await h.finishRead();
+    const leases = await Promise.all([background.promise, foreground.promise]);
+    expect(h.reads).toHaveLength(1);
+    expect(h.queue.getStats().pageFillDeduplications).toBe(1);
+    for (const lease of leases) lease.release();
+    h.queue.close();
+  });
+
+  test("rejects a demand that cannot ever fit its admission byte limit", async () => {
+    const h = await harness({ maxQueuedBytes: 12 });
+    expect(() => h.queue.request({ pageIndex: 0, offset: 0, length: 13 })).toThrow(/admission byte limit/i);
+    expect(h.readFile).not.toHaveBeenCalled();
+    expect(h.queue.getStats()).toMatchObject({ fillQueueRequests: 0, fillParkedRequests: 0 });
+    h.queue.close();
   });
 });

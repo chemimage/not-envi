@@ -43,7 +43,9 @@ function missingRanges(wanted, valid) {
  * delivered lease pins its slot until released, independently of other waiters.
  * No WASM view survives an asynchronous read. clear() invalidates old leases and
  * resets C; old provider reads remain charged until settled and cannot commit.
- * Pending-waiter count/bytes and active read concurrency are separately bounded.
+ * Admitted-waiter count/bytes and active read concurrency are separately bounded.
+ * Excess faults remain lightweight parked descriptors: they own neither resident
+ * slots nor I/O/output buffers, and wait for capacity rather than failing.
  * This is a per-file working set, not a whole-tab budget. See issue #20.
  */
 export class FmapPageFillQueue {
@@ -60,6 +62,7 @@ export class FmapPageFillQueue {
     this.readFile = readFile;
     this.records = new Map();
     this.waiters = new Map();
+    this.parked = new Map();
     this.active = new Set();
     this.closed = false;
     this.scheduled = false;
@@ -68,7 +71,7 @@ export class FmapPageFillQueue {
     this.stats = { pageFillReads: 0, pageFillDeduplications: 0, pageFillCacheHits: 0,
       pageFillCacheMisses: 0, pageFillFailures: 0, pageFillCancelledWaiters: 0,
       pageFillFragmentFallbacks: 0, pageFillCopiedBytes: 0, peakFillActiveReads: 0, peakFillActiveBytes: 0,
-      peakFillQueueRequests: 0, peakFillQueueBytes: 0 };
+      peakFillQueueRequests: 0, peakFillQueueBytes: 0, peakFillParkedRequests: 0 };
     if (postTask) this.postTask = postTask;
     else {
       const channel = new MessageChannel();
@@ -124,38 +127,79 @@ export class FmapPageFillQueue {
       const lease = this.#lease(slot, { pageIndex, offset, length });
       return { lease, promise: Promise.resolve(lease), cancel: () => {} };
     }
-    const pendingBytes = [...this.waiters.values()].reduce((sum, waiter) => sum + waiter.length, 0);
-    if (this.waiters.size >= this.maxQueuedRequests || pendingBytes + length > this.maxQueuedBytes) {
-      throw aborted("fmap page-fill queue budget exceeded.");
-    }
+    if (length > this.maxQueuedBytes) throw new RangeError("fmap page demand exceeds the admission byte limit.");
     this.stats.pageFillCacheMisses += 1;
-    let record = this.records.get(pageIndex);
-    if (record) this.stats.pageFillDeduplications += 1;
-    else {
-      record = { pageIndex, generation, order: ++this.nextOrder, active: false, forceFull: false, waiters: new Map() };
-      this.records.set(pageIndex, record);
+    if (this.records.has(pageIndex) || [...this.parked.values()].some((waiter) => waiter.pageIndex === pageIndex)) {
+      this.stats.pageFillDeduplications += 1;
     }
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-    const waiter = { id: ++this.nextId, requestId, record, pageIndex, offset, length,
+    const waiter = { id: ++this.nextId, requestId, record: null, generation, pageIndex, offset, length,
       priority: priority === 1 ? 1 : 0, resolve, reject, settled: false };
-    record.waiters.set(waiter.id, waiter);
-    this.waiters.set(waiter.id, waiter);
+    this.parked.set(waiter.id, waiter);
+    this.#admit();
     this.#syncStats();
     this.#wake();
     return { promise, cancel: () => {
       if (waiter.settled) return;
       this.stats.pageFillCancelledWaiters += 1;
+      const record = waiter.record;
       this.#reject(waiter, aborted());
-      this.#cleanup(record);
+      if (record) this.#cleanup(record);
+      this.#admit();
       this.#wake();
     } };
   }
 
   #remove(waiter) {
     waiter.settled = true;
-    waiter.record.waiters.delete(waiter.id);
+    waiter.record?.waiters.delete(waiter.id);
     this.waiters.delete(waiter.id);
+    this.parked.delete(waiter.id);
+  }
+
+  #admit() {
+    if (this.closed) return;
+    let bytes = [...this.waiters.values()].reduce((sum, waiter) => sum + waiter.length, 0);
+    const candidates = [...this.parked.values()].sort((a, b) => a.priority - b.priority || a.id - b.id);
+    for (const waiter of candidates) {
+      // A foreground fault may displace speculative descriptors that have not
+      // begun I/O. Their promises remain pending and they can be admitted later.
+      while (this.waiters.size >= this.maxQueuedRequests || bytes + waiter.length > this.maxQueuedBytes) {
+        const eligible = [...this.waiters.values()].filter((entry) => entry.priority > waiter.priority && !entry.record.active);
+        const speculative = eligible.findLast((entry) => entry.pageIndex !== waiter.pageIndex) || eligible.at(-1);
+        if (!speculative) break;
+        const record = speculative.record;
+        record.waiters.delete(speculative.id);
+        this.waiters.delete(speculative.id);
+        bytes -= speculative.length;
+        speculative.record = null;
+        this.parked.set(speculative.id, speculative);
+        this.#cleanup(record);
+      }
+      if (this.waiters.size >= this.maxQueuedRequests || bytes + waiter.length > this.maxQueuedBytes) break;
+      const existing = Number(this.#call("fmap_find_page", BigInt(waiter.pageIndex)));
+      if (existing >= 0 && this.#valid(existing, waiter.offset, waiter.length)) {
+        const slot = Number(this.#call("fmap_acquire_page", BigInt(waiter.pageIndex)));
+        if (slot < 0) throw new Error(`Unable to pin resident fmap page (${slot}).`);
+        this.stats.pageFillCacheHits += 1;
+        const lease = this.#lease(slot, waiter);
+        this.#remove(waiter);
+        waiter.resolve(lease);
+        continue;
+      }
+      let record = this.records.get(waiter.pageIndex);
+      if (!record) {
+        record = { pageIndex: waiter.pageIndex, generation: waiter.generation, order: ++this.nextOrder,
+          active: false, forceFull: false, waiters: new Map() };
+        this.records.set(waiter.pageIndex, record);
+      }
+      waiter.record = record;
+      record.waiters.set(waiter.id, waiter);
+      this.waiters.set(waiter.id, waiter);
+      this.parked.delete(waiter.id);
+      bytes += waiter.length;
+    }
   }
 
   #reject(waiter, error) {
@@ -192,7 +236,7 @@ export class FmapPageFillQueue {
   }
 
   #wake() {
-    if (this.closed || this.scheduled || !this.waiters.size) return;
+    if (this.closed || this.scheduled || (!this.waiters.size && !this.parked.size)) return;
     this.scheduled = true;
     this.postTask(() => {
       this.scheduled = false;
@@ -202,8 +246,11 @@ export class FmapPageFillQueue {
 
   #pump() {
     if (this.closed) return;
+    this.#admit();
     const records = [...this.records.values()].filter((record) => !record.active && record.waiters.size);
-    const priority = (record) => Math.min(...[...record.waiters.values()].map((waiter) => waiter.priority));
+    const priority = (record) => Math.min(...[...record.waiters.values(),
+      ...[...this.parked.values()].filter((waiter) => waiter.pageIndex === record.pageIndex)
+    ].map((waiter) => waiter.priority));
     records.sort((a, b) => priority(a) - priority(b) || a.order - b.order);
     for (const record of records) {
       if (this.active.size >= this.concurrency) break;
@@ -301,6 +348,8 @@ export class FmapPageFillQueue {
     this.stats.fillActiveBytes = activeBytes;
     this.stats.fillQueueRequests = this.waiters.size;
     this.stats.fillQueueBytes = queuedBytes;
+    this.stats.fillParkedRequests = this.parked.size;
+    this.stats.peakFillParkedRequests = Math.max(this.stats.peakFillParkedRequests, this.parked.size);
   }
 
   getStats() { this.#syncStats(); return { ...this.stats }; }
@@ -314,7 +363,7 @@ export class FmapPageFillQueue {
     integer(generation, "generation");
     if (generation <= this.generation) throw new RangeError("fmap clear requires a newer generation.");
     this.generation = generation;
-    for (const waiter of [...this.waiters.values()]) this.#reject(waiter, aborted("fmap page generation cleared."));
+    for (const waiter of [...this.waiters.values(), ...this.parked.values()]) this.#reject(waiter, aborted("fmap page generation cleared."));
     this.records.clear();
     this.#call("fmap_reset");
     this.#syncStats();
