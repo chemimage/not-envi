@@ -99,14 +99,24 @@ function ensureRasterStats(ds) {
   return ds.stats.raster;
 }
 
-async function fillReadBuffer(ds, offset, scratch, length = scratch.byteLength) {
+function throwIfReadCancelled(options) {
+  if (!options?.signal?.aborted && !options?.cancelled?.()) return;
+  const error = new Error("Raster read aborted.");
+  error.name = "AbortError";
+  throw error;
+}
+
+async function fillReadBuffer(ds, offset, scratch, length = scratch.byteLength, options = null) {
+  throwIfReadCancelled(options);
   const want = Math.max(0, Math.min(scratch.byteLength, Number(length) || 0));
   if (want <= 0) return scratch.subarray(0, 0);
   if (typeof ds?.readInto === "function") {
-    const bytesRead = await ds.readInto(offset, scratch, 0, want);
+    const bytesRead = await ds.readInto(offset, scratch, 0, want, options || {});
+    throwIfReadCancelled(options);
     return scratch.subarray(0, Math.max(0, bytesRead | 0));
   }
-  const u8 = await ds.read(offset, want);
+  const u8 = await ds.read(offset, want, options || {});
+  throwIfReadCancelled(options);
   scratch.set(u8.subarray(0, want), 0);
   return scratch.subarray(0, u8.byteLength);
 }
@@ -186,7 +196,7 @@ async function readManagedWindow(meta, reader, band, x0, y0, outW, outH, step, o
   return result;
 }
 
-async function decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr) {
+async function decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr, options) {
   const bytes = meta.dataTypeInfo.bytes;
   const rowStrideBytes = (meta.interleave === "bil")
     ? (meta.bands * meta.samples * bytes)
@@ -204,7 +214,7 @@ async function decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOu
     const y = y0 + rowStart;
     const offset = pixelOffset(meta, x0, y, band);
     const scratch = workerState?.scratch || new Uint8Array(maxScratchBytes);
-    const u8 = await fillReadBuffer(ds, offset, scratch, slabBytes);
+    const u8 = await fillReadBuffer(ds, offset, scratch, slabBytes, options);
     for (let localRow = 0; localRow < rows; localRow += 1) {
       const rowByteOffset = localRow * rowStrideBytes;
       const rowBytes = u8.subarray(rowByteOffset, rowByteOffset + segmentBytes);
@@ -218,7 +228,7 @@ async function decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOu
   return true;
 }
 
-async function decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr) {
+async function decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr, options) {
   const bytes = meta.dataTypeInfo.bytes;
   const rowStrideBytes = meta.samples * meta.bands * bytes;
   const segmentBytes = safeOutW * meta.bands * bytes;
@@ -234,7 +244,7 @@ async function decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOut
     const y = y0 + rowStart;
     const offset = pixelOffset(meta, x0, y, 0);
     const scratch = workerState?.scratch || new Uint8Array(maxScratchBytes);
-    const u8 = await fillReadBuffer(ds, offset, scratch, slabBytes);
+    const u8 = await fillReadBuffer(ds, offset, scratch, slabBytes, options);
     for (let localRow = 0; localRow < rows; localRow += 1) {
       const rowByteOffset = localRow * rowStrideBytes;
       const rowBytes = u8.subarray(rowByteOffset, rowByteOffset + segmentBytes);
@@ -284,7 +294,7 @@ export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, c
   const safeOutW = Math.floor((maxX - x0 + (step - 1)) / step);
   const safeOutH = Math.floor((maxY - y0 + (step - 1)) / step);
   if (step === 1 && safeOutW > 0 && safeOutH > 1) {
-    const usedSlabs = await decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr);
+    const usedSlabs = await decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr, options);
     if (usedSlabs) {
       if (stats) {
         stats.slabWindowCalls += 1;
@@ -301,7 +311,7 @@ export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, c
     const y = y0 + sy * step;
     const rowOffset = pixelOffset(meta, x0, y, band);
     const scratch = workerState?.scratch || new Uint8Array(rowBytes);
-    const u8 = await fillReadBuffer(ds, rowOffset, scratch, rowBytes);
+    const u8 = await fillReadBuffer(ds, rowOffset, scratch, rowBytes, options);
     const seg = makeSegmentReader(meta, u8);
     const baseOut = sy * outW;
     for (let sx = 0; sx < safeOutW; sx += 1) {
@@ -355,7 +365,7 @@ export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step
   const safeOutW = Math.floor((maxX - x0 + (step - 1)) / step);
   const safeOutH = Math.floor((maxY - y0 + (step - 1)) / step);
   if (step === 1 && safeOutW > 0 && safeOutH > 1) {
-    const usedSlabs = await decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr);
+    const usedSlabs = await decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr, options);
     if (usedSlabs) {
       if (stats) {
         stats.slabWindowCalls += 1;
@@ -372,7 +382,7 @@ export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step
     const y = y0 + sy * step;
     const scratch = workerState?.scratch || new Uint8Array(rowBytes);
     const rowOffset = pixelOffset(meta, x0, y, 0);
-    const u8 = await fillReadBuffer(ds, rowOffset, scratch, rowBytes);
+    const u8 = await fillReadBuffer(ds, rowOffset, scratch, rowBytes, options);
     const seg = makeSegmentReader(meta, u8);
     const baseOut = sy * outW;
     for (let sx = 0; sx < safeOutW; sx += 1) {

@@ -10,6 +10,26 @@ test.each([readBandWindow, readBandWindowBIP])("%s checks a source output limit 
   expect(ds.readBandWindow).not.toHaveBeenCalled();
 });
 
+test.each([
+  [readBandWindow, "bsq", 1], [readBandWindow, "bil", 2],
+  [readBandWindowBIP, "bip", 1], [readBandWindowBIP, "bip", 2]
+])("%s forwards cancellation into %s reads with step %s", async (read, interleave, step) => {
+  const meta = { samples: 4, lines: 4, bands: 1, headerOffset: 0, interleave,
+    littleEndian: true, dataTypeInfo: { ctor: Uint8Array, bytes: 1, dv: "getUint8" } };
+  const controller = new AbortController();
+  const options = { signal: controller.signal };
+  const ds = {
+    readInto: vi.fn(async (_offset, out, _start, length, received) => {
+      expect(received).toBe(options);
+      controller.abort();
+      out.fill(17);
+      return length;
+    })
+  };
+  await expect(read(meta, ds, 0, 0, 0, 2, 2, step, 1, null, options)).rejects.toMatchObject({ name: "AbortError" });
+  expect(ds.readInto).toHaveBeenCalledOnce();
+});
+
 test.each([readBandWindow, readBandWindowBIP])("%s admits budgeted custom windows before output allocation", async (read) => {
   const allocate = vi.fn(function () { throw new Error("allocated before admission"); });
   const meta = { samples: 100000, lines: 100000, dataTypeInfo: { ctor: allocate } };

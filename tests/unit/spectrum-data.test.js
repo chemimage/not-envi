@@ -60,6 +60,29 @@ function makeDs(meta) {
 }
 
 describe("spectrum-data", () => {
+  test.each(["bsq", "bil", "bip"])("forwards AbortSignal into generic %s spectrum reads", async (interleave) => {
+    const ds = makeDs(makeMeta(interleave));
+    const originalRead = ds.ds.read;
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    ds.ds.read = vi.fn(async (offset, length, received) => {
+      expect(received).toBe(options);
+      controller.abort();
+      return originalRead(offset, length);
+    });
+    await expect(readSpectrumAtPixel(ds, 1, 1, 1, options)).rejects.toMatchObject({ name: "AbortError" });
+    expect(ds.ds.read).toHaveBeenCalledOnce();
+  });
+
+  test("rejects oversized generic spectra before allocating output or reading bytes", async () => {
+    const ds = makeDs(makeMeta("bsq"));
+    ds.meta.bands = 1000000000;
+    ds.ds.maxWindowResultBytes = 1024;
+    ds.ds.read = vi.fn();
+    await expect(readSpectrumAtPixel(ds, 1, 1)).rejects.toThrow("output limit");
+    expect(ds.ds.read).not.toHaveBeenCalled();
+  });
+
   test("probeValueAtBand reads single value", async () => {
     const ds = makeDs(makeMeta("bsq"));
     const v = await probeValueAtBand(ds, 2, 1, 1);
