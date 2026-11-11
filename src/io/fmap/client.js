@@ -1,6 +1,6 @@
 import fmapWorkerSource from "./fmap.worker.js?raw";
 import {
-  FMAP_PROTOCOL_VERSION, assertFmapBsqFloat32Meta, checkedResultBytes,
+  FMAP_PROTOCOL_VERSION, assertFmapEnviMeta, checkedAdd, checkedResultBytes,
   createAbortError, normalizeFmapWindow
 } from "./protocol.js";
 
@@ -25,37 +25,55 @@ function cloneWasmBytes(bytes) {
   throw new Error("fmap WASM artifact is unavailable.");
 }
 
+function windowCtor(meta) {
+  if (typeof meta?.dataTypeInfo?.ctor === "function") return meta.dataTypeInfo.ctor;
+  return Float64Array;
+}
+
+function transportCtor(meta) {
+  return Number(meta?.dataType) === 4 ? Float32Array : Float64Array;
+}
+
+function transportBytes(meta) {
+  return transportCtor(meta).BYTES_PER_ELEMENT;
+}
+
 /**
- * A per-open BSQ Float32 source backed by a dedicated C/WASM worker.
+ * A per-open ENVI source backed by a dedicated C/WASM worker.
  *
  * The selected File remains the backing store. The worker owns resident pages;
- * callers receive owned Float32 results, never views into evictable WASM pages.
+ * callers receive owned results using the released backend's numeric types,
+ * never views into evictable WASM pages. Logical results above the worker cap
+ * are assembled from bounded chunks with cancellation checked between chunks.
  * Queue and active-byte limits are per source, not a whole-application budget.
- * Results above maxResultBytes must be split by the caller.
- *
  * Window/spectrum options accept signal, cancelled(), priority, supersedeKey,
  * and maxAgeMs. Cancellation rejects immediately, but an active reservation is
  * released only after a worker reply. clear() advances the source generation;
  * close() terminates the worker. setMaxBytes() records a requested budget;
  * shrinking allocated WASM memory requires worker recreation.
  *
- * Status and follow-up work: https://github.com/chemimage/Hyve/issues/20
+ * Status and follow-up work: https://github.com/chemimage/Hyve/issues/23
  */
 export class FmapDataSource {
   constructor(file, meta, options = {}) {
     if (!(file instanceof Blob)) throw new TypeError("fmap requires a user-selected File or Blob.");
-    assertFmapBsqFloat32Meta(meta, file.size);
+    const mode = options.mode === "range" ? "range" : "envi";
+    if (mode === "envi") assertFmapEnviMeta(meta, file.size);
     this.pageSize = limit(options.pageSize, 256 * 1024, 4096);
     this.maxBytes = limit(options.poolBytes, 64 * 1024 * 1024, this.pageSize);
     this.maxResultBytes = limit(options.maxResultBytes, 4 * 1024 * 1024);
     this.maxInflightBytes = limit(options.maxInflightBytes, 8 * 1024 * 1024, this.pageSize + 4);
     this.maxQueuedBytes = limit(options.maxQueuedBytes, 32 * 1024 * 1024);
     this.maxQueuedRequests = limit(options.maxQueuedRequests, 64);
+    this.maxLogicalResultBytes = limit(options.maxLogicalResultBytes, 128 * 1024 * 1024);
+    this.maxLogicalBytes = limit(options.maxLogicalBytes, this.maxLogicalResultBytes);
+    this.logicalBytesReserved = 0;
     this.batchBytes = Math.min(this.pageSize, limit(options.batchBytes, 64 * 1024));
     this.sparseReadThresholdBytes = limit(options.sparseReadThresholdBytes, Math.min(32 * 1024, this.pageSize / 8), 0);
     this.sparseReadMaxGapBytes = limit(options.sparseReadMaxGapBytes, 4096, 0);
     this.file = file;
     this.meta = meta;
+    this.mode = mode;
     this.size = file.size;
     this.ownerId = `fmap:${nextSourceId++}`;
     this.chunkSize = this.pageSize;
@@ -67,6 +85,8 @@ export class FmapDataSource {
     this.worker = null;
     this.workerUrl = "";
     this.requestId = 0;
+    this.logicalRequestId = 0;
+    this.latestSupersedeGroups = new Map();
     this.active = 0;
     this.queue = [];
     this.pending = new Map();
@@ -75,6 +95,7 @@ export class FmapDataSource {
       cacheHits: 0, cacheMisses: 0, cacheEvictions: 0, sparseReads: 0,
       cancelledRequests: 0, rejectedRequests: 0, staleResults: 0,
       queuedRequests: 0, activeRequests: 0, queuedBytes: 0, inflightBytes: 0,
+      logicalBytesReserved: 0, peakLogicalBytes: 0,
       peakQueuedBytes: 0, peakInflightBytes: 0, peakQueuedRequests: 0, queueWaitMs: 0 };
     this.workerFactory = options.workerFactory;
     const wasmBytes = cloneWasmBytes(options.wasmBytes);
@@ -96,8 +117,11 @@ export class FmapDataSource {
     this.worker.onerror = () => this.#fatal(new Error("fmap worker crashed."));
     const opened = await this.#enqueue("open", {
       protocolVersion: FMAP_PROTOCOL_VERSION, file: this.file,
-      meta: { samples: this.meta.samples, lines: this.meta.lines, bands: this.meta.bands,
-        headerOffset: this.meta.headerOffset, littleEndian: this.meta.littleEndian },
+      mode: this.mode,
+      meta: this.meta ? { samples: this.meta.samples, lines: this.meta.lines, bands: this.meta.bands,
+        headerOffset: this.meta.headerOffset, interleave: this.meta.interleave,
+        dataType: this.meta.dataType, bytesPerValue: this.meta.dataTypeInfo.bytes,
+        littleEndian: this.meta.littleEndian } : null,
       pageSize: this.pageSize, poolBytes: this.maxBytes, maxResultBytes: this.maxResultBytes,
       batchBytes: this.batchBytes, sparseReadThresholdBytes: this.sparseReadThresholdBytes,
       sparseReadMaxGapBytes: this.sparseReadMaxGapBytes, wasmBytes
@@ -176,10 +200,36 @@ export class FmapDataSource {
     }, 16);
   }
 
+  #beginLogicalRequest(options = {}) {
+    const logical = { ...(options || {}), groupId: ++this.logicalRequestId };
+    if (logical.supersedeKey != null) {
+      this.latestSupersedeGroups.set(logical.supersedeKey, logical.groupId);
+      for (const request of [...this.queue, ...this.pending.values()]) {
+        if (request.supersedeKey === logical.supersedeKey && request.groupId !== logical.groupId) this.#cancel(request);
+      }
+      this.#pump();
+    }
+    return logical;
+  }
+
+  #requireLogicalCurrent(options) {
+    if (options.signal?.aborted || options.cancelled?.()) throw createAbortError();
+    if (options.supersedeKey != null
+      && this.latestSupersedeGroups.get(options.supersedeKey) !== options.groupId) {
+      this.stats.cancelledRequests += 1;
+      throw createAbortError("fmap request was superseded.");
+    }
+  }
+
   #enqueue(type, fields, outputBytes, options = {}, transfer = []) {
     options ||= {};
     if (this.closed) return Promise.reject(new Error("fmap source is closed."));
     if (options.signal?.aborted || options.cancelled?.()) return Promise.reject(createAbortError());
+    if (options.supersedeKey != null
+      && this.latestSupersedeGroups.get(options.supersedeKey) !== options.groupId) {
+      this.stats.cancelledRequests += 1;
+      return Promise.reject(createAbortError("fmap request was superseded."));
+    }
     const bytes = type === "open" || type === "stats" ? 0 : outputBytes + this.pageSize;
     if (outputBytes > this.maxResultBytes || bytes > this.maxInflightBytes) {
       this.stats.rejectedRequests += 1;
@@ -192,7 +242,7 @@ export class FmapDataSource {
     }
     if (options.supersedeKey != null) {
       for (const request of [...this.queue, ...this.pending.values()]) {
-        if (request.supersedeKey === options.supersedeKey) this.#cancel(request);
+        if (request.supersedeKey === options.supersedeKey && request.groupId !== options.groupId) this.#cancel(request);
       }
     }
     if (options.priority !== "background") {
@@ -211,7 +261,7 @@ export class FmapDataSource {
         bytes, resolve, reject, priority: options.priority === "background" ? 1 : 0,
         maxAgeMs: options.maxAgeMs ?? (options.priority === "background" ? 1000 : Infinity),
         createdAt: now(), supersedeKey: options.supersedeKey, signal: options.signal,
-        cancelledCheck: options.cancelled, cancelled: false, settled: false };
+        groupId: options.groupId, cancelledCheck: options.cancelled, cancelled: false, settled: false };
       request.onAbort = () => { this.#cancel(request); this.#pump(); };
       request.signal?.addEventListener("abort", request.onAbort, { once: true });
       this.queue.push(request);
@@ -276,20 +326,127 @@ export class FmapDataSource {
     this.size = 0;
   }
 
+  #maxChunkValues(bytesPerValue) {
+    const reservationBytes = Math.min(this.maxInflightBytes, this.maxQueuedBytes) - this.pageSize;
+    const chunkBytes = Math.min(this.maxResultBytes, reservationBytes);
+    const values = Math.floor(chunkBytes / bytesPerValue);
+    if (values < 1) throw new RangeError("fmap request limits cannot admit one result value.");
+    return values;
+  }
+
+  #reserveLogical(bytes) {
+    if (bytes > this.maxLogicalResultBytes || this.logicalBytesReserved + bytes > this.maxLogicalBytes) {
+      this.stats.rejectedRequests += 1;
+      throw new RangeError("fmap logical result exceeds its bounded assembly budget.");
+    }
+    this.logicalBytesReserved += bytes;
+    this.stats.logicalBytesReserved = this.logicalBytesReserved;
+    this.stats.peakLogicalBytes = Math.max(this.stats.peakLogicalBytes, this.logicalBytesReserved);
+  }
+
+  #releaseLogical(bytes) {
+    this.logicalBytesReserved = Math.max(0, this.logicalBytesReserved - bytes);
+    this.stats.logicalBytesReserved = this.logicalBytesReserved;
+  }
+
   async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null, options = {}) {
     await this.ready;
     const window = normalizeFmapWindow(meta, x0, y0, outW, outH, step);
-    const result = await this.#enqueue("window", { band, ...window }, checkedResultBytes(window.requestedW, window.requestedH), options);
-    const values = new Float32Array(result.buffer);
-    if (out && out.length >= values.length) { out.set(values); return out; }
-    return values;
+    const Ctor = windowCtor(meta);
+    const totalValues = window.requestedW * window.requestedH;
+    const outputElementBytes = out && out.length >= totalValues && Number(out.BYTES_PER_ELEMENT)
+      ? Number(out.BYTES_PER_ELEMENT) : Ctor.BYTES_PER_ELEMENT;
+    const logicalBytes = checkedResultBytes(window.requestedW, window.requestedH, outputElementBytes);
+    const logicalOptions = this.#beginLogicalRequest(options);
+    if (logicalOptions.supersedeKey != null) await Promise.resolve();
+    this.#requireLogicalCurrent(logicalOptions);
+    this.#reserveLogical(logicalBytes);
+    try {
+      const values = out && out.length >= totalValues ? out : new Ctor(totalValues);
+      if (!window.outW || !window.outH) return values;
+
+      const bytesPerTransportValue = transportBytes(meta);
+      const maxValues = this.#maxChunkValues(bytesPerTransportValue);
+      if (window.outW <= maxValues) {
+        const rowsPerChunk = Math.max(1, Math.floor(maxValues / window.outW));
+        for (let row = 0; row < window.outH; row += rowsPerChunk) {
+          const height = Math.min(rowsPerChunk, window.outH - row);
+          const result = await this.#enqueue("window", {
+            band, x0: window.x0, y0: window.y0 + (row * window.step), outW: window.outW,
+            outH: height, requestedW: window.outW, requestedH: height, step: window.step
+          }, checkedResultBytes(window.outW, height, bytesPerTransportValue), logicalOptions);
+          const chunk = new (transportCtor(meta))(result.buffer);
+          for (let chunkRow = 0; chunkRow < height; chunkRow += 1) {
+            const srcStart = chunkRow * window.outW;
+            const dstStart = (row + chunkRow) * window.requestedW;
+            values.set(chunk.subarray(srcStart, srcStart + window.outW), dstStart);
+          }
+        }
+      } else {
+        for (let row = 0; row < window.outH; row += 1) {
+          for (let col = 0; col < window.outW; col += maxValues) {
+            const width = Math.min(maxValues, window.outW - col);
+            const result = await this.#enqueue("window", {
+              band, x0: window.x0 + (col * window.step), y0: window.y0 + (row * window.step),
+              outW: width, outH: 1, requestedW: width, requestedH: 1, step: window.step
+            }, checkedResultBytes(width, 1, bytesPerTransportValue), logicalOptions);
+            values.set(new (transportCtor(meta))(result.buffer), (row * window.requestedW) + col);
+          }
+        }
+      }
+      return values;
+    } finally {
+      this.#releaseLogical(logicalBytes);
+    }
   }
 
   async readSpectrumAtPixel(meta, x, y, options = {}, extraOptions = null) {
     await this.ready;
     if (typeof options !== "object" || !options) options = extraOptions || {};
-    const result = await this.#enqueue("spectrum", { x, y }, checkedResultBytes(meta.bands), options);
-    return new Float32Array(result.buffer);
+    const logicalBytes = checkedResultBytes(meta.bands, 1, Float32Array.BYTES_PER_ELEMENT);
+    const logicalOptions = this.#beginLogicalRequest(options);
+    if (logicalOptions.supersedeKey != null) await Promise.resolve();
+    this.#requireLogicalCurrent(logicalOptions);
+    this.#reserveLogical(logicalBytes);
+    try {
+      const values = new Float32Array(meta.bands);
+      const bytesPerTransportValue = transportBytes(meta);
+      const maxValues = this.#maxChunkValues(bytesPerTransportValue);
+      for (let bandStart = 0; bandStart < meta.bands; bandStart += maxValues) {
+        const bandCount = Math.min(maxValues, meta.bands - bandStart);
+        const result = await this.#enqueue("spectrum", { x, y, bandStart, bandCount },
+          checkedResultBytes(bandCount, 1, bytesPerTransportValue), logicalOptions);
+        values.set(new (transportCtor(meta))(result.buffer), bandStart);
+      }
+      return values;
+    } finally {
+      this.#releaseLogical(logicalBytes);
+    }
+  }
+
+  async readRange(offset, length, out = null, options = {}) {
+    await this.ready;
+    const start = Number(offset);
+    const count = Number(length);
+    const end = checkedAdd(start, count, "fmap raw range");
+    if (end > this.size) throw new RangeError(`fmap raw range exceeds EOF (${end} > ${this.size}).`);
+    const logicalOptions = this.#beginLogicalRequest(options);
+    if (logicalOptions.supersedeKey != null) await Promise.resolve();
+    this.#requireLogicalCurrent(logicalOptions);
+    this.#reserveLogical(count);
+    try {
+      const values = out && out.length >= count ? out : new Uint8Array(count);
+      const maxValues = this.#maxChunkValues(1);
+      for (let written = 0; written < count; written += maxValues) {
+        const chunkLength = Math.min(maxValues, count - written);
+        const result = await this.#enqueue("range", { offset: start + written, length: chunkLength },
+          chunkLength, logicalOptions);
+        values.set(new Uint8Array(result.buffer), written);
+      }
+      return values;
+    } finally {
+      this.#releaseLogical(count);
+    }
   }
 
   async getStats() {
@@ -300,9 +457,12 @@ export class FmapDataSource {
 
   estimateReadWork(meta, _band, x0, y0, outW, outH, step) {
     const window = normalizeFmapWindow(meta, x0, y0, outW, outH, step);
-    const rowBytes = window.outW ? (((window.outW - 1) * window.step) + 1) * 4 : 0;
+    const bytes = Number(meta?.dataTypeInfo?.bytes) || 1;
+    const pixelStride = meta?.interleave === "bip" ? bytes * meta.bands : bytes;
+    const rowBytes = window.outW ? (((window.outW - 1) * window.step * pixelStride) + bytes) : 0;
+    const usefulBytes = window.outW * window.outH * bytes;
     return { estimatedBytes: rowBytes * window.outH, spanReads: window.outH,
-      sparseRaw: window.step > 1, previewFactor: 1 };
+      sparseRaw: rowBytes * window.outH > usefulBytes * 4, previewFactor: 1 };
   }
 
   setConcurrency(value) { this.concurrency = limit(value, 1); this.#pump(); }
@@ -312,6 +472,7 @@ export class FmapDataSource {
   clear() {
     if (this.closed) return;
     this.generation += 1;
+    this.latestSupersedeGroups.clear();
     for (const request of [...this.queue, ...this.pending.values()]) this.#cancel(request, "fmap cache cleared.");
     this.worker.postMessage({ id: ++this.requestId, type: "clear", generation: this.generation });
     this.#updateStats();
@@ -325,3 +486,14 @@ export class FmapDataSource {
 }
 
 export function createFmapDataSource(file, meta, options = {}) { return new FmapDataSource(file, meta, options); }
+
+/** Neutral bounded range source for format decoders such as TIFF. */
+export class FmapRangeDataSource extends FmapDataSource {
+  constructor(file, options = {}) {
+    super(file, null, { ...options, mode: "range" });
+  }
+}
+
+export function createFmapRangeDataSource(file, options = {}) {
+  return new FmapRangeDataSource(file, options);
+}

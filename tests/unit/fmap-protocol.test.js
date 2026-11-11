@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  assertFmapEnviMeta,
   assertFmapBsqFloat32Meta,
   assertSafeFileInteger,
   checkedAdd,
@@ -30,12 +31,20 @@ describe("fmap protocol", () => {
     expect(() => assertSafeFileInteger(1.5)).toThrow(/safe integer/);
   });
 
-  test("validates BSQ Float32 payload length without allocating it", () => {
+  test("validates every supported ENVI layout and numeric type without allocating payloads", () => {
     const m = meta();
     expect(expectedEnviPayloadBytes(m)).toBe(112);
     expect(assertFmapBsqFloat32Meta(m, 112)).toBe(112);
     expect(() => assertFmapBsqFloat32Meta(m, 111)).toThrow(/Truncated ENVI data/);
-    expect(() => assertFmapBsqFloat32Meta(meta({ interleave: "bip" }), 112)).toThrow(/BSQ Float32/);
+    const types = [[1, 1], [2, 2], [3, 4], [4, 4], [5, 8], [12, 2], [13, 4], [14, 8], [15, 8]];
+    for (const interleave of ["bsq", "bil", "bip"]) {
+      for (const [dataType, bytes] of types) {
+        const candidate = meta({ interleave, dataType, dataTypeInfo: { bytes } });
+        expect(assertFmapEnviMeta(candidate, expectedEnviPayloadBytes(candidate))).toBe(expectedEnviPayloadBytes(candidate));
+      }
+    }
+    expect(() => assertFmapEnviMeta(meta({ dataType: 6 }), 112)).toThrow(/data type/);
+    expect(() => assertFmapEnviMeta(meta({ interleave: "bad" }), 112)).toThrow(/interleave/);
   });
 
   test("normalizes a strided window at the dataset boundary", () => {
