@@ -7,13 +7,16 @@ compatibility/Float64 numeric output buffer. The generic ABI decodes all nine
 supported ENVI scalar types in either byte order; browser code remains
 responsible for file range I/O.
 
-The C sources separate three responsibilities: `fmap_core.c` owns resident pages
-and numeric extraction, `fmap_mappings.c` owns the sparse mapping tree, handle
-index and gap summaries, and `fmap_memory.c` supplies shared memory helpers.
+`fmap_core.c` owns resident pages and numeric extraction; `fmap_page_index.c`
+provides the pool-bounded page-ID lookup. `fmap_mappings.c` owns the sparse
+mapping tree, handle index and gap summaries. `fmap_hash.c` shares the documented
+ID mixer, and `fmap_memory.c` supplies shared memory helpers.
 `fmap_internal.h` declares their small internal interface; mutable state stays
 private to its owning module. Pool initialization establishes one layout and
 places mapping allocations after the pool, scratch and output regions. Cache
 reset preserves mappings; successful pool reinitialization resets them.
+Page lookup uses a fixed hash table sized from resident slots, while eviction
+victim selection retains its separate linear LRU scan.
 
 ## Pinned build
 

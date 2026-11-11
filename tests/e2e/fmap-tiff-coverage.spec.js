@@ -8,7 +8,7 @@ function align2(value) {
   return (value + 1) & ~1;
 }
 
-function classicTiff(pages, { minDataOffset = 0 } = {}) {
+function classicTiff(pages, { minDataOffset = 0, firstIfd = 0 } = {}) {
   const normalized = pages.map((page) => ({
     ...page,
     bits: page.bits || Array.from({ length: page.samplesPerPixel || 1 }, () => 8),
@@ -95,7 +95,7 @@ function classicTiff(pages, { minDataOffset = 0 } = {}) {
   bytes[0] = 0x49;
   bytes[1] = 0x49;
   view.setUint16(2, 42, true);
-  view.setUint32(4, ifdOffsets[0], true);
+  view.setUint32(4, ifdOffsets[firstIfd], true);
 
   const writeValues = (offset, type, values) => {
     for (let index = 0; index < values.length; index += 1) {
@@ -165,6 +165,124 @@ function floatingPointPredictor32(values, width) {
 }
 
 test.describe("fmap TIFF advanced browser coverage", () => {
+  for (const layout of ["main-chain", "overview-first-main-chain", "nested-subifds", "subifd-next-chain"]) {
+    test(`indexes ${layout} pyramid metadata before reading pixels and preserves linear-base overviews`, async ({ page }) => {
+      await page.goto("/?fmap=1");
+      const pages = [
+        { width: 8, height: 4, blocks: [Array.from({ length: 32 }, (_v, i) => i + 1)] },
+        { width: 4, height: 2, blocks: [[41, 42, 43, 44, 45, 46, 47, 48]], newSubfileType: 1 },
+        { width: 2, height: 1, blocks: [[91, 92]], newSubfileType: 1 }
+      ];
+      if (layout === "main-chain") { pages[0].next = 1; pages[1].next = 2; }
+      else if (layout === "overview-first-main-chain") { pages[2].next = 0; pages[0].next = 1; }
+      else { pages[0].subIfd = 1; pages[1][layout === "nested-subifds" ? "subIfd" : "next"] = 2; }
+      const bytes = classicTiff(pages, { minDataOffset: 4096, firstIfd: layout === "overview-first-main-chain" ? 2 : 0 });
+      const result = await page.evaluate(async (input) => {
+        const requests = [];
+        const original = Worker.prototype.postMessage;
+        Worker.prototype.postMessage = function (message, ...args) {
+          if (message.type === "range") requests.push({ offset: message.offset, length: message.length });
+          return original.call(this, message, ...args);
+        };
+        const { addDatasetFromFile } = await import("/src/io/tiff-loader.js");
+        const { readBandWindow } = await import("/src/core/raster-io.js");
+        let dataset;
+        try {
+          dataset = await addDatasetFromFile(new File([Uint8Array.from(input)], "indexed-pyramid.tif"), {
+            fmapEnabled: true, createDataset: (descriptor) => descriptor
+          });
+          const source = dataset.cached;
+          const metadataReads = requests.slice();
+          const before = await source.getStats();
+          const coarse = [...await readBandWindow(dataset.meta, source, 0, 0, 0, 2, 1, 4)];
+          const after = await source.getStats();
+          const middle = [...await readBandWindow(dataset.meta, source, 0, 0, 0, 4, 2, 2)];
+          const full = [...await readBandWindow(dataset.meta, source, 0, 0, 0, 8, 4, 1)];
+          return { metadataReads, coarse, middle, full, coarseFileBytes: after.browserBytes - before.browserBytes,
+            bands: dataset.meta.bands, directories: dataset.raw.directoryCount,
+            levels: source.tiffIndex.families[0].levels.length, overviews: source.overviewCount };
+        } finally {
+          dataset?.cached.close();
+          Worker.prototype.postMessage = original;
+        }
+      }, [...bytes]);
+      expect(result.metadataReads.length).toBeGreaterThan(0);
+      expect(result.metadataReads.every((read) => read.offset + read.length <= 4096)).toBe(true);
+      expect(result.directories).toBe(3);
+      expect(result.levels).toBe(3);
+      expect(result.overviews).toBe(2);
+      expect(result.bands).toBe(1);
+      expect(result.coarse).toEqual([91, 92]);
+      expect(result.coarseFileBytes).toBe(2);
+      expect(result.middle).toEqual([41, 42, 43, 44, 45, 46, 47, 48]);
+      expect(result.full).toEqual(Array.from({ length: 32 }, (_v, i) => i + 1));
+    });
+  }
+
+  test("keeps native resolution levels attached to their own grayscale page bands", async ({ page }) => {
+    await page.goto("/?fmap=1");
+    const bytes = classicTiff([
+      { width: 8, height: 4, blocks: [Array.from({ length: 32 }, (_v, i) => i + 1)], next: 2, subIfd: 1 },
+      { width: 4, height: 2, blocks: [[81, 82, 83, 84, 85, 86, 87, 88]], newSubfileType: 1 },
+      { width: 8, height: 4, blocks: [Array.from({ length: 32 }, (_v, i) => i + 101)], subIfd: 3 },
+      { width: 4, height: 2, blocks: [[201, 202, 203, 204, 205, 206, 207, 208]], newSubfileType: 1 }
+    ]);
+    const result = await page.evaluate(async (input) => {
+      const { addDatasetFromFile } = await import("/src/io/tiff-loader.js");
+      const { readBandWindow } = await import("/src/core/raster-io.js");
+      const dataset = await addDatasetFromFile(new File([Uint8Array.from(input)], "band-pyramids.tif"), {
+        fmapEnabled: true, createDataset: (descriptor) => descriptor
+      });
+      try {
+        return { bands: dataset.meta.bands, families: dataset.cached.tiffIndex.families.length,
+          coarse0: [...await readBandWindow(dataset.meta, dataset.cached, 0, 0, 0, 4, 2, 2)],
+          coarse1: [...await readBandWindow(dataset.meta, dataset.cached, 1, 0, 0, 4, 2, 2)],
+          full1: [...await readBandWindow(dataset.meta, dataset.cached, 1, 0, 0, 8, 4, 1)] };
+      } finally { dataset.cached.close(); }
+    }, [...bytes]);
+    expect(result.bands).toBe(2);
+    expect(result.families).toBe(2);
+    expect(result.coarse0).toEqual([81, 82, 83, 84, 85, 86, 87, 88]);
+    expect(result.coarse1).toEqual([201, 202, 203, 204, 205, 206, 207, 208]);
+    expect(result.full1).toEqual(Array.from({ length: 32 }, (_v, i) => i + 101));
+  });
+
+  test("indexes compressed page bands and keeps an unsupported overview off the linear base path", async ({ page }) => {
+    await page.goto("/?fmap=1");
+    const compressed = classicTiff([
+      { width: 3, height: 2, compression: 32773, blocks: [[5, 1, 2, 3, 4, 5, 6]], next: 1 },
+      { width: 3, height: 2, compression: 8, blocks: [deflateSync(Uint8Array.from([11, 12, 13, 14, 15, 16]))] }
+    ]);
+    const unsupportedOverview = classicTiff([
+      { width: 4, height: 2, blocks: [[1, 2, 3, 4, 5, 6, 7, 8]], subIfd: 1 },
+      { width: 2, height: 1, compression: 7, blocks: [[0xff, 0xd8, 0xff, 0xd9]], newSubfileType: 1 }
+    ]);
+    const result = await page.evaluate(async ({ compressed, unsupportedOverview }) => {
+      const { addDatasetFromFile } = await import("/src/io/tiff-loader.js");
+      const { readBandWindow } = await import("/src/core/raster-io.js");
+      const open = (bytes, name) => addDatasetFromFile(new File([Uint8Array.from(bytes)], name), {
+        fmapEnabled: true, createDataset: (descriptor) => descriptor
+      });
+      const stack = await open(compressed, "compressed-stack.tif");
+      const linear = await open(unsupportedOverview, "unsupported-overview.tif");
+      try {
+        return { bands: stack.meta.bands,
+          first: [...await readBandWindow(stack.meta, stack.cached, 0, 0, 0, 3, 2, 1)],
+          second: [...await readBandWindow(stack.meta, stack.cached, 1, 0, 0, 3, 2, 1)],
+          coarse: [...await readBandWindow(linear.meta, linear.cached, 0, 0, 0, 2, 1, 2)],
+          numericPlanner: typeof linear.cached.readBandWindow === "function" && linear.cached.managesWindowOutput,
+          indexedLevels: linear.raw.indexedLevelCount, readableOverviews: linear.raw.overviewCount };
+      } finally { stack.cached.close(); linear.cached.close(); }
+    }, { compressed: [...compressed], unsupportedOverview: [...unsupportedOverview] });
+    expect(result.bands).toBe(2);
+    expect(result.first).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.second).toEqual([11, 12, 13, 14, 15, 16]);
+    expect(result.coarse).toEqual([1, 3]);
+    expect(result.numericPlanner).toBe(true);
+    expect(result.indexedLevels).toBe(2);
+    expect(result.readableOverviews).toBe(0);
+  });
+
   test("reads planar RGB edge tiles through the actual file loader", async ({ page }) => {
     await page.goto("/?fmap=1");
     const fixture = classicTiff([{

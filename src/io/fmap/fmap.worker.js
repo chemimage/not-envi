@@ -86,6 +86,10 @@ function counters() {
     cacheEvictions: Number(call("fmap_evictions")), residentBytes: Number(call("fmap_resident_bytes")),
     pinnedBytes: Number(call("fmap_pinned_bytes")), mappingCount: Number(call("fmap_mapping_count")),
     mappingMetadataBytes: Number(call("fmap_mapping_bytes")),
+    pageIndexLookups: Number(call("fmap_page_index_lookups")),
+    pageIndexProbes: Number(call("fmap_page_index_probes")),
+    pageIndexPeakProbes: Number(call("fmap_page_index_peak_probes")),
+    pageIndexBytes: Number(call("fmap_page_index_bytes")),
     wasmBytes: state.exports.memory.buffer.byteLength };
 }
 function replyError(message, error) {

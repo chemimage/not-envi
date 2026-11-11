@@ -290,7 +290,7 @@ export class FmapTiffDataSource {
 
   #syncSourceStats(explicit = null) {
     const stats = explicit || this.source?.stats || {};
-    const queueKeys = Object.keys(stats).filter((key) => /^(pageFill|fillActive|fillQueue|peakFill)/.test(key));
+    const queueKeys = Object.keys(stats).filter((key) => /^(pageFill|pageIndex|fillActive|fillQueue|peakFill)/.test(key));
     for (const key of ["browserBytes", "copiedBytes", "cacheHits", "cacheMisses", "cacheEvictions", "residentBytes", "pinnedBytes", "batches", "workerCancelledRequests", ...queueKeys]) {
       const value = Number(stats?.[key]);
       if (Number.isFinite(value)) this.stats[key] = value;

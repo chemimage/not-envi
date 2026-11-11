@@ -114,7 +114,9 @@ function createLinearSingleSource(summary, sampleType, file, deps) {
 async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets) {
   const first = images[0];
   const description = String(file?.name || "TIFF");
-  const overviewSummaries = await loadSubIfdOverviewSummaries(tiff, first, deps);
+  const discoveredOverviews = await loadSubIfdOverviewSummaries(tiff, first, deps);
+  const overviewSummaries = deps?.tiffFmapRangeSource
+    ? discoveredOverviews.filter(supportsFmapBlockPath) : discoveredOverviews;
 
   if (first.samplesPerPixel !== 1 && first.samplesPerPixel !== 3) {
     throw new Error("Only grayscale TIFF or 3-band TIFF images are supported.");
@@ -147,7 +149,9 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
     };
   }
 
-  const linear = createLinearSingleSource(first, sampleType, file, deps);
+  // A linear base is still part of a pyramid when native overviews exist.
+  // Keep it behind the indexed source so coarse reads retain those levels.
+  const linear = overviewSummaries.length ? null : createLinearSingleSource(first, sampleType, file, deps);
   if (linear) {
     linear.meta.littleEndian = !!tiff.littleEndian;
     if (
@@ -163,7 +167,7 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
     preferWindowBlocks = true;
   }
 
-  const bandOffsets = buildBandOffsetSpecs(first, sampleType);
+  const bandOffsets = overviewSummaries.length ? null : buildBandOffsetSpecs(first, sampleType);
   if (bandOffsets) {
     const { cached, sharedFmapSource } = createChunkCache(file, deps);
     const meta = buildMeta({
@@ -228,6 +232,12 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
 async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleType, budgets) {
   const first = images[0];
   const description = String(file?.name || "TIFF");
+  const bandOverviewSummaries = [];
+  for (const summary of images) {
+    const levels = await loadSubIfdOverviewSummaries(tiff, summary, deps);
+    bandOverviewSummaries.push(deps?.tiffFmapRangeSource ? levels.filter(supportsFmapBlockPath) : levels);
+  }
+  const hasOverviews = bandOverviewSummaries.some((levels) => levels.length > 0);
 
   for (let index = 0; index < images.length; index += 1) {
     const summary = images[index];
@@ -259,7 +269,7 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
     return firstSafeOffsetOrNull(summary.stripOffsets);
   });
 
-  if (simplePages.every((offset) => Number.isFinite(Number(offset)))) {
+  if (!hasOverviews && simplePages.every((offset) => Number.isSafeInteger(offset) && offset >= 0)) {
     const { base, cached, sharedFmapSource } = createChunkCache(file, deps);
     const contiguous = simplePages.every((offset, index) => offset === (simplePages[0] + (index * bandBytes)));
     const meta = buildMeta({
@@ -278,6 +288,7 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
         !shouldValidateRawCandidate(first, sampleType, file, images.length)
         || await validateRawCandidate(meta, cached, images)
       ) {
+        if (typeof cached.configureRaster === "function") await cached.configureRaster(meta);
         return { raw, meta, mode: "linear", base, cached };
       }
       if (!sharedFmapSource) cached.close();
@@ -315,6 +326,7 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
       tiff,
       meta,
       rangeSource: deps?.tiffFmapRangeSource || null,
+      bandOverviewSummaries,
       bandSpecs: preferWindowBlocks
         ? images.flatMap((summary, index) => buildWindowBandSpecs(summary, index))
         : images.flatMap((summary, index) => buildRawBandSpecs(summary, sampleType, index)),
@@ -326,7 +338,11 @@ async function describeMultiPageDataset(tiff, images, file, deps, raw, sampleTyp
 
 export async function describeTiffDataset(tiff, file, deps = {}) {
   deps?.setStatus?.("indexing TIFF…", "warn");
-  const images = await loadImageSummaries(tiff, deps);
+  const mainImages = await loadImageSummaries(tiff, deps);
+  // Directory order is not band order: reduced-resolution main-chain IFDs
+  // belong to their image family, just as SubIFD levels do.
+  const index = tiff.metadataIndex || null;
+  const images = index?.families?.length ? index.families.map((family) => family.base) : mainImages;
   const first = images[0];
   const sampleType = resolveUniformSampleType(first, "TIFF image");
   const budgets = resolveTiffCacheBudgets(deps);
@@ -345,17 +361,18 @@ export async function describeTiffDataset(tiff, file, deps = {}) {
   }
   const raw = {
     format: "tiff",
-    imageCount: images.length,
+    imageCount: mainImages.length,
+    directoryCount: index?.allImages?.length ?? mainImages.length,
+    indexedLevelCount: index?.families?.reduce((count, family) => count + family.levels.length, 0) ?? images.length,
     bigTiff: !!tiff.bigTiff,
     photometricInterpretation: first.photometricInterpretation,
     fmap: useFmap
   };
 
-  if (images.length === 1) {
-    raw.overviewCount = 0;
-    const desc = await describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets);
-    raw.overviewCount = Number(desc?.cached?.overviewCount || 0);
-    return desc;
-  }
-  return describeMultiPageDataset(tiff, images, file, deps, raw, sampleType, budgets);
+  const desc = images.length === 1
+    ? await describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets)
+    : await describeMultiPageDataset(tiff, images, file, deps, raw, sampleType, budgets);
+  raw.overviewCount = Number(desc?.cached?.overviewCount || 0);
+  if (index && desc.cached) desc.cached.tiffIndex = index;
+  return desc;
 }
