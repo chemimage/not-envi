@@ -9,7 +9,155 @@ import {
   viewTileBounds
 } from "../../src/render/pyramid-cache.js";
 
+async function heldTileHarness() {
+  const idle = [], reads = [];
+  let hold = false;
+  const controller = createPyramidController({
+    now: () => performance.now(), requestIdle: (task) => { idle.push(task); return idle.length; }, cancelIdle: () => {},
+    getActiveDatasetId: () => 1, getIOConcurrency: () => 1,
+    readBandWindow: async (_meta, _source, band, x, y, w, h, step, _out, options) => {
+      if (!hold) return new Float32Array(w * h).fill(1);
+      // Deliberately ignore AbortSignal: stale results must still be rejected
+      // when a backend cannot stop an already-started read.
+      return new Promise((resolve) => reads.push({ band, x, y, step, options,
+        key: bandTileKey(band, Math.log2(step), x / (128 * step), y / (128 * step)),
+        resolve: (value = 1) => resolve(new Float32Array(w * h).fill(value)) }));
+    }, readBandWindowBIP: async () => new Float32Array(0), onPerfUpdate: () => {}, onProgressiveRender: () => {}
+  });
+  const ds = { id: 1, meta: { samples: 8192, lines: 8192, bands: 1, interleave: "bsq" },
+    ds: {}, view: { x: 1024, y: 1024, scale: 0.25 } };
+  const view = () => controller.tryRasterFromPyramid(ds, 0, 0.25, 384, 384);
+  await view();
+  const pyr = ds.pyramid;
+  pyr.readAdmission.setLimit(1);
+  hold = true;
+  const pumpUntil = async (condition) => {
+    for (let turn = 0; turn < 100 && !condition(); turn += 1) {
+      idle.shift()?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(condition()).toBe(true);
+  };
+  await pumpUntil(() => reads.length === 1 && pyr.readAdmission.waiting === 1);
+  const cleanup = async () => {
+    const pending = [...pyr.pending.values()];
+    controller.disposePyramid(pyr);
+    reads.forEach((read) => read.resolve());
+    await Promise.allSettled(pending);
+  };
+  return { ds, pyr, reads, view, pumpUntil, cleanup };
+}
+
 describe("pyramid-cache", () => {
+  test("an obsolete overview await cannot start more tile reads after switching bands", async () => {
+    const held = [], bandsRead = [];
+    const controller = createPyramidController({
+      now: () => performance.now(), requestIdle: () => 1, cancelIdle: () => {},
+      getActiveDatasetId: () => 1, getIOConcurrency: () => 1,
+      readBandWindow: async (_meta, _source, band, _x, _y, w, h, _step, _out, options) => {
+        bandsRead.push(band);
+        if (band === 1 || held.length >= 2) return new Float32Array(w * h).fill(5);
+        return new Promise((resolve) => held.push({ options, resolve: () => resolve(new Float32Array(w * h)) }));
+      }, readBandWindowBIP: async () => new Float32Array(0), onPerfUpdate: () => {}, onProgressiveRender: () => {}
+    });
+    const ds = { id: 1, meta: { samples: 8192, lines: 8192, bands: 2, interleave: "bsq" },
+      ds: {}, view: { x: 0, y: 0, scale: 0.25 } };
+    const oldView = controller.tryRasterFromPyramid(ds, 0, 0.25, 384, 384);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(held).toHaveLength(2);
+    const newView = controller.tryRasterFromPyramid(ds, 1, 0.25, 384, 384);
+    expect(held.every(({ options }) => options.signal.aborted)).toBe(true);
+    held.forEach((read) => read.resolve());
+    await expect(oldView).resolves.toBeNull();
+    await expect(newView).resolves.toBeTruthy();
+    expect(bandsRead.filter((band) => band === 0)).toHaveLength(2);
+    controller.disposePyramid(ds.pyramid);
+  });
+
+  test("a disjoint pan cancels admitted and admission-waiting tiles without accepting late data", async () => {
+    const h = await heldTileHarness();
+    const oldPending = [...h.pyr.pending.values()];
+    try {
+      h.ds.view.x = 6144; h.ds.view.y = 6144;
+      await h.view();
+      expect(h.pyr.readAdmission.waiting).toBe(0);
+      expect(h.reads[0].options.signal.aborted).toBe(true);
+      expect(h.reads[0].options.cancelled()).toBe(true);
+      h.reads[0].resolve(9);
+      const outcomes = await Promise.allSettled(oldPending);
+      expect(outcomes.every((outcome) => outcome.status === "rejected" && outcome.reason.name === "AbortError")).toBe(true);
+      expect(h.reads).toHaveLength(1);
+      expect(h.pyr.tiles.has(h.reads[0].key)).toBe(false);
+      expect(h.pyr.readAdmission.active).toBe(0);
+    } finally { await h.cleanup(); }
+  });
+
+  test("an overlapping pan keeps useful admitted tiles and their admission waiters", async () => {
+    const h = await heldTileHarness();
+    const oldPending = [...h.pyr.pending.values()];
+    try {
+      h.ds.view.x += 512;
+      await h.view();
+      expect(h.reads[0].options.signal.aborted).toBe(false);
+      expect(h.pyr.readAdmission.waiting).toBe(1);
+      h.reads[0].resolve(3);
+      await h.pumpUntil(() => h.reads.length === 2);
+      expect(h.reads[1].options.signal.aborted).toBe(false);
+      h.reads[1].resolve(4);
+      const outcomes = await Promise.allSettled(oldPending);
+      expect(outcomes.every((outcome) => outcome.status === "fulfilled")).toBe(true);
+      expect(h.pyr.tiles.get(h.reads[0].key).data[0]).toBe(3);
+      expect(h.pyr.tiles.get(h.reads[1].key).data[0]).toBe(4);
+    } finally { await h.cleanup(); }
+  });
+
+  test("returning to a cancelled tile keeps its replacement safe from old finalizers", async () => {
+    const h = await heldTileHarness();
+    const oldKey = h.reads[0].key;
+    const oldPromise = h.pyr.pending.get(oldKey);
+    try {
+      h.ds.view.x = 6144; h.ds.view.y = 6144;
+      await h.view();
+      h.ds.view.x = 1024; h.ds.view.y = 1024;
+      await h.view();
+      await h.pumpUntil(() => h.pyr.pending.has(oldKey));
+      const replacement = h.pyr.pending.get(oldKey);
+      expect(replacement).not.toBe(oldPromise);
+      h.reads[0].resolve(9);
+      await expect(oldPromise).rejects.toMatchObject({ name: "AbortError" });
+      await h.pumpUntil(() => h.reads.length === 2);
+      expect(h.reads[1].key).toBe(oldKey);
+      expect(h.pyr.pending.get(oldKey)).toBe(replacement);
+      expect(h.pyr.queued.has(oldKey)).toBe(true);
+      expect(h.pyr.tiles.has(oldKey)).toBe(false);
+      h.reads[1].resolve(7);
+      await replacement;
+      expect(h.pyr.tiles.get(oldKey).data[0]).toBe(7);
+    } finally { await h.cleanup(); }
+  });
+
+  test("per-request admission cancellation removes waiters without consuming a slot", async () => {
+    const controller = createPyramidController({ getIOConcurrency: () => 1 });
+    const ds = { meta: { samples: 128, lines: 128 } };
+    controller.ensurePyramid(ds);
+    const gate = ds.pyramid.readAdmission;
+    gate.setLimit(1);
+    const release = await gate.acquire();
+    const abort = new AbortController();
+    const obsolete = gate.acquire("foreground", { signal: abort.signal });
+    const next = gate.acquire("foreground");
+    abort.abort();
+    await expect(obsolete).rejects.toMatchObject({ name: "AbortError" });
+    expect(gate.active).toBe(1);
+    expect(gate.waiting).toBe(1);
+    release();
+    const releaseNext = await next;
+    releaseNext(); releaseNext();
+    expect(gate.active).toBe(0);
+    await expect(gate.acquire("foreground", { signal: abort.signal })).rejects.toMatchObject({ name: "AbortError" });
+    controller.disposePyramid(ds.pyramid);
+  });
+
   test.each([
     { eff: 0.25, pixels: 251 * 125, approximate: false },
     { eff: 2, pixels: 156 * 156, approximate: true }
