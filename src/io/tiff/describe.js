@@ -154,6 +154,9 @@ async function describeSingleImageDataset(tiff, images, file, deps, raw, sampleT
       !shouldValidateRawCandidate(first, sampleType, file, 1)
       || await validateRawCandidate(linear.meta, linear.cached, images)
     ) {
+      if (typeof linear.cached.configureRaster === "function") {
+        await linear.cached.configureRaster(linear.meta);
+      }
       return { raw, meta: linear.meta, mode: "linear", base: linear.base, cached: linear.cached };
     }
     if (!linear.sharedFmapSource) linear.cached.close();

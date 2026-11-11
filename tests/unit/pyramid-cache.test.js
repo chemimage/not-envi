@@ -96,6 +96,157 @@ describe("pyramid-cache", () => {
     expect(ds.pyramid.totalBytes).toBe(0);
   });
 
+  test("tile admission prefers queued foreground reads", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async () => new Float32Array(0),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getViewportSize: () => ({ width: 1, height: 1 }),
+      getIOConcurrency: () => 1
+    });
+    const ds = { meta: { samples: 256, lines: 256 } };
+    controller.ensurePyramid(ds);
+    const gate = ds.pyramid.readAdmission;
+    gate.setLimit(1);
+    const releaseActive = await gate.acquire("background");
+    const order = [];
+    const background = gate.acquire("background").then((release) => {
+      order.push("background");
+      return release;
+    });
+    const foreground = gate.acquire("foreground").then((release) => {
+      order.push("foreground");
+      return release;
+    });
+
+    expect(gate.waiting).toBe(2);
+    releaseActive();
+    const releaseForeground = await foreground;
+    expect(order).toEqual(["foreground"]);
+    releaseForeground();
+    const releaseBackground = await background;
+    expect(order).toEqual(["foreground", "background"]);
+    releaseBackground();
+    expect(gate.active).toBe(0);
+  });
+
+  test("disposing a pyramid rejects tile reads waiting for admission", async () => {
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async () => new Float32Array(0),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getViewportSize: () => ({ width: 1, height: 1 }),
+      getIOConcurrency: () => 1
+    });
+    const ds = { meta: { samples: 256, lines: 256 } };
+    controller.ensurePyramid(ds);
+    const gate = ds.pyramid.readAdmission;
+    gate.setLimit(1);
+    const releaseActive = await gate.acquire("foreground");
+    const waiting = gate.acquire("foreground").then(
+      () => null,
+      (error) => error
+    );
+
+    controller.disposePyramid(ds.pyramid);
+    await expect(waiting).resolves.toMatchObject({ name: "AbortError" });
+    expect(gate.waiting).toBe(0);
+    releaseActive();
+    expect(gate.active).toBe(0);
+  });
+
+  test("raising dynamic I/O concurrency wakes admitted tile reads", async () => {
+    let io = 1;
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async () => new Float32Array(0),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getViewportSize: () => ({ width: 1, height: 1 }),
+      getIOConcurrency: () => io
+    });
+    const ds = { meta: { samples: 256, lines: 256 } };
+    controller.ensurePyramid(ds);
+    const gate = ds.pyramid.readAdmission;
+    const first = await gate.acquire("foreground");
+    const second = await gate.acquire("foreground");
+    let thirdStarted = false;
+    const third = gate.acquire("foreground").then((release) => {
+      thirdStarted = true;
+      return release;
+    });
+    await Promise.resolve();
+    expect(thirdStarted).toBe(false);
+
+    io = 4;
+    controller.updateInflightForIO(ds);
+    const releaseThird = await third;
+    expect(ds.pyramid.maxInflight).toBe(4);
+    expect(thirdStarted).toBe(true);
+    first();
+    second();
+    releaseThird();
+  });
+
+  test("immediate overview Promise.all reads share the tile admission limit", async () => {
+    let active = 0;
+    let peak = 0;
+    const releases = [];
+    const controller = createPyramidController({
+      now: () => 0,
+      requestIdle: () => 1,
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => new Promise((resolve) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        releases.push(() => {
+          active -= 1;
+          resolve(new Float32Array(outW * outH));
+        });
+      }),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {},
+      onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1,
+      getViewportSize: () => ({ width: 128, height: 128 }),
+      getIOConcurrency: () => 1
+    });
+    const ds = {
+      id: 1,
+      meta: { samples: 1024, lines: 1024, interleave: "bsq" },
+      ds: {},
+      view: { x: 0, y: 0, scale: 0.25 },
+      __pyrPreferImmediate: true
+    };
+    controller.ensurePyramid(ds);
+    let settled = false;
+    const raster = controller.tryRasterFromPyramid(ds, 0, 0.25, 128, 128)
+      .finally(() => { settled = true; });
+
+    for (let turn = 0; turn < 256 && !settled; turn += 1) {
+      await Promise.resolve();
+      while (releases.length) releases.shift()();
+    }
+    await raster;
+    expect(peak).toBe(2);
+    expect(ds.pyramid.readAdmission.active).toBe(0);
+    expect(ds.pyramid.readAdmission.waiting).toBe(0);
+  });
+
   test("tryRasterFromPyramid returns cached tile data", async () => {
     const controller = createPyramidController({
       now: () => 0,

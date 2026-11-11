@@ -8,6 +8,63 @@ const perfNow = () => (
     : Date.now()
 );
 
+function pyramidAbortError(message = "Pyramid tile read cancelled.") {
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+function createTileReadAdmission(initialLimit) {
+  let limit = Math.max(1, Math.floor(Number(initialLimit) || 1));
+  let active = 0;
+  let closed = false;
+  const foreground = [];
+  const background = [];
+
+  const releaseSlot = () => {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      active = Math.max(0, active - 1);
+      drain();
+    };
+  };
+
+  const drain = () => {
+    if (closed) return;
+    while (active < limit) {
+      const waiter = foreground.shift() || background.shift();
+      if (!waiter) break;
+      active += 1;
+      waiter.resolve(releaseSlot());
+    }
+  };
+
+  return {
+    acquire(priority = "foreground") {
+      if (closed) return Promise.reject(pyramidAbortError());
+      return new Promise((resolve, reject) => {
+        const queue = priority === "background" ? background : foreground;
+        queue.push({ resolve, reject });
+        drain();
+      });
+    },
+    setLimit(value) {
+      limit = Math.max(1, Math.floor(Number(value) || 1));
+      drain();
+    },
+    cancel() {
+      if (closed) return;
+      closed = true;
+      const error = pyramidAbortError();
+      for (const waiter of [...foreground.splice(0), ...background.splice(0)]) waiter.reject(error);
+    },
+    get active() { return active; },
+    get waiting() { return foreground.length + background.length; }
+  };
+}
+
 export function computeMaxPyramidLevel(meta, tileSize) {
   const maxDim = Math.max(meta.samples, meta.lines);
   if (!Number.isFinite(maxDim) || maxDim <= 0) return 1;
@@ -309,6 +366,7 @@ export function createPyramidController(deps) {
     const tileSize = APP_CONFIG.pyramid.tileSize;
     const maxLevel = computeMaxPyramidLevel(ds.meta, tileSize);
     const ioConcurrency = Math.max(1, getIOConcurrency());
+    const maxInflight = resolveMaxInflight(ioConcurrency);
     ds.pyramid = {
       tileSize,
       maxLevel,
@@ -317,7 +375,8 @@ export function createPyramidController(deps) {
       tiles: new Map(),
       pending: new Map(),
       inflight: new Set(),
-      maxInflight: resolveMaxInflight(ioConcurrency),
+      maxInflight,
+      readAdmission: createTileReadAdmission(maxInflight),
       queued: new Set(),
       pinnedKeys: new Set(),
       tick: 0,
@@ -347,11 +406,13 @@ export function createPyramidController(deps) {
     if (!ds?.pyramid) return;
     const ioConcurrency = Math.max(1, getIOConcurrency());
     ds.pyramid.maxInflight = resolveMaxInflight(ioConcurrency);
+    ds.pyramid.readAdmission?.setLimit(ds.pyramid.maxInflight);
   }
 
   function disposePyramid(pyr) {
     if (!pyr) return;
     pyr.cancelled = true;
+    pyr.readAdmission?.cancel();
     if (pyr._idleHandle) {
       try { cancelIdle(pyr._idleHandle); } catch (_err) {}
       pyr._idleHandle = null;
@@ -626,39 +687,45 @@ export function createPyramidController(deps) {
     pyr.queued.add(key);
 
     const p = (async () => {
-      const readStart = perfNow();
-      const step = 1 << level;
-      const x0 = tx * pyr.tileSize * step;
-      const y0 = ty * pyr.tileSize * step;
+      const releaseRead = await pyr.readAdmission.acquire(priority);
+      try {
+        if (ds.pyramid !== pyr || pyr.cancelled) throw pyramidAbortError();
+        const readStart = perfNow();
+        const step = 1 << level;
+        const x0 = tx * pyr.tileSize * step;
+        const y0 = ty * pyr.tileSize * step;
 
-      const outW = Math.min(pyr.tileSize, Math.ceil((ds.meta.samples - x0) / step));
-      const outH = Math.min(pyr.tileSize, Math.ceil((ds.meta.lines - y0) / step));
-      if (outW <= 0 || outH <= 0) return null;
+        const outW = Math.min(pyr.tileSize, Math.ceil((ds.meta.samples - x0) / step));
+        const outH = Math.min(pyr.tileSize, Math.ceil((ds.meta.lines - y0) / step));
+        if (outW <= 0 || outH <= 0) return null;
 
-      let data;
-      const readOptions = {
-        cancelled: () => ds.pyramid !== pyr || pyr.cancelled,
-        priority: priority === "background" ? "background" : "foreground"
-      };
-      if (ds.meta.interleave === "bip") {
-        data = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, null, readOptions);
-      } else {
-        data = await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, null, readOptions);
+        let data;
+        const readOptions = {
+          cancelled: () => ds.pyramid !== pyr || pyr.cancelled,
+          priority: priority === "background" ? "background" : "foreground"
+        };
+        if (ds.meta.interleave === "bip") {
+          data = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, null, readOptions);
+        } else {
+          data = await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, null, readOptions);
+        }
+
+        if (ds.pyramid !== pyr || pyr.cancelled) return null;
+
+        const tile = { band, level, tx, ty, data, w: outW, h: outH, bytes: data.byteLength, t: ++ds.pyramid.tick };
+        ds.pyramid.pending.delete(key);
+        ds.pyramid.tiles.set(key, tile);
+        if (isPinnedOverviewLevel(ds.pyramid, level)) ds.pyramid.pinnedKeys.add(key);
+        else ds.pyramid.pinnedKeys.delete(key);
+        ds.pyramid.totalBytes += tile.bytes;
+        ds.pyramid.stats.tileReads += 1;
+        ds.pyramid.stats.tilePixelsRead += outW * outH;
+        ds.pyramid.stats.tileReadMs += perfNow() - readStart;
+        evictPyramidIfNeeded(ds.pyramid);
+        return tile;
+      } finally {
+        releaseRead();
       }
-
-      if (ds.pyramid !== pyr || pyr.cancelled) return null;
-
-      const tile = { band, level, tx, ty, data, w: outW, h: outH, bytes: data.byteLength, t: ++ds.pyramid.tick };
-      ds.pyramid.pending.delete(key);
-      ds.pyramid.tiles.set(key, tile);
-      if (isPinnedOverviewLevel(ds.pyramid, level)) ds.pyramid.pinnedKeys.add(key);
-      else ds.pyramid.pinnedKeys.delete(key);
-      ds.pyramid.totalBytes += tile.bytes;
-      ds.pyramid.stats.tileReads += 1;
-      ds.pyramid.stats.tilePixelsRead += outW * outH;
-      ds.pyramid.stats.tileReadMs += perfNow() - readStart;
-      evictPyramidIfNeeded(ds.pyramid);
-      return tile;
     })().catch((err) => {
       try { pyr.pending.delete(key); } catch (_err) {}
       throw err;
