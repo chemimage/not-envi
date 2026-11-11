@@ -397,6 +397,10 @@ try {
         if (backend === "fmap" && (final.peakReservationBytes > workingLimit || final.activeReservationBytes !== 0 || final.pinnedBytes !== 0)) {
           throw new Error(`TIFF ${compression} ${tiled} leaked/exceeded a decode reservation`);
         }
+        if (backend === "fmap" && (final.fillActiveReads !== 0 || final.fillQueueRequests !== 0
+            || final.peakFillActiveReads > ranges.concurrency)) {
+          throw new Error(`TIFF ${compression} ${tiled} leaked/exceeded page-fill work`);
+        }
         results.push({ compression, tiled, backend, dimensions: [fixture.width, fixture.height],
           poolBytes: 262144, workingLimitBytes: workingLimit, decodedCacheLimitBytes: source.decodedCacheLimitBytes ?? null,
           fileBytes: fixture.file.size, cold, warm, counters: final });

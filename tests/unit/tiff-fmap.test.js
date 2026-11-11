@@ -64,6 +64,16 @@ function fmapSource(bytes, options = {}) {
   };
 }
 
+test("TIFF forwards page-fill queue counters alongside decoder reservations", async () => {
+  const { source, range } = fmapSource(new Uint8Array(16));
+  Object.assign(range.stats, { pageFillReads: 3, pageFillDeduplications: 2,
+    fillActiveReads: 0, fillQueueRequests: 0, peakFillActiveReads: 2 });
+  try {
+    expect(await source.getStats()).toMatchObject({ pageFillReads: 3, pageFillDeduplications: 2,
+      fillActiveReads: 0, fillQueueRequests: 0, peakFillActiveReads: 2, activeReservationBytes: 0 });
+  } finally { source.close(); }
+});
+
 function meta(width, height, bands = 1) {
   return {
     samples: width,
