@@ -119,6 +119,16 @@ test.describe("fmap page-fill queue browser integration", () => {
         }
         throw new Error("No active page fill was observed");
       };
+      const waitForIdleFills = async (source) => {
+        const deadline = performance.now() + 10_000;
+        let stats;
+        do {
+          stats = await source.getStats();
+          if (!stats.fillActiveReads && !stats.fillQueueRequests && !stats.fillParkedRequests && !stats.pinnedBytes) return stats;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        } while (performance.now() < deadline);
+        throw new Error(`Page fills did not drain after jobs settled: ${JSON.stringify(stats)}`);
+      };
 
       const clearSource = makeSource();
       await clearSource.ready;
@@ -153,7 +163,10 @@ test.describe("fmap page-fill queue browser integration", () => {
       );
       const backgroundSettledAtForeground = backgroundSettled;
       const backgroundResult = await background;
-      const priorityStats = await prioritySource.getStats();
+      // Cancellation settles the caller before an uncancellable Blob read
+      // finishes. Its bytes/slot stay charged until provider completion; job
+      // settlement alone is not the cache's idle boundary.
+      const priorityStats = await waitForIdleFills(prioritySource);
       prioritySource.close();
 
       return {
