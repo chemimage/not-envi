@@ -2,6 +2,8 @@
 
 Run `npm test` for unit/controller tests followed by the browser smoke workflow.
 Use `npm run test:unit -- tests/unit/<name>.test.js` for a focused unit run.
+Use `npm run benchmark:fmap` for the deterministic 8 GiB logical-source pager microbenchmark.
+Use `npm run test:fmap-large` for the opt-in sparse-file browser gate; it creates a temporary file with markers beyond 4 GiB and removes it afterward.
 
 ## Choosing the test boundary
 

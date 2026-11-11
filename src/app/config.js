@@ -66,7 +66,28 @@ export function resolvePreviewOverviewLongEdge({ deferred = true, bootstrap = fa
     : APP_CONFIG.previewOverview.standardInitialLongEdge;
 }
 
+export function isFmapRequested(search = null) {
+  if (APP_CONFIG.fmap.enabledByDefault) return true;
+  let raw = search;
+  if (raw == null) {
+    try { raw = globalThis.location?.search || ""; } catch (_err) { raw = ""; }
+  }
+  try {
+    const value = new URLSearchParams(String(raw || "")).get("fmap");
+    return value === "1" || value === "true";
+  } catch (_err) {
+    return false;
+  }
+}
+
 export const APP_CONFIG = Object.freeze({
+  fmap: Object.freeze({
+    enabledByDefault: false,
+    pageSizeBytes: 256 * KIB,
+    poolBytes: 64 * MIB,
+    maxInflightBytes: 8 * MIB,
+    maxInflightRequests: 2
+  }),
   io: Object.freeze({
     parallelEnabledByDefault: true,
     defaultChunkSizeBytes: 1 << 20,

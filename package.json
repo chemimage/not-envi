@@ -15,9 +15,12 @@
     "build:bundle": "vite build",
     "build:inline": "node scripts/inline-dist.mjs",
     "build:assert": "node scripts/assert-single-file.mjs",
+    "build:fmap": "node scripts/build-fmap-wasm.mjs",
     "build": "npm run build:bundle && npm run build:inline && npm run build:assert",
+    "benchmark:fmap": "node scripts/benchmark-fmap.mjs",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
+    "test:fmap-large": "node scripts/run-fmap-large-test.mjs",
     "test": "npm run test:unit && npm run test:e2e",
     "lint": "eslint ."
   },
