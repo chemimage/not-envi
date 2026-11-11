@@ -84,7 +84,9 @@ function counters() {
     copiedBytes: state.stats.copiedBytes + (fills.pageFillCopiedBytes || 0),
     cacheHits: Number(call("fmap_hits")), cacheMisses: Number(call("fmap_misses")),
     cacheEvictions: Number(call("fmap_evictions")), residentBytes: Number(call("fmap_resident_bytes")),
-    pinnedBytes: Number(call("fmap_pinned_bytes")), wasmBytes: state.exports.memory.buffer.byteLength };
+    pinnedBytes: Number(call("fmap_pinned_bytes")), mappingCount: Number(call("fmap_mapping_count")),
+    mappingMetadataBytes: Number(call("fmap_mapping_bytes")),
+    wasmBytes: state.exports.memory.buffer.byteLength };
 }
 function replyError(message, error) {
   self.postMessage({ id: message.id, generation: message.generation,
@@ -103,7 +105,30 @@ async function readFile(file, pageSize, stats, offset, length) {
   return bytes;
 }
 
+function resolveMapping(mappingId, address, length) {
+  integer(mappingId, "mapping identity"); integer(address, "virtual address"); integer(length, "mapped length");
+  if (!mappingId) throw new RangeError("Invalid fmap mapping identity.");
+  const end = integer(address + length, "mapped range end");
+  // An empty backing store has no nonempty range to insert in the tree.
+  if (mappingId === 1 && state.rootMappingLive && state.file.size === 0 && address === 0 && length === 0) return 0;
+  const id = BigInt(mappingId);
+  const start = Number(call("fmap_mapping_start", id));
+  const limit = Number(call("fmap_mapping_end", id));
+  if (limit <= start || address < start || end > limit
+      || (length && call("fmap_lookup_mapping", BigInt(address)) !== id)) {
+    throw new RangeError("fmap address is unmapped or exceeds its mapping.");
+  }
+  return integer(Number(call("fmap_mapping_file_offset", id)) + (address - start), "mapped file offset");
+}
+
 function rangeDemand(message, pageIndex, offset, length) {
+  const fileOffset = integer(pageIndex * state.pageSize + offset, "fault file offset");
+  const mappingId = message.mappingId ?? 1;
+  const address = message.mappingId == null ? fileOffset
+    : integer(message.virtualAddress + (fileOffset - message.offset), "fault virtual address");
+  if (resolveMapping(mappingId, address, length) !== fileOffset) {
+    throw new RangeError("fmap address does not resolve to the requested file bytes.");
+  }
   return { kind: "range", pageIndex, offset, length, priority: message.priority,
     generation: message.generation, requestId: message.id };
 }
@@ -359,6 +384,9 @@ function* readRange(message) {
   const end = integer(offset + length, "range end");
   if (end > state.file.size) throw new RangeError("fmap range exceeds EOF.");
   if (length > state.maxResultBytes) throw new RangeError("fmap range exceeds its request budget.");
+  if (resolveMapping(message.mappingId ?? 1, message.mappingId == null ? offset : message.virtualAddress, length) !== offset) {
+    throw new RangeError("fmap mapped read does not match its backing file range.");
+  }
   const values = new Uint8Array(length);
   state.stats.requestedBytes += length;
   state.stats.outputBytes += length;
@@ -522,6 +550,11 @@ async function open(message) {
   const status = Number(call("fmap_init", pageSize, slots));
   if (status !== 0) throw new Error(`fmap initialization failed (status ${status}).`);
   state.file = message.file;
+  state.rootMappingLive = true;
+  if (message.file.size && Number(call("fmap_map_region", 0n, BigInt(message.file.size), 0n, 1n)) !== 0) {
+    throw new Error("Unable to initialize the fmap file mapping.");
+  }
+  state.nextMappingId = 2;
   state.meta = message.meta;
   if (message.mode !== "range") {
     if (!state.meta || !["bsq", "bil", "bip"].includes(state.meta.interleave)) throw new Error("Invalid fmap ENVI metadata.");
@@ -565,9 +598,44 @@ self.onmessage = async (event) => {
       state.generation = message.generation;
       if (message.type === "close") {
         state.fillQueue.close();
+        call("fmap_mapping_reset");
         state.closed = true;
+        state.rootMappingLive = false;
         state.file = null;
       } else state.fillQueue.clear(state.generation);
+    } else if (message.type === "mapRegion") {
+      requireGeneration(message.generation);
+      const offset = integer(message.offset, "mapping file offset");
+      const length = integer(message.length, "mapping length");
+      if (!length || integer(offset + length, "mapping file end") > state.file.size) {
+        throw new RangeError("fmap mapping is empty or exceeds EOF.");
+      }
+      const available = message.address == null
+        ? call("fmap_mapping_find_gap", BigInt(length), BigInt(state.pageSize), 0n, BigInt(Number.MAX_SAFE_INTEGER))
+        : BigInt(integer(message.address, "mapping address"));
+      if (available < 0n) throw new RangeError("No available fmap virtual address range.");
+      const address = integer(Number(available), "mapping address");
+      if (address % state.pageSize) throw new RangeError("fmap mapping address must be fpage aligned.");
+      integer(address + length, "mapping virtual end");
+      const mappingId = integer(state.nextMappingId, "mapping identity");
+      const status = Number(call("fmap_map_region", BigInt(address), BigInt(length), BigInt(offset), BigInt(mappingId)));
+      if (status !== 0) throw new RangeError(`Unable to create fmap mapping (${status}); address may overlap an existing mapping.`);
+      state.nextMappingId += 1;
+      self.postMessage({ id: message.id, generation: state.generation,
+        result: { mappingId, address, offset, length, stats: counters() } });
+    } else if (message.type === "unmapRegion") {
+      requireGeneration(message.generation);
+      const mappingId = integer(message.mappingId, "mapping identity");
+      if (!mappingId) throw new RangeError("Invalid fmap mapping identity.");
+      if (mappingId === 1 && !state.rootMappingLive) throw new RangeError("fmap mapping has already been released.");
+      for (const job of [...state.jobById.values()]) {
+        if ((job.message.mappingId ?? 1) === mappingId) cancelJob(job);
+      }
+      const status = state.file.size === 0 && mappingId === 1 ? 0
+        : Number(call("fmap_unmap_region", BigInt(mappingId)));
+      if (status !== 0) throw new RangeError("fmap mapping has already been released.");
+      if (mappingId === 1) state.rootMappingLive = false;
+      self.postMessage({ id: message.id, generation: state.generation, result: { stats: counters() } });
     } else if (message.type === "configureRaster") {
       requireGeneration(message.generation);
       if (state.meta) throw new Error("fmap raster metadata is already configured.");

@@ -320,6 +320,45 @@ try {
       baselineSource.close();
     }
   });
+  report.mappingIndex = await page.evaluate(async () => {
+    const bytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+    const { instance } = await WebAssembly.instantiate(bytes, {});
+    const core = instance.exports;
+    const results = [];
+    for (const count of [64, 1024, 16384]) {
+      if (core.fmap_init(4096, 2) !== 0) throw new Error("Mapping benchmark initialization failed.");
+      const base = 8n * 1024n * 1024n * 1024n;
+      let start = performance.now();
+      for (let i = 0; i < count; i += 1) {
+        if (core.fmap_map_region(base + BigInt(i) * 8192n, 4096n, BigInt(i) * 4096n, BigInt(i + 1)) !== 0) {
+          throw new Error("Mapping benchmark insertion failed.");
+        }
+      }
+      const insertMs = performance.now() - start;
+      const lookupCount = 100000;
+      let checksum = 0;
+      start = performance.now();
+      for (let i = 0; i < lookupCount; i += 1) {
+        const index = (i * 7919) % count;
+        const id = Number(core.fmap_lookup_mapping(base + BigInt(index) * 8192n + 17n));
+        if (id !== index + 1) throw new Error("Mapping benchmark lookup mismatch.");
+        checksum += id;
+      }
+      const lookupMs = performance.now() - start;
+      const metadataBytes = Number(core.fmap_mapping_bytes());
+      start = performance.now();
+      for (let i = 0; i < count; i += 1) {
+        if (core.fmap_unmap_region(BigInt(i + 1)) !== 0) throw new Error("Mapping benchmark release failed.");
+      }
+      if (core.fmap_mapping_count() !== 0 || core.fmap_resident_bytes() !== 8192) {
+        throw new Error("Mapping benchmark leaked records or changed the byte pool.");
+      }
+      results.push({ ranges: count, lookupCount, checksum, metadataBytes,
+        insertMs: Number(insertMs.toFixed(3)), lookupMs: Number(lookupMs.toFixed(3)),
+        releaseMs: Number((performance.now() - start).toFixed(3)) });
+    }
+    return { scope: "C/WASM mapping index only; excludes file I/O and worker messaging", results };
+  });
   if (!process.argv.includes("--envi-only")) report.tiff = await page.evaluate(async () => {
     const { createBenchmarkTiff } = await import("/tests/fixtures/fmap-tiff.js");
     const { addDatasetFromFile } = await import("/src/io/tiff-loader.js");
