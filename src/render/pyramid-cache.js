@@ -636,13 +636,17 @@ export function createPyramidController(deps) {
       if (outW <= 0 || outH <= 0) return null;
 
       let data;
+      const readOptions = {
+        cancelled: () => ds.pyramid !== pyr || pyr.cancelled,
+        priority: "background"
+      };
       if (ds.meta.interleave === "bip") {
-        data = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step);
+        data = await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, null, readOptions);
       } else {
-        data = await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step);
+        data = await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, null, readOptions);
       }
 
-      if (!ds.pyramid || ds.pyramid.cancelled) return null;
+      if (ds.pyramid !== pyr || pyr.cancelled) return null;
 
       const tile = { band, level, tx, ty, data, w: outW, h: outH, bytes: data.byteLength, t: ++ds.pyramid.tick };
       ds.pyramid.pending.delete(key);

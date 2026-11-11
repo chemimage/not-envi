@@ -105,6 +105,16 @@ describe("spectrum-data", () => {
     expect(spectrumValue).toHaveBeenCalledWith(ds.meta, 1, 1, 2);
   });
 
+  test("forwards per-request options to a custom spectrum reader", async () => {
+    const spectrumValue = vi.fn(async () => Float32Array.from([7, 8, 9]));
+    const ds = { meta: makeMeta("bsq"), ds: { readSpectrumAtPixel: spectrumValue } };
+    const options = { cancelled: () => false, priority: "foreground" };
+
+    await readSpectrumAtPixel(ds, 1, 1, 3, options);
+
+    expect(spectrumValue).toHaveBeenCalledWith(ds.meta, 1, 1, 3, options);
+  });
+
   test("wavelengthArrayOrNull normalizes numeric-like values", () => {
     const ds = makeDs(makeMeta("bsq"));
     expect(wavelengthArrayOrNull(ds)).toEqual([450, 550, 650]);

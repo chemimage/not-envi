@@ -91,6 +91,7 @@ describe("spectrum controller", () => {
       activeBand: 1,
       meta: { bands: 3, wlUnits: "nm", scale: null, bandNames: ["a", "b", "c"] }
     };
+    const readSpectrumAtPixel = vi.fn(async () => new Float32Array([1, 2, 3]));
 
     const ctrl = createSpectrumController({
       els,
@@ -101,7 +102,7 @@ describe("spectrum controller", () => {
       sanitizeFilePart: (s) => s,
       downloadBlob: vi.fn(),
       discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
-      readSpectrumAtPixel: async () => new Float32Array([1, 2, 3]),
+      readSpectrumAtPixel,
       wavelengthArrayOrNull: () => [500, 600, 700]
     });
 
@@ -109,9 +110,13 @@ describe("spectrum controller", () => {
     expect(ctrl.isOpenForDatasetId(7)).toBe(true);
     expect(els.specPanel.style.display).toBe("flex");
     expect(els.specSub.textContent).toBe("(1, 1)");
+    const firstReadOptions = readSpectrumAtPixel.mock.calls[0][3];
+    expect(firstReadOptions?.priority).toBe("foreground");
+    expect(firstReadOptions?.cancelled()).toBe(false);
     expect(els.btnSpecUnitUm.disabled).toBe(true);
     ds.meta.scale = { umPerPixelX: 2, umPerPixelY: 3 };
     await ctrl.openSpectrumAt(ds, 4, 5);
+    expect(firstReadOptions?.cancelled()).toBe(true);
     expect(els.specSub.textContent).toBe("(4, 5)");
     els.btnSpecUnitUm.click();
     expect(els.specSub.textContent).toBe("(8, 15)");

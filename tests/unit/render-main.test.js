@@ -167,6 +167,8 @@ describe("render-main", () => {
     expect(deps.cpuRenderGray.mock.calls[0][1]).toBe(200);
     expect(deps.cpuRenderGray.mock.calls[0][2]).toBe(113);
     expect(readBandWindow).toHaveBeenCalledTimes(1);
+    expect(readBandWindow.mock.calls[0][9]?.priority).toBe("foreground");
+    expect(readBandWindow.mock.calls[0][9]?.cancelled()).toBe(false);
   });
 
   test("render uses color composite path for three-band color mode", async () => {
@@ -203,6 +205,8 @@ describe("render-main", () => {
     expect(deps.cpuRenderGray).not.toHaveBeenCalled();
     expect(deps.gpuRender).not.toHaveBeenCalled();
     expect(readBandWindow).toHaveBeenCalledTimes(3);
+    expect(readBandWindow.mock.calls.every((call) => call[9]?.priority === "foreground")).toBe(true);
+    expect(readBandWindow.mock.calls.every((call) => call[9]?.cancelled() === false)).toBe(true);
     expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
   });
 

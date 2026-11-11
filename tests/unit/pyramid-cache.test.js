@@ -136,11 +136,13 @@ describe("pyramid-cache", () => {
   });
 
   test("tryRasterFromPyramid loads a coarse viewport level before returning gaps", async () => {
+    let readOptions = null;
     const controller = createPyramidController({
       now: () => 0,
       requestIdle: () => 1,
       cancelIdle: () => {},
-      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH) => {
+      readBandWindow: async (_meta, _ds, _band, _x0, _y0, outW, outH, _step, _out, options) => {
+        readOptions = options;
         const data = new Float32Array(outW * outH);
         data.fill(7);
         return data;
@@ -184,6 +186,10 @@ describe("pyramid-cache", () => {
     expect(out.coverage).toBe(1);
     expect(typeof out.approximate).toBe("boolean");
     expect(Number.isNaN(out.dataF32[out.dataF32.length - 1])).toBe(false);
+    expect(readOptions?.priority).toBe("background");
+    expect(readOptions?.cancelled()).toBe(false);
+    controller.disposePyramid(ds.pyramid);
+    expect(readOptions?.cancelled()).toBe(true);
   });
 
   test("tryRasterFromPyramid pins coarse overview levels for reuse", async () => {

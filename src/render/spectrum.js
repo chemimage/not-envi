@@ -18,6 +18,10 @@ export {
   shouldUseBarSpectrumPlot
 };
 
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
 export function createSpectrumController(deps) {
   const {
     els,
@@ -896,7 +900,12 @@ export function createSpectrumController(deps) {
 
     try {
       let yVals = opts.yVals || null;
-      if (!(yVals && yVals.length)) yVals = await readSpectrumAtPixel(ds, ix, iy);
+      if (!(yVals && yVals.length)) {
+        yVals = await readSpectrumAtPixel(ds, ix, iy, {
+          cancelled: () => mySeq !== specSeq,
+          priority: "foreground"
+        });
+      }
       if (mySeq !== specSeq) return;
       const xVals = (opts.xVals && opts.xVals.length) ? opts.xVals : wavelengthArrayOrNull(ds);
       const stdVals = (opts.stdVals && opts.stdVals.length) ? opts.stdVals : null;
@@ -914,6 +923,7 @@ export function createSpectrumController(deps) {
       }
       updatePerf();
     } catch (e) {
+      if (isAbortError(e) || mySeq !== specSeq) return;
       console.error(e);
       setSpecSub("Failed to read spectrum.");
       setSpecFoot("Failed to compute spectrum.");

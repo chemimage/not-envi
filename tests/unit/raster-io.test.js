@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { pixelOffset, readBandWindow, readBandWindowBIP, toFloat32 } from "../../src/core/raster-io.js";
 
 function makeMeta(interleave, samples = 3, lines = 2, bands = 2) {
@@ -139,6 +139,22 @@ describe("raster-io", () => {
     };
     const out = await readBandWindow(meta, ds, 1, 1, 1, 2, 2, 1, 2);
     expect(Array.from(out)).toEqual([100, 101, 110, 111]);
+  });
+
+  test("readBandWindow forwards cancellation and priority options to a custom reader", async () => {
+    const meta = makeMeta("bsq");
+    const cancelled = vi.fn(() => false);
+    const options = { cancelled, priority: "foreground" };
+    const reader = vi.fn(async (_meta, _band, _x0, _y0, outW, outH, _step, out) => {
+      out.fill(7);
+      return out.subarray(0, outW * outH);
+    });
+    const ds = { readBandWindow: reader };
+
+    const out = await readBandWindow(meta, ds, 0, 0, 0, 2, 1, 1, 2, null, options);
+
+    expect(Array.from(out)).toEqual([7, 7]);
+    expect(reader.mock.calls[0][8]).toBe(options);
   });
 
   test("readBandWindowBIP delegates to a custom datasource reader", async () => {

@@ -444,6 +444,8 @@ describe("thumbnail controller", () => {
       expect(readBandWindow).toHaveBeenCalledTimes(1);
       expect(readBandWindow.mock.calls[0][5]).toBeGreaterThan(APP_CONFIG.previewOverview.standardBootstrapLongEdge);
       expect(readBandWindow.mock.calls[0][5]).toBeLessThanOrEqual(APP_CONFIG.previewOverview.standardDeferredLongEdge);
+      expect(readBandWindow.mock.calls[0][9]?.priority).toBe("background");
+      expect(readBandWindow.mock.calls[0][9]?.cancelled()).toBe(false);
       expect(ds.previewOverview?.ready).toBe(true);
     } finally {
       createElementSpy.mockRestore();
