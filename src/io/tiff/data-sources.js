@@ -5,17 +5,16 @@ import {
   segGet
 } from "../../core/raster-io.js";
 import { APP_CONFIG } from "../../app/config.js";
+import { createCompactBlockTable } from "./metadata-index.js";
 import {
   decodeBoundedTiffBlock,
   estimateBoundedTiffScratchBytes
 } from "../fmap/tiff-codecs.js";
 import {
   createTiffStats,
-  firstFinite,
   firstSafeOffsetOrNull,
   isRawCompatibleSummary,
   isUncompressedSingleStrip,
-  listTagValues,
   perfNow,
   readDataViewValue,
   requireSafeOffset,
@@ -263,73 +262,8 @@ class LruByteCache {
   }
 }
 
-function buildBlockTable(summary, imageIndex = 0) {
-  const isTiled = summary.tileOffsets.length > 0;
-  const blockWidth = isTiled
-    ? Math.max(1, firstFinite([summary.fileDirectory?.TileWidth], summary.width))
-    : summary.width;
-  const blockHeight = isTiled
-    ? Math.max(1, firstFinite([summary.fileDirectory?.TileLength], summary.height))
-    : Math.max(1, Math.min(summary.height, summary.rowsPerStrip || summary.height));
-  const numBlocksX = Math.max(1, Math.ceil(summary.width / blockWidth));
-  const numBlocksY = Math.max(1, Math.ceil(summary.height / blockHeight));
-  const groups = summary.planarConfiguration === 2 ? summary.samplesPerPixel : 1;
-  const offsets = isTiled ? summary.tileOffsets : summary.stripOffsets;
-  const byteCounts = isTiled
-    ? listTagValues(summary.fileDirectory?.TileByteCounts)
-    : summary.stripByteCounts;
-  const expected = numBlocksX * numBlocksY * groups;
-  if (offsets.length < expected || byteCounts.length < expected) {
-    throw new Error("TIFF is missing complete tile/strip offset metadata.");
-  }
-
-  const blocksByGroup = Array.from({ length: groups }, () => new Array(numBlocksX * numBlocksY));
-  for (let group = 0; group < groups; group += 1) {
-    for (let by = 0; by < numBlocksY; by += 1) {
-      for (let bx = 0; bx < numBlocksX; bx += 1) {
-        const localIndex = (by * numBlocksX) + bx;
-        const index = (group * numBlocksX * numBlocksY) + localIndex;
-        const offset = firstSafeOffsetOrNull([offsets[index]]);
-        const byteCount = Number(byteCounts[index]);
-        if (offset == null || !Number.isFinite(byteCount) || byteCount <= 0) {
-          throw new Error("TIFF contains invalid tile/strip offsets.");
-        }
-        const x0 = bx * blockWidth;
-        const y0 = by * blockHeight;
-        blocksByGroup[group][localIndex] = {
-          key: `img${imageIndex}:g${group}:b${localIndex}`,
-          imageIndex,
-          group,
-          bx,
-          by,
-          x0,
-          y0,
-          w: Math.min(blockWidth, summary.width - x0),
-          h: Math.min(blockHeight, summary.height - y0),
-          offset,
-          byteCount
-        };
-      }
-    }
-  }
-
-  try { summary.image.tiles = null; } catch (_err) {}
-
-  return {
-    image: summary.image,
-    summary,
-    imageIndex,
-    isTiled,
-    blockWidth,
-    blockHeight,
-    numBlocksX,
-    numBlocksY,
-    blocksByGroup
-  };
-}
-
 export function buildRawBandSpecs(summary, sampleType, imageIndex = 0) {
-  const table = buildBlockTable(summary, imageIndex);
+  const table = createCompactBlockTable(summary, imageIndex);
   const bytesPerSample = sampleType.dataTypeInfo.bytes;
   const sampleCount = summary.samplesPerPixel;
   const specs = [];
@@ -337,7 +271,7 @@ export function buildRawBandSpecs(summary, sampleType, imageIndex = 0) {
     specs.push({
       kind: "raw",
       table,
-      blocks: summary.planarConfiguration === 2 ? table.blocksByGroup[band] : table.blocksByGroup[0],
+      blocks: summary.planarConfiguration === 2 ? table.group(band) : table.group(0),
       sampleByteOffset: summary.planarConfiguration === 2 ? 0 : (band * bytesPerSample),
       bytesPerSample,
       bytesPerPixel: summary.planarConfiguration === 2 ? bytesPerSample : (sampleCount * bytesPerSample),
@@ -348,22 +282,22 @@ export function buildRawBandSpecs(summary, sampleType, imageIndex = 0) {
 }
 
 export function buildRgbBandSpecs(summary, imageIndex = 0) {
-  const table = buildBlockTable(summary, imageIndex);
+  const table = createCompactBlockTable(summary, imageIndex);
   const kind = supportsNativeJpegTileDecode(summary) ? "native-rgb-jpeg" : "rgb";
   return [0, 1, 2].map((channel) => ({
     kind,
     table,
-    blocks: table.blocksByGroup[0],
+    blocks: table.group(0),
     channel
   }));
 }
 
 export function buildWindowBandSpecs(summary, imageIndex = 0) {
-  const table = buildBlockTable(summary, imageIndex);
+  const table = createCompactBlockTable(summary, imageIndex);
   return Array.from({ length: summary.samplesPerPixel }, (_v, band) => ({
     kind: "window",
     table,
-    blocks: table.blocksByGroup[0],
+    blocks: table.group(0),
     windowSampleIndex: band,
     channel: band
   }));
@@ -483,7 +417,7 @@ async function processInBatches(items, concurrency, runItem, onBatch = null, can
 let nextTiffSourceId = 1;
 
 export class TiffBlockIndexedDataSource {
-  constructor({ file, tiff, meta, bandSpecs, overviewSummaries = [], budgets = {}, concurrency = 2, ownerId = "", rangeSource = null }) {
+  constructor({ file, tiff, meta, bandSpecs, overviewSummaries = [], bandOverviewSummaries = null, budgets = {}, concurrency = 2, ownerId = "", rangeSource = null }) {
     this.file = file;
     this.tiff = tiff;
     this.meta = meta;
@@ -521,14 +455,15 @@ export class TiffBlockIndexedDataSource {
     this.generation = 0;
     this.codecAbortController = new AbortController();
     this.ownerId = String(this.rawSource?.ownerId || this.base?.ownerId || "").trim() || `tiff:${nextTiffSourceId++}`;
-    this.overviews = Array.isArray(overviewSummaries)
-      ? overviewSummaries
+    const buildOverviewPlans = (summaries, prefix, singleBand = false) => Array.isArray(summaries)
+      ? summaries
         .map((summary, overviewIndex) => ({
           summary,
+          singleBand,
           fmapSpecs: this.usesFmapRangeSource
             && isRawCompatibleSummary(summary)
             && BOUNDED_FMAP_RAW_COMPRESSIONS.has(Number(summary?.compression) || 1)
-            ? buildRawBandSpecs(summary, { dataTypeInfo: this.meta.dataTypeInfo }, `overview${overviewIndex}`)
+            ? buildRawBandSpecs(summary, { dataTypeInfo: this.meta.dataTypeInfo }, `${prefix}${overviewIndex}`)
             : null,
           scaleX: Number(summary?.scaleX) || (Number(this.meta?.samples) / Math.max(1, Number(summary?.width) || 1)),
           scaleY: Number(summary?.scaleY) || (Number(this.meta?.lines) / Math.max(1, Number(summary?.height) || 1)),
@@ -540,7 +475,14 @@ export class TiffBlockIndexedDataSource {
         .filter((entry) => entry.summary && entry.scale > 1 && (!this.usesFmapRangeSource || entry.fmapSpecs))
         .sort((a, b) => Number(a.scale || 1) - Number(b.scale || 1))
       : [];
-    this.overviewCount = this.overviews.length;
+    this.overviews = buildOverviewPlans(overviewSummaries, "overview");
+    // Grayscale page stacks have independent overview families. Never let one
+    // page's native pyramid supply a different spectral band.
+    this.bandOverviews = Array.isArray(bandOverviewSummaries)
+      ? bandOverviewSummaries.map((summaries, band) => buildOverviewPlans(summaries, `band${band}:overview`, true))
+      : null;
+    this.overviewCount = this.overviews.length
+      + (this.bandOverviews?.reduce((count, plans) => count + plans.length, 0) || 0);
   }
 
   get maxBytes() {
@@ -645,7 +587,7 @@ export class TiffBlockIndexedDataSource {
   }
 
   hasNativeOverviews() {
-    return this.overviews.length > 0;
+    return this.overviewCount > 0;
   }
 
   #resolveReadOptions(outOrOptions = null, maybeOptions = null) {
@@ -683,7 +625,7 @@ export class TiffBlockIndexedDataSource {
     const blocks = [];
     for (let by = minBy; by <= maxBy; by += 1) {
       for (let bx = minBx; bx <= maxBx; bx += 1) {
-        const block = spec.blocks[(by * spec.table.numBlocksX) + bx];
+        const block = spec.blocks.at((by * spec.table.numBlocksX) + bx);
         if (block) blocks.push(block);
       }
     }
@@ -699,7 +641,7 @@ export class TiffBlockIndexedDataSource {
     for (let by = minBy; by <= maxBy; by += 1) {
       for (let bx = minBx; bx <= maxBx; bx += 1) {
         const index = (by * table.numBlocksX) + bx;
-        const blocks = specs.map((spec) => spec.blocks[index] || null);
+        const blocks = specs.map((spec) => spec.blocks.at(index) || null);
         const anchor = blocks.find(Boolean) || null;
         if (!anchor) continue;
         entries.push({ anchor, blocks });
@@ -858,7 +800,7 @@ export class TiffBlockIndexedDataSource {
     const safeOutH = Math.floor((maxY - safeY0 + (step - 1)) / step);
     if (safeOutW <= 0 || safeOutH <= 0) return target;
     const readOptions = resolved.options || null;
-    const overviewPlan = this.#selectOverviewPlan(step);
+    const overviewPlan = this.#selectOverviewPlan(step, band);
     if (overviewPlan) {
       return this.#readBandWindowFromOverview(meta, band, target, overviewPlan, safeX0, safeY0, safeOutW, safeOutH, step, readOptions);
     }
@@ -959,7 +901,7 @@ export class TiffBlockIndexedDataSource {
     if (ix < 0 || iy < 0 || ix >= meta.samples || iy >= meta.lines) return null;
     const spec = this.bandSpecs[band];
     if (!spec) return null;
-    const block = spec.blocks[(Math.floor(iy / spec.table.blockHeight) * spec.table.numBlocksX) + Math.floor(ix / spec.table.blockWidth)];
+    const block = spec.blocks.at((Math.floor(iy / spec.table.blockHeight) * spec.table.numBlocksX) + Math.floor(ix / spec.table.blockWidth));
     if (!block) return null;
     const decoded = await this.#loadDecodedBlockWithScheduling(spec, block, 1, options);
     try {
@@ -996,17 +938,21 @@ export class TiffBlockIndexedDataSource {
     this.tiff = null;
   }
 
-  #selectOverviewPlan(step) {
+  #selectOverviewPlan(step, band = null) {
     const desiredStep = Math.max(1, Number(step) || 1);
-    if (desiredStep <= 1 || !this.overviews.length) return null;
-    let best = null;
-    let fallback = null;
-    for (const overview of this.overviews) {
-      const scale = Math.max(1, Number(overview?.scale) || 1);
-      if (scale <= desiredStep) best = overview;
-      else if (!fallback) fallback = overview;
+    const overviews = band != null && this.bandOverviews
+      ? (this.bandOverviews[band] || []) : this.overviews;
+    if (desiredStep <= 1 || !overviews.length) return null;
+    // Sorted once at construction. Upper-bound search retains the last equal
+    // scale, with the smallest native overview as the existing fallback.
+    let low = 0;
+    let high = overviews.length;
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2);
+      if (overviews[middle].scale <= desiredStep) low = middle + 1;
+      else high = middle;
     }
-    return best || fallback || null;
+    return overviews[Math.max(0, low - 1)] || null;
   }
 
   #resolveOverviewWindow(overviewPlan, x0, y0, outW, outH, step) {
@@ -1046,7 +992,7 @@ export class TiffBlockIndexedDataSource {
     const request = this.#resolveOverviewWindow(overviewPlan, x0, y0, outW, outH, step);
     if (!request) return target;
     if (this.usesFmapRangeSource) {
-      const fmapSpec = overviewPlan.fmapSpecs?.[band] || null;
+      const fmapSpec = overviewPlan.fmapSpecs?.[overviewPlan.singleBand ? 0 : band] || null;
       if (!fmapSpec) {
         throw new Error("This TIFF overview requires a decoder that is not routed through the bounded fmap range path. Disable fmap or use a raw-compatible overview.");
       }
@@ -1063,12 +1009,12 @@ export class TiffBlockIndexedDataSource {
         resampleMethod: "nearest",
         pool: this.#getPool()
       });
-      const channel = clamp(this.#overviewSampleIndex(spec, band), 0, 2);
+      const channel = overviewPlan.singleBand ? 0 : clamp(this.#overviewSampleIndex(spec, band), 0, 2);
       for (let index = 0, offset = channel; index < target.length && offset < rgb.length; index += 1, offset += 3) {
         target[index] = rgb[offset];
       }
     } else {
-      const sampleIndex = this.#overviewSampleIndex(spec, band);
+      const sampleIndex = overviewPlan.singleBand ? 0 : this.#overviewSampleIndex(spec, band);
       const raw = await request.summary.image.readRasters({
         window: request.window,
         samples: [sampleIndex],
@@ -1139,35 +1085,50 @@ export class TiffBlockIndexedDataSource {
   async #readFmapOverviewSpec(spec, overviewPlan, target, x0, y0, outW, outH, outputStride, step, options = null) {
     const scaleX = Math.max(1, Number(overviewPlan?.scaleX) || 1);
     const scaleY = Math.max(1, Number(overviewPlan?.scaleY) || 1);
-    for (let outY = 0; outY < outH; outY += 1) {
-      throwIfCancelled(options);
-      const sourceY = clamp(
-        Math.floor((y0 + (outY * step)) / scaleY),
-        0,
-        Math.max(0, Number(spec.table.summary.height) - 1)
-      );
-      for (let outX = 0; outX < outW; outX += 1) {
-        const sourceX = clamp(
-          Math.floor((x0 + (outX * step)) / scaleX),
-          0,
-          Math.max(0, Number(spec.table.summary.width) - 1)
-        );
-        const blockIndex = (Math.floor(sourceY / spec.table.blockHeight) * spec.table.numBlocksX)
-          + Math.floor(sourceX / spec.table.blockWidth);
-        const block = spec.blocks[blockIndex];
-        if (!block) continue;
-        const decoded = await this.#loadRawDecodedBlock(spec, block, options);
-        try {
-          target[(outY * outputStride) + outX] = this.#readBlockValue(
-            spec,
-            decoded,
-            sourceX - block.x0,
-            sourceY - block.y0
-          );
-        } finally {
-          this.#releaseDecoded(decoded);
-        }
+    const sourceXAt = (outX) => clamp(Math.floor((x0 + outX * step) / scaleX),
+      0, Math.max(0, Number(spec.table.summary.width) - 1));
+    const sourceYAt = (outY) => clamp(Math.floor((y0 + outY * step) / scaleY),
+      0, Math.max(0, Number(spec.table.summary.height) - 1));
+    // Locate the next sampled block boundary without enumerating unsampled
+    // blocks. Binary search uses the same coordinate calculation as copying,
+    // including fractional native scales and edge clamping.
+    const nextBoundary = (start, count, boundary, sourceAt) => {
+      let low = start;
+      let high = count;
+      while (low < high) {
+        const middle = low + Math.floor((high - low) / 2);
+        if (sourceAt(middle) < boundary) low = middle + 1;
+        else high = middle;
       }
+      return low;
+    };
+    for (let rowStart = 0; rowStart < outH;) {
+      throwIfCancelled(options);
+      const by = Math.floor(sourceYAt(rowStart) / spec.table.blockHeight);
+      const rowEnd = nextBoundary(rowStart + 1, outH, (by + 1) * spec.table.blockHeight, sourceYAt);
+      for (let colStart = 0; colStart < outW;) {
+        throwIfCancelled(options);
+        const bx = Math.floor(sourceXAt(colStart) / spec.table.blockWidth);
+        const colEnd = nextBoundary(colStart + 1, outW, (bx + 1) * spec.table.blockWidth, sourceXAt);
+        const block = spec.blocks.at(by * spec.table.numBlocksX + bx);
+        if (block) {
+          const decoded = await this.#loadRawDecodedBlock(spec, block, options);
+          try {
+            for (let outY = rowStart; outY < rowEnd; outY += 1) {
+              throwIfCancelled(options);
+              const localY = sourceYAt(outY) - block.y0;
+              const targetOffset = outY * outputStride;
+              for (let outX = colStart; outX < colEnd; outX += 1) {
+                target[targetOffset + outX] = this.#readBlockValue(spec, decoded, sourceXAt(outX) - block.x0, localY);
+              }
+            }
+          } finally {
+            this.#releaseDecoded(decoded);
+          }
+        }
+        colStart = colEnd;
+      }
+      rowStart = rowEnd;
     }
   }
 
@@ -1713,7 +1674,7 @@ export class TiffBlockIndexedDataSource {
           const rowBase = rowIndex * outW;
           const localYBase = srcY - (by * blockHeight);
           for (const bx of blockOrder) {
-            const block = spec.blocks[(by * numBlocksX) + bx];
+            const block = spec.blocks.at((by * numBlocksX) + bx);
             if (!block) continue;
             const colStart = Math.max(0, Math.ceil((block.x0 - x0) / step));
             const colEnd = Math.min(safeOutW, Math.floor((block.x0 + block.w - 1 - x0) / step) + 1);
@@ -1790,7 +1751,7 @@ export class TiffBlockIndexedDataSource {
           const rowBase = rowIndex * outW;
           for (const bx of blockOrder) {
             const index = (by * numBlocksX) + bx;
-            const blocks = specs.map((spec) => spec.blocks[index] || null);
+            const blocks = specs.map((spec) => spec.blocks.at(index) || null);
             const anchor = blocks.find(Boolean) || null;
             if (!anchor) continue;
             const localYBase = srcY - anchor.y0;
