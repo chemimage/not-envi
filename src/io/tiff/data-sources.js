@@ -29,6 +29,25 @@ import {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const BOUNDED_FMAP_RAW_COMPRESSIONS = new Set([1, 5, 8, 32946, 32773]);
+const DEFAULT_MAX_LOGICAL_RESULT_BYTES = 128 * 1024 * 1024;
+
+function checkedOutputElements(width, height, label) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!Number.isSafeInteger(w) || w < 0 || !Number.isSafeInteger(h) || h < 0) {
+    throw new RangeError(`${label} dimensions must be non-negative safe integers.`);
+  }
+  const count = w * h;
+  if (!Number.isSafeInteger(count)) throw new RangeError(`${label} element count exceeds the exact integer range.`);
+  return count;
+}
+
+function requireOutputBytes(elements, bytesPerElement, limit, label) {
+  const bytes = elements * bytesPerElement;
+  if (!Number.isSafeInteger(bytes)) throw new RangeError(`${label} byte count exceeds the exact integer range.`);
+  if (bytes > limit) throw new RangeError(`${label} requires ${bytes} bytes, exceeding the ${limit}-byte logical-result limit.`);
+  return bytes;
+}
 
 function checkedWorkingBytes(...values) {
   let total = 0;
@@ -72,6 +91,8 @@ export class BandOffsetTiffDataSource {
     this.meta = meta;
     this.bandOffsets = bandOffsets.map((value, index) => requireSafeOffset(value, `band offset ${index + 1}`));
     this.isFmap = !!source?.isFmap || source?.constructor?.name === "FmapTiffDataSource";
+    this.maxLogicalResultBytes = Number(source?.maxLogicalResultBytes) || DEFAULT_MAX_LOGICAL_RESULT_BYTES;
+    this.maxWindowResultBytes = this.maxLogicalResultBytes;
   }
 
   get chunkSize() {
@@ -116,7 +137,7 @@ export class BandOffsetTiffDataSource {
     if (this.source && typeof this.source.clear === "function") this.source.clear();
   }
 
-  async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null) {
+  async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null, options = null) {
     const bandOffset = this.bandOffsets[band];
     if (!Number.isFinite(Number(bandOffset))) {
       throw new Error(`TIFF band ${Number(band) + 1} is unavailable.`);
@@ -127,28 +148,32 @@ export class BandOffsetTiffDataSource {
       interleave: "bsq",
       headerOffset: bandOffset
     };
-    return readBandWindowCore(bandMeta, this.source, 0, x0, y0, outW, outH, step, this.concurrency, out);
+    return readBandWindowCore(bandMeta, this.source, 0, x0, y0, outW, outH, step, this.concurrency, out, options);
   }
 
   async readBandWindowBIP(meta, band, x0, y0, outW, outH, step, out = null, options = null) {
     return this.readBandWindow(meta, band, x0, y0, outW, outH, step, out, options);
   }
 
-  async probeValueAtBand(meta, ix, iy, band) {
+  async probeValueAtBand(meta, ix, iy, band, options = null) {
     const bytes = meta.dataTypeInfo.bytes;
     const bandOffset = this.bandOffsets[band];
     if (!Number.isFinite(Number(bandOffset))) return null;
     const offset = bandOffset + (((iy * meta.samples) + ix) * bytes);
     const scratch = new Uint8Array(bytes);
-    await this.source.readInto(offset, scratch, 0, bytes);
+    await this.source.readInto(offset, scratch, 0, bytes, options || {});
     const seg = makeSegmentReader(meta, scratch);
     return Number(segGet(meta, seg, 0));
   }
 
-  async readSpectrumAtPixel(meta, ix, iy) {
+  async readSpectrumAtPixel(meta, ix, iy, options = null, extraOptions = null) {
+    if (typeof options !== "object" || !options) options = extraOptions || null;
+    throwIfCancelled(options);
+    requireOutputBytes(this.bandOffsets.length, Float32Array.BYTES_PER_ELEMENT, this.maxLogicalResultBytes, "TIFF spectrum");
     const out = new Float32Array(this.bandOffsets.length);
     for (let band = 0; band < this.bandOffsets.length; band += 1) {
-      out[band] = Number(await this.probeValueAtBand(meta, ix, iy, band));
+      throwIfCancelled(options);
+      out[band] = Number(await this.probeValueAtBand(meta, ix, iy, band, options));
     }
     return out;
   }
@@ -481,6 +506,8 @@ export class TiffBlockIndexedDataSource {
       });
     this.usesFmapRangeSource = !!rangeSource;
     this.isFmap = this.usesFmapRangeSource;
+    this.maxLogicalResultBytes = Number(rangeSource?.maxLogicalResultBytes) || DEFAULT_MAX_LOGICAL_RESULT_BYTES;
+    this.maxWindowResultBytes = this.maxLogicalResultBytes;
     this.decodedCache = new LruByteCache(this.decodedCacheLimitBytes, (entry) => {
       this.#evictDecoded(entry);
     });
@@ -492,12 +519,15 @@ export class TiffBlockIndexedDataSource {
     this.stats = createTiffStats();
     this.closed = false;
     this.generation = 0;
+    this.codecAbortController = new AbortController();
     this.ownerId = String(this.rawSource?.ownerId || this.base?.ownerId || "").trim() || `tiff:${nextTiffSourceId++}`;
     this.overviews = Array.isArray(overviewSummaries)
       ? overviewSummaries
         .map((summary, overviewIndex) => ({
           summary,
-          fmapSpecs: this.usesFmapRangeSource && isRawCompatibleSummary(summary)
+          fmapSpecs: this.usesFmapRangeSource
+            && isRawCompatibleSummary(summary)
+            && BOUNDED_FMAP_RAW_COMPRESSIONS.has(Number(summary?.compression) || 1)
             ? buildRawBandSpecs(summary, { dataTypeInfo: this.meta.dataTypeInfo }, `overview${overviewIndex}`)
             : null,
           scaleX: Number(summary?.scaleX) || (Number(this.meta?.samples) / Math.max(1, Number(summary?.width) || 1)),
@@ -559,6 +589,8 @@ export class TiffBlockIndexedDataSource {
 
   clear() {
     this.generation += 1;
+    this.codecAbortController.abort();
+    if (!this.closed) this.codecAbortController = new AbortController();
     if (this.rawSource && typeof this.rawSource.clear === "function") this.rawSource.clear();
     this.decodedCache.clear();
     this.decodedInflight.clear();
@@ -684,11 +716,22 @@ export class TiffBlockIndexedDataSource {
     const resolved = this.#resolveReadOptions(outBands, options);
     const readOptions = resolved.options || null;
     const specs = this.bandSpecs.slice(0, 3);
+    const outputElements = checkedOutputElements(outW, outH, "TIFF composite window");
+    const missingOutputs = [0, 1, 2].reduce((count, index) => {
+      const out = Array.isArray(resolved.out) ? resolved.out[index] : null;
+      return count + ((out instanceof Float32Array && out.length >= outputElements) ? 0 : 1);
+    }, 0);
+    requireOutputBytes(
+      outputElements * missingOutputs,
+      Float32Array.BYTES_PER_ELEMENT,
+      this.maxLogicalResultBytes,
+      "TIFF composite window"
+    );
     const outputs = [0, 1, 2].map((index) => {
       const out = Array.isArray(resolved.out) ? resolved.out[index] : null;
       return (out instanceof Float32Array && out.length >= (outW * outH))
         ? out
-        : new Float32Array(outW * outH);
+        : new Float32Array(outputElements);
     });
     const safeX0 = clamp(Math.floor(x0), 0, Math.max(0, meta.samples - 1));
     const safeY0 = clamp(Math.floor(y0), 0, Math.max(0, meta.lines - 1));
@@ -795,7 +838,16 @@ export class TiffBlockIndexedDataSource {
 
   async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null, options = null) {
     const resolved = this.#resolveReadOptions(out, options);
-    const target = allocateOutput(meta, resolved.out, outW * outH);
+    const outputElements = checkedOutputElements(outW, outH, "TIFF band window");
+    if (!resolved.out || Number(resolved.out.length) < outputElements) {
+      requireOutputBytes(
+        outputElements,
+        Number(meta?.dataTypeInfo?.bytes) || Float64Array.BYTES_PER_ELEMENT,
+        this.maxLogicalResultBytes,
+        "TIFF band window"
+      );
+    }
+    const target = allocateOutput(meta, resolved.out, outputElements);
     const spec = this.bandSpecs[band];
     if (!spec) throw new Error(`TIFF band ${Number(band) + 1} is unavailable.`);
     const safeX0 = clamp(Math.floor(x0), 0, Math.max(0, meta.samples - 1));
@@ -903,13 +955,13 @@ export class TiffBlockIndexedDataSource {
     return this.readBandWindow(meta, band, x0, y0, outW, outH, step, out, options);
   }
 
-  async probeValueAtBand(meta, ix, iy, band) {
+  async probeValueAtBand(meta, ix, iy, band, options = null) {
     if (ix < 0 || iy < 0 || ix >= meta.samples || iy >= meta.lines) return null;
     const spec = this.bandSpecs[band];
     if (!spec) return null;
     const block = spec.blocks[(Math.floor(iy / spec.table.blockHeight) * spec.table.numBlocksX) + Math.floor(ix / spec.table.blockWidth)];
     if (!block) return null;
-    const decoded = await this.#loadDecodedBlockWithScheduling(spec, block, 1);
+    const decoded = await this.#loadDecodedBlockWithScheduling(spec, block, 1, options);
     try {
       return this.#readBlockValue(spec, decoded, ix - block.x0, iy - block.y0);
     } finally {
@@ -917,10 +969,14 @@ export class TiffBlockIndexedDataSource {
     }
   }
 
-  async readSpectrumAtPixel(meta, ix, iy) {
+  async readSpectrumAtPixel(meta, ix, iy, options = null, extraOptions = null) {
+    if (typeof options !== "object" || !options) options = extraOptions || null;
+    throwIfCancelled(options);
+    requireOutputBytes(meta.bands, Float32Array.BYTES_PER_ELEMENT, this.maxLogicalResultBytes, "TIFF spectrum");
     const out = new Float32Array(meta.bands);
     for (let band = 0; band < meta.bands; band += 1) {
-      out[band] = Number(await this.probeValueAtBand(meta, ix, iy, band));
+      throwIfCancelled(options);
+      out[band] = Number(await this.probeValueAtBand(meta, ix, iy, band, options));
     }
     return out;
   }
@@ -1131,6 +1187,7 @@ export class TiffBlockIndexedDataSource {
       this.#syncCacheStats();
       return this.#holdDecoded(hit);
     }
+    const codecGenerationSignal = this.codecAbortController.signal;
     return this.#loadDecodedOnce(cacheKey, async () => {
       const compression = Number(spec?.table?.summary?.compression) || 1;
       if (this.usesFmapRangeSource && !BOUNDED_FMAP_RAW_COMPRESSIONS.has(compression)) {
@@ -1178,6 +1235,10 @@ export class TiffBlockIndexedDataSource {
         const decodedBuffer = this.usesFmapRangeSource
           ? await decodeBoundedTiffBlock(codecDirectory, buffer, decodedBytes, {
               ...options,
+              signals: [
+                ...(Array.isArray(options?.signals) ? options.signals : []),
+                codecGenerationSignal
+              ],
               littleEndian: this.meta.littleEndian
             })
           : await this.#getPool().decode(spec.table.summary.fileDirectory, buffer);

@@ -2,9 +2,10 @@ import { deflateSync } from "node:zlib";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { DATA_TYPES } from "../../src/core/envi-types.js";
 import { FmapTiffDataSource } from "../../src/io/fmap/tiff-range-source.js";
-import { TiffBlockIndexedDataSource } from "../../src/io/tiff/data-sources.js";
+import { BandOffsetTiffDataSource, TiffBlockIndexedDataSource } from "../../src/io/tiff/data-sources.js";
 import { describeTiffDataset } from "../../src/io/tiff/describe.js";
 import { resetTiffConcurrencyForTests } from "../../src/io/tiff/scheduler.js";
+import { readSpectrumAtPixel as readRenderedSpectrum } from "../../src/render/spectrum-data.js";
 
 afterEach(() => resetTiffConcurrencyForTests());
 
@@ -56,6 +57,7 @@ function fmapSource(bytes, options = {}) {
     range,
     source: new FmapTiffDataSource(range, {
       maxWorkingSetBytes: options.maxWorkingSetBytes ?? 256,
+      maxLogicalResultBytes: options.maxLogicalResultBytes,
       maxQueuedReservations: 8,
       maxQueuedReservationBytes: 1024
     })
@@ -159,6 +161,46 @@ describe("TIFF fmap block path", () => {
     }
   });
 
+  test("rejects oversized automatic window output before block I/O", async () => {
+    const encoded = Uint8Array.from([1, 2, 3, 4]);
+    const { source: rangeSource, range } = fmapSource(encoded, { maxLogicalResultBytes: 4 });
+    const imageMeta = meta(4, 1);
+    const table = { blockWidth: 4, blockHeight: 1, numBlocksX: 1, numBlocksY: 1, summary: { compression: 1 } };
+    const source = new TiffBlockIndexedDataSource({
+      file: new File([encoded], "logical-limit.tif"), tiff: null, meta: imageMeta, rangeSource,
+      bandSpecs: [{ kind: "raw", table,
+        blocks: [{ key: "limit", x0: 0, y0: 0, w: 4, h: 1, offset: 0, byteCount: 4 }],
+        sampleByteOffset: 0, bytesPerSample: 1, bytesPerPixel: 1, channel: 0 }],
+      budgets: { rawCacheBytes: 0, decodedCacheBytes: 8 }
+    });
+    try {
+      await expect(source.readBandWindow(imageMeta, 0, 0, 0, 5, 1, 1)).rejects.toThrow(/logical-result limit/i);
+      expect(range.reads).toHaveLength(0);
+    } finally { source.close(); }
+  });
+
+  test("normalizes render-helper spectrum options for block and band-offset sources", async () => {
+    const encoded = Uint8Array.from([7]);
+    const { source: rangeSource } = fmapSource(encoded);
+    const imageMeta = meta(1, 1);
+    const table = { blockWidth: 1, blockHeight: 1, numBlocksX: 1, numBlocksY: 1, summary: { compression: 1 } };
+    const block = new TiffBlockIndexedDataSource({
+      file: new File([encoded], "spectrum-options.tif"), tiff: null, meta: imageMeta, rangeSource,
+      bandSpecs: [{ kind: "raw", table,
+        blocks: [{ key: "spectrum", x0: 0, y0: 0, w: 1, h: 1, offset: 0, byteCount: 1 }],
+        sampleByteOffset: 0, bytesPerSample: 1, bytesPerPixel: 1, channel: 0 }],
+      budgets: { rawCacheBytes: 0, decodedCacheBytes: 1 }
+    });
+    const cancelled = { cancelled: () => true };
+    await expect(readRenderedSpectrum({ meta: imageMeta, ds: block }, 0, 0, 2, cancelled))
+      .rejects.toMatchObject({ name: "AbortError" });
+    block.close();
+
+    const bandSource = new BandOffsetTiffDataSource({ isFmap: true, maxLogicalResultBytes: 16 }, imageMeta, [0]);
+    await expect(readRenderedSpectrum({ meta: imageMeta, ds: bandSource }, 0, 0, 2, cancelled))
+      .rejects.toMatchObject({ name: "AbortError" });
+  });
+
   test("reads planar edge tiles and separate page bands through one fmap source", async () => {
     const bytes = Uint8Array.from([1, 2, 4, 5, 3, 0, 6, 0, 11, 12, 14, 15, 13, 0, 16, 0]);
     const { source: rangeSource } = fmapSource(bytes);
@@ -237,6 +279,30 @@ describe("TIFF fmap block path", () => {
     } finally { source.close(); }
   });
 
+  test("ignores an overview whose compression lacks a bounded fmap decoder", async () => {
+    const bytes = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 99, 100]);
+    const { source: rangeSource, range } = fmapSource(bytes);
+    const imageMeta = meta(4, 2);
+    const table = { blockWidth: 4, blockHeight: 2, numBlocksX: 1, numBlocksY: 1, summary: { compression: 1 } };
+    const overview = {
+      image: {}, width: 2, height: 1, samplesPerPixel: 1, planarConfiguration: 1,
+      photometricInterpretation: 1, compression: 7, rowsPerStrip: 1, tileOffsets: [],
+      stripOffsets: [8], stripByteCounts: [2], fileDirectory: { Compression: 7, StripByteCounts: [2] }
+    };
+    const source = new TiffBlockIndexedDataSource({
+      file: new File([bytes], "unsupported-overview.tif"), tiff: null, meta: imageMeta, rangeSource,
+      bandSpecs: [{ kind: "raw", table,
+        blocks: [{ key: "base-fallback", x0: 0, y0: 0, w: 4, h: 2, offset: 0, byteCount: 8 }],
+        sampleByteOffset: 0, bytesPerSample: 1, bytesPerPixel: 1, channel: 0 }],
+      overviewSummaries: [overview], budgets: { rawCacheBytes: 0, decodedCacheBytes: 16 }
+    });
+    try {
+      expect(source.overviewCount).toBe(0);
+      expect(Array.from(await source.readBandWindow(imageMeta, 0, 0, 0, 2, 1, 2))).toEqual([1, 3]);
+      expect(range.reads).toEqual([{ offset: 0, length: 8 }]);
+    } finally { source.close(); }
+  });
+
   test("churns a one-block decoded cache without deadlock or retained-accounting overflow", async () => {
     const bytes = Uint8Array.from([1, 2, 3, 4, 5, 6]);
     const { source: rangeSource } = fmapSource(bytes, { maxWorkingSetBytes: 12 });
@@ -309,28 +375,22 @@ describe("TIFF fmap fallback policy", () => {
     return { image, tiff, fmap };
   }
 
-  test("keeps a bounded unsupported-codec TIFF on the existing fallback and labels it", async () => {
+  test("rejects an unsupported codec before payload I/O when fmap is requested", async () => {
     const { tiff, fmap } = fallbackHarness();
     const file = new File([new Uint8Array(4)], "jpeg-gray.tif", { type: "image/tiff" });
-    const result = await describeTiffDataset(tiff, file, {
-      tiffFmapRangeSource: fmap,
-      tiffFmapOptions: { maxWorkingSetBytes: 64 },
-      cacheBytes: 64
-    });
-    expect(result.raw.fmap).toBe(false);
-    expect(result.raw.fmapReason).toMatch(/compression 7.*bounded TIFF fallback/i);
-    expect(result.cached.isFmap).toBe(false);
-    expect(fmap.close).toHaveBeenCalledTimes(1);
-    result.cached.close();
-  });
-
-  test("rejects an over-budget fallback before decoder allocation", async () => {
-    const { tiff, fmap } = fallbackHarness({ width: 100, height: 100, byteCount: 100 });
-    const file = new File([new Uint8Array(100)], "oversized-jpeg-gray.tif", { type: "image/tiff" });
     await expect(describeTiffDataset(tiff, file, {
       tiffFmapRangeSource: fmap,
-      tiffFmapOptions: { maxWorkingSetBytes: 1024 }
-    })).rejects.toThrow(/fallback block requires.*working-set limit/i);
+      cacheBytes: 64
+    })).rejects.toThrow(/does not have a verified bounded decoder for compression 7.*Disable fmap/i);
     expect(fmap.close).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves the existing unsupported-codec fallback when fmap is disabled", async () => {
+    const { tiff } = fallbackHarness();
+    const file = new File([new Uint8Array(4)], "jpeg-gray.tif", { type: "image/tiff" });
+    const result = await describeTiffDataset(tiff, file, { cacheBytes: 64 });
+    expect(result.raw.fmap).toBe(false);
+    expect(result.cached.isFmap).toBe(false);
+    result.cached.close();
   });
 });

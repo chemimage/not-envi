@@ -6,6 +6,7 @@ export async function openTiffBackend(file, deps = {}) {
   try {
     return await openNativeTiffBackend(file, deps);
   } catch (err) {
+    if (err?.tiffNoFallback || err?.code === "TIFF_METADATA_LIMIT") throw err;
     errors.push(err);
   }
 

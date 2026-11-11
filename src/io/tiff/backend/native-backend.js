@@ -45,6 +45,7 @@ const TYPE_SIZES = new Map([
 const TIFF_MAGIC = 42;
 const BIGTIFF_MAGIC = 43;
 const DEFAULT_MAX_METADATA_BYTES = 16 * 1024 * 1024;
+const MAX_SAMPLES_PER_PIXEL = 4096;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 function canNativeDecodeJpeg() {
@@ -64,22 +65,37 @@ function ensureSafeInt(value, label) {
   return Math.trunc(num);
 }
 
+function metadataLimitError(message) {
+  const error = new Error(message);
+  error.code = "TIFF_METADATA_LIMIT";
+  error.tiffNoFallback = true;
+  return error;
+}
+
+function ensureMetadataSafeInt(value, label) {
+  try {
+    return ensureSafeInt(value, label);
+  } catch (_error) {
+    throw metadataLimitError(`Unsupported TIFF ${label}: ${String(value)}`);
+  }
+}
+
 function checkedAdd(a, b, label) {
-  const total = ensureSafeInt(a, label) + ensureSafeInt(b, label);
-  if (!Number.isSafeInteger(total)) throw new Error(`Unsupported TIFF ${label}: exceeds the exact integer range.`);
+  const total = ensureMetadataSafeInt(a, label) + ensureMetadataSafeInt(b, label);
+  if (!Number.isSafeInteger(total)) throw metadataLimitError(`Unsupported TIFF ${label}: exceeds the exact integer range.`);
   return total;
 }
 
 function checkedMultiply(a, b, label) {
-  const total = ensureSafeInt(a, label) * ensureSafeInt(b, label);
-  if (!Number.isSafeInteger(total)) throw new Error(`Unsupported TIFF ${label}: exceeds the exact integer range.`);
+  const total = ensureMetadataSafeInt(a, label) * ensureMetadataSafeInt(b, label);
+  if (!Number.isSafeInteger(total)) throw metadataLimitError(`Unsupported TIFF ${label}: exceeds the exact integer range.`);
   return total;
 }
 
 function reserveMetadata(budget, bytes, label) {
-  const count = ensureSafeInt(bytes, label);
+  const count = ensureMetadataSafeInt(bytes, label);
   if (budget.used + count > budget.limit) {
-    throw new Error(`TIFF metadata exceeds the ${budget.limit}-byte parsing limit while reading ${label}.`);
+    throw metadataLimitError(`TIFF metadata exceeds the ${budget.limit}-byte parsing limit while reading ${label}.`);
   }
   budget.used += count;
 }
@@ -217,11 +233,11 @@ async function parseHeader(reader) {
 }
 
 async function parseIfdAt(reader, header, ifdOffset, metadataBudget) {
-  const offset = ensureSafeInt(ifdOffset, "IFD offset");
+  const offset = ensureMetadataSafeInt(ifdOffset, "IFD offset");
   const countBytes = await reader.read(offset, header.entryCountBytes);
   if (countBytes.length < header.entryCountBytes) throw new Error("TIFF IFD count is truncated.");
   const countView = new DataView(countBytes.buffer, countBytes.byteOffset, countBytes.byteLength);
-  const entryCount = ensureSafeInt(readUnsigned(countView, 0, header.entryCountBytes, header.littleEndian), "IFD entry count");
+  const entryCount = ensureMetadataSafeInt(readUnsigned(countView, 0, header.entryCountBytes, header.littleEndian), "IFD entry count");
   const entriesBytes = checkedMultiply(entryCount, header.entrySize, "IFD entry table size");
   const totalBytes = checkedAdd(checkedAdd(header.entryCountBytes, entriesBytes, "IFD size"), header.valueBytes, "IFD size");
   reserveMetadata(metadataBudget, totalBytes, "IFD entry table");
@@ -237,7 +253,7 @@ async function parseIfdAt(reader, header, ifdOffset, metadataBudget) {
     const type = dv.getUint16(entryOffset + 2, header.littleEndian);
     const name = TAG_NAMES.get(tag);
     if (!name) continue;
-    const count = ensureSafeInt(
+    const count = ensureMetadataSafeInt(
       readUnsigned(dv, entryOffset + 4, header.bigTiff ? 8 : 4, header.littleEndian),
       `tag ${tag} value count`
     );
@@ -249,7 +265,7 @@ async function parseIfdAt(reader, header, ifdOffset, metadataBudget) {
       valueBytes = raw.subarray(entryOffset + header.entrySize - header.valueBytes, entryOffset + header.entrySize - header.valueBytes + totalValueBytes);
     } else {
       reserveMetadata(metadataBudget, totalValueBytes, `tag ${tag} values`);
-      const valueOffset = ensureSafeInt(
+      const valueOffset = ensureMetadataSafeInt(
         readUnsigned(dv, entryOffset + header.entrySize - header.valueBytes, header.valueBytes, header.littleEndian),
         `tag ${tag} value offset`
       );
@@ -342,14 +358,20 @@ class NativeTiffImage {
   getFileDirectory() { return this.fileDirectory; }
 
   summary() {
+    const samplesPerPixel = this.getSamplesPerPixel();
+    if (!Number.isSafeInteger(samplesPerPixel) || samplesPerPixel < 1 || samplesPerPixel > MAX_SAMPLES_PER_PIXEL) {
+      throw metadataLimitError(
+        `TIFF SamplesPerPixel ${String(samplesPerPixel)} exceeds the supported limit of ${MAX_SAMPLES_PER_PIXEL}.`
+      );
+    }
     return {
       image: this,
       fileDirectory: this.fileDirectory,
       width: this.getWidth(),
       height: this.getHeight(),
-      samplesPerPixel: this.getSamplesPerPixel(),
-      bitsPerSample: normalizeNumericArray(this.fileDirectory.BitsPerSample, 1, this.getSamplesPerPixel()),
-      sampleFormats: normalizeNumericArray(this.fileDirectory.SampleFormat, 1, this.getSamplesPerPixel()),
+      samplesPerPixel,
+      bitsPerSample: normalizeNumericArray(this.fileDirectory.BitsPerSample, 1, samplesPerPixel),
+      sampleFormats: normalizeNumericArray(this.fileDirectory.SampleFormat, 1, samplesPerPixel),
       planarConfiguration: Number(this.fileDirectory.PlanarConfiguration || 1),
       photometricInterpretation: Number(this.fileDirectory.PhotometricInterpretation || (this.getSamplesPerPixel() === 3 ? 2 : 1)),
       compression: Number(this.fileDirectory.Compression || 1),

@@ -12,6 +12,7 @@ export const TIFF_EXT_RE = /\.(tif|tiff)$/i;
 export const TIFF_PHOTOMETRIC_WHITE_IS_ZERO = 0;
 export const TIFF_PHOTOMETRIC_BLACK_IS_ZERO = 1;
 export const TIFF_PHOTOMETRIC_RGB = 2;
+const MAX_TIFF_SAMPLES_PER_PIXEL = 4096;
 export const RGB_U8_TYPE = 1;
 export const RGB_U8_INFO = DATA_TYPES.get(RGB_U8_TYPE);
 
@@ -109,6 +110,13 @@ export function summarizeImage(image) {
   const width = Number(image.getWidth());
   const height = Number(image.getHeight());
   const samplesPerPixel = Number(image.getSamplesPerPixel()) || 1;
+  if (!Number.isSafeInteger(samplesPerPixel) || samplesPerPixel < 1 || samplesPerPixel > MAX_TIFF_SAMPLES_PER_PIXEL) {
+    const error = new Error(
+      `TIFF SamplesPerPixel ${String(samplesPerPixel)} exceeds the supported limit of ${MAX_TIFF_SAMPLES_PER_PIXEL}.`
+    );
+    error.code = "TIFF_METADATA_LIMIT";
+    throw error;
+  }
   const bitsPerSample = [];
   const sampleFormats = [];
   for (let sample = 0; sample < samplesPerPixel; sample += 1) {
