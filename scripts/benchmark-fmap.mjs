@@ -1,6 +1,9 @@
 import { performance } from "node:perf_hooks";
 import { readFile } from "node:fs/promises";
 import { ChunkCacheDataSource } from "../src/core/data-source.js";
+import { readBandWindow, readBandWindowBIP } from "../src/core/raster-io.js";
+import { EnviDataSource } from "../src/io/envi-data-source.js";
+import { readSpectrumAtPixel } from "../src/render/spectrum-data.js";
 
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
@@ -28,6 +31,48 @@ class SyntheticSparseSource {
   }
 
   close() {}
+}
+
+class SyntheticFloat32Source {
+  constructor(size, headerOffset) {
+    this.size = size;
+    this.headerOffset = headerOffset;
+    this.bytesRead = 0;
+    this.readCalls = 0;
+  }
+
+  async read(offset, length) {
+    const count = Math.max(0, Math.min(length, this.size - offset));
+    const bytes = new Uint8Array(count);
+    const view = new DataView(bytes.buffer);
+    const scratch = new DataView(new ArrayBuffer(4));
+    let byte = 0;
+    let relative = offset - this.headerOffset;
+    const copyValueByte = () => {
+      const valueIndex = Math.floor(relative / 4);
+      const valueByte = ((relative % 4) + 4) % 4;
+      scratch.setFloat32(0, deterministicValue(valueIndex), true);
+      bytes[byte] = scratch.getUint8(valueByte);
+      byte += 1;
+      relative += 1;
+    };
+    while (byte < count && (((relative % 4) + 4) % 4) !== 0) copyValueByte();
+    while (byte + 4 <= count) {
+      view.setFloat32(byte, deterministicValue(relative / 4), true);
+      byte += 4;
+      relative += 4;
+    }
+    while (byte < count) copyValueByte();
+    this.bytesRead += count;
+    this.readCalls += 1;
+    return bytes;
+  }
+
+  close() {}
+}
+
+function deterministicValue(valueIndex) {
+  return ((valueIndex % 2001) - 1000) / 8;
 }
 
 function deterministicOffsets(count) {
@@ -129,10 +174,101 @@ async function benchmarkFmap(offsets) {
   };
 }
 
+function enviOffset(meta, x, y, band) {
+  const { samples, lines, bands, headerOffset } = meta;
+  if (meta.interleave === "bsq") return headerOffset + (((band * lines + y) * samples + x) * 4);
+  if (meta.interleave === "bil") return headerOffset + ((((y * bands + band) * samples + x) * 4));
+  return headerOffset + ((((y * samples + x) * bands + band) * 4));
+}
+
+function expectedAt(meta, x, y, band) {
+  return deterministicValue((enviOffset(meta, x, y, band) - meta.headerOffset) / 4);
+}
+
+async function benchmarkEnviBaseline(interleave) {
+  const meta = {
+    samples: 2048,
+    lines: 2048,
+    bands: 16,
+    headerOffset: (5 * GIB) + 13,
+    interleave,
+    littleEndian: true,
+    dataType: 4,
+    dataTypeInfo: { bytes: 4, ctor: Float32Array, dv: "getFloat32" }
+  };
+  const size = meta.headerOffset + (meta.samples * meta.lines * meta.bands * 4);
+  const base = new SyntheticFloat32Source(size, meta.headerOffset);
+  const cache = new ChunkCacheDataSource(base, { chunkSize: PAGE_SIZE, maxBytes: POOL_BYTES, concurrency: 2 });
+  const source = new EnviDataSource(cache, meta);
+  const readWindow = interleave === "bip" ? readBandWindowBIP : readBandWindow;
+  const started = performance.now();
+  let checksum = 0;
+
+  for (let index = 0; index < 8; index += 1) {
+    const x = 17 + (index * 19);
+    const y = 21 + (index * 13);
+    const output = await readWindow(meta, source, index % meta.bands, x, y, 64, 48, 2, 2);
+    const expected = expectedAt(meta, x, y, index % meta.bands);
+    if (output[0] !== expected) throw new Error(`${interleave} viewport mismatch at ${x},${y}`);
+    checksum += output[0] + output[output.length - 1];
+  }
+
+  const spectrum = await readSpectrumAtPixel({ meta, ds: source }, 33, 44, 2);
+  for (let band = 0; band < meta.bands; band += 1) {
+    if (spectrum[band] !== expectedAt(meta, 33, 44, band)) throw new Error(`${interleave} spectrum mismatch at band ${band}`);
+    checksum += spectrum[band];
+  }
+
+  for (let band = 0; band < meta.bands; band += 1) {
+    const area = await readWindow(meta, source, band, 101, 91, 32, 32, 4, 2);
+    checksum += area.reduce((sum, value) => sum + value, 0);
+  }
+
+  return {
+    elapsedMs: Number((performance.now() - started).toFixed(2)),
+    checksum: Number(checksum.toFixed(3)),
+    browserBytes: base.bytesRead,
+    readCalls: base.readCalls,
+    residentBytes: cache.cacheBytes(),
+    hits: cache.stats.cacheHits,
+    misses: cache.stats.cacheMisses,
+    evictions: cache.stats.cacheEvictions
+  };
+}
+
+async function benchmarkTiffRangePatterns() {
+  const run = async (name, ranges) => {
+    const base = new SyntheticSparseSource(LOGICAL_SIZE);
+    const cache = new ChunkCacheDataSource(base, { chunkSize: PAGE_SIZE, maxBytes: POOL_BYTES, concurrency: 2 });
+    const started = performance.now();
+    let checksum = 0;
+    for (const [offset, length] of ranges) {
+      const bytes = await cache.read(offset, length);
+      checksum = (checksum + bytes[0] + bytes[bytes.length - 1]) >>> 0;
+    }
+    return {
+      name,
+      elapsedMs: Number((performance.now() - started).toFixed(2)),
+      checksum,
+      browserBytes: base.bytesRead,
+      residentBytes: cache.cacheBytes()
+    };
+  };
+  const tiles = Array.from({ length: 32 }, (_, index) => [((5 * GIB) + (index * 512 * 1024)), 64 * 1024]);
+  const strips = Array.from({ length: 8 }, (_, index) => [((5 * GIB) + (index * 8 * MIB)), MIB]);
+  return { tiles: await run("tiff-tile-ranges", tiles), strips: await run("tiff-strip-ranges", strips) };
+}
+
 const offsets = deterministicOffsets(PROBE_COUNT);
 const results = {
   disclaimer: "Synthetic pager microbenchmark; this is not a mobile or end-to-end viewer performance claim.",
   config: { logicalBytes: LOGICAL_SIZE, pageBytes: PAGE_SIZE, poolBytes: POOL_BYTES, probes: PROBE_COUNT },
+  currentEnviBaselines: {
+    bsq: await benchmarkEnviBaseline("bsq"),
+    bil: await benchmarkEnviBaseline("bil"),
+    bip: await benchmarkEnviBaseline("bip")
+  },
+  currentTiffRangeBaselines: await benchmarkTiffRangePatterns(),
   current: await benchmarkCurrent(offsets),
   fmap: await benchmarkFmap(offsets)
 };
