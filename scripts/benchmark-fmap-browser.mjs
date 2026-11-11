@@ -279,7 +279,7 @@ try {
     const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
     const results = [];
     const quantile = (values, q) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * q) - 1];
-    for (const compression of [1, 32773, 8]) for (const tiled of [true, false]) for (const backend of ["fmap", "existing"]) {
+    for (const compression of [1, 32773, 5, 8]) for (const tiled of [true, false]) for (const backend of ["fmap", "existing"]) {
       const fixture = await createBenchmarkTiff(compression, tiled);
       let baselineBrowserBytes = 0;
       // The existing backend has no worker byte counter. Count the bytes of
@@ -320,8 +320,8 @@ try {
           let checksum = 0;
           for (let index = 0; index < count; index += 1) {
             if (cold) source.clear();
-            const x = cold ? (index * 17) % 96 : 30;
-            const y = cold ? (index * 11) % 96 : 20;
+            const x = cold ? (index * 197) % (fixture.width - 32) : 30;
+            const y = cold ? (index * 113) % (fixture.height - 32) : 20;
             const start = performance.now();
             const output = await readBandWindow(dataset.meta, source, 0, x, y, 32, 32, 1);
             durations.push(performance.now() - start);
@@ -349,7 +349,9 @@ try {
         if (backend === "fmap" && (final.peakReservationBytes > workingLimit || final.activeReservationBytes !== 0 || final.pinnedBytes !== 0)) {
           throw new Error(`TIFF ${compression} ${tiled} leaked/exceeded a decode reservation`);
         }
-        results.push({ compression, tiled, backend, fileBytes: fixture.file.size, cold, warm, counters: final });
+        results.push({ compression, tiled, backend, dimensions: [fixture.width, fixture.height],
+          poolBytes: 262144, workingLimitBytes: workingLimit, decodedCacheLimitBytes: source.decodedCacheLimitBytes ?? null,
+          fileBytes: fixture.file.size, cold, warm, counters: final });
       } finally { dataset.cached.close(); dataset.base?.close(); }
     }
     return results;

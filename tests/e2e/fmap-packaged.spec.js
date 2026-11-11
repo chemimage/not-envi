@@ -66,7 +66,7 @@ function packBitsTiffFixture() {
   return bytes;
 }
 
-test("single-file package opens an fmap ENVI dataset without network access", async ({ page }) => {
+test("single-file package reads fmap ENVI and compressed TIFF without network access", async ({ page }) => {
   test.skip(process.env.FMAP_PACKAGED !== "1", "Run with scripts/run-fmap-packaged-test.mjs.");
 
   const errors = [];

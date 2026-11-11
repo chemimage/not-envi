@@ -1,10 +1,15 @@
 /** Deterministic tiled/striped TIFFs for checked browser performance workloads. */
 export async function createBenchmarkTiff(compression = 1, tiled = true) {
-  const width = 128, height = 128;
-  const blockWidth = tiled ? 64 : width;
-  const blockHeight = tiled ? 64 : 16;
+  const width = 1024, height = 1024;
+  const blockWidth = tiled ? 128 : width;
+  const blockHeight = tiled ? 128 : 16;
   const columns = Math.ceil(width / blockWidth), rows = Math.ceil(height / blockHeight);
-  const valueAt = (x, y) => (x + 3 * y) % 251;
+  const valueAt = (x, y) => {
+    let value = (y * width + x + 1) | 0;
+    value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+    value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+    return (value ^ (value >>> 16)) & 255;
+  };
   const blocks = [];
   for (let by = 0; by < rows; by += 1) for (let bx = 0; bx < columns; bx += 1) {
     const input = new Uint8Array(blockWidth * blockHeight);
@@ -18,6 +23,21 @@ export async function createBenchmarkTiff(compression = 1, tiled = true) {
         packed.push(span.length - 1, ...span);
       }
       blocks.push(new Uint8Array(packed));
+    } else if (compression === 5) {
+      // Literal TIFF LZW with regular dictionary clears. This intentionally
+      // avoids claiming a compression-ratio benchmark for a test encoder.
+      const codes = [];
+      for (let offset = 0; offset < input.length; offset += 250) {
+        codes.push(256, ...input.subarray(offset, offset + 250));
+      }
+      codes.push(257);
+      const packed = new Uint8Array(Math.ceil(codes.length * 9 / 8));
+      let bit = 0;
+      for (const code of codes) for (let shift = 8; shift >= 0; shift -= 1) {
+        packed[bit >> 3] |= ((code >> shift) & 1) << (7 - (bit & 7));
+        bit += 1;
+      }
+      blocks.push(packed);
     } else if (compression === 8) {
       blocks.push(new Uint8Array(await new Response(
         new Blob([input]).stream().pipeThrough(new CompressionStream("deflate"))
