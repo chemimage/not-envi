@@ -36,17 +36,33 @@ function createTileReadAdmission(initialLimit) {
     while (active < limit) {
       const waiter = foreground.shift() || background.shift();
       if (!waiter) break;
+      waiter.cleanup();
+      if (waiter.signal?.aborted) {
+        waiter.reject(pyramidAbortError());
+        continue;
+      }
       active += 1;
       waiter.resolve(releaseSlot());
     }
   };
 
   return {
-    acquire(priority = "foreground") {
-      if (closed) return Promise.reject(pyramidAbortError());
+    acquire(priority = "foreground", { signal } = {}) {
+      if (closed || signal?.aborted) return Promise.reject(pyramidAbortError());
       return new Promise((resolve, reject) => {
         const queue = priority === "background" ? background : foreground;
-        queue.push({ resolve, reject });
+        const onAbort = () => {
+          const index = queue.indexOf(waiter);
+          if (index < 0) return;
+          queue.splice(index, 1);
+          waiter.cleanup();
+          reject(pyramidAbortError());
+          drain();
+        };
+        const waiter = { resolve, reject, signal,
+          cleanup: () => signal?.removeEventListener("abort", onAbort) };
+        signal?.addEventListener("abort", onAbort, { once: true });
+        queue.push(waiter);
         drain();
       });
     },
@@ -58,7 +74,10 @@ function createTileReadAdmission(initialLimit) {
       if (closed) return;
       closed = true;
       const error = pyramidAbortError();
-      for (const waiter of [...foreground.splice(0), ...background.splice(0)]) waiter.reject(error);
+      for (const waiter of [...foreground.splice(0), ...background.splice(0)]) {
+        waiter.cleanup();
+        waiter.reject(error);
+      }
     },
     get active() { return active; },
     get waiting() { return foreground.length + background.length; }
@@ -374,6 +393,7 @@ export function createPyramidController(deps) {
       totalBytes: 0,
       tiles: new Map(),
       pending: new Map(),
+      requests: new Map(),
       inflight: new Set(),
       maxInflight,
       readAdmission: createTileReadAdmission(maxInflight),
@@ -384,12 +404,14 @@ export function createPyramidController(deps) {
       qHi: [],
       qLo: [],
       focus: null,
+      focusEpoch: 0,
       _idleHandle: null,
       _lastKick: 0,
       stats: {
         tileReads: 0,
         tilePixelsRead: 0,
         tileReadMs: 0,
+        cancelledTileReads: 0,
         composeCalls: 0,
         tilesComposed: 0,
         composePixels: 0,
@@ -412,6 +434,7 @@ export function createPyramidController(deps) {
   function disposePyramid(pyr) {
     if (!pyr) return;
     pyr.cancelled = true;
+    for (const request of pyr.requests.values()) cancelTileRequest(pyr, request);
     pyr.readAdmission?.cancel();
     if (pyr._idleHandle) {
       try { cancelIdle(pyr._idleHandle); } catch (_err) {}
@@ -426,6 +449,32 @@ export function createPyramidController(deps) {
     pyr.qLo.length = 0;
     pyr.focus = null;
     pyr.totalBytes = 0;
+  }
+
+  function cancelTileRequest(pyr, request) {
+    if (request.controller.signal.aborted) return;
+    // Detach before aborting: returning to this tile may create a replacement
+    // while the cancelled backend still settles. Old finalizers must not remove
+    // that replacement's pending promise or queue membership.
+    if (pyr.requests.get(request.key) === request) {
+      pyr.requests.delete(request.key);
+      pyr.pending.delete(request.key);
+      pyr.queued.delete(request.key);
+    }
+    pyr.stats.cancelledTileReads += 1;
+    request.controller.abort();
+  }
+
+  function tileStillUseful(ds, request, bands, minLevel, eff, width, height) {
+    const pyr = ds.pyramid;
+    if (!bands.includes(request.band)) return false;
+    // Complete overview tiles remain useful across pans. Visible overlapping
+    // tiles keep their original request/lease rather than restarting the read.
+    if (isPinnedOverviewLevel(pyr, request.level)) return true;
+    if (request.level < minLevel) return false;
+    const bounds = viewTileBounds(ds, pyr, request.level, eff, width, height);
+    return !!bounds && request.tx >= bounds.tx0 && request.tx <= bounds.tx1
+      && request.ty >= bounds.ty0 && request.ty <= bounds.ty1;
   }
 
   function enqueueBandTask(ds, band, level, tx, ty, hi) {
@@ -536,7 +585,13 @@ export function createPyramidController(deps) {
       Math.round(Number(viewportH) || 0),
       directionKey
     ].join("|");
-    if (pyr.focus?.key !== key) clearQueuedFocusTasks(pyr);
+    if (pyr.focus?.key !== key) {
+      pyr.focusEpoch += 1;
+      clearQueuedFocusTasks(pyr);
+      for (const request of pyr.requests.values()) {
+        if (!tileStillUseful(ds, request, bands, minLevel, eff, viewportW, viewportH)) cancelTileRequest(pyr, request);
+      }
+    }
     pyr.focus = {
       key,
       band: Math.floor(Number(band) || 0),
@@ -722,11 +777,16 @@ export function createPyramidController(deps) {
     if (pending) return pending;
 
     pyr.queued.add(key);
-
+    const request = { key, band, level, tx, ty, controller: new AbortController() };
+    pyr.requests.set(key, request);
+    const requireCurrent = () => {
+      if (ds.pyramid !== pyr || pyr.cancelled || request.controller.signal.aborted
+        || pyr.requests.get(key) !== request) throw pyramidAbortError();
+    };
     const p = (async () => {
-      const releaseRead = await pyr.readAdmission.acquire(priority);
+      const releaseRead = await pyr.readAdmission.acquire(priority, { signal: request.controller.signal });
       try {
-        if (ds.pyramid !== pyr || pyr.cancelled) throw pyramidAbortError();
+        requireCurrent();
         const readStart = perfNow();
         const step = 1 << level;
         const x0 = tx * pyr.tileSize * step;
@@ -738,7 +798,8 @@ export function createPyramidController(deps) {
 
         let data;
         const readOptions = {
-          cancelled: () => ds.pyramid !== pyr || pyr.cancelled,
+          signal: request.controller.signal,
+          cancelled: () => ds.pyramid !== pyr || pyr.cancelled || request.controller.signal.aborted,
           priority: priority === "background" ? "background" : "foreground"
         };
         if (ds.meta.interleave === "bip") {
@@ -747,10 +808,9 @@ export function createPyramidController(deps) {
           data = await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, null, readOptions);
         }
 
-        if (ds.pyramid !== pyr || pyr.cancelled) return null;
+        requireCurrent();
 
         const tile = { band, level, tx, ty, data, w: outW, h: outH, bytes: data.byteLength, t: ++ds.pyramid.tick };
-        ds.pyramid.pending.delete(key);
         ds.pyramid.tiles.set(key, tile);
         if (isPinnedOverviewLevel(ds.pyramid, level)) ds.pyramid.pinnedKeys.add(key);
         else ds.pyramid.pinnedKeys.delete(key);
@@ -763,11 +823,12 @@ export function createPyramidController(deps) {
       } finally {
         releaseRead();
       }
-    })().catch((err) => {
-      try { pyr.pending.delete(key); } catch (_err) {}
-      throw err;
-    }).finally(() => {
-      try { pyr.queued.delete(key); } catch (_err) {}
+    })().finally(() => {
+      if (pyr.requests.get(key) === request) {
+        pyr.requests.delete(key);
+        pyr.pending.delete(key);
+        pyr.queued.delete(key);
+      }
     });
 
     pyr.pending.set(key, p);
@@ -844,6 +905,8 @@ export function createPyramidController(deps) {
       .filter((value) => Number.isInteger(value) && value >= 0 && value < (ds.meta.bands || 1))
       .sort((a, b) => a - b);
     updatePyramidFocus(ds, band, bands, lvl, eff, width, height);
+    const focusEpoch = pyr.focusEpoch;
+    const currentFocus = () => ds.pyramid === pyr && !pyr.cancelled && pyr.focusEpoch === focusEpoch;
     let levels = [];
     for (const visibleBand of bands) {
       enqueueOverviewTasks(ds, visibleBand, true);
@@ -861,6 +924,7 @@ export function createPyramidController(deps) {
     let raster = prefer ? composePyramidRaster(ds, band, lvl, eff, width, height) : null;
     if ((!raster || raster.partial) && eff < 1) {
       const loaded = await ensureOverviewLevelsCached(ds, band, APP_CONFIG.pyramid.immediateOverviewMaxTiles);
+      if (!currentFocus()) return null;
       if (loaded) {
         raster = composePyramidRaster(ds, band, lvl, eff, width, height) || raster;
       }
@@ -876,6 +940,7 @@ export function createPyramidController(deps) {
         height,
         APP_CONFIG.pyramid.immediateCoarseMaxTiles
       );
+      if (!currentFocus()) return null;
       if (loaded) {
         raster = composePyramidRaster(ds, band, lvl, eff, width, height);
       }
@@ -891,6 +956,7 @@ export function createPyramidController(deps) {
         height,
         APP_CONFIG.pyramid.immediateVisibleMaxTiles
       );
+      if (!currentFocus()) return null;
       if (loaded) {
         raster = composePyramidRaster(ds, band, lvl, eff, width, height);
       }

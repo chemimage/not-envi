@@ -3,12 +3,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
+import { instrumentFmapProvider } from "../tests/fixtures/fmap-provider-control.js";
 
 // Controlled queue/service benchmark, not a drive-throughput benchmark. Actual
 // production modules and C/WASM run in Chromium. A fixed provider delay makes
 // cancellation observable before a read completes; pyramid reads are held until
-// explicitly released. Known unsupported focus cancellation is reported, not
-// silently counted as a successful abort. No source modules are changed on disk.
+// explicitly released. Focus cancellation must prevent obsolete admission work
+// from starting, including through the real worker. No source modules change on disk.
 const origin = `http://127.0.0.1:${Number(process.env.FMAP_QUEUE_BENCHMARK_PORT || 4177)}`;
 const outputIndex = process.argv.indexOf("--output");
 const output = outputIndex < 0 ? null : process.argv[outputIndex + 1];
@@ -32,10 +33,7 @@ try {
   await context.route("**/src/io/fmap/fmap.worker.js*", async (route) => {
     if (!route.request().url().includes("worker_file")) return route.continue();
     const response = await route.fetch();
-    let body = await response.text();
-    const needle = "async function readFile(file, pageSize, stats, offset, length) {";
-    if (!body.includes(needle)) throw new Error("Provider timing instrumentation did not match.");
-    body = body.replace(needle, `${needle}\n await new Promise(resolve => setTimeout(resolve, ${providerDelayMs}));`);
+    const body = instrumentFmapProvider(await response.text(), providerDelayMs);
     await route.fulfill({ response, body });
   });
   await context.route("**/src/render/pyramid-cache.js*", async (route) => {
@@ -219,12 +217,22 @@ try {
         oldWaitingReadStartedAfterFocusChange: !!held[1] && held[1].x < 6144 && held[1].y < 6144,
         waitingReadMarkedCancelled: held[1]?.options.cancelled() ?? null,
         globalDisposeCancelsActive: null };
+      check(afterFocus.admissionWaiters === 0 && afterFocus.activeReadMarkedCancelled
+        && !pyramidCancellation.oldWaitingReadStartedAfterFocusChange, "Pyramid focus cancellation left obsolete work alive.");
       controller.disposePyramid(pyr);
       pyramidCancellation.globalDisposeCancelsActive = held.at(-1).options.cancelled();
       held.forEach((read) => read.resolve());
       await until(() => pyr.readAdmission.active === 0);
       await Promise.all(oldPending);
     } finally { controller.disposePyramid(ds.pyramid); held.forEach((read) => read.resolve()); }
+
+    const { exercisePyramidFmapCancellation } = await import("/tests/fixtures/pyramid-cancellation.js");
+    const pyramidFmapCancellation = await exercisePyramidFmapCancellation();
+    check(pyramidFmapCancellation.outcomes.length >= 2
+      && pyramidFmapCancellation.outcomes.every((outcome) => outcome === "AbortError")
+      && !pyramidFmapCancellation.oldTileCached && pyramidFmapCancellation.providerReads === 1
+      && pyramidFmapCancellation.workerCancelledRequests > 0 && pyramidFmapCancellation.drained,
+    "Pyramid cancellation did not propagate through fmap or leaked provider work.");
 
     globalThis.__queueMetrics.length = 0;
     const coldPlanning = [], focusPlanning = [];
@@ -250,7 +258,7 @@ try {
         const rounds = pages.filter((row) => row.count === count);
         return { count, enqueue: summary(rounds.map((row) => row.enqueueMs)),
           cancellation: summary(rounds.map((row) => row.cancelMs)), rounds };
-      }), pyramidCancellation,
+      }), pyramidCancellation, pyramidFmapCancellation,
       queuePlanning: { coldVisibleRgbCpu: summary(coldPlanning), focusChangeCpu: summary(focusPlanning),
         ...Object.fromEntries(["enqueue", "sort", "clear"].map((kind) => [kind,
         { ...summary(metrics.filter((row) => row.kind === kind).map((row) => row.ms)),
