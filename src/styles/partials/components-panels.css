@@ -8,12 +8,12 @@
   }
 
   .meta-hover-panel {
-    @apply fixed z-30 w-[340px] max-w-[min(48vw,420px)] border border-gray-600 bg-gray-900/80 p-2 backdrop-blur-sm;
+    @apply fixed z-30 w-[340px] max-w-[min(48vw,420px)] border border-gray-600 bg-gray-900/80 p-2 backdrop-blur-xs;
     pointer-events: auto;
   }
 
   .ds-item {
-    @apply grid cursor-pointer items-center gap-2 rounded-sm border border-gray-700 bg-gray-900/80 px-2.5 py-2;
+    @apply grid cursor-pointer items-center gap-2 rounded-xs border border-gray-700 bg-gray-900/80 px-2.5 py-2;
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 52px;
     transition: min-height 140ms ease, border-color 140ms ease, background-color 140ms ease;
@@ -99,7 +99,7 @@
   }
 
   .slot-btn {
-    @apply inline-flex items-center justify-center rounded-sm border border-gray-600 bg-gray-900 text-xs font-semibold text-gray-300 transition-colors;
+    @apply inline-flex items-center justify-center rounded-xs border border-gray-600 bg-gray-900 text-xs font-semibold text-gray-300 transition-colors;
     width: 30px;
     height: 30px;
     min-height: 30px;
@@ -186,12 +186,12 @@
   }
 
   #hist {
-    @apply block h-[170px] w-full touch-none rounded-sm border border-gray-700 bg-gray-950;
+    @apply block h-[170px] w-full touch-none rounded-xs border border-gray-700 bg-gray-950;
     cursor: crosshair;
   }
 
   .hist-channel-btn {
-    @apply absolute right-12 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-sm border border-gray-600 bg-gray-950 p-0 font-black leading-none shadow-lg shadow-black/30;
+    @apply absolute right-12 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-xs border border-gray-600 bg-gray-950 p-0 font-black leading-none shadow-lg shadow-black/30;
     background-color: rgb(3 7 18 / 0.88);
     backdrop-filter: blur(4px);
     font-size: 1.45rem;
@@ -202,7 +202,7 @@
   }
 
   .hist-range-lock-btn {
-    @apply absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-sm border border-gray-600 bg-gray-950 p-0 text-gray-300 shadow-lg shadow-black/30;
+    @apply absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-xs border border-gray-600 bg-gray-950 p-0 text-gray-300 shadow-lg shadow-black/30;
     background-color: rgb(3 7 18 / 0.88);
     backdrop-filter: blur(4px);
     font-size: 0.9rem;
@@ -370,7 +370,7 @@
   }
 
   .panel-unit-switch {
-    @apply inline-flex shrink-0 overflow-hidden rounded-sm border border-gray-700 bg-gray-950/40;
+    @apply inline-flex shrink-0 overflow-hidden rounded-xs border border-gray-700 bg-gray-950/40;
   }
 
   .panel-unit-switch[hidden] {
@@ -390,7 +390,7 @@
   }
 
   .panel-unit-switch button:focus-visible {
-    @apply outline-none ring-1 ring-inset ring-blue-400;
+    @apply outline-hidden ring-1 ring-inset ring-blue-400;
   }
 
   .spec-sub {
@@ -408,7 +408,7 @@
   }
 
   .spec-axis-editor {
-    @apply absolute z-20 rounded-sm border border-blue-400/70 bg-gray-950 px-1 text-sm leading-none text-gray-100 shadow-lg outline-none ring-1 ring-blue-400/40;
+    @apply absolute z-20 rounded-xs border border-blue-400/70 bg-gray-950 px-1 text-sm leading-none text-gray-100 shadow-lg outline-hidden ring-1 ring-blue-400/40;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
 
@@ -417,7 +417,7 @@
   }
 
   .floating-window {
-    @apply flex flex-col overflow-hidden rounded-sm border border-gray-700 shadow-2xl shadow-black/50 backdrop-blur-sm;
+    @apply flex flex-col overflow-hidden rounded-xs border border-gray-700 shadow-2xl shadow-black/50 backdrop-blur-xs;
     --panel-body-background: rgb(17 24 39 / 0.8);
     --panel-header-background: rgb(17 24 39);
     background: var(--panel-body-background);

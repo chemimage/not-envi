@@ -1,11 +1,17 @@
+@import 'tailwindcss' source('../');
 @import './partials/components-core.css';
 @import './partials/components-canvas.css';
 @import './partials/components-panels.css';
 @import './partials/range-inputs.css';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@source '../../index.html';
+
+/* Preserve the v3 default for borders without an explicit color. */
+@layer base {
+  *, ::before, ::after, ::backdrop, ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 @layer base {
   html,
