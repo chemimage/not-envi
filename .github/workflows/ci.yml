@@ -14,10 +14,15 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+      - name: Install pinned fmap Rust toolchain
+        run: rustup toolchain install 1.85.1 --profile minimal --target wasm32-unknown-unknown
       - run: npm install
       - run: npx playwright install --with-deps chromium
+      - run: npm run build:fmap
+      - run: git diff --exit-code -- wasm/fmap/pkg
       - run: npm run test:unit
       - run: npm run test:e2e
+      - run: npm run test:fmap-large
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:

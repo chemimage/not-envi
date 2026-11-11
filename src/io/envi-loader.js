@@ -2,10 +2,24 @@ import { BlobDataSource, ChunkCacheDataSource } from "../core/data-source.js";
 import { normalizeMeta, parseEnviHeader } from "../core/envi-parser.js";
 import { APP_CONFIG } from "../app/config.js";
 import { EnviDataSource } from "./envi-data-source.js";
+import { createFmapDataSource } from "./fmap/index.js";
+import fmapWasmUrl from "../../wasm/fmap/pkg/fmap_core.wasm?url";
 
 const COMMON_ENVI_DATA_EXTS = [
   ".dat", "", ".img", ".raw", ".bin", ".bip", ".bil", ".bsq"
 ];
+
+let fmapWasmBytesPromise = null;
+
+async function loadFmapWasmBytes() {
+  if (!fmapWasmBytesPromise) {
+    fmapWasmBytesPromise = fetch(fmapWasmUrl).then((response) => {
+      if (!response.ok) throw new Error(`Unable to load fmap WASM (${response.status}).`);
+      return response.arrayBuffer();
+    });
+  }
+  return fmapWasmBytesPromise;
+}
 
 export function fileExtLower(name) {
   const m = /\.[^.]+$/.exec(name);
@@ -89,15 +103,31 @@ export async function addDatasetFromFiles(hdrFile, dataFile, deps) {
   const text = await readTextFile(hdrFile);
   const raw = parseEnviHeader(text);
   const meta = normalizeMeta(raw);
+  validateEnviPayload(meta, dataFile?.size);
 
   deps?.setStatus?.("opening data…", "warn");
-  const base = new BlobDataSource(dataFile);
-  const source = new ChunkCacheDataSource(base, {
-    chunkSize: deps?.chunkSize ?? APP_CONFIG.io.defaultChunkSizeBytes,
-    maxBytes: deps?.cacheBytes ?? APP_CONFIG.io.defaultDatasetCacheBytes,
-    concurrency: deps?.ioConcurrency ?? APP_CONFIG.io.defaultConcurrency
-  });
-  const cached = new EnviDataSource(source, meta);
+  let base = null;
+  let cached = null;
+  if (deps?.fmapEnabled && supportsFmap(meta)) {
+    const factory = deps?.createFmapDataSource ?? createFmapDataSource;
+    const options = deps?.fmapOptions || APP_CONFIG.fmap;
+    const wasmBytes = deps?.fmapWasmBytes ?? await loadFmapWasmBytes();
+    cached = factory(dataFile, meta, {
+      pageSize: options.pageSizeBytes,
+      poolBytes: options.poolBytes,
+      concurrency: deps?.ioConcurrency ?? options.maxInflightRequests,
+      wasmBytes
+    });
+    await cached.ready;
+  } else {
+    base = new BlobDataSource(dataFile);
+    const source = new ChunkCacheDataSource(base, {
+      chunkSize: deps?.chunkSize ?? APP_CONFIG.io.defaultChunkSizeBytes,
+      maxBytes: deps?.cacheBytes ?? APP_CONFIG.io.defaultDatasetCacheBytes,
+      concurrency: deps?.ioConcurrency ?? APP_CONFIG.io.defaultConcurrency
+    });
+    cached = new EnviDataSource(source, meta);
+  }
 
   const ds = deps.createDataset({
     hdrFile,
@@ -110,6 +140,35 @@ export async function addDatasetFromFiles(hdrFile, dataFile, deps) {
 
   deps?.setStatus?.("ready", "ok");
   return ds;
+}
+
+export function supportsFmap(meta) {
+  return meta?.interleave === "bsq"
+    && Number(meta?.dataType) === 4
+    && Number(meta?.dataTypeInfo?.bytes) === 4;
+}
+
+export function validateEnviPayload(meta, fileSize) {
+  const samples = Number(meta?.samples);
+  const lines = Number(meta?.lines);
+  const bands = Number(meta?.bands);
+  const bytes = Number(meta?.dataTypeInfo?.bytes);
+  const headerOffset = Number(meta?.headerOffset || 0);
+  const size = Number(fileSize);
+  const fields = [samples, lines, bands, bytes, headerOffset, size];
+  if (!fields.every(Number.isSafeInteger) || samples <= 0 || lines <= 0 || bands <= 0 || bytes <= 0 || headerOffset < 0 || size < 0) {
+    throw new Error("Invalid ENVI dimensions, header offset, sample size, or file size.");
+  }
+  const sampleCount = samples * lines * bands;
+  const payloadBytes = sampleCount * bytes;
+  const requiredBytes = headerOffset + payloadBytes;
+  if (!Number.isSafeInteger(sampleCount) || !Number.isSafeInteger(payloadBytes) || !Number.isSafeInteger(requiredBytes)) {
+    throw new Error("ENVI payload size exceeds the browser's exact file-offset range.");
+  }
+  if (requiredBytes > size) {
+    throw new Error(`ENVI data file is truncated: expected at least ${requiredBytes} bytes, found ${size}.`);
+  }
+  return requiredBytes;
 }
 
 async function readTextFile(fileLike) {
