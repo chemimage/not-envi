@@ -87,13 +87,26 @@ export function buildTiffImageCatalog(mainImages, allImages, parentsByOffset = n
     if (!owner.has(offsetOf(summary))) owner.set(offsetOf(summary), new Set());
     owner.get(offsetOf(summary)).add(family);
   };
+  const mainOrder = new Map(mainImages.map((summary, index) => [summary, index]));
+  const reducedImages = [];
   for (const summary of mainImages) {
     if (associated(summary)) { associatedImages.push(summary); continue; }
-    const family = Number(summary.newSubfileType) & 1
-      ? families.findLast((entry) => compatibleTiffOverview(entry.base, summary)) : null;
+    if (Number(summary.newSubfileType) & 1) { reducedImages.push(summary); continue; }
+    const next = { base: summary, levels: [] };
+    families.push(next);
+    add(next, summary);
+  }
+  // Main-chain reductions may precede their full-resolution image. Discover
+  // ordinary bases first; use order only after layout/page provenance checks.
+  const ordinaryFamilies = [...families];
+  for (const summary of reducedImages) {
+    const position = mainOrder.get(summary);
+    const compatible = ordinaryFamilies.filter((entry) => compatibleTiffOverview(entry.base, summary));
+    const family = compatible.findLast((entry) => mainOrder.get(entry.base) < position) || compatible[0];
     if (family) add(family, summary);
     else { const next = { base: summary, levels: [] }; families.push(next); add(next, summary); }
   }
+  families.sort((a, b) => mainOrder.get(a.base) - mainOrder.get(b.base));
   const mainSet = new Set(mainImages);
   const ancestorFamilies = (offset) => {
     const pending = [...(parentsByOffset.get(offset) || [])], visited = new Set([offset]), result = new Set();
