@@ -15,7 +15,8 @@ node scripts/build-fmap-wasm.mjs
 ```
 
 The script runs native Rust unit tests, builds the release WASM, verifies its
-magic bytes, and writes:
+magic bytes, removes non-runtime custom sections, runs an ABI smoke test, and
+writes:
 
 - `wasm/fmap/pkg/fmap_core.wasm`
 - `wasm/fmap/pkg/fmap_core.build.json`
@@ -31,6 +32,10 @@ The `.wasm` file and build manifest are committed so the normal JavaScript
 build can remain offline and reproduce the single-file application. Do not
 hand-edit them. Regenerate both through the build script after changing Rust
 sources, and review the SHA-256 and exported surface recorded in the manifest.
+The SHA verifies the exact artifact consumed by a given build. Rust's wasm
+code generation is not assumed to be byte-identical across host operating
+systems, even with the compiler version pinned; CI rebuilds and smoke-tests the
+module instead of comparing its hash with an artifact produced on another host.
 
 This first core is single-threaded and does not require `SharedArrayBuffer` or
 cross-origin isolation. Its WASM memory can grow while initializing the fixed
