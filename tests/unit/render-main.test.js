@@ -53,6 +53,19 @@ function makeDeps(overrides = {}) {
 }
 
 describe("render-main", () => {
+  test.each([1, 3])("consumes cancelled %i-band raster loads without hiding backing read failures", async (bands) => {
+    const ds = { id: "cancelled-load", activeBand: 0, displayMode: bands === 3 ? "rgb" : "gray",
+      view: { x: 0, y: 0, scale: 1 }, meta: { samples: 8, lines: 4, bands, interleave: "bsq" },
+      ds: {}, bandStatsWhole: new Map() };
+    const aborted = new Error("Obsolete view.");
+    aborted.name = "AbortError";
+    const readBandWindow = vi.fn().mockRejectedValue(aborted);
+    const renderer = createRenderer(makeDeps({ getActive: () => ds, readBandWindow }));
+    await expect(renderer.render()).resolves.toBeUndefined();
+    readBandWindow.mockRejectedValue(new Error("Backing read failed."));
+    await expect(renderer.render()).rejects.toThrow("Backing read failed.");
+  });
+
   test("defers queued renders during a window interaction and renders again afterward", async () => {
     let dragging = true;
     const onDeferredRender = vi.fn();

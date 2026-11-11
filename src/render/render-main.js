@@ -1165,6 +1165,17 @@ export function createRenderer(deps) {
   }
 
   async function render(opts = {}) {
+    try {
+      return await renderView(opts);
+    } catch (error) {
+      // View changes can abort during raster loading, before the drawing
+      // handlers run. Scheduled renders have no caller to consume that normal
+      // cancellation; preserve unexpected read errors for their caller.
+      if (!isAbortError(error)) throw error;
+    }
+  }
+
+  async function renderView(opts = {}) {
     if (shouldDeferRender?.()) { onDeferredRender?.(); return; }
     const visible = listVisiblePanels();
     if (!visible.length) {
