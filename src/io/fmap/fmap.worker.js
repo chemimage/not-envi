@@ -14,6 +14,9 @@ import { FmapPageFillQueue } from "./page-fill-queue.js";
  * copies and bytes delivered by browser APIs, not physical disk traffic.
  */
 const PROTOCOL_VERSION = 1;
+const RASTER_TYPE_BYTES = Object.freeze({
+  1: 1, 2: 2, 3: 4, 4: 4, 5: 8, 12: 2, 13: 4, 14: 8, 15: 8
+});
 const state = { file: null, meta: null, generation: 0, pageSize: 0, exports: null, fillQueue: null, closed: true,
   jobs: [], waiting: new Map(), jobById: new Map(), scheduled: false, order: 0, stats: {} };
 
@@ -26,6 +29,45 @@ batchChannel.port1.onmessage = runBatch;
 function integer(value, label) {
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`Invalid fmap ${label}.`);
   return value;
+}
+
+function safeProduct(values, label) {
+  let product = 1;
+  for (const value of values) {
+    product *= value;
+    if (!Number.isSafeInteger(product)) throw new RangeError(`Invalid fmap ${label}.`);
+  }
+  return product;
+}
+
+function validateRasterMeta(meta, fileSize) {
+  if (!meta || typeof meta !== "object") throw new TypeError("Missing fmap raster metadata.");
+  const samples = integer(meta.samples, "raster samples");
+  const lines = integer(meta.lines, "raster lines");
+  const bands = integer(meta.bands, "raster bands");
+  const headerOffset = integer(meta.headerOffset ?? 0, "raster header offset");
+  const dataType = integer(meta.dataType, "raster data type");
+  const bytesPerValue = integer(meta.bytesPerValue, "raster bytes per value");
+  if (!samples || !lines || !bands || !bytesPerValue) {
+    throw new RangeError("fmap raster dimensions and sample size must be positive.");
+  }
+  if (!Object.hasOwn(RASTER_TYPE_BYTES, dataType)
+      || RASTER_TYPE_BYTES[dataType] !== bytesPerValue) {
+    throw new Error(`Unsupported fmap raster data type: ${dataType}.`);
+  }
+  if (!["bsq", "bil", "bip"].includes(meta.interleave)) {
+    throw new Error(`Unsupported fmap raster interleave: ${meta.interleave}.`);
+  }
+  if (typeof meta.littleEndian !== "boolean") {
+    throw new TypeError("fmap raster byte order must be boolean.");
+  }
+  const payloadBytes = safeProduct([samples, lines, bands, bytesPerValue], "raster payload size");
+  const expectedEnd = headerOffset + payloadBytes;
+  if (!Number.isSafeInteger(expectedEnd)) throw new RangeError("Invalid fmap raster payload end.");
+  if (expectedEnd > fileSize) {
+    throw new Error(`Truncated fmap raster: expected at least ${expectedEnd} bytes, found ${fileSize}.`);
+  }
+  return { ...meta, samples, lines, bands, headerOffset, dataType, bytesPerValue };
 }
 
 function abortError() { const error = new Error("Obsolete fmap request."); error.name = "AbortError"; return error; }
@@ -526,6 +568,13 @@ self.onmessage = async (event) => {
         state.closed = true;
         state.file = null;
       } else state.fillQueue.clear(state.generation);
+    } else if (message.type === "configureRaster") {
+      requireGeneration(message.generation);
+      if (state.meta) throw new Error("fmap raster metadata is already configured.");
+      if (state.jobById.size !== 0) throw new Error("Cannot configure fmap raster metadata while requests are active.");
+      state.meta = validateRasterMeta(message.meta, state.file.size);
+      self.postMessage({ id: message.id, generation: state.generation,
+        result: { stats: counters() } });
     } else if (message.type === "setConcurrency") {
       requireGeneration(message.generation);
       const concurrency = integer(message.readConcurrency, "read concurrency");
