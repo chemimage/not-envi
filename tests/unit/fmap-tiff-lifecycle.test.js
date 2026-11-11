@@ -171,6 +171,26 @@ describe("fmap TIFF lifecycle bounds", () => {
     }
   });
 
+  test("releases decoded holds when cancellation lands after a block batch loads", async () => {
+    const { base, range, source, meta } = createRawBlockHarness([11, 13], {
+      deferReads: true,
+      decodedCacheBytes: 2,
+      maxWorkingSetBytes: 8
+    });
+    let cancelled = false;
+    const pending = source.readBandWindow(meta, 0, 0, 0, 2, 1, 1, null, {
+      cancelled: () => cancelled
+    });
+    await base.readStarted.promise;
+    cancelled = true;
+    base.resolveReads();
+
+    await expect(pending).resolves.toBeNull();
+    source.setMaxBytes(0);
+    expect((await range.getStats()).retainedBackingBytes).toBe(0);
+    source.close();
+  });
+
   test("failed raw validation keeps the shared fmap source open for block fallback", async () => {
     const shared = {
       isFmap: true,
