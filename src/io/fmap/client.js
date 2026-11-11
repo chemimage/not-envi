@@ -25,6 +25,22 @@ function cloneWasmBytes(bytes) {
   throw new Error("fmap WASM artifact is unavailable.");
 }
 
+/**
+ * A per-open BSQ Float32 source backed by a dedicated C/WASM worker.
+ *
+ * The selected File remains the backing store. The worker owns resident pages;
+ * callers receive owned Float32 results, never views into evictable WASM pages.
+ * Queue and active-byte limits are per source, not a whole-application budget.
+ * Results above maxResultBytes must be split by the caller.
+ *
+ * Window/spectrum options accept signal, cancelled(), priority, supersedeKey,
+ * and maxAgeMs. Cancellation rejects immediately, but an active reservation is
+ * released only after a worker reply. clear() advances the source generation;
+ * close() terminates the worker. setMaxBytes() records a requested budget;
+ * shrinking allocated WASM memory requires worker recreation.
+ *
+ * Status and follow-up work: https://github.com/chemimage/Hyve/issues/20
+ */
 export class FmapDataSource {
   constructor(file, meta, options = {}) {
     if (!(file instanceof Blob)) throw new TypeError("fmap requires a user-selected File or Blob.");

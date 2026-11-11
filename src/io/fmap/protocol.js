@@ -1,3 +1,9 @@
+/**
+ * Validate exact file ranges and result sizes before worker admission.
+ * Worker messages carry source generation, request identity, priority, and
+ * scalar window/probe fields. Completion transfers an owned Float32 buffer;
+ * cancellation callbacks and AbortSignal objects stay on the main thread.
+ */
 export const FMAP_PROTOCOL_VERSION = 1;
 
 export function checkedResultBytes(width, height = 1) {
