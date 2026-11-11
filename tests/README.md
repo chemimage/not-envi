@@ -9,7 +9,7 @@ Use `npm run test:fmap-browser` for the format/cancellation matrix on desktop an
 Use `npm run test:fmap-packaged` to build the single HTML and load an ENVI dataset offline.
 Use `npm run benchmark:fmap-browser -- --output test-results/fmap-performance.json` for checked browser workloads, p50/p95 latency, and a sparse-spectrum comparison with the chunk cache.
 
-The format matrix covers all nine supported ENVI numeric types, three layouts, and both byte orders. BSQ Float32 uses fmap; the other cases verify the existing fallback. It also checks TIFF fallback pixel values. Mobile emulation checks browser behavior at mobile viewport/touch settings; physical device validation is tracked in [the device protocol](../docs/FMAP_DEVICE_TESTS.md).
+The format matrix covers all nine supported ENVI numeric types, three layouts, and both byte orders. BSQ Float32 uses fmap; the other cases verify the existing fallback. It also checks TIFF fallback pixel values. Mobile emulation checks browser behavior at mobile viewport/touch settings; physical device validation and its protocol are tracked in [issue #26](https://github.com/chemimage/Hyve/issues/26).
 
 ## Choosing the test boundary
 

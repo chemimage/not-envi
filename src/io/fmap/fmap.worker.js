@@ -1,4 +1,16 @@
 /* global FileReaderSync */
+/**
+ * File range bridge and cooperative BSQ Float32 processing for one source.
+ * Dense windows reuse resident pages; cold sparse spans use C-owned scratch
+ * without evicting viewport pages. File offsets stay exact JavaScript integers
+ * at the Blob boundary and become u64 page IDs independently of WASM pointers.
+ *
+ * Each generator yield releases every page/scratch/output view before another
+ * job or control message runs. Foreground jobs precede speculative work.
+ * A single synchronous provider read cannot be interrupted; cancellation is
+ * observed between batches. Counters measure worker copies and bytes delivered
+ * by browser APIs, not physical disk traffic or all main-thread allocations.
+ */
 const PROTOCOL_VERSION = 1;
 const state = { file: null, meta: null, generation: 0, pageSize: 0, exports: null, closed: true,
   jobs: [], scheduled: false, order: 0, stats: {} };

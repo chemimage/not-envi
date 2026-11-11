@@ -1,4 +1,24 @@
-/* Bounded resident page pool for Hyve's fmap backend. */
+/**
+ * @file fmap_core.c
+ * Fixed resident page pool and Float32 extraction for the fmap worker.
+ *
+ * This freestanding module performs no file I/O and has no host imports.
+ * Logical page IDs are u64; exported pointers address only WASM linear memory.
+ * Metadata scales with resident slots, independently of the backing file size.
+ *
+ * Acquire pins a slot; commit supplies its exact valid-byte count; release
+ * permits LRU reuse. All-pinned acquisition returns FMAP_ERR_ALL_PINNED instead
+ * of growing the pool. The bridge must release on every error path and retain
+ * no slot pointer across release, reset, or reinitialization.
+ *
+ * Sparse reads use the separate page-sized scratch region. Extraction writes
+ * the shared bounded output region in either endian mode. Both regions must
+ * be consumed synchronously before yielding to another worker job.
+ *
+ * Initialization/reinitialization can grow linear memory; eviction and smaller
+ * configurations cannot shrink it. See BUILD.md for the pinned compiler and
+ * generated-artifact policy. Remaining work: github.com/chemimage/Hyve/issues/20.
+ */
 
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t;
