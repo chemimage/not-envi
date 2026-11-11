@@ -192,6 +192,46 @@ try {
       };
     };
 
+    // Wide scanlines exercise hundreds of cooperative batches, unlike the
+    // small viewports above. This reflects the full-slide scheduling regression
+    // without requiring a private dataset or an entire slide in browser RAM.
+    const measureWideViewport = async () => {
+      const width = 12812, height = 2048, step = 13;
+      const input = new Float32Array(width * height);
+      const valueAtWide = (x, y) => (y * 31) + x;
+      for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+        input[y * width + x] = valueAtWide(x, y);
+      }
+      const wideMeta = { ...meta, samples: width, lines: height, bands: 1, headerOffset: 0 };
+      const wide = createFmapDataSource(new File([input], "wide-viewport.dat"), wideMeta, {
+        ...sourceOptions, pageSize: 256 * 1024, poolBytes: 4 * 1024 * 1024,
+        batchBytes: 64 * 1024, sparseReadThresholdBytes: 32 * 1024, sparseReadMaxGapBytes: 4096
+      });
+      const outW = Math.ceil(width / step), outH = Math.ceil(height / step);
+      const read = () => wide.readBandWindow(wideMeta, 0, 0, 0, outW, outH, step);
+      read.verify = (output) => {
+        for (let y = 0; y < outH; y += 1) for (let x = 0; x < outW; x += 1) {
+          if (output[y * outW + x] !== valueAtWide(x * step, y * step)) {
+            throw new Error(`Wide viewport value mismatch at ${x},${y}`);
+          }
+        }
+      };
+      try {
+        await wide.ready;
+        const coldRead = () => { wide.clear(); return read(); };
+        coldRead.verify = read.verify;
+        const cold = await measure("wide-strided-viewport", Array(6).fill(coldRead), 6 * outW * outH * 4, wide);
+        const repeat = await measure("wide-strided-viewport-repeat", Array(6).fill(read), 6 * outW * outH * 4, wide);
+        const finalStats = await wide.getStats();
+        if (finalStats.pinnedBytes !== 0 || finalStats.peakInflightBytes > wide.maxInflightBytes) {
+          throw new Error("Wide viewport left pins or exceeded its transport budget");
+        }
+        return { dimensions: [width, height, 1], step, poolBytes: wide.cacheBytes(),
+          note: "Raw source reads only; sparse spans are still not retained, and no pyramid cache is involved.",
+          cold, repeat, finalStats };
+      } finally { wide.close(); }
+    };
+
     try {
       await source.ready;
       const coldOperations = Array.from({ length: 12 }, (_, index) => checkedWindow(
@@ -254,6 +294,7 @@ try {
         throw new Error("fmap exceeded the configured in-flight byte budget");
       }
       if (finalStats.pinnedBytes !== 0) throw new Error("fmap left pages pinned after the workloads completed");
+      const wideViewport = await measureWideViewport();
       return {
         disclaimer: "Browser workload report only; latency is descriptive and has no pass/fail speed threshold.",
         copyCounterScope: "fmap page/range transport only; excludes codec-internal and caller output/composition copies. Existing TIFF copy counters are unavailable.",
@@ -266,6 +307,7 @@ try {
         },
         workloads: { cold, pagedCold, warm, pan, sparseSpectrum, baselineSpectrum },
         sparseSpectrumComparison: { fmap: sparseSpectrum, chunkCache: baselineSpectrum },
+        wideViewport,
         finalStats
       };
     } finally {
