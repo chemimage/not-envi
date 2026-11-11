@@ -256,6 +256,7 @@ try {
       if (finalStats.pinnedBytes !== 0) throw new Error("fmap left pages pinned after the workloads completed");
       return {
         disclaimer: "Browser workload report only; latency is descriptive and has no pass/fail speed threshold.",
+        copyCounterScope: "fmap page/range transport only; excludes codec-internal and caller output/composition copies. Existing TIFF copy counters are unavailable.",
         userAgent: navigator.userAgent,
         config: {
           fileBytes: file.size,
