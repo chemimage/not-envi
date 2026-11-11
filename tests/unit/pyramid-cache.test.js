@@ -10,6 +10,90 @@ import {
 } from "../../src/render/pyramid-cache.js";
 
 describe("pyramid-cache", () => {
+  test.each([
+    { eff: 0.25, pixels: 251 * 125, approximate: false },
+    { eff: 2, pixels: 156 * 156, approximate: true }
+  ])("clips coarse tiles to the image inside padded views at scale $eff", async ({ eff, pixels, approximate }) => {
+    const controller = createPyramidController({
+      now: () => 0, requestIdle: () => 1, cancelIdle: () => {},
+      readBandWindow: async (_meta, _source, _band, _x, _y, w, h) => new Float32Array(w * h).fill(4),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {}, onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1, getIOConcurrency: () => 2
+    });
+    const ds = { id: 1, meta: { samples: 1001, lines: 499, bands: 1, interleave: "bsq" },
+      ds: {}, view: { x: -100, y: -100, scale: eff } };
+    const raster = await controller.tryRasterFromPyramid(ds, 0, eff, 512, 512);
+    expect(raster.dataF32.reduce((count, value) => count + Number(Number.isFinite(value)), 0)).toBe(pixels);
+    expect(raster.partial).toBe(false);
+    expect(raster.approximate).toBe(approximate);
+    expect(raster.coverage).toBe(1);
+    controller.disposePyramid(ds.pyramid);
+  });
+
+  test("completed pyramid work does not poll idle callbacks or wake unchanged renders", async () => {
+    const idle = [];
+    let renders = 0;
+    const controller = createPyramidController({
+      now: () => 1000, requestIdle: (callback) => { idle.push(callback); return idle.length; },
+      cancelIdle: () => {},
+      readBandWindow: async (_meta, _source, _band, _x, _y, w, h) => new Float32Array(w * h),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {}, onProgressiveRender: () => { renders += 1; },
+      getActiveDatasetId: () => 1, getIOConcurrency: () => 2
+    });
+    const ds = { id: 1, meta: { samples: 128, lines: 128, bands: 1, interleave: "bsq" },
+      ds: {}, view: { x: 0, y: 0, scale: 1 } };
+    await controller.tryRasterFromPyramid(ds, 0, 1, 128, 128);
+    let processed = 0;
+    while (processed < idle.length && processed < 10) {
+      idle[processed++]();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(processed).toBeLessThan(10);
+    expect(ds.pyramid.inflight.size).toBe(0);
+    expect(renders).toBeGreaterThan(0); // The last tile must still wake rendering.
+    const callbacks = idle.length;
+    const renderCount = renders;
+    const raster = await controller.tryRasterFromPyramid(ds, 0, 1, 128, 128);
+    expect(raster.approximate).toBe(false);
+    expect(idle.length).toBe(callbacks);
+    expect(renders).toBe(renderCount);
+    controller.disposePyramid(ds.pyramid);
+  });
+
+  test("visible RGB bands retain independent work and sharpen nearby tiles together", async () => {
+    const controller = createPyramidController({
+      now: () => 0, requestIdle: () => 1, cancelIdle: () => {},
+      readBandWindow: async (_meta, _source, _band, _x, _y, w, h) => new Float32Array(w * h),
+      readBandWindowBIP: async () => new Float32Array(0),
+      onPerfUpdate: () => {}, onProgressiveRender: () => {},
+      getActiveDatasetId: () => 1, getIOConcurrency: () => 2
+    });
+    const ds = { id: 1, meta: { samples: 8192, lines: 8192, bands: 4, interleave: "bsq" },
+      ds: {}, view: { x: 1024, y: 1024, scale: 0.25 } };
+    const options = { bands: [0, 1, 2] };
+    await controller.tryRasterFromPyramid(ds, 0, 0.25, 384, 384, options);
+    const firstKeys = ds.pyramid.qHi.filter((task) => task.level === 2).map((task) => task.key);
+    expect(firstKeys).toHaveLength(27);
+    for (const band of [1, 2]) {
+      await controller.tryRasterFromPyramid(ds, band, 0.25, 384, 384, options);
+      expect(ds.pyramid.qHi.filter((task) => task.level === 2).map((task) => task.key)).toEqual(firstKeys);
+    }
+    const targetTasks = ds.pyramid.qHi.filter((task) => task.level === 2);
+    expect(targetTasks.slice(0, 3).map(({ band, tx, ty }) => [band, tx, ty]))
+      .toEqual([[0, 3, 3], [1, 3, 3], [2, 3, 3]]);
+    expect(new Set(targetTasks.map((task) => task.key)).size).toBe(27);
+    const detailTasks = ds.pyramid.qHi.filter((task) => task.level < 4);
+    expect(detailTasks.slice(0, 27).every((task) => task.level === 2)).toBe(true);
+    expect(detailTasks.slice(27).every((task) => task.level === 3)).toBe(true);
+
+    // A real display-band switch still discards queued work for hidden bands.
+    await controller.tryRasterFromPyramid(ds, 3, 0.25, 384, 384);
+    expect(ds.pyramid.qHi.every((task) => task.band === 3)).toBe(true);
+    controller.disposePyramid(ds.pyramid);
+  });
+
   test("pure helpers compute keys and levels", () => {
     expect(bandTileKey(3, 2, 10, 11)).toBe("3|2:10:11");
     expect(buildBandProximityOrder(5, 10, 3)).toEqual([5, 4, 6, 3, 7, 2, 8]);
@@ -380,6 +464,16 @@ describe("pyramid-cache", () => {
         .filter((level) => Number.isFinite(level))
     );
     expect(pinnedLevels.has(ds.pyramid.maxLevel)).toBe(true);
+
+    // A fitted image can have blank margins. Those pixels remain NaN for
+    // drawing, but must not count as missing source tiles after refinement.
+    ds.view.x = -512;
+    ds.view.y = -256;
+    const fitted = await controller.tryRasterFromPyramid(ds, 0, 0.25, 512, 512);
+    expect(Number.isNaN(fitted.dataF32[0])).toBe(true);
+    expect(fitted.partial).toBe(false);
+    expect(fitted.approximate).toBe(false);
+    expect(fitted.coverage).toBe(1);
   });
 
   test("tryRasterFromPyramid returns zoomed-in preview data before full-resolution tiles land", async () => {

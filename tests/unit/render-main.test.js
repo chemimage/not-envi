@@ -193,6 +193,7 @@ describe("render-main", () => {
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
       initWebGPU: vi.fn(async () => true),
       gpuSupported: true,
+      tryRasterFromPyramid: vi.fn(async () => null),
       readBandWindow,
       clampView: () => {}
     });
@@ -205,6 +206,8 @@ describe("render-main", () => {
     expect(deps.cpuRenderGray).not.toHaveBeenCalled();
     expect(deps.gpuRender).not.toHaveBeenCalled();
     expect(readBandWindow).toHaveBeenCalledTimes(3);
+    expect(deps.tryRasterFromPyramid.mock.calls.map((call) => [call[1], call[5]]))
+      .toEqual([0, 1, 2].map((band) => [band, { bands: [0, 1, 2] }]));
     expect(readBandWindow.mock.calls.every((call) => call[9]?.priority === "foreground")).toBe(true);
     expect(readBandWindow.mock.calls.every((call) => call[9]?.cancelled() === false)).toBe(true);
     expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
@@ -1067,6 +1070,7 @@ describe("render-main", () => {
   ])("renders $kind pyramid previews without promoting them to stable rasters", async ({ scale, partial, approximate }) => {
     const previewRaster = {
       band: 0,
+      source: "pyramid",
       w: 160,
       h: 90,
       dataF32: new Float32Array(160 * 90),
@@ -1094,12 +1098,27 @@ describe("render-main", () => {
       clampView: () => {}
     });
     const renderer = createRenderer(deps);
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    try {
+      await renderer.render();
 
-    await renderer.render();
+      expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
+      expect(ds.lastRaster).toBeNull();
+      expect(ds.lastScreenFrame).toBeTruthy();
+      expect(ds.lastRastersByPanel.size).toBe(0);
+      expect(raf).not.toHaveBeenCalled();
 
-    expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
-    expect(ds.lastRaster).toBeNull();
-    expect(ds.lastScreenFrame).toBeTruthy();
-    expect(ds.lastRastersByPanel.size).toBe(0);
+      // A later tile-arrival render must still replace the preview and become
+      // stable. Waiting for data must not prevent subsequent refinement.
+      previewRaster.partial = false;
+      previewRaster.approximate = false;
+      previewRaster.dataF32.fill(7);
+      await renderer.render();
+      expect(deps.cpuRenderGray).toHaveBeenCalledTimes(2);
+      expect(ds.lastRaster?.dataF32[0]).toBe(7);
+      expect(raf).not.toHaveBeenCalled();
+    } finally {
+      raf.mockRestore();
+    }
   });
 });

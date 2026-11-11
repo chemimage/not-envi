@@ -438,7 +438,10 @@ export function createPyramidController(deps) {
 
     pyr.queued.add(key);
     const task = { band, level, tx, ty, key };
-    if (hi) pyr.qHi.push(task);
+    if (hi) {
+      pyr.qHi.push(task);
+      pyr.foregroundDirty = true;
+    }
     else pyr.qLo.push(task);
   }
 
@@ -516,14 +519,14 @@ export function createPyramidController(deps) {
     return !!ds?.pyramid && !ds.pyramid.cancelled;
   }
 
-  function updatePyramidFocus(ds, band, minLevel, eff, viewportW, viewportH) {
+  function updatePyramidFocus(ds, band, bands, minLevel, eff, viewportW, viewportH) {
     const pyr = ds.pyramid;
     if (!pyr) return;
     const bounds = viewTileBounds(ds, pyr, minLevel, eff, viewportW, viewportH);
     if (!bounds) return;
     const directionKey = resolveDirectionalBucket(ds);
     const key = [
-      Math.floor(Number(band) || 0),
+      bands.join(","),
       Math.floor(Number(minLevel) || 0),
       Math.floor(Number(bounds?.tx0) || 0),
       Math.floor(Number(bounds?.ty0) || 0),
@@ -537,12 +540,37 @@ export function createPyramidController(deps) {
     pyr.focus = {
       key,
       band: Math.floor(Number(band) || 0),
+      bands,
       minLevel: Math.floor(Number(minLevel) || 0),
       eff,
       viewportW,
       viewportH,
       directionKey
     };
+  }
+
+  function prioritizeForeground(ds) {
+    const pyr = ds.pyramid;
+    if (!pyr.foregroundDirty || !pyr.focus) return;
+    pyr.foregroundDirty = false;
+    const { minLevel, eff, viewportW, viewportH } = pyr.focus;
+    const centerX = ds.view.x + viewportW / (2 * eff);
+    const centerY = ds.view.y + viewportH / (2 * eff);
+    // Keep the pinned coarse fallback first, then sharpen the requested zoom
+    // from its center outward. Matching spatial tiles across visible bands are
+    // adjacent in the queue; a whole band's intermediate levels cannot delay
+    // the other channels. Per-band reads/cache keys remain independent.
+    const ranked = pyr.qHi.map((task) => {
+      const span = pyr.tileSize * (1 << task.level);
+      const dx = task.tx + 0.5 - centerX / span;
+      const dy = task.ty + 0.5 - centerY / span;
+      return { task, rank: isPinnedOverviewLevel(pyr, task.level) ? 0 : task.level === minLevel ? 1 : 2,
+        distance: dx * dx + dy * dy };
+    });
+    ranked.sort((a, b) => a.rank - b.rank || b.task.level - a.task.level
+      || a.distance - b.distance || a.task.ty - b.task.ty || a.task.tx - b.task.tx
+      || a.task.band - b.task.band);
+    pyr.qHi = ranked.map(({ task }) => task);
   }
 
   async function ensureViewportLevelCached(ds, band, level, eff, viewportW, viewportH, maxTiles = 16) {
@@ -573,6 +601,15 @@ export function createPyramidController(deps) {
     const winY0 = sampling ? Math.floor(sampling.srcY0) : ideal.bounds.ly0;
     const winW = sampling ? Math.max(1, sampling.rasterW) : Math.max(1, ideal.bounds.lx1 - ideal.bounds.lx0);
     const winH = sampling ? Math.max(1, sampling.rasterH) : Math.max(1, ideal.bounds.ly1 - ideal.bounds.ly0);
+    // Blank viewport margins outside the image are intentional NaNs, not
+    // outstanding tile reads. Completion only counts in-image output pixels.
+    const validX0 = sampling ? sampling.colStart : Math.max(0, -winX0);
+    const validY0 = sampling ? sampling.rowStart : Math.max(0, -winY0);
+    const validX1 = sampling ? validX0 + sampling.validW : Math.min(winW, ideal.bounds.info.downW - winX0);
+    const validY1 = sampling ? validY0 + sampling.validH : Math.min(winH, ideal.bounds.info.downH - winY0);
+    const requiredW = Math.max(0, validX1 - validX0);
+    const requiredH = Math.max(0, validY1 - validY0);
+    const requiredPixels = requiredW * requiredH;
     const dstOriginX = sampling
       ? ((Math.floor(Number(sampling.colStart) || 0)) - winX0)
       : (-winX0);
@@ -609,13 +646,13 @@ export function createPyramidController(deps) {
         bestLevel = bestLevel == null ? level : Math.min(bestLevel, level);
         tilesUsed += 1;
         for (let sy = ovY0; sy < ovY1; sy += 1) {
-          const dstY0 = Math.max(0, dstOriginY + (sy * factor));
-          const dstY1 = Math.min(winH, dstY0 + factor);
+          const dstY0 = Math.max(validY0, dstOriginY + (sy * factor));
+          const dstY1 = Math.min(validY1, dstOriginY + ((sy + 1) * factor));
           const srcRow = (sy - tileDy0) * tile.w;
           for (let sx = ovX0; sx < ovX1; sx += 1) {
             const value = tile.data[srcRow + (sx - tileDx0)];
-            const dstX0 = Math.max(0, dstOriginX + (sx * factor));
-            const dstX1 = Math.min(winW, dstX0 + factor);
+            const dstX0 = Math.max(validX0, dstOriginX + (sx * factor));
+            const dstX1 = Math.min(validX1, dstOriginX + ((sx + 1) * factor));
             for (let dy = dstY0; dy < dstY1; dy += 1) {
               const rowOff = dy * winW;
               for (let dx = dstX0; dx < dstX1; dx += 1) {
@@ -648,8 +685,8 @@ export function createPyramidController(deps) {
       step: (1 << (bestLevel == null ? idealLevel : bestLevel)),
       x0: ds.view.x,
       y0: ds.view.y,
-      partial: filledCount < out.length,
-      coverage: filledCount / Math.max(1, out.length),
+      partial: filledCount < requiredPixels,
+      coverage: filledCount / Math.max(1, requiredPixels),
       approximate: ideal.cached < ideal.total
     };
   }
@@ -742,6 +779,9 @@ export function createPyramidController(deps) {
     if (!pyr || pyr.cancelled) return;
     if (!isDatasetForeground(ds.id)) return;
     if (pyr._idleHandle) return;
+    // Tile completions wake capacity waiters. Polling a full/empty queue via
+    // idle callbacks otherwise creates another render -> idle -> render loop.
+    if ((!pyr.qHi.length && !pyr.qLo.length) || pyr.inflight.size >= pyr.maxInflight) return;
 
     pyr._idleHandle = requestIdle(() => {
       pyr._idleHandle = null;
@@ -761,7 +801,8 @@ export function createPyramidController(deps) {
             onPerfUpdate();
 
             const tKick = now();
-            if (!pyr._lastKick || (tKick - pyr._lastKick) > 90) {
+            const finished = !pyr.qHi.length && !pyr.qLo.length && !pyr.inflight.size;
+            if (finished || !pyr._lastKick || (tKick - pyr._lastKick) > 90) {
               pyr._lastKick = tKick;
               onProgressiveRender();
             }
@@ -788,7 +829,7 @@ export function createPyramidController(deps) {
     }, { timeout: pyr.qHi.length ? 24 : 120 });
   }
 
-  async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null) {
+  async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null, options = {}) {
     ensurePyramid(ds);
     const pyr = ds.pyramid;
     if (!pyr || pyr.cancelled) return null;
@@ -799,9 +840,17 @@ export function createPyramidController(deps) {
       : null;
     const width = Math.max(1, Number(viewportW ?? fallbackViewport?.width) || 1);
     const height = Math.max(1, Number(viewportH ?? fallbackViewport?.height) || 1);
-    updatePyramidFocus(ds, band, lvl, eff, width, height);
-    enqueueOverviewTasks(ds, band, true);
-    const levels = enqueueViewportTasks(ds, band, lvl, eff, width, height);
+    const bands = [...new Set([band, ...(options.bands || [])])]
+      .filter((value) => Number.isInteger(value) && value >= 0 && value < (ds.meta.bands || 1))
+      .sort((a, b) => a - b);
+    updatePyramidFocus(ds, band, bands, lvl, eff, width, height);
+    let levels = [];
+    for (const visibleBand of bands) {
+      enqueueOverviewTasks(ds, visibleBand, true);
+      const bandLevels = enqueueViewportTasks(ds, visibleBand, lvl, eff, width, height);
+      if (visibleBand === band) levels = bandLevels;
+    }
+    prioritizeForeground(ds);
     const visible = levels.find((info) => info.level === lvl) || null;
     const visibleCached = levels.reduce((sum, info) => sum + info.cached, 0);
     const prefer = ds.__pyrPreferImmediate || visibleCached > 0;
