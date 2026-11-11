@@ -16,7 +16,6 @@ import {
   isRawCompatibleGrayscale,
   isRawCompatibleSummary,
   isUncompressedSingleStrip,
-  listTagValues,
   loadImageSummaries,
   loadSubIfdOverviewSummaries,
   needsRgbWindowSource,
@@ -31,54 +30,6 @@ const FMAP_BLOCK_COMPRESSIONS = new Set([1, 5, 8, 32946, 32773]);
 
 function supportsFmapBlockPath(summary) {
   return isRawCompatibleSummary(summary) && FMAP_BLOCK_COMPRESSIONS.has(Number(summary?.compression) || 1);
-}
-
-function checkedBytes(...values) {
-  let total = 0;
-  for (const value of values) {
-    const bytes = Math.max(0, Math.floor(Number(value) || 0));
-    total += bytes;
-    if (!Number.isSafeInteger(total)) throw new RangeError("TIFF fallback working set exceeds the browser's exact integer range.");
-  }
-  return total;
-}
-
-function checkedProduct(...values) {
-  let total = 1;
-  for (const value of values) {
-    total *= Math.max(0, Math.floor(Number(value) || 0));
-    if (!Number.isSafeInteger(total)) throw new RangeError("TIFF fallback working set exceeds the browser's exact integer range.");
-  }
-  return total;
-}
-
-function fallbackBlockWorkingSet(summary, sampleType) {
-  const directory = summary?.fileDirectory || {};
-  const tiled = Array.isArray(summary?.tileOffsets) && summary.tileOffsets.length > 0;
-  const blockWidth = tiled ? Number(directory.TileWidth) || summary.width : summary.width;
-  const blockHeight = tiled
-    ? Number(directory.TileLength) || summary.height
-    : Math.min(summary.height, Number(summary.rowsPerStrip) || summary.height);
-  const decoded = checkedProduct(blockWidth, blockHeight, summary.samplesPerPixel, sampleType.dataTypeInfo.bytes);
-  const counts = tiled ? listTagValues(directory.TileByteCounts) : summary.stripByteCounts;
-  const encoded = Math.max(0, ...counts.map((value) => Number(value) || 0));
-  return { encoded, decoded, total: checkedBytes(encoded, decoded, decoded) };
-}
-
-function requireBoundedFallback(images, sampleType, deps) {
-  const limit = Math.max(1, Number(
-    deps?.tiffFmapOptions?.maxWorkingSetBytes ?? APP_CONFIG.fmap.maxQueuedBytes
-  ) || 0);
-  for (const summary of images) {
-    const estimate = fallbackBlockWorkingSet(summary, sampleType);
-    if (estimate.total > limit) {
-      throw new Error(
-        `TIFF fallback block requires about ${estimate.total} bytes (${estimate.encoded} encoded + `
-        + `${estimate.decoded} decoded + ${estimate.decoded} scratch), exceeding the ${limit}-byte working-set limit. `
-        + "Use a native overview or re-encode with smaller tiles/strips."
-      );
-    }
-  }
 }
 
 function createChunkCache(file, deps) {
@@ -379,14 +330,16 @@ export async function describeTiffDataset(tiff, file, deps = {}) {
   const requestedFmapSource = deps?.tiffFmapRangeSource || null;
   const useFmap = !!requestedFmapSource && images.every(supportsFmapBlockPath);
   if (requestedFmapSource && !useFmap) {
-    try {
-      requireBoundedFallback(images, sampleType, deps);
-    } catch (error) {
-      requestedFmapSource.close?.();
-      throw error;
-    }
+    const unsupported = images.find((summary) => !supportsFmapBlockPath(summary)) || first;
+    requestedFmapSource.close?.();
+    const reason = isRawCompatibleSummary(unsupported)
+      ? `compression ${Number(unsupported.compression) || 1}`
+      : photometricName(unsupported.photometricInterpretation);
+    throw new Error(
+      `TIFF fmap does not have a verified bounded decoder for ${reason}. `
+      + "Disable fmap to use the existing TIFF backend, or re-encode with uncompressed, PackBits, LZW, or Deflate blocks."
+    );
   }
-  const effectiveDeps = useFmap ? deps : { ...deps, tiffFmapRangeSource: null };
   const raw = {
     format: "tiff",
     imageCount: images.length,
@@ -394,22 +347,12 @@ export async function describeTiffDataset(tiff, file, deps = {}) {
     photometricInterpretation: first.photometricInterpretation,
     fmap: useFmap
   };
-  if (requestedFmapSource && !useFmap) {
-    const unsupported = images.find((summary) => !supportsFmapBlockPath(summary)) || first;
-    raw.fmapReason = isRawCompatibleSummary(unsupported)
-      ? `compression ${Number(unsupported.compression) || 1} uses the bounded TIFF fallback`
-      : `${photometricName(unsupported.photometricInterpretation)} conversion uses the bounded TIFF fallback`;
-  }
 
-  try {
-    if (images.length === 1) {
-      raw.overviewCount = 0;
-      const desc = await describeSingleImageDataset(tiff, images, file, effectiveDeps, raw, sampleType, budgets);
-      raw.overviewCount = Number(desc?.cached?.overviewCount || 0);
-      return desc;
-    }
-    return await describeMultiPageDataset(tiff, images, file, effectiveDeps, raw, sampleType, budgets);
-  } finally {
-    if (requestedFmapSource && !useFmap) requestedFmapSource.close?.();
+  if (images.length === 1) {
+    raw.overviewCount = 0;
+    const desc = await describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets);
+    raw.overviewCount = Number(desc?.cached?.overviewCount || 0);
+    return desc;
   }
+  return describeMultiPageDataset(tiff, images, file, deps, raw, sampleType, budgets);
 }

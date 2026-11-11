@@ -11,6 +11,8 @@ async function openTiffFmapRangeSource(file, deps) {
   const configured = { ...APP_CONFIG.fmap, ...(deps?.fmapOptions || {}) };
   const wasmBytes = deps?.fmapWasmBytes ?? await loadFmapWasmBytes();
   const rangeFactory = deps?.createFmapRangeDataSource || createFmapRangeDataSource;
+  const maxLogicalResultBytes = deps?.tiffFmapOptions?.maxLogicalResultBytes ?? (128 * 1024 * 1024);
+  const maxLogicalBytes = deps?.tiffFmapOptions?.maxLogicalBytes ?? maxLogicalResultBytes;
   return createFmapTiffDataSource(file, {
     createRangeSource: (selectedFile) => rangeFactory(selectedFile, {
       pageSize: configured.pageSizeBytes,
@@ -20,8 +22,8 @@ async function openTiffFmapRangeSource(file, deps) {
       maxResultBytes: configured.maxResultBytes,
       maxQueuedRequests: configured.maxQueuedRequests,
       maxQueuedBytes: configured.maxQueuedBytes,
-      maxLogicalResultBytes: configured.maxQueuedBytes,
-      maxLogicalBytes: configured.maxQueuedBytes,
+      maxLogicalResultBytes,
+      maxLogicalBytes,
       batchBytes: configured.batchBytes,
       wasmBytes
     }),
@@ -29,6 +31,7 @@ async function openTiffFmapRangeSource(file, deps) {
     poolBytes: configured.poolBytes,
     concurrency: deps?.ioConcurrency ?? configured.maxInflightRequests,
     maxWorkingSetBytes: deps?.tiffFmapOptions?.maxWorkingSetBytes ?? configured.maxQueuedBytes,
+    maxLogicalResultBytes,
     maxQueuedReservations: deps?.tiffFmapOptions?.maxQueuedReservations ?? configured.maxQueuedRequests,
     maxQueuedReservationBytes: deps?.tiffFmapOptions?.maxQueuedReservationBytes ?? (configured.maxQueuedBytes * 2)
   });

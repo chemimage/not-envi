@@ -24,6 +24,11 @@ export class FmapTiffDataSource {
     this.maxBytes = Number(rangeSource.maxBytes) || Number(options.poolBytes) || 0;
     this.concurrency = Math.max(1, Math.floor(Number(options.concurrency) || Number(rangeSource.concurrency) || 1));
     this.maxWorkingSetBytes = safeBytes(options.maxWorkingSetBytes ?? (32 * 1024 * 1024), "TIFF fmap working-set limit");
+    this.maxLogicalResultBytes = safeBytes(
+      options.maxLogicalResultBytes ?? rangeSource.maxLogicalResultBytes ?? (128 * 1024 * 1024),
+      "TIFF fmap logical-result limit"
+    );
+    this.maxWindowResultBytes = this.maxLogicalResultBytes;
     this.maxRetainedBytes = safeBytes(options.maxRetainedBytes ?? this.maxWorkingSetBytes, "TIFF fmap retained-backing limit");
     this.maxQueuedReservations = Math.max(1, Math.floor(Number(options.maxQueuedReservations) || 64));
     this.maxQueuedReservationBytes = safeBytes(options.maxQueuedReservationBytes ?? (this.maxWorkingSetBytes * 2), "TIFF fmap queued reservation limit");
@@ -178,7 +183,7 @@ export class FmapTiffDataSource {
     await this.ready;
     const sourceStats = typeof this.source?.getStats === "function" ? await this.source.getStats() : this.source?.stats;
     this.#syncSourceStats(sourceStats);
-    return { ...this.stats };
+    return { ...this.stats, isFmap: true };
   }
 
   clear() {
