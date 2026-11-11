@@ -1,7 +1,7 @@
 {
   "module": "fmap_core",
   "language": "C11",
-  "sourceSha256": "16dc9e494790c60e2ad8251f4fbaab30df478feec271c83d4ca7790dc5cdf2c4",
+  "sourceSha256": "043ea8640ecd80210bfe250c1f133c8fa7cd3c5ae3edd302dc655316f4ef47a7",
   "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
   "target": "wasm32-unknown-unknown",
   "optimization": "-O2 -flto",
@@ -27,8 +27,8 @@
     "-o",
     "wasm\\fmap\\pkg\\fmap_core.wasm"
   ],
-  "bytes": 8133,
-  "sha256": "b5993009536e1842b4d28df2f0c13a9640389dd84a365259cbad17eaf2560965",
+  "bytes": 16529,
+  "sha256": "33af12dbc67e7bfe65be03cb8b0d7a69f9cb58b2aa8c99f7933dc6b91e01cc40",
   "exports": [
     "fmap_acquire_page",
     "fmap_commit_page",
@@ -44,6 +44,14 @@
     "fmap_generation",
     "fmap_hits",
     "fmap_init",
+    "fmap_lookup_mapping",
+    "fmap_map_region",
+    "fmap_mapping_bytes",
+    "fmap_mapping_count",
+    "fmap_mapping_end",
+    "fmap_mapping_file_offset",
+    "fmap_mapping_reset",
+    "fmap_mapping_start",
     "fmap_misses",
     "fmap_output_capacity_f32",
     "fmap_output_f64_capacity",
@@ -66,6 +74,7 @@
     "fmap_slot_range_offset",
     "fmap_slot_valid_bytes",
     "fmap_touch_page",
+    "fmap_unmap_region",
     "memory"
   ]
 }
