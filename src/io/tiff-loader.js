@@ -71,12 +71,13 @@ export async function addDatasetFromFile(file, deps = {}) {
 
   deps?.setStatus?.("opening TIFF…", "warn");
   await yieldToEventLoop();
-  const tiff = await openTiffBackend(file, deps);
-  await yieldToEventLoop();
+  let tiff = null;
   let fmapRangeSource = null;
   let desc = null;
   try {
     fmapRangeSource = await openTiffFmapRangeSource(file, deps);
+    tiff = await openTiffBackend(file, { ...deps, tiffFmapRangeSource: fmapRangeSource });
+    await yieldToEventLoop();
     desc = await describeTiffDataset(tiff, file, { ...deps, tiffFmapRangeSource: fmapRangeSource });
   } catch (error) {
     try { fmapRangeSource?.close?.(); } catch (_closeError) {}

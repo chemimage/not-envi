@@ -320,6 +320,38 @@ try {
       baselineSource.close();
     }
   });
+  report.residentPageIndex = await page.evaluate(async () => {
+    const bytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+    const { instance } = await WebAssembly.instantiate(bytes, {});
+    const core = instance.exports;
+    const results = [];
+    for (const slots of [64, 1024, 8192]) {
+      if (core.fmap_init(4096, slots) !== 0) throw new Error("Resident index initialization failed.");
+      const base = 0x100000001n;
+      for (let index = 0; index < slots; index += 1) {
+        const slot = core.fmap_acquire_page(base + BigInt(index));
+        if (slot !== index || core.fmap_release_page(slot) !== 0) throw new Error("Resident index population mismatch.");
+      }
+      const initialProbes = Number(core.fmap_page_index_probes());
+      const initialLookups = Number(core.fmap_page_index_lookups());
+      const lookupCount = 100000;
+      let checksum = 0;
+      const start = performance.now();
+      for (let index = 0; index < lookupCount; index += 1) {
+        const expected = (index * 7919) % slots;
+        const slot = core.fmap_find_page(base + BigInt(expected));
+        if (slot !== expected) throw new Error("Resident page lookup mismatch.");
+        checksum += slot;
+      }
+      const lookups = Number(core.fmap_page_index_lookups()) - initialLookups;
+      const probes = Number(core.fmap_page_index_probes()) - initialProbes;
+      if (lookups !== lookupCount || probes > lookupCount * 8) throw new Error("Resident lookup probe bound regressed.");
+      results.push({ slots, lookupCount, checksum, lookupMs: Number((performance.now() - start).toFixed(3)),
+        meanProbes: Number((probes / lookups).toFixed(3)), peakProbes: core.fmap_page_index_peak_probes(),
+        indexBytes: core.fmap_page_index_bytes(), residentBytes: core.fmap_resident_bytes() });
+    }
+    return { scope: "C/WASM resident-page lookup only; excludes file I/O, eviction selection and worker messaging", results };
+  });
   report.mappingIndex = await page.evaluate(async () => {
     const bytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
     const { instance } = await WebAssembly.instantiate(bytes, {});
