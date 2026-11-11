@@ -8,7 +8,7 @@
   }
 
   .btn {
-    @apply cursor-pointer rounded-sm border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-sm text-gray-100 transition-colors hover:border-gray-500 active:translate-y-px;
+    @apply cursor-pointer rounded-xs border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-sm text-gray-100 transition-colors hover:border-gray-500 active:translate-y-px;
   }
 
   .btn.primary {
@@ -24,7 +24,7 @@
   }
 
   aside {
-    @apply flex min-h-0 flex-col overflow-hidden rounded-sm border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
+    @apply flex min-h-0 flex-col overflow-hidden rounded-xs border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
   }
 
   #displayDock {
@@ -42,7 +42,7 @@
   #displayPanel {
     --display-visible-header: 42px;
     --flyout-title-size: 58px;
-    @apply flex min-h-0 w-full overflow-hidden rounded-sm border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
+    @apply flex min-h-0 w-full overflow-hidden rounded-xs border border-gray-700 bg-gray-900 shadow-2xl shadow-black/30;
     flex: 0 1 auto;
     height: auto;
     max-height: none;
@@ -145,11 +145,11 @@
   }
 
   .dropzone {
-    @apply cursor-pointer rounded-sm border border-dashed border-gray-600 bg-gray-800/60 p-3;
+    @apply cursor-pointer rounded-xs border border-dashed border-gray-600 bg-gray-800/60 p-3;
   }
 
   .dropzone:focus {
-    @apply outline-none ring-2 ring-gray-500/60;
+    @apply outline-hidden ring-2 ring-gray-500/60;
   }
 
   .dropzone.dragover {
@@ -188,7 +188,7 @@
 
   input[type="number"],
   select {
-    @apply rounded-sm border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-xs text-gray-100;
+    @apply rounded-xs border border-gray-700 bg-gray-950 px-2 py-1.5 font-mono text-xs text-gray-100;
   }
 
   input[type="number"] {
@@ -204,7 +204,7 @@
   }
 
   .badge-rect {
-    @apply rounded-sm px-2.5;
+    @apply rounded-xs px-2.5;
   }
 
   .perf-top {
