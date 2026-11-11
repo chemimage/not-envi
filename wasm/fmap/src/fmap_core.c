@@ -104,6 +104,7 @@ typedef struct {
 typedef struct fmap_map_node {
     uint32_t count, leaf;
     struct fmap_map_node *next_free;
+    uint64_t first_start, last_end, max_gap;
     fmap_mapping entries[MAP_KEYS];
     struct fmap_map_node *children[MAP_KEYS + 1u];
 } fmap_map_node;
@@ -112,6 +113,7 @@ static fmap_map_node *g_map_root, *g_map_free;
 static fmap_map_id *g_map_ids;
 static uint32_t g_map_capacity, g_map_count, g_map_free_count;
 static uint64_t g_map_heap_base, g_map_heap_end;
+static uint32_t g_map_gap_nodes_visited, g_map_gap_entries_visited;
 static void mapping_reset_internal(void);
 
 static uint64_t align_up_u64(uint64_t value, uint32_t alignment) {
@@ -421,6 +423,8 @@ static void mapping_reset_internal(void) {
     g_map_count = 0;
     g_map_free_count = 0;
     g_map_heap_end = g_map_heap_base;
+    g_map_gap_nodes_visited = 0;
+    g_map_gap_entries_visited = 0;
 }
 
 static void *mapping_allocate(uint32_t bytes) {
@@ -433,8 +437,16 @@ static void *mapping_allocate(uint32_t bytes) {
 }
 
 static uint32_t mapping_hash(uint64_t id) {
+    /* Complete MurmurHash3 fmix64 finalizer, then reduce to a 32-bit hash.
+     * Austin Appleby's original implementation is public domain:
+     * https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
+     * This is a deterministic mixer of the mapping ID, not a random seed.
+     * Linear probing still compares the complete ID to resolve collisions.
+     * An established mixer is used here without claiming it is optimal. */
     id ^= id >> 33;
     id *= 0xff51afd7ed558ccdull;
+    id ^= id >> 33;
+    id *= 0xc4ceb9fe1a85ec53ull;
     id ^= id >> 33;
     return (uint32_t)id;
 }
@@ -539,6 +551,44 @@ static uint32_t mapping_overlaps(uint64_t start, uint64_t end) {
     return 0;
 }
 
+/* Recompute one wide node from its entries and immediate child summaries.
+ * Only mutation paths and participating split/borrow/merge siblings refresh;
+ * this never walks whole subtrees or allocates during an update. */
+static void mapping_refresh(fmap_map_node *node) {
+    uint32_t index;
+    uint64_t previous_end, gap;
+    node->max_gap = 0;
+    if (!node->count) {
+        if (!node->leaf) {
+            node->first_start = node->children[0]->first_start;
+            node->last_end = node->children[0]->last_end;
+            node->max_gap = node->children[0]->max_gap;
+        } else node->first_start = node->last_end = 0;
+        return;
+    }
+    if (node->leaf) {
+        node->first_start = node->entries[0].start;
+        previous_end = node->entries[0].start;
+    } else {
+        node->first_start = node->children[0]->first_start;
+        previous_end = node->children[0]->last_end;
+        node->max_gap = node->children[0]->max_gap;
+    }
+    for (index = 0; index < node->count; index++) {
+        gap = node->entries[index].start - previous_end;
+        if (gap > node->max_gap) node->max_gap = gap;
+        previous_end = node->entries[index].end;
+        if (!node->leaf) {
+            fmap_map_node *child = node->children[index + 1u];
+            gap = child->first_start - previous_end;
+            if (gap > node->max_gap) node->max_gap = gap;
+            if (child->max_gap > node->max_gap) node->max_gap = child->max_gap;
+            previous_end = child->last_end;
+        }
+    }
+    node->last_end = previous_end;
+}
+
 static void mapping_split(fmap_map_node *parent, uint32_t index) {
     fmap_map_node *left = parent->children[index], *right = mapping_node();
     uint32_t j;
@@ -552,6 +602,27 @@ static void mapping_split(fmap_map_node *parent, uint32_t index) {
     for (j = parent->count; j > index; j--) parent->entries[j] = parent->entries[j - 1u];
     parent->entries[index] = left->entries[MAP_DEGREE - 1u];
     parent->count++;
+    mapping_refresh(left);
+    mapping_refresh(right);
+    mapping_refresh(parent);
+}
+
+static void mapping_insert_nonfull(fmap_map_node *node, fmap_mapping value) {
+    uint32_t index = node->count;
+    while (index && value.start < node->entries[index - 1u].start) index--;
+    if (node->leaf) {
+        uint32_t j;
+        for (j = node->count; j > index; j--) node->entries[j] = node->entries[j - 1u];
+        node->entries[index] = value;
+        node->count++;
+    } else {
+        if (node->children[index]->count == MAP_KEYS) {
+            mapping_split(node, index);
+            if (value.start > node->entries[index].start) index++;
+        }
+        mapping_insert_nonfull(node->children[index], value);
+    }
+    mapping_refresh(node);
 }
 
 static void mapping_insert(fmap_mapping value) {
@@ -564,23 +635,7 @@ static void mapping_insert(fmap_mapping value) {
         g_map_root = node;
         mapping_split(node, 0);
     }
-    node = g_map_root;
-    for (;;) {
-        uint32_t index = node->count;
-        while (index && value.start < node->entries[index - 1u].start) index--;
-        if (node->leaf) {
-            uint32_t j;
-            for (j = node->count; j > index; j--) node->entries[j] = node->entries[j - 1u];
-            node->entries[index] = value;
-            node->count++;
-            return;
-        }
-        if (node->children[index]->count == MAP_KEYS) {
-            mapping_split(node, index);
-            if (value.start > node->entries[index].start) index++;
-        }
-        node = node->children[index];
-    }
+    mapping_insert_nonfull(g_map_root, value);
 }
 
 static void mapping_merge(fmap_map_node *parent, uint32_t index) {
@@ -594,6 +649,8 @@ static void mapping_merge(fmap_map_node *parent, uint32_t index) {
     for (j = index + 2u; j <= parent->count; j++) parent->children[j - 1u] = parent->children[j];
     parent->count--;
     mapping_free_node(right);
+    mapping_refresh(left);
+    mapping_refresh(parent);
 }
 
 static void mapping_delete(fmap_map_node *node, uint64_t start) {
@@ -620,6 +677,7 @@ static void mapping_delete(fmap_map_node *node, uint64_t start) {
                 mapping_delete(left, start);
             }
         }
+        mapping_refresh(node);
         return;
     }
     if (node->leaf) return;
@@ -633,6 +691,8 @@ static void mapping_delete(fmap_map_node *node, uint64_t start) {
             if (!child->leaf) child->children[0] = sibling->children[sibling->count];
             node->entries[index - 1u] = sibling->entries[sibling->count - 1u];
             sibling->count--; child->count++;
+            mapping_refresh(sibling);
+            mapping_refresh(child);
         } else if (index < node->count && node->children[index + 1u]->count >= MAP_DEGREE) {
             sibling = node->children[index + 1u];
             child->entries[child->count] = node->entries[index];
@@ -641,12 +701,15 @@ static void mapping_delete(fmap_map_node *node, uint64_t start) {
             for (j = 1; j < sibling->count; j++) sibling->entries[j - 1u] = sibling->entries[j];
             if (!sibling->leaf) for (j = 1; j <= sibling->count; j++) sibling->children[j - 1u] = sibling->children[j];
             sibling->count--; child->count++;
+            mapping_refresh(sibling);
+            mapping_refresh(child);
         } else {
             if (index == node->count) index--;
             mapping_merge(node, index);
         }
     }
     mapping_delete(node->children[index], start);
+    mapping_refresh(node);
 }
 
 EXPORT("fmap_map_region")
@@ -721,17 +784,32 @@ static uint64_t mapping_align(uint64_t value, uint64_t alignment) {
     return value > U64_MAX_VALUE - increment ? U64_MAX_VALUE : value + increment;
 }
 
-/* Ordered sparse traversal: O(R) worst-case time and O(log R) stack, without
- * allocating metadata for holes. Subtree maximum-gap augmentation could prune
- * this search later; current map/unmap and address lookups remain balanced. */
+/* Maximum raw-gap summaries prune subtrees that cannot fit the requested
+ * length. Arbitrary alignment may reject otherwise large raw gaps, so this is
+ * still O(R) worst-case time, with O(log R) stack and no per-hole allocation. */
 static void mapping_find_gap_node(fmap_map_node *node, fmap_gap_search *search) {
     uint32_t index;
     if (!node || search->done) return;
+    g_map_gap_nodes_visited++;
+    if (node->last_end <= search->candidate) return;
+    if (node->first_start >= search->candidate
+        && search->length <= node->first_start - search->candidate) {
+        search->result = search->candidate;
+        search->done = 1;
+        return;
+    }
+    if (node->max_gap < search->length) {
+        search->candidate = mapping_align(node->last_end, search->alignment);
+        if (search->candidate >= search->limit
+            || search->length > search->limit - search->candidate) search->done = 1;
+        return;
+    }
     for (index = 0; index <= node->count && !search->done; index++) {
         fmap_mapping *entry;
         if (!node->leaf) mapping_find_gap_node(node->children[index], search);
         if (search->done || index == node->count) break;
         entry = &node->entries[index];
+        g_map_gap_entries_visited++;
         if (entry->end <= search->candidate) continue;
         if (entry->start >= search->candidate
             && search->length <= entry->start - search->candidate) {
@@ -748,6 +826,8 @@ static void mapping_find_gap_node(fmap_map_node *node, fmap_gap_search *search) 
 EXPORT("fmap_mapping_find_gap")
 uint64_t fmap_mapping_find_gap(uint64_t length, uint64_t alignment, uint64_t minimum, uint64_t limit) {
     fmap_gap_search search;
+    g_map_gap_nodes_visited = 0;
+    g_map_gap_entries_visited = 0;
     if (!g_initialized || !length || !alignment || minimum >= limit) return U64_MAX_VALUE;
     search.candidate = mapping_align(minimum, alignment);
     if (search.candidate >= limit || length > limit - search.candidate) return U64_MAX_VALUE;
@@ -756,6 +836,13 @@ uint64_t fmap_mapping_find_gap(uint64_t length, uint64_t alignment, uint64_t min
     mapping_find_gap_node(g_map_root, &search);
     if (!search.done) return search.candidate;
     return search.result;
+}
+
+EXPORT("fmap_mapping_gap_nodes_visited") uint32_t fmap_mapping_gap_nodes_visited(void) {
+    return g_map_gap_nodes_visited;
+}
+EXPORT("fmap_mapping_gap_entries_visited") uint32_t fmap_mapping_gap_entries_visited(void) {
+    return g_map_gap_entries_visited;
 }
 
 EXPORT("fmap_reset")
