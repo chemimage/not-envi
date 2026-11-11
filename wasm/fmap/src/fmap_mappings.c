@@ -54,23 +54,8 @@ static void *mapping_allocate(uint32_t bytes) {
     return (void *)(uint32_t)start;
 }
 
-static uint32_t mapping_hash(uint64_t id) {
-    /* Complete MurmurHash3 fmix64 finalizer, then reduce to a 32-bit hash.
-     * Austin Appleby's original implementation is public domain:
-     * https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
-     * No seed is used: the complete mapping ID is the deterministic input.
-     * Linear probing still compares the complete ID to resolve collisions.
-     * An established mixer is used here without claiming it is optimal. */
-    id ^= id >> 33;
-    id *= 0xff51afd7ed558ccdull;
-    id ^= id >> 33;
-    id *= 0xc4ceb9fe1a85ec53ull;
-    id ^= id >> 33;
-    return (uint32_t)id;
-}
-
 static uint32_t mapping_id_slot(uint64_t id) {
-    uint32_t slot = mapping_hash(id) & (g_map_capacity - 1u);
+    uint32_t slot = fmap_hash_u64(id) & (g_map_capacity - 1u);
     while (g_map_ids[slot].id && g_map_ids[slot].id != id) slot = (slot + 1u) & (g_map_capacity - 1u);
     return slot;
 }
@@ -98,7 +83,7 @@ static void mapping_remove_id(uint64_t id) {
     uint32_t mask = g_map_capacity - 1u;
     uint32_t hole = mapping_id_slot(id), next = (hole + 1u) & mask;
     while (g_map_ids[next].id) {
-        uint32_t home = mapping_hash(g_map_ids[next].id) & mask;
+        uint32_t home = fmap_hash_u64(g_map_ids[next].id) & mask;
         if (((next - home) & mask) >= ((next - hole) & mask)) {
             g_map_ids[hole] = g_map_ids[next];
             hole = next;

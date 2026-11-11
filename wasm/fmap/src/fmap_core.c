@@ -135,13 +135,7 @@ static int32_t commit_valid_range(fmap_slot *slot, uint32_t offset, uint32_t len
 }
 
 static int32_t find_page(uint64_t page_index) {
-    uint32_t index;
-    for (index = 0; index < g_slot_count; index++) {
-        if (g_slots[index].occupied && g_slots[index].page_index == page_index) {
-            return (int32_t)index;
-        }
-    }
-    return -1;
+    return fmap_page_index_find(page_index);
 }
 
 static void touch_slot(uint32_t slot_index) {
@@ -300,6 +294,7 @@ EXPORT("fmap_init")
 int32_t fmap_init(uint32_t page_size, uint32_t slot_count) {
     uint64_t heap_start;
     uint64_t slots_start;
+    uint64_t index_start, index_bytes;
     uint64_t bytes_start;
     uint64_t scratch_start;
     uint64_t output_start;
@@ -314,7 +309,10 @@ int32_t fmap_init(uint32_t page_size, uint32_t slot_count) {
     if (output_count == 0) output_count = 1;
     heap_start = (uint64_t)(uint32_t)&__heap_base;
     slots_start = fmap_align_up_u64(heap_start, 8);
-    bytes_start = fmap_align_up_u64(slots_start + (uint64_t)sizeof(fmap_slot) * slot_count, 8);
+    index_start = fmap_align_up_u64(slots_start + (uint64_t)sizeof(fmap_slot) * slot_count, 8);
+    index_bytes = fmap_page_index_required_bytes(slot_count);
+    if (!index_bytes) return FMAP_ERR_INVALID_CONFIG;
+    bytes_start = fmap_align_up_u64(index_start + index_bytes, 8);
     scratch_start = fmap_align_up_u64(bytes_start + resident_bytes, 8);
     output_start = fmap_align_up_u64(scratch_start + page_size, 8);
     required_end = output_start + (page_size < 8u ? 8u : page_size);
@@ -339,6 +337,7 @@ int32_t fmap_init(uint32_t page_size, uint32_t slot_count) {
     g_hits = 0;
     g_misses = 0;
     g_evictions = 0;
+    fmap_page_index_init(index_start, slot_count);
     for (index = 0; index < slot_count; index++) clear_slot(&g_slots[index]);
     fmap_clear_bytes(g_bytes, (uint32_t)resident_bytes);
     fmap_clear_bytes(g_scratch, g_page_size);
@@ -351,6 +350,7 @@ EXPORT("fmap_reset")
 int32_t fmap_reset(void) {
     uint32_t index;
     if (!g_initialized) return FMAP_ERR_NOT_INITIALIZED;
+    fmap_page_index_reset();
     for (index = 0; index < g_slot_count; index++) clear_slot(&g_slots[index]);
     fmap_clear_bytes(g_bytes, g_page_size * g_slot_count);
     fmap_clear_bytes(g_scratch, g_page_size);
@@ -400,11 +400,15 @@ int32_t fmap_acquire_page(uint64_t page_index) {
     victim = choose_victim();
     if (victim < 0) return FMAP_ERR_ALL_PINNED;
     slot = &g_slots[(uint32_t)victim];
-    if (slot->occupied) g_evictions++;
+    if (slot->occupied) {
+        fmap_page_index_remove(slot->page_index);
+        g_evictions++;
+    }
     clear_slot(slot);
     slot->page_index = page_index;
     slot->pin_count = 1;
     slot->occupied = 1;
+    fmap_page_index_insert(page_index, (uint32_t)victim);
     touch_slot((uint32_t)victim);
     return victim;
 }
@@ -472,6 +476,7 @@ int32_t fmap_evict_page(uint64_t page_index) {
     found = find_page(page_index);
     if (found < 0) return 0;
     if (g_slots[(uint32_t)found].pin_count > 0) return FMAP_ERR_ALL_PINNED;
+    fmap_page_index_remove(page_index);
     clear_slot(&g_slots[(uint32_t)found]);
     g_evictions++;
     return 1;

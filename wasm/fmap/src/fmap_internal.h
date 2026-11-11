@@ -27,5 +27,15 @@ void fmap_mappings_init(uint64_t heap_base);
 uint64_t fmap_align_up_u64(uint64_t value, uint32_t alignment);
 int fmap_ensure_linear_memory(uint64_t required_end);
 void fmap_clear_bytes(uint8_t *bytes, uint32_t length);
+uint32_t fmap_hash_u64(uint64_t value);
+
+/* Fixed-size resident-page index. Storage is reserved by the cache layout;
+ * capacity depends only on pool slots, never on backing-file length. */
+uint64_t fmap_page_index_required_bytes(uint32_t slot_count);
+void fmap_page_index_init(uint64_t base, uint32_t slot_count);
+void fmap_page_index_reset(void);
+int32_t fmap_page_index_find(uint64_t page_index);
+void fmap_page_index_insert(uint64_t page_index, uint32_t slot_index);
+void fmap_page_index_remove(uint64_t page_index);
 
 #endif
