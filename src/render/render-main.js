@@ -24,6 +24,8 @@ import {
 export function createRenderer(deps) {
   const {
     state,
+    shouldDeferRender,
+    onDeferredRender,
     els,
     now,
     setStatus,
@@ -639,6 +641,7 @@ export function createRenderer(deps) {
   let previewRafPending = false;
 
   function renderPreview() {
+    if (shouldDeferRender?.()) { onDeferredRender?.(); return false; }
     const visible = listVisiblePanels();
     if (!visible.length) {
       resizeCanvases();
@@ -1131,6 +1134,7 @@ export function createRenderer(deps) {
   }
 
   async function render(opts = {}) {
+    if (shouldDeferRender?.()) { onDeferredRender?.(); return; }
     const visible = listVisiblePanels();
     if (!visible.length) {
       resizeCanvases();
