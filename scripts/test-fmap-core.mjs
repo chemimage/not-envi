@@ -15,6 +15,11 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
     "fmap_reset",
     "fmap_acquire_page",
     "fmap_commit_page",
+    "fmap_commit_range",
+    "fmap_range_valid",
+    "fmap_slot_range_count",
+    "fmap_slot_range_offset",
+    "fmap_slot_range_length",
     "fmap_release_page",
     "fmap_touch_page",
     "fmap_slot_ptr",
@@ -64,11 +69,33 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
   view().setFloat32(firstPtr, 1.25, true);
   view().setFloat32(firstPtr + 4, 99, true);
   view().setFloat32(firstPtr + 8, -3.5, true);
-  assert.equal(wasm.fmap_commit_page(first, 12), 0);
+  assert.equal(wasm.fmap_range_valid(first, 0, 0), 1, "empty range is valid within a resident page");
+  assert.equal(wasm.fmap_range_valid(first, 0, 4), 0, "new page starts with no valid bytes");
+  assert.equal(wasm.fmap_extract_f32_le(first, 0, 1, 4), -5, "new page bytes are invalid");
+  assert.equal(wasm.fmap_commit_range(first, 0, 4), 0);
+  assert.equal(wasm.fmap_commit_range(first, 8, 4), 0);
   assert.equal(wasm.fmap_slot_valid_bytes(first), 12);
+  assert.equal(wasm.fmap_range_valid(first, 0, 4), 1);
+  assert.equal(wasm.fmap_range_valid(first, 4, 4), 0, "sparse fill preserves its hole");
+  assert.equal(wasm.fmap_range_valid(first, 8, 4), 1);
+  assert.equal(wasm.fmap_slot_range_count(first), 2);
+  assert.deepEqual([
+    wasm.fmap_slot_range_offset(first, 0), wasm.fmap_slot_range_length(first, 0),
+    wasm.fmap_slot_range_offset(first, 1), wasm.fmap_slot_range_length(first, 1)
+  ], [0, 4, 8, 4], "enumerate sorted resident validity intervals");
+  assert.equal(wasm.fmap_slot_range_length(first, 2), 0, "invalid range index is safe");
   assert.equal(wasm.fmap_extract_f32_le(first, 0, 2, 8), 2);
   assert.deepEqual(Array.from(output(2)), [1.25, -3.5]);
+  assert.equal(wasm.fmap_extract_f32_le(first, 0, 3, 4), -5, "strided extraction rejects a hole");
+  assert.equal(wasm.fmap_commit_range(first, 4, 4), 0, "adjacent commit merges sparse intervals");
+  assert.equal(wasm.fmap_range_valid(first, 0, 12), 1, "bridged range becomes fully valid");
+  assert.equal(wasm.fmap_slot_range_count(first), 1);
+  assert.equal(wasm.fmap_slot_range_length(first, 0), 12);
   assert.equal(wasm.fmap_extract_f32_le(first, 8, 2, 8), -5, "exact valid-byte bound");
+  assert.equal(wasm.fmap_commit_range(first, 63, 2), -5, "reject range crossing the page boundary");
+  assert.equal(wasm.fmap_commit_range(first, 0, 65), -4, "reject range length larger than a page");
+  assert.equal(wasm.fmap_range_valid(first, 64, 0), 1, "empty range at page end is valid");
+  assert.equal(wasm.fmap_range_valid(first, 65, 0), -5, "reject offset beyond page end");
 
   const numericCases = [
     { type: 1, size: 1, value: 241, set: (data, at, value) => data.setUint8(at, value) },
@@ -108,9 +135,16 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
   assert.equal(wasm.fmap_extract_numeric(first, 0, 9, 1, 1, 1), -4, "bound Float64 output");
   view().setUint16(firstPtr, 1234, true);
   view().setUint16(firstPtr + 4, 5678, true);
-  assert.equal(wasm.fmap_commit_page(first, 6), 0);
+  assert.equal(wasm.fmap_commit_page(first, 0), 0);
+  assert.equal(wasm.fmap_commit_range(first, 0, 2), 0);
+  assert.equal(wasm.fmap_commit_range(first, 4, 2), 0);
   assert.equal(wasm.fmap_extract_numeric(first, 0, 2, 4, 12, 1), 2);
   assert.deepEqual(Array.from(numericOutput(2)), [1234, 5678], "support strided typed reads");
+  assert.equal(
+    wasm.fmap_extract_numeric(first, 0, 3, 2, 12, 1),
+    -5,
+    "generic extraction rejects a sampled hole while allowing stride gaps"
+  );
 
   const scratchPtr = wasm.fmap_scratch_ptr();
   view().setFloat32(scratchPtr, 2.5, true);
@@ -145,6 +179,8 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
   assert.deepEqual(Array.from(output(1)), [6.5], "decode big-endian Float32");
   assert.equal(wasm.fmap_release_page(replacement), 0);
   assert.equal(wasm.fmap_evict_page(3n), 1);
+  assert.equal(wasm.fmap_range_valid(replacement, 0, 1), -3, "eviction clears validity with the slot");
+  assert.equal(wasm.fmap_slot_range_count(replacement), 0);
 
   const generation = wasm.fmap_generation();
   assert.equal(wasm.fmap_reset(), 0);
@@ -153,13 +189,35 @@ export async function testFmapCore(file = path.resolve("wasm/fmap/pkg/fmap_core.
   assert.equal(wasm.fmap_hits(), 0n);
   assert.equal(wasm.fmap_misses(), 0n);
 
+  assert.equal(wasm.fmap_init(256, 1), 0, "configure a page large enough to test validity fragmentation");
+  const fragmented = wasm.fmap_acquire_page(77n);
+  assert.equal(fragmented, 0);
+  for (let index = 0; index < 64; index++) {
+    assert.equal(wasm.fmap_commit_range(fragmented, index * 2, 1), 0);
+  }
+  assert.equal(wasm.fmap_slot_range_count(fragmented), 64);
+  assert.equal(wasm.fmap_slot_valid_bytes(fragmented), 127);
+  assert.equal(wasm.fmap_commit_range(fragmented, 128, 1), -8, "report fixed interval capacity explicitly");
+  assert.equal(wasm.fmap_slot_range_count(fragmented), 64, "capacity failure leaves interval metadata unchanged");
+  assert.equal(wasm.fmap_range_valid(fragmented, 128, 1), 0, "failed fragment commit is atomic");
+  assert.equal(wasm.fmap_slot_valid_bytes(fragmented), 127, "failed fragment does not raise high-water mark");
+  assert.equal(wasm.fmap_commit_range(fragmented, 1, 1), 0, "bridging intervals frees metadata capacity");
+  assert.equal(wasm.fmap_range_valid(fragmented, 0, 3), 1);
+  assert.equal(wasm.fmap_commit_range(fragmented, 128, 1), 0, "freed interval capacity accepts another fragment");
+  assert.equal(wasm.fmap_commit_page(fragmented, 32), 0, "full commit replaces sparse validity");
+  assert.equal(wasm.fmap_range_valid(fragmented, 0, 32), 1);
+  assert.equal(wasm.fmap_range_valid(fragmented, 32, 1), 0);
+  assert.equal(wasm.fmap_release_page(fragmented), 0);
+  assert.equal(wasm.fmap_reset(), 0);
+  assert.equal(wasm.fmap_range_valid(fragmented, 0, 1), -3, "reset clears occupied slots and validity");
+
   for (let index = 0; index < 200; index++) {
     const slot = wasm.fmap_acquire_page(BigInt(index) * 0x1_0000_0000n + 7n);
     assert.ok(slot >= 0);
     assert.equal(wasm.fmap_commit_page(slot, 1), 0);
     assert.equal(wasm.fmap_release_page(slot), 0);
   }
-  assert.equal(wasm.fmap_resident_bytes(), 128, "logical file size does not grow resident pool");
+  assert.equal(wasm.fmap_resident_bytes(), 256, "logical file size does not grow resident pool");
   assert.equal(wasm.memory.buffer.byteLength, memoryAfterInit, "steady-state requests do not grow WASM memory");
 
   assert.equal(wasm.fmap_init(128, 4), 0, "allow worker reconfiguration in-place");

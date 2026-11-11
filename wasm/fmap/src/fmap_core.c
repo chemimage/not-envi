@@ -6,10 +6,14 @@
  * Logical page IDs are u64; exported pointers address only WASM linear memory.
  * Metadata scales with resident slots, independently of the backing file size.
  *
- * Acquire pins a slot; commit supplies its exact valid-byte count; release
- * permits LRU reuse. All-pinned acquisition returns FMAP_ERR_ALL_PINNED instead
- * of growing the pool. The bridge must release on every error path and retain
- * no slot pointer across release, reset, or reinitialization.
+ * Acquire pins a slot; full-page commit supplies its exact valid-byte count,
+ * while range commits retain sparse fills without validating unread holes.
+ * Validity uses a fixed interval table per resident slot. Fragment-capacity
+ * exhaustion is explicit so the host can replace the sparse page with a full
+ * refill instead of growing metadata. Release permits LRU reuse. All-pinned
+ * acquisition returns FMAP_ERR_ALL_PINNED instead of growing the pool. The
+ * bridge must release on every error path and retain no slot pointer across
+ * release, reset, or reinitialization.
  *
  * Sparse reads use the separate page-sized scratch region. Extraction writes
  * the shared bounded output region in either Float32 (compatibility ABI) or
@@ -37,7 +41,10 @@ typedef int int32_t;
 #define FMAP_ERR_OUT_OF_BOUNDS -5
 #define FMAP_ERR_INVALID_CONFIG -6
 #define FMAP_ERR_UNSUPPORTED_TYPE -7
+#define FMAP_ERR_FRAGMENT_CAPACITY -8
 #define EXPORT(name) __attribute__((export_name(name), visibility("default")))
+
+#define FMAP_VALID_INTERVAL_CAPACITY 64u
 
 #define ENVI_TYPE_UINT8 1u
 #define ENVI_TYPE_INT16 2u
@@ -50,12 +57,18 @@ typedef int int32_t;
 #define ENVI_TYPE_UINT64 15u
 
 typedef struct {
+    uint32_t start;
+    uint32_t end;
+} fmap_valid_interval;
+
+typedef struct {
     uint64_t page_index;
     uint64_t last_touch;
     uint32_t valid_bytes;
     uint32_t pin_count;
     uint32_t occupied;
-    uint32_t reserved;
+    uint32_t interval_count;
+    fmap_valid_interval intervals[FMAP_VALID_INTERVAL_CAPACITY];
 } fmap_slot;
 
 extern uint8_t __heap_base;
@@ -108,7 +121,58 @@ static void clear_slot(fmap_slot *slot) {
     slot->valid_bytes = 0;
     slot->pin_count = 0;
     slot->occupied = 0;
-    slot->reserved = 0;
+    slot->interval_count = 0;
+}
+
+static uint32_t range_is_valid(const fmap_slot *slot, uint32_t offset, uint32_t length) {
+    uint32_t end = offset + length;
+    uint32_t index;
+    if (length == 0) return 1;
+    for (index = 0; index < slot->interval_count; index++) {
+        const fmap_valid_interval *interval = &slot->intervals[index];
+        if (offset < interval->start) return 0;
+        if (offset < interval->end) return end <= interval->end;
+    }
+    return 0;
+}
+
+static int32_t commit_valid_range(fmap_slot *slot, uint32_t offset, uint32_t length) {
+    uint32_t end = offset + length;
+    uint32_t first = 0;
+    uint32_t after;
+    uint32_t index;
+    uint32_t merged_start = offset;
+    uint32_t merged_end = end;
+    uint32_t removed;
+    uint32_t new_count;
+    if (length == 0) return FMAP_OK;
+
+    while (first < slot->interval_count && slot->intervals[first].end < offset) first++;
+    after = first;
+    while (after < slot->interval_count && slot->intervals[after].start <= merged_end) {
+        if (slot->intervals[after].start < merged_start) merged_start = slot->intervals[after].start;
+        if (slot->intervals[after].end > merged_end) merged_end = slot->intervals[after].end;
+        after++;
+    }
+    removed = after - first;
+    if (removed == 0 && slot->interval_count == FMAP_VALID_INTERVAL_CAPACITY) {
+        return FMAP_ERR_FRAGMENT_CAPACITY;
+    }
+    new_count = slot->interval_count - removed + 1u;
+    if (after > first) {
+        for (index = after; index < slot->interval_count; index++) {
+            slot->intervals[first + 1u + index - after] = slot->intervals[index];
+        }
+    } else {
+        for (index = slot->interval_count; index > first; index--) {
+            slot->intervals[index] = slot->intervals[index - 1u];
+        }
+    }
+    slot->intervals[first].start = merged_start;
+    slot->intervals[first].end = merged_end;
+    slot->interval_count = new_count;
+    if (merged_end > slot->valid_bytes) slot->valid_bytes = merged_end;
+    return FMAP_OK;
 }
 
 static int32_t find_page(uint64_t page_index) {
@@ -221,6 +285,7 @@ static double decode_numeric(const uint8_t *source, uint32_t data_type, uint32_t
 static int32_t extract_f32(
     const uint8_t *source,
     uint32_t valid_bytes,
+    const fmap_slot *slot,
     uint32_t byte_offset,
     uint32_t count,
     uint32_t stride_bytes,
@@ -233,6 +298,7 @@ static int32_t extract_f32(
     for (output_index = 0; output_index < count; output_index++) {
         uint64_t relative = (uint64_t)byte_offset + (uint64_t)output_index * stride_bytes;
         if (relative + 4u > valid_bytes) return FMAP_ERR_OUT_OF_BOUNDS;
+        if (slot && !range_is_valid(slot, (uint32_t)relative, 4u)) return FMAP_ERR_OUT_OF_BOUNDS;
         g_output[output_index] = decode_f32(source + (uint32_t)relative, little_endian);
     }
     return (int32_t)count;
@@ -241,6 +307,7 @@ static int32_t extract_f32(
 static int32_t extract_numeric(
     const uint8_t *source,
     uint32_t valid_bytes,
+    const fmap_slot *slot,
     uint32_t byte_offset,
     uint32_t count,
     uint32_t stride_bytes,
@@ -256,6 +323,9 @@ static int32_t extract_numeric(
     for (output_index = 0; output_index < count; output_index++) {
         uint64_t relative = (uint64_t)byte_offset + (uint64_t)output_index * stride_bytes;
         if (relative > valid_bytes || element_size > (uint64_t)valid_bytes - relative) {
+            return FMAP_ERR_OUT_OF_BOUNDS;
+        }
+        if (slot && !range_is_valid(slot, (uint32_t)relative, element_size)) {
             return FMAP_ERR_OUT_OF_BOUNDS;
         }
         g_output_f64[output_index] = decode_numeric(
@@ -390,8 +460,32 @@ int32_t fmap_commit_page(uint32_t slot_index, uint32_t valid_bytes) {
     if (!slot_is_valid(slot_index)) return FMAP_ERR_INVALID_SLOT;
     if (valid_bytes > g_page_size) return FMAP_ERR_INVALID_LENGTH;
     g_slots[slot_index].valid_bytes = valid_bytes;
+    g_slots[slot_index].interval_count = valid_bytes == 0 ? 0 : 1;
+    if (valid_bytes != 0) {
+        g_slots[slot_index].intervals[0].start = 0;
+        g_slots[slot_index].intervals[0].end = valid_bytes;
+    }
     touch_slot(slot_index);
     return FMAP_OK;
+}
+
+EXPORT("fmap_commit_range")
+int32_t fmap_commit_range(uint32_t slot_index, uint32_t offset, uint32_t length) {
+    int32_t result;
+    if (!slot_is_valid(slot_index)) return FMAP_ERR_INVALID_SLOT;
+    if (length > g_page_size) return FMAP_ERR_INVALID_LENGTH;
+    if (offset > g_page_size || length > g_page_size - offset) return FMAP_ERR_OUT_OF_BOUNDS;
+    result = commit_valid_range(&g_slots[slot_index], offset, length);
+    if (result == FMAP_OK) touch_slot(slot_index);
+    return result;
+}
+
+EXPORT("fmap_range_valid")
+int32_t fmap_range_valid(uint32_t slot_index, uint32_t offset, uint32_t length) {
+    if (!slot_is_valid(slot_index)) return FMAP_ERR_INVALID_SLOT;
+    if (length > g_page_size) return FMAP_ERR_INVALID_LENGTH;
+    if (offset > g_page_size || length > g_page_size - offset) return FMAP_ERR_OUT_OF_BOUNDS;
+    return range_is_valid(&g_slots[slot_index], offset, length) ? 1 : 0;
 }
 
 EXPORT("fmap_release_page")
@@ -432,6 +526,25 @@ uint32_t fmap_slot_ptr(uint32_t slot_index) {
 EXPORT("fmap_slot_valid_bytes")
 uint32_t fmap_slot_valid_bytes(uint32_t slot_index) {
     return slot_is_valid(slot_index) ? g_slots[slot_index].valid_bytes : 0;
+}
+
+EXPORT("fmap_slot_range_count")
+uint32_t fmap_slot_range_count(uint32_t slot_index) {
+    return slot_is_valid(slot_index) ? g_slots[slot_index].interval_count : 0;
+}
+
+EXPORT("fmap_slot_range_offset")
+uint32_t fmap_slot_range_offset(uint32_t slot_index, uint32_t range_index) {
+    if (!slot_is_valid(slot_index) || range_index >= g_slots[slot_index].interval_count) return 0;
+    return g_slots[slot_index].intervals[range_index].start;
+}
+
+EXPORT("fmap_slot_range_length")
+uint32_t fmap_slot_range_length(uint32_t slot_index, uint32_t range_index) {
+    const fmap_valid_interval *interval;
+    if (!slot_is_valid(slot_index) || range_index >= g_slots[slot_index].interval_count) return 0;
+    interval = &g_slots[slot_index].intervals[range_index];
+    return interval->end - interval->start;
 }
 
 EXPORT("fmap_slot_pin_count")
@@ -476,6 +589,7 @@ int32_t fmap_extract_f32(
     result = extract_f32(
         g_bytes + (uint64_t)slot_index * g_page_size,
         g_slots[slot_index].valid_bytes,
+        &g_slots[slot_index],
         byte_offset,
         count,
         stride_bytes,
@@ -509,6 +623,7 @@ int32_t fmap_extract_numeric(
     result = extract_numeric(
         g_bytes + (uint64_t)slot_index * g_page_size,
         g_slots[slot_index].valid_bytes,
+        &g_slots[slot_index],
         byte_offset,
         count,
         stride_bytes,
@@ -529,7 +644,15 @@ int32_t fmap_extract_scratch_f32(
 ) {
     if (!g_initialized) return FMAP_ERR_NOT_INITIALIZED;
     if (valid_bytes > g_page_size) return FMAP_ERR_INVALID_LENGTH;
-    return extract_f32(g_scratch, valid_bytes, byte_offset, count, stride_bytes, little_endian);
+    return extract_f32(
+        g_scratch,
+        valid_bytes,
+        (const fmap_slot *)0,
+        byte_offset,
+        count,
+        stride_bytes,
+        little_endian
+    );
 }
 
 EXPORT("fmap_extract_scratch_numeric")
@@ -546,6 +669,7 @@ int32_t fmap_extract_scratch_numeric(
     return extract_numeric(
         g_scratch,
         valid_bytes,
+        (const fmap_slot *)0,
         byte_offset,
         count,
         stride_bytes,
