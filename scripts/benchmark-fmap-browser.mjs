@@ -353,9 +353,35 @@ try {
       if (core.fmap_mapping_count() !== 0 || core.fmap_resident_bytes() !== 8192) {
         throw new Error("Mapping benchmark leaked records or changed the byte pool.");
       }
+      const releaseMs = performance.now() - start;
+      core.fmap_init(4096, 2);
+      start = performance.now();
+      let maxGapNodesVisited = 0;
+      for (let i = 0; i < count; i += 1) {
+        const address = core.fmap_mapping_find_gap(4096n, 4096n, 0n, BigInt(count + 1) * 4096n);
+        maxGapNodesVisited = Math.max(maxGapNodesVisited, core.fmap_mapping_gap_nodes_visited());
+        if (address !== BigInt(i) * 4096n || core.fmap_map_region(address, 4096n, 0n, BigInt(i + 1)) !== 0) {
+          throw new Error("Automatic mapping allocation mismatch.");
+        }
+      }
+      const automaticAllocationMs = performance.now() - start;
+      if (maxGapNodesVisited > 1) throw new Error("Dense automatic allocation scanned an occupied subtree.");
+      const holes = Array.from({ length: Math.min(128, Math.floor(count / 3)) }, (_v, i) => count - 1 - i * 3).sort((a, b) => a - b);
+      for (const index of holes) if (core.fmap_unmap_region(BigInt(index + 1)) !== 0) throw new Error("Mapping fragmentation failed.");
+      start = performance.now();
+      let maxFragmentNodesVisited = 0;
+      for (let i = 0; i < holes.length; i += 1) {
+        const address = core.fmap_mapping_find_gap(4096n, 4096n, 0n, BigInt(count + 1) * 4096n);
+        maxFragmentNodesVisited = Math.max(maxFragmentNodesVisited, core.fmap_mapping_gap_nodes_visited());
+        if (address !== BigInt(holes[i]) * 4096n || core.fmap_map_region(address, 4096n, 0n, BigInt(count + i + 1)) !== 0) {
+          throw new Error("Fragmented mapping gap reuse mismatch.");
+        }
+      }
       results.push({ ranges: count, lookupCount, checksum, metadataBytes,
         insertMs: Number(insertMs.toFixed(3)), lookupMs: Number(lookupMs.toFixed(3)),
-        releaseMs: Number((performance.now() - start).toFixed(3)) });
+        releaseMs: Number(releaseMs.toFixed(3)), automaticAllocationMs: Number(automaticAllocationMs.toFixed(3)),
+        maxGapNodesVisited, fragmentedReallocations: holes.length,
+        fragmentedReuseMs: Number((performance.now() - start).toFixed(3)), maxFragmentNodesVisited });
     }
     return { scope: "C/WASM mapping index only; excludes file I/O and worker messaging", results };
   });

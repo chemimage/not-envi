@@ -24,6 +24,18 @@ function findGap(core, ...args) {
   return BigInt.asUintN(64, core.fmap_mapping_find_gap(...args));
 }
 
+function oracleGap(ranges, length, alignment, minimum, limit) {
+  const align = (value) => value + (alignment - value % alignment) % alignment;
+  let candidate = align(minimum);
+  for (const range of [...ranges].sort((a, b) => a.start < b.start ? -1 : 1)) {
+    if (candidate + length > limit) break;
+    if (range.start + range.length <= candidate) continue;
+    if (candidate + length <= range.start) return candidate;
+    candidate = align(range.start + range.length);
+  }
+  return candidate + length <= limit ? candidate : (1n << 64n) - 1n;
+}
+
 function assertMapping(core, { start, length, offset, id }) {
   expect(core.fmap_lookup_mapping(start)).toBe(id);
   expect(core.fmap_lookup_mapping(start + length - 1n)).toBe(id);
@@ -33,6 +45,34 @@ function assertMapping(core, { start, length, offset, id }) {
 }
 
 describe("C sparse Maple-style mapping index", () => {
+  test("automatic allocation skips dense subtrees and finds a late fragmented gap without a full scan", async () => {
+    const core = await createCore();
+    const count = 8192;
+    const page = 4096n;
+    const limit = BigInt(count + 2) * page;
+    for (let index = 0; index < count; index += 1) {
+      const start = findGap(core, page, page, 0n, limit);
+      expect(start).toBe(BigInt(index) * page);
+      // A dense tree has no interior gap; its root is enough to skip it.
+      expect(core.fmap_mapping_gap_nodes_visited()).toBeLessThanOrEqual(1);
+      expect(core.fmap_map_region(start, page, start, BigInt(index + 1))).toBe(0);
+    }
+    const hole = count - 23;
+    expect(core.fmap_unmap_region(BigInt(hole + 1))).toBe(0);
+    expect(core.fmap_unmap_region(BigInt(hole + 2))).toBe(0);
+    expect(findGap(core, page * 2n, page, 0n, limit)).toBe(BigInt(hole) * page);
+    expect(core.fmap_mapping_gap_nodes_visited()).toBeLessThan(128);
+    expect(core.fmap_mapping_gap_entries_visited()).toBeLessThan(256);
+    expect(core.fmap_map_region(BigInt(hole) * page, page * 2n, 0n, 9000n)).toBe(0);
+    expect(findGap(core, page, page, 0n, limit)).toBe(BigInt(count) * page);
+    expect(core.fmap_mapping_gap_nodes_visited()).toBe(1);
+    expect(core.fmap_unmap_region(9000n)).toBe(0);
+    expect(findGap(core, page, page, BigInt(hole) * page + 1n, limit)).toBe(BigInt(hole + 1) * page);
+    core.fmap_mapping_reset();
+    expect(findGap(core, page, page, 0n, limit)).toBe(0n);
+    expect(core.fmap_mapping_gap_nodes_visited()).toBe(0);
+  });
+
   test("finds aligned first-fit gaps before, between and after sparse mappings and reuses freed ranges", async () => {
     const core = await createCore();
     const noFit = (1n << 64n) - 1n;
@@ -147,7 +187,15 @@ describe("C sparse Maple-style mapping index", () => {
           expect(core.fmap_mapping_end(item.id)).toBe(0n);
         }
       } else insert(slot);
-      if (operation % 200 === 0) expect(core.fmap_mapping_count()).toBe(live.size);
+      if (operation % 200 === 0) {
+        expect(core.fmap_mapping_count()).toBe(live.size);
+        const minimum = (1n << 33n) + BigInt(random() % (3000 * 8192));
+        const length = BigInt(random() % 20000 + 1);
+        const alignment = BigInt(random() % 8193 + 1);
+        const limit = (1n << 33n) + 3002n * 8192n;
+        expect(findGap(core, length, alignment, minimum, limit))
+          .toBe(oracleGap(live.values(), length, alignment, minimum, limit));
+      }
     }
     for (const item of live.values()) assertMapping(core, item);
     const shuffled = [...live.values()].sort(() => (random() & 1) ? 1 : -1);
