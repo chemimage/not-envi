@@ -7,7 +7,7 @@ import {
 
 let nextSourceId = 1;
 const now = () => performance.now();
-const controlTypes = new Set(["open", "stats", "mapRegion", "unmapRegion", "mappingStats"]);
+const controlTypes = new Set(["open", "stats", "mapRegion", "unmapRegion"]);
 
 function limit(value, fallback, minimum = 1) {
   const number = Number(value ?? fallback);
@@ -251,7 +251,7 @@ export class FmapDataSource {
 
   #beginLogicalRequest(options = {}) {
     const logical = { ...(options || {}), groupId: ++this.logicalRequestId, generation: this.generation,
-      createdAt: now(), mappingIdentity: options.mappingId ?? 1 };
+      createdAt: now(), mappingIdentity: options?.mappingId ?? 1 };
     if (logical.supersedeKey != null) {
       this.latestSupersedeGroups.set(logical.supersedeKey, logical.groupId);
       for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) {
@@ -287,7 +287,7 @@ export class FmapDataSource {
       this.stats.cancelledRequests += 1;
       return Promise.reject(createAbortError("fmap request was superseded."));
     }
-    const bytes = ["open", "stats", "configureRaster", "mapRegion", "unmapRegion", "mappingStats"].includes(type) ? 0 : outputBytes + this.pageSize;
+    const bytes = controlTypes.has(type) || type === "configureRaster" ? 0 : outputBytes + this.pageSize;
     if (outputBytes > this.maxResultBytes || bytes > this.maxInflightBytes || bytes > this.maxQueuedBytes) {
       this.stats.rejectedRequests += 1;
       return Promise.reject(new RangeError("fmap result exceeds its request budget; split the operation into smaller windows."));

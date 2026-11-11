@@ -104,7 +104,7 @@ describe("fmap client", () => {
     try {
       await source.configureRaster({ ...meta(), dataTypeInfo: { bytes: 4, ctor: Float32Array } });
       expect(source.managesWindowOutput).toBe(true);
-      expect(Array.from(await source.readBandWindow(source.meta, 0, 0, 0, 2, 2, 1))).toEqual([1, 2, 3, 4]);
+      expect(Array.from(await source.readBandWindow(source.meta, 0, 0, 0, 2, 2, 1, null, null))).toEqual([1, 2, 3, 4]);
       expect(worker.messages.filter((message) => message.type === "open")).toHaveLength(1);
       expect(worker.messages.filter((message) => message.type === "configureRaster")).toHaveLength(1);
       await expect(source.configureRaster(meta())).rejects.toThrow("already configured");

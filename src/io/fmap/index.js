@@ -15,3 +15,4 @@ export {
   normalizeFmapWindow
 } from "./protocol.js";
 export { loadFmapWasmBytes } from "./wasm.js";
+export { FmapRegion } from "./mapped-regions.js";
