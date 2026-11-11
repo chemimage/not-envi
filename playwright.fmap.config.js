@@ -8,7 +8,7 @@ const baseUse = {
 
 export default defineConfig({
   testDir: "tests/e2e",
-  testMatch: "fmap-browser.spec.js",
+  testMatch: ["fmap-browser.spec.js", "fmap-tiff-coverage.spec.js"],
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,

@@ -74,7 +74,7 @@ try {
       littleEndian: true,
       dataTypeInfo: { bytes: 4, ctor: Float32Array, dv: "getFloat32" }
     };
-    const source = createFmapDataSource(file, meta, {
+    const sourceOptions = {
       pageSize: 64 * 1024,
       poolBytes: 512 * 1024,
       maxQueuedRequests: 16,
@@ -85,7 +85,8 @@ try {
       sparseReadThresholdBytes: 4 * 1024,
       sparseReadMaxGapBytes: 32,
       wasmBytes
-    });
+    };
+    const source = createFmapDataSource(file, meta, sourceOptions);
     const baselineBlob = new BlobDataSource(file);
     const baselineCache = new ChunkCacheDataSource(baselineBlob, {
       chunkSize: 64 * 1024,
@@ -106,8 +107,8 @@ try {
       key,
       Number(after?.[key] || 0) - Number(before?.[key] || 0)
     ]));
-    const measure = async (name, operations, usefulBytes) => {
-      const before = await source.getStats();
+    const measure = async (name, operations, usefulBytes, measuredSource = source) => {
+      const before = await measuredSource.getStats();
       const durations = [];
       let checksum = 0;
       for (const operation of operations) {
@@ -117,7 +118,7 @@ try {
         operation.verify?.(output);
         checksum += Number(output?.[0] || 0) + Number(output?.[output.length - 1] || 0);
       }
-      const after = await source.getStats();
+      const after = await measuredSource.getStats();
       const stats = deltaStats(before, after);
       return {
         name,
@@ -132,8 +133,8 @@ try {
       };
     };
     const valueAt = (band, x, y) => (band * 10000) + (y * 10) + x;
-    const checkedWindow = (band, x, y, width, height, step, options) => {
-      const operation = () => source.readBandWindow(
+    const checkedWindow = (band, x, y, width, height, step, options, measuredSource = source) => {
+      const operation = () => measuredSource.readBandWindow(
         meta, band, x, y, width, height, step, null, options
       );
       operation.verify = (output) => {
@@ -203,6 +204,18 @@ try {
         { priority: "foreground", supersedeKey: `cold-${index}` }
       ));
       const cold = await measure("cold-distinct-viewports", coldOperations, coldOperations.length * 64 * 64 * 4);
+      const pagedSource = createFmapDataSource(file, meta, { ...sourceOptions, sparseReadThresholdBytes: 0 });
+      let pagedCold;
+      try {
+        await pagedSource.ready;
+        const pagedOperations = Array.from({ length: 12 }, (_, index) => checkedWindow(
+          index, (index * 31) % 320, (index * 47) % 320, 64, 64, 2,
+          { priority: "foreground" }, pagedSource
+        ));
+        pagedCold = await measure("cold-viewports-page-policy-reference", pagedOperations,
+          pagedOperations.length * 64 * 64 * 4, pagedSource);
+        if (pagedCold.checksum !== cold.checksum) throw new Error("Viewport policy checksums differ");
+      } finally { pagedSource.close(); }
 
       const warmRead = checkedWindow(
         31, 73, 91, 64, 64, 1,
@@ -250,7 +263,7 @@ try {
           pageBytes: 64 * 1024,
           poolBytes: 512 * 1024
         },
-        workloads: { cold, warm, pan, sparseSpectrum, baselineSpectrum },
+        workloads: { cold, pagedCold, warm, pan, sparseSpectrum, baselineSpectrum },
         sparseSpectrumComparison: { fmap: sparseSpectrum, chunkCache: baselineSpectrum },
         finalStats
       };
@@ -258,6 +271,88 @@ try {
       source.close();
       baselineSource.close();
     }
+  });
+  if (!process.argv.includes("--envi-only")) report.tiff = await page.evaluate(async () => {
+    const { createBenchmarkTiff } = await import("/tests/fixtures/fmap-tiff.js");
+    const { addDatasetFromFile } = await import("/src/io/tiff-loader.js");
+    const { readBandWindow } = await import("/src/core/raster-io.js");
+    const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+    const results = [];
+    const quantile = (values, q) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * q) - 1];
+    for (const compression of [1, 32773, 8]) for (const tiled of [true, false]) for (const backend of ["fmap", "existing"]) {
+      const fixture = await createBenchmarkTiff(compression, tiled);
+      let baselineBrowserBytes = 0;
+      // The existing backend has no worker byte counter. Count the bytes of
+      // its File slices; decoded-copy accounting is unavailable and stays null.
+      const file = backend === "existing" ? new class extends File {
+        slice(...args) {
+          const blob = super.slice(...args);
+          baselineBrowserBytes += blob.size;
+          return blob;
+        }
+      }([fixture.file], fixture.file.name, { type: fixture.file.type }) : fixture.file;
+      const workingLimit = 262144;
+      const dataset = await addDatasetFromFile(file, {
+        fmapEnabled: backend === "fmap", fmapWasmBytes: wasmBytes, cacheBytes: 8 * 1024 * 1024,
+        fmapOptions: { pageSizeBytes: 65536, poolBytes: 262144, maxInflightRequests: 2,
+          maxResultBytes: 65536, maxInflightBytes: 262144, maxQueuedBytes: 1048576 },
+        tiffFmapOptions: { maxWorkingSetBytes: workingLimit }, createDataset: (descriptor) => descriptor
+      });
+      try {
+        const source = dataset.cached;
+        if (backend === "fmap" && !dataset.raw.fmap && !source.usesFmapRangeSource && !/fmap/i.test(source.constructor.name)) {
+          throw new Error(`TIFF ${compression} ${tiled} did not use fmap`);
+        }
+        const ranges = source.rawSource || source;
+        const stats = async () => backend === "fmap" ? ranges.getStats() : {
+          ...(await source.getStats?.() || {}), browserBytes: baselineBrowserBytes
+        };
+        const check = (output, x0, y0) => {
+          for (let y = 0; y < 32; y += 1) for (let x = 0; x < 32; x += 1) {
+            if (output[y * 32 + x] !== fixture.valueAt(x0 + x, y0 + y)) {
+              throw new Error(`TIFF ${compression} ${tiled} mismatch at ${x0 + x},${y0 + y}`);
+            }
+          }
+        };
+        const measure = async (cold, count) => {
+          const initial = await stats();
+          const durations = [];
+          let checksum = 0;
+          for (let index = 0; index < count; index += 1) {
+            if (cold) source.clear();
+            const x = cold ? (index * 17) % 96 : 30;
+            const y = cold ? (index * 11) % 96 : 20;
+            const start = performance.now();
+            const output = await readBandWindow(dataset.meta, source, 0, x, y, 32, 32, 1);
+            durations.push(performance.now() - start);
+            check(output, x, y);
+            checksum += output[0] + output.at(-1);
+          }
+          const final = await stats();
+          const usefulBytes = count * 32 * 32;
+          const elapsedMs = durations.reduce((sum, value) => sum + value, 0);
+          return { samples: count, checksum, p50Ms: Number(quantile(durations, 0.5).toFixed(3)),
+            p95Ms: Number(quantile(durations, 0.95).toFixed(3)),
+            throughputMiBPerSecond: Number((usefulBytes * 1000 / Math.max(elapsedMs, 0.001) / 1048576).toFixed(3)),
+            browserBytes: final.browserBytes - initial.browserBytes,
+            copiedBytes: backend === "fmap" ? final.copiedBytes - initial.copiedBytes : null,
+            browserAmplification: Number(((final.browserBytes - initial.browserBytes) / usefulBytes).toFixed(3)),
+            copyAmplification: backend === "fmap" ? Number(((final.copiedBytes - initial.copiedBytes) / usefulBytes).toFixed(3)) : null,
+            usefulBytes };
+        };
+        const cold = await measure(true, 12);
+        const warmup = await readBandWindow(dataset.meta, source, 0, 30, 20, 32, 32, 1);
+        check(warmup, 30, 20);
+        const warm = await measure(false, 20);
+        const final = await stats();
+        if (warm.browserBytes !== 0) throw new Error(`TIFF warm ${compression} ${tiled} reread file bytes`);
+        if (backend === "fmap" && (final.peakReservationBytes > workingLimit || final.activeReservationBytes !== 0 || final.pinnedBytes !== 0)) {
+          throw new Error(`TIFF ${compression} ${tiled} leaked/exceeded a decode reservation`);
+        }
+        results.push({ compression, tiled, backend, fileBytes: fixture.file.size, cold, warm, counters: final });
+      } finally { dataset.cached.close(); dataset.base?.close(); }
+    }
+    return results;
   });
   const json = `${JSON.stringify(report, null, 2)}\n`;
   console.log(json.trimEnd());
