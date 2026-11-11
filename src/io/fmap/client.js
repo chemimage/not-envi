@@ -169,6 +169,11 @@ export class FmapDataSource {
       this.stats.rejectedRequests += 1;
       return Promise.reject(new RangeError("fmap result exceeds its request budget; split the operation into smaller windows."));
     }
+    for (const request of [...this.queue, ...this.pending.values()]) {
+      if (!request.cancelled && (request.cancelledCheck?.() || now() - request.createdAt > request.maxAgeMs)) {
+        this.#cancel(request);
+      }
+    }
     if (options.supersedeKey != null) {
       for (const request of [...this.queue, ...this.pending.values()]) {
         if (request.supersedeKey === options.supersedeKey) this.#cancel(request);
