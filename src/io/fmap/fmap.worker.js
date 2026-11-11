@@ -1,21 +1,21 @@
-/* global FileReaderSync */
+import { FmapPageFillQueue } from "./page-fill-queue.js";
 /**
  * File range bridge and cooperative ENVI processing for one source. BSQ, BIL,
  * and BIP planners feed all nine supported numeric types through bounded C
- * extraction. Dense windows reuse resident pages; cold sparse spans use
- * C-owned scratch without evicting viewport pages. File offsets stay exact
- * JavaScript integers at the Blob boundary and become u64 page IDs independently
- * of WASM pointers. See https://github.com/chemimage/Hyve/issues/23.
+ * extraction. Dense windows request whole pages; cold sparse spans retain exact
+ * partial-page validity through the independent fill queue. File offsets stay
+ * exact JavaScript integers at the Blob boundary and become u64 page IDs
+ * independently of WASM pointers. See https://github.com/chemimage/Hyve/issues/23.
  *
- * Each generator yield releases every page/scratch/output view before another
- * job or control message runs. Foreground jobs precede speculative work.
- * A single synchronous provider read cannot be interrupted; cancellation is
- * observed between batches. Counters measure worker copies and bytes delivered
- * by browser APIs, not physical disk traffic or all main-thread allocations.
+ * A range demand resumes with a pinned lease; processing releases that lease and
+ * every WASM view before its next yield. Async Blob reads can overlap while
+ * runnable foreground jobs precede speculative work. Cancellation removes an
+ * individual waiter without poisoning a shared fill. Counters measure worker
+ * copies and bytes delivered by browser APIs, not physical disk traffic.
  */
 const PROTOCOL_VERSION = 1;
-const state = { file: null, meta: null, generation: 0, pageSize: 0, exports: null, closed: true,
-  jobs: [], scheduled: false, order: 0, stats: {} };
+const state = { file: null, meta: null, generation: 0, pageSize: 0, exports: null, fillQueue: null, closed: true,
+  jobs: [], waiting: new Map(), jobById: new Map(), scheduled: false, order: 0, stats: {} };
 
 // The worker pulls queued jobs between bounded batches. A local message task
 // yields to incoming requests/cancellation without chained timers' minimum
@@ -37,7 +37,8 @@ function call(name, ...args) {
   return state.exports[name](...args);
 }
 function counters() {
-  return { ...state.stats, cacheHits: Number(call("fmap_hits")), cacheMisses: Number(call("fmap_misses")),
+  return { ...state.stats, ...(state.fillQueue?.getStats() || {}),
+    cacheHits: Number(call("fmap_hits")), cacheMisses: Number(call("fmap_misses")),
     cacheEvictions: Number(call("fmap_evictions")), residentBytes: Number(call("fmap_resident_bytes")),
     pinnedBytes: Number(call("fmap_pinned_bytes")), wasmBytes: state.exports.memory.buffer.byteLength };
 }
@@ -47,35 +48,43 @@ function replyError(message, error) {
     stats: state.exports ? counters() : {} });
 }
 
-function readFile(offset, length) {
+async function readFile(file, pageSize, stats, offset, length) {
   integer(offset, "read offset"); integer(length, "read length");
   const end = integer(offset + length, "read end");
-  if (end > state.file.size || length > state.pageSize) throw new RangeError("fmap range exceeds the file or one read batch.");
-  const bytes = new Uint8Array(new FileReaderSync().readAsArrayBuffer(state.file.slice(offset, end)));
+  if (end > file.size || length > pageSize) throw new RangeError("fmap range exceeds the file or one read batch.");
+  const bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
   if (bytes.byteLength !== length) throw new Error(`Truncated fmap read at ${offset}: expected ${length} bytes, found ${bytes.byteLength}.`);
-  state.stats.browserBytes += length;
-  state.stats.readCalls += 1;
+  stats.browserBytes += length;
+  stats.readCalls += 1;
+  stats.copiedBytes += length;
   return bytes;
 }
 
-function acquire(pageIndex) {
-  const page = BigInt(pageIndex);
-  const slot = Number(call("fmap_acquire_page", page));
-  if (slot < 0) throw new Error(`Unable to acquire fmap page (status ${slot}).`);
-  try {
-    if (!call("fmap_slot_valid_bytes", slot)) {
-      const offset = pageIndex * state.pageSize;
-      const length = Math.min(state.pageSize, state.file.size - offset);
-      const bytes = readFile(offset, length);
-      new Uint8Array(state.exports.memory.buffer, call("fmap_slot_ptr", slot), length).set(bytes);
-      if (call("fmap_commit_page", slot, length) !== 0) throw new Error("Unable to commit fmap page.");
-      state.stats.copiedBytes += length;
-    }
-    return slot;
-  } catch (error) {
-    call("fmap_release_page", slot);
-    call("fmap_evict_page", page);
-    throw error;
+function rangeDemand(message, pageIndex, offset, length) {
+  return { kind: "range", pageIndex, offset, length, priority: message.priority,
+    generation: message.generation, requestId: message.id };
+}
+
+function checkpoint(bytes) {
+  return { kind: "checkpoint", bytes };
+}
+
+function* copyRange(offset, length, target, targetOffset, message) {
+  let cursor = offset;
+  let remaining = length;
+  while (remaining > 0) {
+    const pageIndex = Math.floor(cursor / state.pageSize);
+    const inPage = cursor - (pageIndex * state.pageSize);
+    const take = Math.min(remaining, state.pageSize - inPage);
+    const lease = yield rangeDemand(message, pageIndex, inPage, take);
+    try {
+      target.set(new Uint8Array(state.exports.memory.buffer,
+        call("fmap_slot_ptr", lease.slot) + inPage, take), targetOffset);
+      state.stats.copiedBytes += take;
+    } finally { lease.release(); }
+    cursor += take;
+    targetOffset += take;
+    remaining -= take;
   }
 }
 
@@ -110,8 +119,9 @@ function extractScratch(byteOffset, take, stride, length, spec) {
     take === 1 ? spec.sampleBytes : stride, spec.dataType, state.meta.littleEndian ? 1 : 0, length));
 }
 
-// Each yield releases the page and scratch ownership. No WASM view survives a yield.
-function* readValues(offset, count, stride, target, targetOffset, preferPage, generation) {
+// Each range yield resumes with a pinned lease. The lease and every WASM view are
+// released before the generator yields again.
+function* readValues(offset, count, stride, target, targetOffset, preferPage, message) {
   integer(offset, "sample offset"); integer(count, "sample count"); integer(stride, "sample stride");
   const spec = numericSpec();
   if (stride < spec.sampleBytes) throw new RangeError("Numeric stride is smaller than one sample.");
@@ -121,42 +131,58 @@ function* readValues(offset, count, stride, target, targetOffset, preferPage, ge
   state.stats.requestedBytes += count * spec.sampleBytes;
   const capacity = numericCapacity(spec);
   while (count > 0) {
-    requireGeneration(generation);
+    requireGeneration(message.generation);
     const pageIndex = Math.floor(offset / state.pageSize);
     const inPage = offset - (pageIndex * state.pageSize);
-    const cachedSlot = Number(call("fmap_find_page", BigInt(pageIndex)));
+    const pageLength = Math.min(state.pageSize, state.file.size - (pageIndex * state.pageSize));
     const pageFit = inPage + spec.sampleBytes <= state.pageSize;
-    if (pageFit && (cachedSlot >= 0 || preferPage)) {
-      const slot = acquire(pageIndex);
-      let take;
+    const resident = pageFit && rangeIsResident(offset, spec.sampleBytes);
+    if (pageFit && (resident || preferPage)) {
+      const take = Math.min(count,
+        Math.floor((pageLength - inPage - spec.sampleBytes) / stride) + 1,
+        Math.max(1, Math.floor(state.batchBytes / spec.sampleBytes)), capacity);
+      if (take <= 0) throw new Error("Truncated fmap page.");
+      const demandOffset = preferPage ? 0 : inPage;
+      const demandLength = preferPage ? pageLength : (((take - 1) * stride) + spec.sampleBytes);
+      const lease = yield rangeDemand(message, pageIndex, demandOffset, demandLength);
       try {
-        const valid = Number(call("fmap_slot_valid_bytes", slot));
-        take = Math.min(count, Math.floor((valid - inPage - spec.sampleBytes) / stride) + 1,
-          Math.max(1, Math.floor(state.batchBytes / spec.sampleBytes)), capacity);
-        if (take <= 0) throw new Error("Truncated fmap page.");
-        const result = extractPage(slot, inPage, take, stride, spec);
+        const result = extractPage(lease.slot, inPage, take, stride, spec);
         if (result !== take) throw new Error(`fmap extraction failed (status ${result}).`);
         copyExtracted(target, targetOffset, take, spec);
         state.stats.copiedBytes += take * spec.transportBytes;
-      } finally { call("fmap_release_page", slot); }
+      } finally { lease.release(); }
       offset += take * stride; count -= take; targetOffset += take;
-      yield Math.max(take * spec.sampleBytes, cachedSlot < 0 ? state.pageSize : 0);
-    } else {
-      // Sparse cold ranges bypass the resident cache without evicting viewport pages.
-      // Coalescing is allowed only for small gaps and always fits the scratch page.
-      const maxSpan = Math.min(state.pageSize, state.batchBytes);
+      yield checkpoint(Math.max(take * spec.sampleBytes, resident ? 0 : demandLength));
+    } else if (pageFit) {
+      // Cold sparse spans retain only their exact in-page interval.
+      const maxSpan = Math.max(spec.sampleBytes,
+        Math.min(state.pageSize - inPage, state.batchBytes));
       const take = stride - spec.sampleBytes <= state.sparseReadMaxGapBytes
         ? Math.min(count, Math.floor((maxSpan - spec.sampleBytes) / stride) + 1, capacity) : 1;
       const length = ((take - 1) * stride) + spec.sampleBytes;
-      const bytes = readFile(offset, length);
-      new Uint8Array(state.exports.memory.buffer, call("fmap_scratch_ptr"), length).set(bytes);
-      const result = extractScratch(0, take, stride, length, spec);
-      if (result !== take) throw new Error(`fmap sparse extraction failed (status ${result}).`);
-      copyExtracted(target, targetOffset, take, spec);
-      state.stats.sparseReads += 1;
-      state.stats.copiedBytes += length + (take * spec.transportBytes);
+      const lease = yield rangeDemand(message, pageIndex, inPage, length);
+      try {
+        const result = extractPage(lease.slot, inPage, take, stride, spec);
+        if (result !== take) throw new Error(`fmap sparse extraction failed (status ${result}).`);
+        copyExtracted(target, targetOffset, take, spec);
+        state.stats.sparseReads += 1;
+        state.stats.copiedBytes += take * spec.transportBytes;
+      } finally { lease.release(); }
       offset += take * stride; count -= take; targetOffset += take;
-      yield length;
+      yield checkpoint(length);
+    } else {
+      // A numeric value may straddle two pages. Assemble only that value in a
+      // bounded JS buffer, then use C scratch after every page lease is released.
+      const bytes = new Uint8Array(spec.sampleBytes);
+      yield* copyRange(offset, spec.sampleBytes, bytes, 0, message);
+      new Uint8Array(state.exports.memory.buffer, call("fmap_scratch_ptr"), spec.sampleBytes).set(bytes);
+      const result = extractScratch(0, 1, spec.sampleBytes, spec.sampleBytes, spec);
+      if (result !== 1) throw new Error(`fmap split-page extraction failed (status ${result}).`);
+      copyExtracted(target, targetOffset, 1, spec);
+      state.stats.sparseReads += 1;
+      state.stats.copiedBytes += spec.sampleBytes + spec.transportBytes;
+      offset += stride; count -= 1; targetOffset += 1;
+      yield checkpoint(spec.sampleBytes);
     }
   }
 }
@@ -180,10 +206,16 @@ function output(count) {
 }
 
 function rangeIsResident(offset, length) {
-  const first = Math.floor(offset / state.pageSize);
-  const last = Math.floor((offset + Math.max(0, length - 1)) / state.pageSize);
-  for (let page = first; page <= last; page += 1) {
-    if (Number(call("fmap_find_page", BigInt(page))) < 0) return false;
+  let cursor = offset;
+  let remaining = length;
+  while (remaining > 0) {
+    const page = Math.floor(cursor / state.pageSize);
+    const inPage = cursor - (page * state.pageSize);
+    const take = Math.min(remaining, state.pageSize - inPage);
+    const slot = Number(call("fmap_find_page", BigInt(page)));
+    if (slot < 0 || Number(call("fmap_range_valid", slot, inPage, take)) !== 1) return false;
+    cursor += take;
+    remaining -= take;
   }
   return true;
 }
@@ -217,7 +249,8 @@ function* readWindowRows(message, values, spec, stride) {
       ? chooseRowSlabRows(outH - row, rowSourceStride, rowSpan, usefulRowBytes) : 1;
     const slabLength = slabRows > 1 ? ((slabRows - 1) * rowSourceStride) + rowSpan : rowSpan;
     if (slabRows > 1 && !rangeIsResident(offset, slabLength)) {
-      const bytes = readFile(offset, slabLength);
+      const bytes = new Uint8Array(slabLength);
+      yield* copyRange(offset, slabLength, bytes, 0, message);
       new Uint8Array(state.exports.memory.buffer, call("fmap_scratch_ptr"), slabLength).set(bytes);
       state.stats.requestedBytes += slabRows * usefulRowBytes;
       for (let localRow = 0; localRow < slabRows; localRow += 1) {
@@ -228,16 +261,16 @@ function* readWindowRows(message, values, spec, stride) {
       state.stats.sparseReads += 1;
       state.stats.copiedBytes += slabLength + (slabRows * outW * spec.transportBytes);
       row += slabRows;
-      yield slabLength;
+      yield checkpoint(slabLength);
       continue;
     }
-    yield* readValues(offset, outW, stride, values, row * requestedW, false, generation);
+    yield* readValues(offset, outW, stride, values, row * requestedW, false, message);
     row += 1;
   }
 }
 
 function* readWindow(message) {
-  const { x0, y0, outW, outH, requestedW, requestedH, step, band, generation } = message;
+  const { x0, y0, outW, outH, requestedW, requestedH, step, band } = message;
   for (const value of [x0, y0, outW, outH, requestedW, requestedH, step, band]) integer(value, "window field");
   const meta = state.meta;
   if (!step || band >= meta.bands || outW > requestedW || outH > requestedH
@@ -253,7 +286,7 @@ function* readWindow(message) {
   if (preferPage) {
     for (let row = 0; row < outH; row += 1) {
       yield* readValues(pixelOffset(x0, y0 + row * step, band), outW, stride,
-        values, row * requestedW, true, generation);
+        values, row * requestedW, true, message);
     }
   } else {
     yield* readWindowRows(message, values, spec, stride);
@@ -263,7 +296,7 @@ function* readWindow(message) {
 }
 
 function* readSpectrum(message) {
-  const { x, y, generation, bandStart = 0, bandCount = state.meta.bands } = message;
+  const { x, y, bandStart = 0, bandCount = state.meta.bands } = message;
   integer(x, "spectrum x"); integer(y, "spectrum y"); integer(bandStart, "spectrum band start"); integer(bandCount, "spectrum band count");
   const meta = state.meta;
   if (x >= meta.samples || y >= meta.lines || bandStart + bandCount > meta.bands) throw new RangeError("Spectrum coordinate or band range is outside the dataset.");
@@ -272,7 +305,7 @@ function* readSpectrum(message) {
   const stride = meta.interleave === "bsq" ? meta.samples * meta.lines * bytes
     : (meta.interleave === "bil" ? meta.samples * bytes : bytes);
   yield* readValues(pixelOffset(x, y, bandStart), bandCount, stride,
-    values, 0, state.sparseReadThresholdBytes === 0, generation);
+    values, 0, state.sparseReadThresholdBytes === 0, message);
   state.stats.usefulValues += bandCount;
   return values;
 }
@@ -292,18 +325,16 @@ function* readRange(message) {
     requireGeneration(generation);
     const pageIndex = Math.floor(cursor / state.pageSize);
     const inPage = cursor - (pageIndex * state.pageSize);
-    const slot = acquire(pageIndex);
-    let take;
+    const take = Math.min(length - written, state.pageSize - inPage, state.batchBytes);
+    const lease = yield rangeDemand(message, pageIndex, inPage, take);
     try {
-      const valid = Number(call("fmap_slot_valid_bytes", slot));
-      take = Math.min(length - written, valid - inPage, state.batchBytes);
-      if (take <= 0) throw new Error("Truncated fmap range page.");
-      values.set(new Uint8Array(state.exports.memory.buffer, call("fmap_slot_ptr", slot) + inPage, take), written);
+      values.set(new Uint8Array(state.exports.memory.buffer,
+        call("fmap_slot_ptr", lease.slot) + inPage, take), written);
       state.stats.copiedBytes += take;
-    } finally { call("fmap_release_page", slot); }
+    } finally { lease.release(); }
     cursor += take;
     written += take;
-    yield take;
+    yield checkpoint(take);
   }
   state.stats.usefulValues += length;
   return values;
@@ -315,6 +346,31 @@ function schedule() {
   batchChannel.port2.postMessage(null);
 }
 
+function releaseResumeLease(job) {
+  if (job.resumeValue?.release) job.resumeValue.release();
+  job.resumeValue = undefined;
+}
+
+function removeJob(job) {
+  state.jobById.delete(job.message.id);
+  state.waiting.delete(job.message.id);
+  job.waitingCancel = null;
+}
+
+function resumeWaiting(job, lease, error) {
+  if (state.waiting.get(job.message.id) !== job || job.cancelled) {
+    lease?.release?.();
+    return;
+  }
+  state.waiting.delete(job.message.id);
+  job.waitingCancel = null;
+  if (error) job.resumeError = error;
+  else job.resumeValue = lease;
+  job.order = ++state.order;
+  state.jobs.push(job);
+  schedule();
+}
+
 function runBatch() {
   state.scheduled = false;
   state.jobs.sort((a, b) => a.message.priority - b.message.priority || a.order - b.order);
@@ -322,33 +378,88 @@ function runBatch() {
   if (!job) return;
   let batchBytes = 0;
   const start = performance.now();
+  let paused = false;
+  let didWork = false;
   try {
     requireGeneration(job.message.generation);
-    let result;
-    do {
-      result = job.iterator.next();
-      batchBytes += result.done ? 0 : result.value;
-    } while (!result.done && batchBytes < state.batchBytes && performance.now() - start < 4);
+    while (!paused) {
+      let result;
+      if (job.resumeError) {
+        const error = job.resumeError;
+        job.resumeError = null;
+        result = job.iterator.throw(error);
+      } else {
+        const value = job.resumeValue;
+        job.resumeValue = undefined;
+        result = job.iterator.next(value);
+      }
+      if (result.done) {
+        didWork = true;
+        removeJob(job);
+        const buffer = result.value.buffer;
+        self.postMessage({ id: job.message.id, generation: state.generation,
+          result: { buffer, stats: counters() } }, [buffer]);
+        break;
+      }
+      const command = result.value;
+      if (command?.kind === "checkpoint") {
+        didWork = true;
+        batchBytes += integer(command.bytes, "batch bytes");
+        if (batchBytes >= state.batchBytes || performance.now() - start >= 4) {
+          job.order = ++state.order;
+          state.jobs.push(job);
+          paused = true;
+        }
+        continue;
+      }
+      if (command?.kind !== "range") throw new Error("Invalid fmap worker demand.");
+      let request;
+      try {
+        request = state.fillQueue.request({ ...command,
+          requestId: `${job.message.id}:${++job.demandOrder}` });
+      } catch (error) {
+        job.resumeError = error;
+        continue;
+      }
+      if (request.lease) {
+        job.resumeValue = request.lease;
+        continue;
+      }
+      if (!request.promise || typeof request.cancel !== "function") {
+        throw new Error("Invalid fmap fill queue request.");
+      }
+      job.waitingCancel = request.cancel;
+      state.waiting.set(job.message.id, job);
+      request.promise.then(
+        (lease) => resumeWaiting(job, lease, null),
+        (error) => resumeWaiting(job, null, error),
+      );
+      paused = true;
+    }
+  } catch (error) {
+    releaseResumeLease(job);
+    removeJob(job);
+    job.iterator.return?.();
+    replyError(job.message, error);
+  }
+  if (didWork) {
     state.stats.batches += 1;
     state.stats.peakBatchBytes = Math.max(state.stats.peakBatchBytes, batchBytes);
     state.stats.maxBatchMs = Math.max(state.stats.maxBatchMs, performance.now() - start);
-    if (result.done) {
-      const buffer = result.value.buffer;
-      self.postMessage({ id: job.message.id, generation: state.generation,
-        result: { buffer, stats: counters() } }, [buffer]);
-    } else {
-      job.order = ++state.order;
-      state.jobs.push(job);
-    }
-  } catch (error) {
-    job.iterator.return();
-    replyError(job.message, error);
   }
   schedule();
 }
 
 function cancelJob(job) {
-  job.iterator.return();
+  if (job.cancelled) return;
+  job.cancelled = true;
+  const index = state.jobs.indexOf(job);
+  if (index >= 0) state.jobs.splice(index, 1);
+  state.waiting.delete(job.message.id);
+  job.waitingCancel?.();
+  releaseResumeLease(job);
+  removeJob(job);
+  job.iterator.return?.();
   state.stats.workerCancelledRequests += 1;
   replyError(job.message, abortError());
 }
@@ -358,6 +469,11 @@ async function open(message) {
   const pageSize = integer(message.pageSize, "page size");
   const slots = Math.floor(integer(message.poolBytes, "pool bytes") / pageSize);
   if (pageSize < 4096 || !slots) throw new RangeError("Invalid fmap pool.");
+  const readConcurrency = integer(message.readConcurrency ?? 2, "read concurrency");
+  const maxQueuedRequests = integer(message.maxQueuedRequests ?? 64, "fill request limit");
+  const maxQueuedBytes = integer(message.maxQueuedBytes ?? (32 * 1024 * 1024), "fill byte limit");
+  if (!readConcurrency || !maxQueuedRequests || !maxQueuedBytes) throw new RangeError("Invalid fmap fill queue limits.");
+  state.fillQueue?.close();
   const { instance } = await WebAssembly.instantiate(message.wasmBytes, {});
   state.exports = instance.exports;
   const status = Number(call("fmap_init", pageSize, slots));
@@ -378,9 +494,18 @@ async function open(message) {
   if (!Number.isFinite(state.maxCoalescedOverreadRatio) || state.maxCoalescedOverreadRatio < 1) {
     throw new RangeError("Invalid fmap coalesced overread ratio.");
   }
-  state.closed = false;
   state.stats = { requestedBytes: 0, browserBytes: 0, copiedBytes: 0, usefulValues: 0,
     readCalls: 0, sparseReads: 0, outputBytes: 0, batches: 0, peakBatchBytes: 0, maxBatchMs: 0, workerCancelledRequests: 0 };
+  const sourceFile = state.file;
+  const sourceStats = state.stats;
+  state.fillQueue = new FmapPageFillQueue({ core: state.exports, fileSize: sourceFile.size,
+    pageSize, generation: state.generation, concurrency: readConcurrency,
+    maxQueuedRequests, maxQueuedBytes,
+    readFile: (offset, length) => readFile(sourceFile, pageSize, sourceStats, offset, length) });
+  state.jobs.length = 0;
+  state.waiting.clear();
+  state.jobById.clear();
+  state.closed = false;
   return { residentBytes: slots * pageSize, stats: counters() };
 }
 
@@ -390,13 +515,21 @@ self.onmessage = async (event) => {
     if (message.type === "open") {
       self.postMessage({ id: message.id, result: await open(message) });
     } else if (message.type === "cancel") {
-      const index = state.jobs.findIndex((job) => job.message.id === message.id);
-      if (index >= 0) cancelJob(state.jobs.splice(index, 1)[0]);
+      const job = state.jobById.get(message.id);
+      if (job) cancelJob(job);
     } else if (message.type === "clear" || message.type === "close") {
-      for (const job of state.jobs.splice(0)) cancelJob(job);
+      for (const job of [...state.jobById.values()]) cancelJob(job);
       state.generation = message.generation;
-      call("fmap_reset");
-      if (message.type === "close") { state.closed = true; state.file = null; }
+      if (message.type === "close") {
+        state.fillQueue.close();
+        state.closed = true;
+        state.file = null;
+      } else state.fillQueue.clear(state.generation);
+    } else if (message.type === "setConcurrency") {
+      requireGeneration(message.generation);
+      const concurrency = integer(message.readConcurrency, "read concurrency");
+      if (!concurrency) throw new RangeError("Invalid fmap read concurrency.");
+      state.fillQueue.setConcurrency(concurrency);
     } else if (message.type === "stats") {
       requireGeneration(message.generation);
       self.postMessage({ id: message.id, result: { stats: counters() } });
@@ -405,7 +538,11 @@ self.onmessage = async (event) => {
       message.priority = message.priority === 1 ? 1 : 0;
       const iterator = message.type === "window" ? readWindow(message)
         : (message.type === "spectrum" ? readSpectrum(message) : readRange(message));
-      state.jobs.push({ message, iterator, order: ++state.order });
+      if (state.jobById.has(message.id)) throw new Error("Duplicate fmap request id.");
+      const job = { message, iterator, order: ++state.order, demandOrder: 0, cancelled: false,
+        waitingCancel: null, resumeValue: undefined, resumeError: null };
+      state.jobs.push(job);
+      state.jobById.set(message.id, job);
       schedule();
     } else throw new Error(`Unknown fmap request ${message.type}.`);
   } catch (error) { replyError(message, error); }
