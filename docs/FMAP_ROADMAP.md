@@ -1,14 +1,14 @@
-# HyveMap implementation roadmap
+# fmap implementation roadmap
 
 Status: proposed implementation handoff for GPT-5.6 Sol, 2026-11-10.
 Baseline: release `v1.10.0`, commit `f4ab87f` (application behavior from `3380e3e`).
-HyveMap is a proposed subsystem name, not a claim of operating-system mmap support.
+fmap ("fake map") is the proposed subsystem name, not a claim of operating-system mmap support.
 
 ## Objective and boundaries
 
 Read user-selected ENVI and TIFF datasets much larger than the browser's usable memory, including files larger than physical RAM on mobile devices. Keep originals on their existing storage and read only required regions. Do not import entire files into OPFS, IndexedDB, JavaScript arrays, or WASM memory.
 
-The original file is the backing store. Browser storage quota is distinct from the application's live memory budget. HyveMap does not bypass browser permissions, process limits, or mobile tab termination. Users select files through existing file input/drag-and-drop or a supported picker; a typed operating-system path is not sufficient authorization. Do not require an installed server or native wrapper.
+The original file is the backing store. Browser storage quota is distinct from the application's live memory budget. fmap does not bypass browser permissions, process limits, or mobile tab termination. Users select files through existing file input/drag-and-drop or a supported picker; a typed operating-system path is not sufficient authorization. Do not require an installed server or native wrapper.
 
 Keep the current UI, scientific value semantics, ENVI interleave/endian support, TIFF backend fallback, and downloadable single-file HTML deployment. Introduce the new backend behind a reversible feature switch. Do not describe it as validated for mobile until tested on physical devices.
 
@@ -67,7 +67,7 @@ Synthetic probes on `3380e3e` established: (a) a 512 KiB visit loads all pages b
 
 - Add focused regressions for the observations above and an instrumented synthetic range source that represents very large files without allocating them.
 - Record baseline counters and latency for BSQ/BIL/BIP viewports, spectra, pan/zoom, area reductions, and TIFF tiles/strips. Use deterministic values and compare actual decoded outputs.
-- Specify span, budget, lifecycle and worker message contracts before rewriting consumers. Suggested module boundary: `src/io/hyvemap/` for bridge/client/protocol, `wasm/hyvemap/` for pager/processing, and dedicated tests/benchmarks.
+- Specify span, budget, lifecycle and worker message contracts before rewriting consumers. Suggested module boundary: `src/io/fmap/` for bridge/client/protocol, `wasm/fmap/` for pager/processing, and dedicated tests/benchmarks.
 - Gate: runnable benchmark command and tests that distinguish existing behavior from required behavior. Do not leave newly failing tests in the default CI suite; pair each contract regression with its implementation or keep baseline probes explicitly separate.
 
 ### M1 — Minimal WASM pager with browser file bridge
