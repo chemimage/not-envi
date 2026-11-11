@@ -37,7 +37,9 @@ function call(name, ...args) {
   return state.exports[name](...args);
 }
 function counters() {
-  return { ...state.stats, ...(state.fillQueue?.getStats() || {}),
+  const fills = state.fillQueue?.getStats() || {};
+  return { ...state.stats, ...fills,
+    copiedBytes: state.stats.copiedBytes + (fills.pageFillCopiedBytes || 0),
     cacheHits: Number(call("fmap_hits")), cacheMisses: Number(call("fmap_misses")),
     cacheEvictions: Number(call("fmap_evictions")), residentBytes: Number(call("fmap_resident_bytes")),
     pinnedBytes: Number(call("fmap_pinned_bytes")), wasmBytes: state.exports.memory.buffer.byteLength };
@@ -56,7 +58,6 @@ async function readFile(file, pageSize, stats, offset, length) {
   if (bytes.byteLength !== length) throw new Error(`Truncated fmap read at ${offset}: expected ${length} bytes, found ${bytes.byteLength}.`);
   stats.browserBytes += length;
   stats.readCalls += 1;
-  stats.copiedBytes += length;
   return bytes;
 }
 

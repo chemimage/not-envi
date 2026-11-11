@@ -1,4 +1,4 @@
-import fmapWorkerSource from "./fmap.worker.js?raw";
+import InlineFmapWorker from "./fmap.worker.js?worker&inline";
 import {
   FMAP_PROTOCOL_VERSION, assertFmapEnviMeta, checkedAdd, checkedResultBytes,
   createAbortError, normalizeFmapWindow
@@ -45,11 +45,15 @@ function transportBytes(meta) {
  * callers receive owned results using the released backend's numeric types,
  * never views into evictable WASM pages. Logical results above the worker cap
  * are assembled from bounded chunks with cancellation checked between chunks.
+ * Runnable jobs wait independently on a deduplicated asynchronous page-fill
+ * queue. Sparse ranges retain exact C validity; shared fills have independent
+ * consumer leases. The 512 MiB default raw target is capped by small-file size.
  * Queue and active-byte limits are per source, not a whole-application budget.
  * Window/spectrum options accept signal, cancelled(), priority, supersedeKey,
  * and maxAgeMs. Cancellation rejects immediately, but an active reservation is
  * released only after a worker reply. clear() advances the source generation;
- * close() terminates the worker. setMaxBytes() records a requested budget;
+ * close() terminates the worker. clear() before initial readiness is a no-op;
+ * concurrent stats polls share one request. setMaxBytes() records a requested budget;
  * shrinking allocated WASM memory requires worker recreation.
  *
  * Status and follow-up work: https://github.com/chemimage/Hyve/issues/23
@@ -95,7 +99,6 @@ export class FmapDataSource {
     this.generation = 1;
     this.closed = false;
     this.worker = null;
-    this.workerUrl = "";
     this.requestId = 0;
     this.logicalRequestId = 0;
     this.latestSupersedeGroups = new Map();
@@ -103,6 +106,7 @@ export class FmapDataSource {
     this.queue = [];
     this.pending = new Map();
     this.pollTimer = null;
+    this.statsRequest = null;
     this.stats = { requestedBytes: 0, browserBytes: 0, copiedBytes: 0, usefulValues: 0,
       cacheHits: 0, cacheMisses: 0, cacheEvictions: 0, sparseReads: 0,
       cancelledRequests: 0, rejectedRequests: 0, staleResults: 0,
@@ -116,11 +120,10 @@ export class FmapDataSource {
 
   #createWorker() {
     if (this.workerFactory) return this.workerFactory();
-    if (typeof Worker === "undefined" || typeof URL.createObjectURL !== "function") {
+    if (typeof Worker === "undefined") {
       throw new Error("fmap requires dedicated Web Worker support.");
     }
-    this.workerUrl = URL.createObjectURL(new Blob([fmapWorkerSource], { type: "text/javascript" }));
-    return new Worker(this.workerUrl);
+    return new InlineFmapWorker();
   }
 
   async #open(wasmBytes) {
@@ -137,10 +140,13 @@ export class FmapDataSource {
       pageSize: this.pageSize, poolBytes: this.residentBytes, maxResultBytes: this.maxResultBytes,
       batchBytes: this.batchBytes, sparseReadThresholdBytes: this.sparseReadThresholdBytes,
       sparseReadMaxGapBytes: this.sparseReadMaxGapBytes,
-      maxCoalescedOverreadRatio: this.maxCoalescedOverreadRatio, wasmBytes
+      maxCoalescedOverreadRatio: this.maxCoalescedOverreadRatio,
+      readConcurrency: this.concurrency, maxQueuedRequests: this.maxQueuedRequests,
+      maxQueuedBytes: this.maxQueuedBytes, wasmBytes
     }, 0, {}, [wasmBytes]);
     this.residentBytes = opened.residentBytes;
     this.readySettled = true;
+    this.worker.postMessage({ type: "setConcurrency", generation: this.generation, readConcurrency: this.concurrency });
     this.#pump();
     return opened;
   }
@@ -185,12 +191,20 @@ export class FmapDataSource {
     this.#updateStats();
   }
 
+  #cancelledByCallback(request) {
+    try { return !!request.cancelledCheck?.(); }
+    catch (_error) {
+      this.#cancel(request, "fmap cancellation callback failed.");
+      return true;
+    }
+  }
+
   #handleMessage(data) {
     const request = this.pending.get(Number(data.id));
     if (!request) return;
     this.pending.delete(request.id);
     this.#mergeStats(data.result?.stats || data.stats);
-    if (!request.cancelled && request.cancelledCheck?.()) this.#cancel(request);
+    if (!request.cancelled && this.#cancelledByCallback(request)) this.#cancel(request);
     if (request.cancelled || request.generation !== this.generation) {
       this.stats.staleResults += data.result?.buffer ? 1 : 0;
       this.#settle(request, createAbortError());
@@ -206,7 +220,7 @@ export class FmapDataSource {
       this.pollTimer = null;
       for (const request of [...this.queue, ...this.pending.values()]) {
         if (request.cancelled) continue;
-        if (request.cancelledCheck?.()) this.#cancel(request);
+        if (this.#cancelledByCallback(request)) this.#cancel(request);
         else if (now() - request.createdAt > request.maxAgeMs) this.#cancel(request, "fmap request expired.");
       }
       this.#pump();
@@ -249,7 +263,7 @@ export class FmapDataSource {
       return Promise.reject(new RangeError("fmap result exceeds its request budget; split the operation into smaller windows."));
     }
     for (const request of [...this.queue, ...this.pending.values()]) {
-      if (!request.cancelled && (request.cancelledCheck?.() || now() - request.createdAt > request.maxAgeMs)) {
+      if (!request.cancelled && (this.#cancelledByCallback(request) || now() - request.createdAt > request.maxAgeMs)) {
         this.#cancel(request);
       }
     }
@@ -293,13 +307,15 @@ export class FmapDataSource {
       if (speculative) this.#cancel(speculative, "fmap background work yielded to foreground work.");
     }
     while (this.queue.length) {
+      const foregroundWaiting = this.queue.some((request) => request.priority === 0 && request.type !== "stats");
       const index = this.queue.findIndex((request) => (request.type === "open" || this.readySettled)
+        && (!foregroundWaiting || request.priority === 0 || request.type === "stats")
         && request.bytes + this.stats.inflightBytes <= this.maxInflightBytes
         && (request.type === "stats" || (this.active < this.concurrency
           && (request.priority === 0 || this.active < Math.max(1, this.concurrency - 1)))));
       if (index === -1) break;
       const request = this.queue.splice(index, 1)[0];
-      if (now() - request.createdAt > request.maxAgeMs || request.cancelledCheck?.()) {
+      if (now() - request.createdAt > request.maxAgeMs || this.#cancelledByCallback(request)) {
         this.#cancel(request, "Obsolete fmap request.");
         continue;
       }
@@ -332,9 +348,7 @@ export class FmapDataSource {
     if (this.pollTimer) clearTimeout(this.pollTimer);
     this.pollTimer = null;
     this.worker?.terminate();
-    if (this.workerUrl) URL.revokeObjectURL(this.workerUrl);
     this.worker = null;
-    this.workerUrl = "";
     this.file = null;
     this.size = 0;
   }
@@ -462,10 +476,14 @@ export class FmapDataSource {
     }
   }
 
-  async getStats() {
-    await this.ready;
-    await this.#enqueue("stats", {}, 0);
-    return { ...this.stats };
+  getStats() {
+    if (!this.statsRequest) {
+      const pending = this.ready.then(() => this.#enqueue("stats", {}, 0))
+        .then(() => ({ ...this.stats }))
+        .finally(() => { if (this.statsRequest === pending) this.statsRequest = null; });
+      this.statsRequest = pending;
+    }
+    return this.statsRequest.then((snapshot) => ({ ...snapshot }));
   }
 
   estimateReadWork(meta, _band, x0, y0, outW, outH, step) {
@@ -478,13 +496,23 @@ export class FmapDataSource {
       sparseRaw: rowBytes * window.outH > usefulBytes * 4, previewFactor: 1 };
   }
 
-  setConcurrency(value) { this.concurrency = limit(value, 1); this.#pump(); }
+  setConcurrency(value) {
+    this.concurrency = limit(value, 1);
+    if (this.readySettled) {
+      this.worker?.postMessage({ type: "setConcurrency", generation: this.generation, readConcurrency: this.concurrency });
+    }
+    this.#pump();
+  }
   setMaxBytes(value) { if (Number.isSafeInteger(value) && value >= this.pageSize) this.requestedMaxBytes = value; }
   cacheBytes() { return this.closed ? 0 : this.residentBytes; }
 
   clear() {
     if (this.closed) return;
+    // No cache/work can exist before open is acknowledged. Do not cancel the
+    // initialization handshake or send controls to a not-yet-created queue.
+    if (!this.readySettled) return;
     this.generation += 1;
+    this.statsRequest = null;
     this.latestSupersedeGroups.clear();
     for (const request of [...this.queue, ...this.pending.values()]) this.#cancel(request, "fmap cache cleared.");
     this.worker.postMessage({ id: ++this.requestId, type: "clear", generation: this.generation });

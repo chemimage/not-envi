@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { expect, test, vi } from "vitest";
 import workerSource from "../../src/io/fmap/fmap.worker.js?raw";
+import { FmapPageFillQueue } from "../../src/io/fmap/page-fill-queue.js";
 
 const wasmBytes = readFileSync(resolve("wasm/fmap/pkg/fmap_core.wasm"));
 
@@ -13,10 +14,9 @@ async function workerHarness() {
   const reads = [];
   class MemoryBlob {
     constructor(values) { this.bytes = new Uint8Array(values.buffer); this.size = this.bytes.length; }
-    slice(start, end) { return { bytes: this.bytes.slice(start, end), start }; }
-  }
-  class Reader {
-    readAsArrayBuffer(blob) { reads.push(blob.start); return blob.bytes.buffer; }
+    slice(start, end) {
+      return { arrayBuffer: async () => { reads.push(start); return this.bytes.slice(start, end).buffer; } };
+    }
   }
   class Channel {
     constructor() {
@@ -26,8 +26,13 @@ async function workerHarness() {
   }
   const timer = vi.fn(() => { throw new Error("Worker batches must not depend on nested timers."); });
   const self = { postMessage: (message) => replies.push(message) };
-  runInNewContext(workerSource, {
-    self, Blob: MemoryBlob, FileReaderSync: Reader, MessageChannel: Channel,
+  class Queue extends FmapPageFillQueue {
+    constructor(options) { super({ ...options, postTask: (callback) => tasks.push(callback) }); }
+  }
+  // Evaluate the worker against real WASM with a deterministic task dispatcher.
+  // Production uses Vite's bundled module worker; only its import is injected.
+  runInNewContext(workerSource.replace(/^import \{ FmapPageFillQueue \} from "\.\/page-fill-queue\.js";\r?\n/, ""), {
+    self, Blob: MemoryBlob, FmapPageFillQueue: Queue, MessageChannel: Channel,
     WebAssembly, Uint8Array, Float32Array, Float64Array, DataView,
     performance: { now: () => 0 }, setTimeout: timer
   });
@@ -42,10 +47,14 @@ async function workerHarness() {
   replies.length = 0;
   const window = (id, priority = 1) => send({ id, type: "window", priority,
     band: 0, x0: 0, y0: 0, outW: 512, outH: 512, requestedW: 512, requestedH: 512, step: 1 });
-  const turn = () => { expect(tasks.length).toBeGreaterThan(0); tasks.shift()(); };
-  const drain = () => {
+  const turn = async () => {
+    expect(tasks.length).toBeGreaterThan(0);
+    tasks.shift()();
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+  };
+  const drain = async () => {
     let turns = 0;
-    while (tasks.length) { if (++turns > 2048) throw new Error("Worker failed to drain its queue."); turn(); }
+    while (tasks.length) { if (++turns > 4096) throw new Error("Worker failed to drain its queue."); await turn(); }
   };
   return { tasks, replies, reads, timer, send, window, turn, drain, values };
 }
@@ -55,8 +64,8 @@ test("worker drains admitted jobs autonomously with one outstanding wake-up", as
   await h.window(2);
   await h.window(3);
   expect(h.tasks).toHaveLength(1);
-  h.drain();
-  expect(h.replies.map((reply) => reply.id)).toEqual([2, 3]);
+  await h.drain();
+  expect(h.replies.map((reply) => reply.id).sort()).toEqual([2, 3]);
   for (const reply of h.replies) {
     expect(reply.error).toBeUndefined();
     expect(new Float32Array(reply.result.buffer)).toEqual(h.values);
@@ -69,32 +78,33 @@ test("worker drains admitted jobs autonomously with one outstanding wake-up", as
 test("new foreground work runs between background batches and cancellation removes unfinished work", async () => {
   const h = await workerHarness();
   await h.window(2);
-  h.turn();
+  await h.turn();
+  await h.turn();
   expect(h.reads.length).toBeGreaterThan(0);
   expect(h.replies).toHaveLength(0);
   await h.send({ id: 3, type: "spectrum", priority: 0, x: 0, y: 0, bandStart: 0, bandCount: 1 });
   expect(h.tasks).toHaveLength(1);
-  h.turn();
+  await h.turn();
   expect(h.replies.map((reply) => reply.id)).toEqual([3]);
   expect(new Float32Array(h.replies[0].result.buffer)[0]).toBe(0.25);
   await h.send({ id: 2, type: "cancel" });
   const readsAtCancel = h.reads.length;
-  h.drain();
+  await h.drain();
   expect(h.replies.find((reply) => reply.id === 2).error.name).toBe("AbortError");
   expect(h.reads).toHaveLength(readsAtCancel);
   expect(h.timer).not.toHaveBeenCalled();
 });
 
-test("clear cancels queued generations while a pending wake-up can service new work", async () => {
+test("clear cancels queued generations while pending wake-ups can service new work", async () => {
   const h = await workerHarness();
   await h.window(2);
-  h.turn();
+  await h.turn();
   await h.send({ id: 10, type: "clear", generation: 2 });
   expect(h.replies.find((reply) => reply.id === 2).error.name).toBe("AbortError");
   await h.send({ id: 3, type: "spectrum", generation: 2, priority: 0,
     x: 0, y: 0, bandStart: 0, bandCount: 1 });
-  expect(h.tasks).toHaveLength(1);
-  h.drain();
+  expect(h.tasks.length).toBeLessThanOrEqual(2); // At most one wake-up per scheduling layer.
+  await h.drain();
   const fresh = h.replies.find((reply) => reply.id === 3);
   expect(fresh.generation).toBe(2);
   expect(new Float32Array(fresh.result.buffer)[0]).toBe(0.25);

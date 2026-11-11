@@ -27,7 +27,7 @@ class FakeFmapWorker {
 
   postMessage(message) {
     this.messages.push(message);
-    if (message.type === "clear" || message.type === "close") return;
+    if (message.type === "clear" || message.type === "close" || message.type === "setConcurrency") return;
     this.active += 1;
     this.maxActive = Math.max(this.maxActive, this.active);
     const respond = () => {
@@ -94,6 +94,88 @@ function createTypedSource(worker, typedMeta, options = {}) {
 }
 
 describe("fmap client", () => {
+  test("clear before a delayed open leaves initialization and later reads usable", async () => {
+    const worker = new ManualWorker();
+    worker.postMessage = (message) => worker.messages.push(message);
+    const source = createSource(worker);
+    source.clear();
+    expect(worker.messages.map((message) => message.type)).toEqual(["open"]);
+    worker.respond(worker.messages[0], { residentBytes: 4096 });
+    await source.ready;
+    const read = source.readSpectrumAtPixel(meta(), 0, 0);
+    await Promise.resolve();
+    worker.respond(worker.requests()[0]);
+    expect(Array.from(await read)).toEqual([3, 7]);
+    source.close();
+  });
+
+  test("coalesces concurrent stats polls into one pending worker message", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker);
+    await source.ready;
+    const reads = Array.from({ length: 100 }, () => source.getStats());
+    await Promise.resolve();
+    const messages = worker.messages.filter((message) => message.type === "stats");
+    expect(messages).toHaveLength(1);
+    worker.respond(messages[0], { stats: { browserBytes: 37 } });
+    const snapshots = await Promise.all(reads);
+    snapshots[0].browserBytes = 99;
+    expect(snapshots[1].browserBytes).toBe(37);
+    source.close();
+  });
+
+  test("a smaller speculative read cannot leapfrog a foreground read blocked by bytes", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 4, maxInflightBytes: 8208 });
+    await source.ready;
+    const first = source.readSpectrumAtPixel(meta(), 0, 0);
+    await Promise.resolve();
+    const foreground = source.readBandWindow(meta(), 0, 0, 0, 2, 2, 1);
+    const background = source.readSpectrumAtPixel(meta(), 1, 0, { priority: "background" });
+    await Promise.resolve();
+    expect(worker.requests()).toHaveLength(1);
+    worker.respond(worker.requests()[0]);
+    await first;
+    expect(worker.requests().map((message) => message.type)).toEqual(["spectrum", "window"]);
+    worker.respond(worker.requests()[1], { buffer: new Float32Array([1, 2, 3, 4]).buffer });
+    await foreground;
+    expect(worker.requests().map((message) => message.type)).toEqual(["spectrum", "window", "spectrum"]);
+    worker.respond(worker.requests()[2]);
+    await background;
+    source.close();
+  });
+
+  test("a throwing cancellation predicate settles the read and releases its reservation", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker);
+    await source.ready;
+    let fail = false;
+    const read = source.readSpectrumAtPixel(meta(), 0, 0, { cancelled: () => {
+      if (fail) throw new Error("predicate failed");
+      return false;
+    } });
+    const outcome = read.catch((error) => error);
+    await Promise.resolve();
+    fail = true;
+    worker.respond(worker.requests()[0]);
+    expect(await outcome).toMatchObject({ name: "AbortError" });
+    expect(source.stats.logicalBytesReserved).toBe(0);
+    expect(source.stats.activeRequests).toBe(0);
+    source.close();
+  });
+
+  test("defers read-concurrency updates until the asynchronous open is acknowledged", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker);
+    source.setConcurrency(5);
+    expect(worker.messages.filter((message) => message.type === "setConcurrency")).toHaveLength(0);
+    await source.ready;
+    expect(worker.messages.filter((message) => message.type === "setConcurrency")).toEqual([
+      { type: "setConcurrency", generation: 1, readConcurrency: 5 }
+    ]);
+    source.close();
+  });
+
   test.each([[32, 4096], [4097, 8192], [12289, 8192]])(
     "allocates a bounded page-rounded pool for a %i-byte file",
     async (fileBytes, allocatedBytes) => {

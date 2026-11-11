@@ -101,7 +101,8 @@ try {
     };
     const statsKeys = [
       "requestedBytes", "browserBytes", "copiedBytes", "usefulValues", "cacheHits", "cacheMisses",
-      "cacheEvictions", "sparseReads", "batches", "cancelledRequests"
+      "cacheEvictions", "sparseReads", "batches", "cancelledRequests",
+      "pageFillReads", "pageFillDeduplications", "pageFillCacheHits", "pageFillCacheMisses", "pageFillCopiedBytes"
     ];
     const deltaStats = (before, after) => Object.fromEntries(statsKeys.map((key) => [
       key,
@@ -204,7 +205,7 @@ try {
       }
       const wideMeta = { ...meta, samples: width, lines: height, bands: 1, headerOffset: 0 };
       const wide = createFmapDataSource(new File([input], "wide-viewport.dat"), wideMeta, {
-        ...sourceOptions, pageSize: 256 * 1024, poolBytes: 4 * 1024 * 1024,
+        ...sourceOptions, pageSize: 256 * 1024, poolBytes: 64 * 1024 * 1024,
         batchBytes: 64 * 1024, sparseReadThresholdBytes: 32 * 1024, sparseReadMaxGapBytes: 4096
       });
       const outW = Math.ceil(width / step), outH = Math.ceil(height / step);
@@ -226,8 +227,12 @@ try {
         if (finalStats.pinnedBytes !== 0 || finalStats.peakInflightBytes > wide.maxInflightBytes) {
           throw new Error("Wide viewport left pins or exceeded its transport budget");
         }
+        if (repeat.stats.browserBytes !== 0 || finalStats.fillActiveReads !== 0
+            || finalStats.peakFillActiveReads > wide.concurrency) {
+          throw new Error("Wide viewport did not reuse retained ranges or exceeded its I/O limit");
+        }
         return { dimensions: [width, height, 1], step, poolBytes: wide.cacheBytes(),
-          note: "Raw source reads only; sparse spans are still not retained, and no pyramid cache is involved.",
+          note: "Raw source reads only; the pool fits these partial pages. Repeated reads must reuse them without I/O; no pyramid cache is involved.",
           cold, repeat, finalStats };
       } finally { wide.close(); }
     };
