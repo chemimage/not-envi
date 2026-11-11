@@ -54,7 +54,8 @@ export function createTiffStats() {
 
 export function listTagValues(value) {
   if (Array.isArray(value)) return value.map((entry) => Number(entry));
-  if (ArrayBuffer.isView(value)) return Array.from(value, (entry) => Number(entry));
+  if (ArrayBuffer.isView(value) && !(value instanceof BigUint64Array) && !(value instanceof BigInt64Array)) return value;
+  if (ArrayBuffer.isView(value)) return Float64Array.from(value, (entry) => Number(entry));
   if (value == null) return [];
   return [Number(value)];
 }
@@ -180,7 +181,12 @@ function isCompatibleOverviewSummary(base, candidate) {
 }
 
 export async function loadSubIfdOverviewSummaries(tiff, baseSummary, deps = {}) {
-  const offsets = (Array.isArray(baseSummary?.subIFDOffsets) ? baseSummary.subIFDOffsets : [])
+  if (tiff?.metadataIndex) {
+    const family = tiff.metadataIndex.families.find((entry) => entry.base === baseSummary
+      || entry.base.fileDirectory?.__ifdOffset === baseSummary.fileDirectory?.__ifdOffset);
+    return family ? family.levels.slice(1) : [];
+  }
+  const offsets = Array.from(baseSummary?.subIFDOffsets || [])
     .map((value) => firstSafeOffsetOrNull([value]))
     .filter((value) => value != null);
   if (!offsets.length || !tiff || typeof tiff.parseFileDirectoryAt !== "function") return [];
@@ -429,6 +435,7 @@ function isImageEnumerationRangeError(err) {
 }
 
 export async function loadImageSummaries(tiff, deps = {}) {
+  if (tiff?.metadataIndex) return tiff.metadataIndex.mainImages;
   const images = [];
   let imageCount = null;
   if (typeof tiff?.getImageCount === "function") {

@@ -1,4 +1,5 @@
-import { buildMeta, buildRgbDisplayMeta, isRawCompatibleSummary, listTagValues, photometricName, resolveTiffCacheBudgets, resolveUniformSampleType, supportsNativeJpegTileDecode } from "../shared.js";
+import { buildMeta, buildRgbDisplayMeta, isRawCompatibleSummary, listTagValues, photometricName, resolveTiffCacheBudgets, resolveUniformSampleType, summarizeImage, supportsNativeJpegTileDecode } from "../shared.js";
+import { buildTiffImageCatalog } from "../metadata-index.js";
 import { TiffBlockIndexedDataSource, buildRawBandSpecs, buildRgbBandSpecs } from "../data-sources.js";
 import { openGeotiffFallback } from "./geotiff-fallback.js";
 
@@ -9,11 +10,13 @@ const TAG_NAMES = new Map([
   [258, "BitsPerSample"],
   [259, "Compression"],
   [262, "PhotometricInterpretation"],
+  [270, "ImageDescription"],
   [273, "StripOffsets"],
   [277, "SamplesPerPixel"],
   [278, "RowsPerStrip"],
   [279, "StripByteCounts"],
   [284, "PlanarConfiguration"],
+  [285, "PageName"],
   [297, "PageNumber"],
   [317, "Predictor"],
   [322, "TileWidth"],
@@ -187,14 +190,27 @@ async function blobToUint8(blob) {
 }
 
 class FileReader {
-  constructor(file) {
+  constructor(file, rangeSource = null) {
     this.file = file;
     this.size = Number(file?.size || 0);
+    this.rangeSource = rangeSource;
   }
 
   async read(offset, length) {
     const safeOffset = clamp(Math.floor(Number(offset) || 0), 0, this.size);
     const safeLength = Math.max(0, Math.floor(Number(length) || 0));
+    if (this.rangeSource) {
+      const count = Math.min(safeLength, this.size - safeOffset);
+      const result = new Uint8Array(count);
+      const chunkBytes = Math.max(1, Math.min(1024 * 1024,
+        this.rangeSource.maxLogicalResultBytes || Infinity,
+        this.rangeSource.maxWorkingSetBytes ? Math.floor(this.rangeSource.maxWorkingSetBytes / 2) : Infinity));
+      for (let cursor = 0; cursor < count; cursor += chunkBytes) {
+        const bytes = await this.rangeSource.read(safeOffset + cursor, Math.min(chunkBytes, count - cursor));
+        result.set(bytes, cursor);
+      }
+      return result;
+    }
     return blobToUint8(this.file.slice(safeOffset, Math.min(this.size, safeOffset + safeLength)));
   }
 }
@@ -275,7 +291,15 @@ async function parseIfdAt(reader, header, ifdOffset, metadataBudget) {
       valueBytes = await reader.read(valueOffset, totalValueBytes);
       if (valueBytes.length < totalValueBytes) throw new Error(`TIFF tag ${tag} value is truncated.`);
     }
-    fileDirectory[name] = decodeValues(valueBytes, type, count, header.littleEndian);
+    if ([273, 279, 324, 325, 330].includes(tag) && [3, 4, 16, 18].includes(type)) {
+      const Values = type === 16 || type === 18 ? Float64Array : Uint32Array;
+      const values = new Values(count);
+      const valueView = new DataView(valueBytes.buffer, valueBytes.byteOffset, valueBytes.byteLength);
+      for (let item = 0; item < count; item += 1) {
+        values[item] = ensureMetadataSafeInt(readUnsigned(valueView, item * bytesPerValue, bytesPerValue, header.littleEndian), `tag ${tag} value`);
+      }
+      fileDirectory[name] = values;
+    } else fileDirectory[name] = decodeValues(valueBytes, type, count, header.littleEndian);
   }
 
   const nextIfdOffset = readUnsigned(
@@ -471,7 +495,7 @@ class NativeTiffImage {
 export class NativeTiffBackend {
   constructor(file, deps = {}) {
     this.file = file;
-    this.reader = new FileReader(file);
+    this.reader = new FileReader(file, deps?.tiffFmapRangeSource || null);
     const metadataLimit = Number(deps?.tiffMaxMetadataBytes ?? DEFAULT_MAX_METADATA_BYTES);
     this.metadataBudget = {
       limit: Number.isSafeInteger(metadataLimit) && metadataLimit > 0 ? metadataLimit : DEFAULT_MAX_METADATA_BYTES,
@@ -483,6 +507,9 @@ export class NativeTiffBackend {
     this.bigTiff = false;
     this.header = null;
     this.images = [];
+    this.ifdRecords = new Map();
+    this.metadataIndex = null;
+    this.metadataWarnings = [];
     this._fallback = null;
   }
 
@@ -491,14 +518,65 @@ export class NativeTiffBackend {
     this.littleEndian = this.header.littleEndian;
     this.bigTiff = this.header.bigTiff;
     let offset = this.header.firstIfdOffset;
-    let guard = 0;
+    const mainOffsets = new Set();
     while (offset) {
-      if (guard++ > 4096) throw new Error("TIFF contains too many image directories.");
-      const parsed = await parseIfdAt(this.reader, this.header, offset, this.metadataBudget);
-      this.images.push(new NativeTiffImage(this, this.images.length, parsed.fileDirectory, parsed.ifdOffset));
-      offset = Number(parsed.nextIfdOffset || 0);
+      if (mainOffsets.has(offset)) throw metadataLimitError("TIFF contains a cyclic main IFD chain.");
+      mainOffsets.add(offset);
+      const record = await this.readDirectoryAt(offset, this.images.length);
+      this.images.push(record.image);
+      offset = ensureMetadataSafeInt(record.nextIFDByteOffset || 0, "next IFD offset");
     }
     if (!this.images.length) throw new Error("TIFF has no readable image directories.");
+    const parents = new Map(), pending = [], queued = new Set(), visited = new Set(mainOffsets);
+    let links = 0;
+    const enqueue = (childOffset, parentOffset) => {
+      const child = ensureMetadataSafeInt(childOffset, "SubIFD offset");
+      if (!child) return;
+      if (!parents.has(child)) {
+        if (parents.size >= 4096) throw metadataLimitError("TIFF contains too many SubIFD references.");
+        parents.set(child, new Set());
+      }
+      if (!parents.get(child).has(parentOffset)) {
+        if (++links > 65536) throw metadataLimitError("TIFF contains too many SubIFD relationships.");
+        parents.get(child).add(parentOffset);
+      }
+      if (visited.has(child) || queued.has(child)) return;
+      queued.add(child);
+      pending.push([child, parentOffset]);
+    };
+    const enqueueChildren = (record) => {
+      for (const child of listTagValues(record.fileDirectory.SubIFDs)) {
+        enqueue(child, record.image.ifdOffset);
+      }
+    };
+    for (const record of this.ifdRecords.values()) enqueueChildren(record);
+    for (let cursor = 0; cursor < pending.length; cursor += 1) {
+      const [childOffset, parentOffset] = pending[cursor];
+      if (visited.has(childOffset)) continue;
+      visited.add(childOffset);
+      let record;
+      try { record = await this.readDirectoryAt(childOffset); }
+      catch (error) {
+        if (error?.code === "TIFF_METADATA_LIMIT") throw error;
+        this.metadataWarnings.push({ offset: childOffset, message: String(error?.message || error) });
+        continue; // Preserve usable base images when an optional overview is malformed.
+      }
+      enqueueChildren(record);
+      if (record.nextIFDByteOffset) enqueue(record.nextIFDByteOffset, parentOffset);
+    }
+    const summaries = new Map([...this.ifdRecords.values()].map((record) => [record.image, summarizeImage(record.image)]));
+    this.metadataIndex = buildTiffImageCatalog(this.images.map((image) => summaries.get(image)), [...summaries.values()], parents);
+  }
+
+  async readDirectoryAt(offset, imageIndex = null) {
+    const safeOffset = ensureMetadataSafeInt(offset, "IFD offset");
+    if (this.ifdRecords.has(safeOffset)) return this.ifdRecords.get(safeOffset);
+    if (this.ifdRecords.size >= 4096) throw metadataLimitError("TIFF contains too many image directories.");
+    const parsed = await parseIfdAt(this.reader, this.header, safeOffset, this.metadataBudget);
+    const image = new NativeTiffImage(this, imageIndex, parsed.fileDirectory, parsed.ifdOffset);
+    const record = { image, fileDirectory: parsed.fileDirectory, geoKeyDirectory: null, nextIFDByteOffset: parsed.nextIfdOffset };
+    this.ifdRecords.set(safeOffset, record);
+    return record;
   }
 
   async ensureFallback() {
@@ -517,14 +595,7 @@ export class NativeTiffBackend {
   }
 
   async parseFileDirectoryAt(offset) {
-    const parsed = await parseIfdAt(this.reader, this.header, offset, this.metadataBudget);
-    const image = new NativeTiffImage(this, null, parsed.fileDirectory, parsed.ifdOffset);
-    return {
-      image,
-      fileDirectory: parsed.fileDirectory,
-      geoKeyDirectory: null,
-      nextIFDByteOffset: parsed.nextIfdOffset
-    };
+    return this.readDirectoryAt(offset);
   }
 
   async readRgbNative(image, options = {}) {
@@ -599,7 +670,9 @@ export class NativeTiffBackend {
   }
 
   close() {
-    for (const image of this.images) image.close();
+    for (const record of this.ifdRecords.values()) record.image.close();
+    this.ifdRecords.clear();
+    this.metadataIndex = null;
     this.images = [];
     if (this._fallback && typeof this._fallback.close === "function") {
       try { this._fallback.close(); } catch (_err) {}
