@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
@@ -17,6 +17,34 @@ function run(args, options = {}) {
   return execFileSync(cargo, args, { cwd: root, stdio: "inherit", env: cargoEnv, ...options });
 }
 
+function readVarUint32(bytes, start) {
+  let value = 0;
+  let shift = 0;
+  let offset = start;
+  while (offset < bytes.length && shift <= 28) {
+    const byte = bytes[offset++];
+    value |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) return { value: value >>> 0, offset };
+    shift += 7;
+  }
+  throw new Error("Invalid WebAssembly section length.");
+}
+
+function stripCustomSections(input) {
+  const parts = [input.subarray(0, 8)];
+  let offset = 8;
+  while (offset < input.length) {
+    const sectionStart = offset;
+    const id = input[offset++];
+    const length = readVarUint32(input, offset);
+    const sectionEnd = length.offset + length.value;
+    if (sectionEnd > input.length) throw new Error("Invalid WebAssembly section boundary.");
+    if (id !== 0) parts.push(input.subarray(sectionStart, sectionEnd));
+    offset = sectionEnd;
+  }
+  return Buffer.concat(parts);
+}
+
 const rustcVersion = execFileSync(cargo, ["rustc", "--manifest-path", manifest, "--", "--version"], {
   cwd: root,
   env: cargoEnv,
@@ -29,13 +57,14 @@ if (!rustcVersion.startsWith(`rustc ${pinnedRust} `)) {
 run(["test", "--manifest-path", manifest]);
 run(["build", "--release", "--target", "wasm32-unknown-unknown", "--manifest-path", manifest]);
 
-const bytes = readFileSync(compiled);
+const bytes = stripCustomSections(readFileSync(compiled));
 if (bytes.length < 8 || !bytes.subarray(0, 4).equals(Buffer.from([0, 97, 115, 109]))) {
   throw new Error("Cargo output is not a valid WebAssembly module.");
 }
 
 mkdirSync(outputDir, { recursive: true });
-copyFileSync(compiled, output);
+writeFileSync(output, bytes);
+chmodSync(output, 0o644);
 const module = new WebAssembly.Module(bytes);
 const exports = WebAssembly.Module.exports(module).map((entry) => entry.name).sort();
 const instance = await WebAssembly.instantiate(module, {});

@@ -31,13 +31,13 @@ npm run lint
 
 Host: Windows, headless Chromium supplied by Playwright.
 
-- Rust/WASM: 5 Rust tests passed; the generated module is 30,962 bytes with SHA-256 `d2d6b02c6281408788661d692014e76ffa789d6e712fc793fd2ab22ab717c0cc`.
+- Rust/WASM: 5 Rust tests passed; the committed module is 30,962 bytes with SHA-256 `e395134f85a2c80220ed83735f06a0d306a23599d38fd8e124e0051d7d3ed9d7`.
 - Browser large-offset gate: known Float32 markers starting at byte 4,294,971,389 were decoded twice from a temporary on-disk sparse file. The first value crossed a 4 KiB page boundary. The tracked resident pool remained 8 KiB and the warm read produced cache hits.
 - Synthetic baseline: deterministic BSQ, BIL, and BIP viewport/pan, spectrum, and bounded area-window workloads all passed their decoded-value checks against an ENVI source beginning beyond 5 GiB. Synthetic TIFF tile and strip range patterns also produced stable checksums.
 - Synthetic pager comparison: an 8 GiB logical source, 256 KiB pages, 16 MiB pool, and 256 deterministic probes produced matching cold/warm checksums (`32117`) in both implementations. The observed run loaded 64 MiB cold and about 63.75 MiB warm for each pager policy. This is a deterministic pager comparison, not an end-to-end viewer or mobile speed claim.
 - A configured 64 MiB resident pool occupied 65.5 MiB of WASM linear memory in the measured module: 64 MiB resident pages plus a 256 KiB output area, metadata, allocator state, and module overhead.
 - Validation: 54 unit files / 301 tests passed; 12 default browser tests passed with the explicit large-file gate skipped; the explicit large-file test passed; lint passed; the single-file build assertion passed.
-- CI installs the pinned Rust target and regenerates/verifies the WASM artifact before running the JavaScript and browser suites.
+- CI installs the pinned Rust target, regenerates the WASM artifact, and runs its tests and ABI smoke check before the JavaScript and browser suites. The manifest hash verifies the exact module used by each build; cross-host byte identity is not claimed.
 
 ## Measured limitations
 

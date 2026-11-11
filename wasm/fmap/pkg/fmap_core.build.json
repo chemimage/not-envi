@@ -4,7 +4,7 @@
   "target": "wasm32-unknown-unknown",
   "profile": "release",
   "bytes": 30962,
-  "sha256": "d2d6b02c6281408788661d692014e76ffa789d6e712fc793fd2ab22ab717c0cc",
+  "sha256": "e395134f85a2c80220ed83735f06a0d306a23599d38fd8e124e0051d7d3ed9d7",
   "exports": [
     "__data_end",
     "__heap_base",
