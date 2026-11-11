@@ -293,6 +293,64 @@ describe("fmap client", () => {
     source.close();
   });
 
+  test.each(["range", "window", "spectrum"])("root release cancels a parked %s read while another mapping keeps its reservation", async (kind) => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1, maxLogicalBytes: 8 });
+    await source.ready;
+    const mapping = source.map({ offset: 0, length: 32 });
+    await Promise.resolve();
+    worker.respond(worker.messages.find((message) => message.type === "mapRegion"), {
+      mappingId: 2, address: 8192, offset: 0, length: 32
+    });
+    const region = await mapping;
+    const unrelated = region.read(region.ptr(), 8);
+    const readRoot = () => kind === "range" ? source.readRange(0, 8)
+      : kind === "window" ? source.readBandWindow(meta(), 0, 0, 0, 1, 1, 1)
+        : source.readSpectrumAtPixel(meta(), 0, 0);
+    const parked = readRoot();
+    const failed = expect(parked).rejects.toMatchObject({ name: "AbortError" });
+    await Promise.resolve();
+    expect(source.stats.waitingLogicalRequests).toBe(1);
+    const release = source.mapping.release();
+    await failed;
+    expect(source.stats.waitingLogicalRequests).toBe(0);
+    expect(source.stats.logicalBytesReserved).toBe(8);
+    expect(worker.messages.filter((message) => message.type === "cancel")).toEqual([]);
+    const unmap = worker.messages.find((message) => message.type === "unmapRegion");
+    worker.respond(unmap, {});
+    await release;
+    await expect(readRoot()).rejects.toMatchObject({ name: "AbortError" });
+    const range = worker.messages.find((message) => message.type === "range");
+    expect(range.mappingId).toBe(2);
+    worker.respond(range, { buffer: new Uint8Array(8).buffer });
+    expect(await unrelated).toEqual(new Uint8Array(8));
+    expect(source.stats.logicalBytesReserved).toBe(0);
+    source.close();
+  });
+
+  test("foreground logical admission preempts speculative output and retains transport bytes until ACK", async () => {
+    const worker = new ManualWorker();
+    const source = createSource(worker, { concurrency: 1, maxLogicalBytes: 8 });
+    await source.ready;
+    const background = source.readSpectrumAtPixel(meta(), 0, 0, { priority: "background" });
+    const cancelled = expect(background).rejects.toMatchObject({ name: "AbortError" });
+    await Promise.resolve();
+    expect(source.stats.logicalBytesReserved).toBe(8);
+    const foreground = source.readSpectrumAtPixel(meta(), 1, 1);
+    await cancelled;
+    expect(worker.messages.some((message) => message.type === "cancel")).toBe(true);
+    expect(worker.requests()).toHaveLength(1);
+    expect(source.stats.inflightBytes).toBe(4104);
+    expect(source.stats.logicalBytesReserved).toBe(8);
+    worker.respond(worker.requests()[0]);
+    expect(worker.requests()[1]).toMatchObject({ x: 1, y: 1 });
+    worker.respond(worker.requests()[1]);
+    expect(Array.from(await foreground)).toEqual([3, 7]);
+    expect(source.stats.logicalBytesReserved).toBe(0);
+    expect(source.stats.peakLogicalBytes).toBe(8);
+    source.close();
+  });
+
   test("an aborted descriptor beyond the admitted queue never reaches the worker", async () => {
     const worker = new ManualWorker();
     const source = createSource(worker, { concurrency: 1, maxQueuedRequests: 1 });

@@ -1,4 +1,5 @@
 import InlineFmapWorker from "./fmap.worker.js?worker&inline";
+import { FmapMappings } from "./mapped-regions.js";
 import {
   FMAP_PROTOCOL_VERSION, assertFmapEnviMeta, checkedAdd, checkedResultBytes,
   createAbortError, normalizeFmapWindow
@@ -46,7 +47,7 @@ function rasterDescriptor(meta) {
 }
 
 /**
- * A per-open ENVI source backed by a dedicated C/WASM worker.
+ * A per-open file session backed by a dedicated C/WASM worker.
  *
  * The selected File remains the backing store. The worker owns resident pages;
  * callers receive owned results using the released backend's numeric types,
@@ -56,6 +57,9 @@ function rasterDescriptor(meta) {
  * queue. Sparse ranges retain exact C validity; shared fills have independent
  * consumer leases. The 512 MiB default raw target is capped by small-file size.
  * Queue and active-byte limits are per source, not a whole-application budget.
+ * The implicit whole-file mapping is source.mapping. source.map() adds sparse
+ * region handles without loading bytes; a released handle's identity is never
+ * reused. clear() preserves mappings, while close() invalidates every handle.
  * Window/spectrum options accept signal, cancelled(), priority, supersedeKey,
  * and maxAgeMs. Cancellation rejects immediately, but an active reservation is
  * released only after a worker reply. clear() advances the source generation;
@@ -96,6 +100,11 @@ export class FmapDataSource {
     this.managesWindowOutput = mode === "envi";
     this.size = file.size;
     this.ownerId = `fmap:${nextSourceId++}`;
+    this.mappings = new FmapMappings(this, (type, fields, bytes) => {
+      if (type === "unmapRegion") this.#cancelMapping(fields.mappingId);
+      return this.#enqueue(type, fields, bytes);
+    });
+    this.mapping = this.mappings.root;
     this.chunkSize = this.pageSize;
     // poolBytes is a per-file target, not a tab quota. Small files need only
     // their page-rounded size; larger files keep a bounded resident subset.
@@ -242,7 +251,7 @@ export class FmapDataSource {
 
   #beginLogicalRequest(options = {}) {
     const logical = { ...(options || {}), groupId: ++this.logicalRequestId, generation: this.generation,
-      createdAt: now() };
+      createdAt: now(), mappingIdentity: options.mappingId ?? 1 };
     if (logical.supersedeKey != null) {
       this.latestSupersedeGroups.set(logical.supersedeKey, logical.groupId);
       for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) {
@@ -256,6 +265,7 @@ export class FmapDataSource {
 
   #requireLogicalCurrent(options) {
     if (this.closed) throw createAbortError("fmap source is closed.");
+    if (options.mappingIdentity === 1 && this.mapping.released) throw createAbortError("fmap mapping is unmapped or has been released.");
     if (options.generation !== undefined && options.generation !== this.generation) throw createAbortError("fmap cache cleared.");
     if (options.signal?.aborted || options.cancelled?.()) throw createAbortError();
     if (now() - options.createdAt > (options.maxAgeMs ?? (options.priority === "background" ? 1000 : Infinity))) {
@@ -297,7 +307,8 @@ export class FmapDataSource {
         bytes, resolve, reject, priority: options.priority === "background" ? 1 : 0,
         maxAgeMs: options.maxAgeMs ?? (options.priority === "background" ? 1000 : Infinity),
         createdAt: now(), supersedeKey: options.supersedeKey, signal: options.signal,
-        groupId: options.groupId, cancelledCheck: options.cancelled, cancelled: false, settled: false };
+        groupId: options.groupId, mappingIdentity: options.mappingIdentity,
+        cancelledCheck: options.cancelled, cancelled: false, settled: false };
       request.onAbort = () => { this.#cancel(request); this.#pump(); };
       request.signal?.addEventListener("abort", request.onAbort, { once: true });
       this.waitingRequests.push(request);
@@ -317,6 +328,12 @@ export class FmapDataSource {
       this.#dispatch(request);
     }
     this.#admitRequests();
+    const foregroundLogical = this.logicalWaiters.find((waiter) => waiter.options.priority !== "background");
+    if (foregroundLogical && this.logicalBytesReserved + foregroundLogical.bytes > this.maxLogicalBytes) {
+      const speculative = [...this.pending.values(), ...this.queue, ...this.waitingRequests]
+        .find((request) => request.priority === 1 && !request.cancelled);
+      if (speculative) this.#cancel(speculative, "fmap background output yielded to foreground work.");
+    }
     const foreground = [...this.queue, ...this.waitingRequests].find((request) => request.priority === 0 && request.type !== "stats");
     if (foreground && (this.active >= this.concurrency
       || foreground.bytes + this.stats.inflightBytes > this.maxInflightBytes)) {
@@ -460,6 +477,22 @@ export class FmapDataSource {
     this.logicalBytesReserved = Math.max(0, this.logicalBytesReserved - bytes);
     this.stats.logicalBytesReserved = this.logicalBytesReserved;
     this.#drainLogical();
+    this.#pump();
+  }
+
+  #cancelMapping(mappingId) {
+    const error = createAbortError("fmap mapping has been released.");
+    for (const waiter of [...this.logicalWaiters]) {
+      if (waiter.options.mappingIdentity !== mappingId) continue;
+      this.logicalWaiters.splice(this.logicalWaiters.indexOf(waiter), 1);
+      waiter.cleanup();
+      waiter.reject(error);
+    }
+    for (const request of [...this.waitingRequests, ...this.queue, ...this.pending.values()]) {
+      if (request.mappingIdentity === mappingId) this.#cancel(request, error.message);
+    }
+    this.#updateStats();
+    this.#pump();
   }
 
   /** Bind a validated linear TIFF raster to this same file session and pool. */
@@ -473,6 +506,9 @@ export class FmapDataSource {
     this.managesWindowOutput = true;
     return this;
   }
+
+  /** Map file bytes without loading them. Virtual bases share one aligned grid. */
+  map(options) { return this.mappings.map(options); }
 
   async readBandWindow(meta, band, x0, y0, outW, outH, step, out = null, options = {}) {
     await this.ready;
@@ -568,11 +604,17 @@ export class FmapDataSource {
       this.#requireLogicalCurrent(logicalOptions);
       const values = out && out.length >= count ? out : new Uint8Array(count);
       const maxValues = this.#maxChunkValues(1);
+      if (!count) {
+        await this.#enqueue("range", { offset: start, length: 0,
+          ...(logicalOptions.mappingId != null ? {
+            mappingId: logicalOptions.mappingId, virtualAddress: logicalOptions.virtualAddress
+          } : {}) }, 0, logicalOptions);
+      }
       for (let written = 0; written < count; written += maxValues) {
         const chunkLength = Math.min(maxValues, count - written);
         const result = await this.#enqueue("range", { offset: start + written, length: chunkLength,
           ...(logicalOptions.mappingId != null ? {
-            mappingId: logicalOptions.mappingId, virtualAddress: logicalOptions.virtualAddress + written
+            mappingId: logicalOptions.mappingId, virtualAddress: checkedAdd(logicalOptions.virtualAddress, written, "mapped chunk address")
           } : {}) },
           chunkLength, logicalOptions);
         values.set(new Uint8Array(result.buffer), written);
