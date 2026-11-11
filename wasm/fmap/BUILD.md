@@ -21,7 +21,9 @@ magic bytes, and writes:
 - `wasm/fmap/pkg/fmap_core.build.json`
 
 Set `FMAP_CARGO` to an explicit Cargo executable when it is not on `PATH`.
-The script rejects a Cargo toolchain whose `rustc` is not exactly 1.85.1.
+The script sets `RUSTUP_TOOLCHAIN=1.85.1` for every Cargo subprocess and rejects
+a Cargo toolchain whose `rustc` is not exactly 1.85.1. This avoids a newer
+repository-root default overriding the crate's nested `rust-toolchain.toml`.
 
 ## Generated artifact policy
 
