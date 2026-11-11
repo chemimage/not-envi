@@ -78,6 +78,9 @@ export class FmapDataSource {
     this.file = file;
     this.meta = meta;
     this.mode = mode;
+    // Let the raster wrapper defer output allocation until our byte admission.
+    // This reader also owns clipping and the requested output stride.
+    this.managesWindowOutput = mode === "envi";
     this.size = file.size;
     this.ownerId = `fmap:${nextSourceId++}`;
     this.chunkSize = this.pageSize;

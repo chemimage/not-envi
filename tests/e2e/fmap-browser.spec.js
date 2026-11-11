@@ -127,6 +127,7 @@ test.describe("fmap browser integration", () => {
     const results = await page.evaluate(async () => {
       const { addDatasetFromFiles } = await import("/src/io/envi-loader.js");
       const { readBandWindow, readBandWindowBIP } = await import("/src/core/raster-io.js");
+      const { readSpectrumAtPixel } = await import("/src/render/spectrum-data.js");
       const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
       const samples = 4;
       const lines = 3;
@@ -203,9 +204,16 @@ test.describe("fmap browser integration", () => {
           if (actual.some((value, index) => value !== expected[index])) {
             throw new Error(`${suffix} parity mismatch: ${actual.join(",")}`);
           }
+          const spectrum = await readSpectrumAtPixel({ meta: descriptor.meta, ds: descriptor.cached }, 3, 2);
+          for (let band = 0; band < bands; band += 1) {
+            if (spectrum[band] !== Math.fround(valueAt(item, band, 3, 2))) throw new Error(`${suffix} spectrum mismatch`);
+          }
+          const edge = await reader(descriptor.meta, descriptor.cached, 1, 3, 2, 3, 2, 2, 2);
+          if (edge[0] !== valueAt(item, 1, 3, 2) || Array.from(edge).slice(1).some((value) => value !== 0)) {
+            throw new Error(`${suffix} clipped window mismatch`);
+          }
           const usesFmap = descriptor.cached.constructor.name === "FmapDataSource";
-          const expectedFmap = item.interleave === "bsq" && item.dataType === 4;
-          if (usesFmap !== expectedFmap) throw new Error(`${suffix} selected the wrong data source`);
+          if (!usesFmap) throw new Error(`${suffix} did not use fmap`);
           if (usesFmap) fmapCases += 1;
           else fallbackCases += 1;
         } finally {
@@ -215,10 +223,95 @@ test.describe("fmap browser integration", () => {
       return { total: cases.length, fmapCases, fallbackCases };
     });
 
-    expect(results).toEqual({ total: 54, fmapCases: 2, fallbackCases: 52 });
+    expect(results).toEqual({ total: 54, fmapCases: 54, fallbackCases: 0 });
   });
 
-  test("TIFF loading remains on its existing backend when fmap is requested", async ({ page }) => {
+  test("numeric windows preserve Float64 and integer precision while spectra keep Float32 semantics", async ({ page }) => {
+    await page.goto("/?fmap=1");
+    const result = await page.evaluate(async () => {
+      const { createFmapDataSource } = await import("/src/io/fmap/index.js");
+      const { DATA_TYPES } = await import("/src/core/envi-types.js");
+      const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+      const cases = [
+        { type: 5, setter: "setFloat64", values: [(2 ** 40) + 0.125, Math.PI, 1 + (2 ** -40), -0, Infinity, NaN] },
+        { type: 3, setter: "setInt32", values: [-2147483648, 16777217, 2147483647] },
+        { type: 13, setter: "setUint32", values: [4294967295, 16777217, 0] },
+        { type: 14, setter: "setBigInt64", values: [-9007199254740993n, -(1n << 63n), 9007199254740993n, (1n << 63n) - 1n] },
+        { type: 15, setter: "setBigUint64", values: [9007199254740993n, (1n << 64n) - 1n, 0n] }
+      ];
+      let checked = 0;
+      for (const item of cases) for (const littleEndian of [true, false]) {
+        const info = DATA_TYPES.get(item.type);
+        const bytes = new Uint8Array(4095 + item.values.length * info.bytes);
+        const view = new DataView(bytes.buffer);
+        item.values.forEach((value, index) => view[item.setter](4095 + index * info.bytes, value, littleEndian));
+        const meta = { samples: item.values.length, lines: 1, bands: 1, headerOffset: 4095,
+          interleave: "bsq", dataType: item.type, dataTypeInfo: info, littleEndian };
+        const source = createFmapDataSource(new File([bytes], `precision-${item.type}.dat`), meta,
+          { pageSize: 4096, poolBytes: 8192, maxResultBytes: 24, wasmBytes });
+        try {
+          const values = await source.readBandWindow(meta, 0, 0, 0, item.values.length, 1, 1);
+          const Ctor = info.ctor || Float64Array;
+          if (!(values instanceof Ctor)) throw new Error(`Wrong output type for ${item.type}`);
+          for (let index = 0; index < values.length; index += 1) {
+            const expected = Number(item.values[index]);
+            if (!Object.is(values[index], expected)) throw new Error(`Precision mismatch for ${item.type}:${index}`);
+            const spectrum = await source.readSpectrumAtPixel(meta, index, 0);
+            if (!(spectrum instanceof Float32Array) || !Object.is(spectrum[0], Math.fround(expected))) {
+              throw new Error(`Spectrum conversion mismatch for ${item.type}:${index}`);
+            }
+            checked += 1;
+          }
+        } finally { source.close(); }
+      }
+      return checked;
+    });
+    expect(result).toBe(38);
+  });
+
+  test("large ENVI windows are assembled from bounded requests and cancel between chunks", async ({ page }) => {
+    await page.goto("/?fmap=1");
+    const result = await page.evaluate(async () => {
+      const { createFmapDataSource } = await import("/src/io/fmap/index.js");
+      const { DATA_TYPES } = await import("/src/core/envi-types.js");
+      const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+      const samples = 1300, lines = 1100;
+      const input = new Float32Array(samples * lines);
+      for (let index = 0; index < input.length; index += 1) input[index] = (index % 8191) + 0.25;
+      const meta = { samples, lines, bands: 1, headerOffset: 0, interleave: "bsq", dataType: 4,
+        dataTypeInfo: DATA_TYPES.get(4), littleEndian: true };
+      const source = createFmapDataSource(new File([input], "large-window.dat"), meta, {
+        wasmBytes, pageSize: 65536, poolBytes: 131072, maxResultBytes: 32768,
+        maxInflightBytes: 131072, maxQueuedRequests: 4
+      });
+      try {
+        await source.ready;
+        const before = await source.getStats();
+        if (before.browserBytes !== 0) throw new Error("Opening read the input eagerly");
+        const output = await source.readBandWindow(meta, 0, 0, 0, samples, lines, 1);
+        for (let index = 0; index < input.length; index += 1) {
+          if (output[index] !== input[index]) throw new Error(`Large window mismatch at ${index}`);
+        }
+        const controller = new AbortController();
+        const pending = source.readBandWindow(meta, 0, 0, 0, samples, lines, 1, null, { signal: controller.signal });
+        const outcome = pending.then(() => "resolved", (error) => error.name);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        controller.abort();
+        const cancelled = await outcome;
+        const probe = await source.readBandWindow(meta, 0, 1299, 1099, 1, 1, 1);
+        const stats = await source.getStats();
+        return { bytes: output.byteLength, cancelled, last: probe[0], expectedLast: input.at(-1),
+          peakInflight: stats.peakInflightBytes, resident: source.cacheBytes() };
+      } finally { source.close(); }
+    });
+    expect(result.bytes).toBeGreaterThan(4 * 1024 * 1024);
+    expect(result.cancelled).toBe("AbortError");
+    expect(result.last).toBe(result.expectedLast);
+    expect(result.peakInflight).toBeLessThanOrEqual(131072);
+    expect(result.resident).toBe(131072);
+  });
+
+  test("TIFF loading uses its fmap block path when requested", async ({ page }) => {
     await page.goto("/?fmap=1");
 
     const result = await page.evaluate(async () => {
@@ -284,6 +377,7 @@ test.describe("fmap browser integration", () => {
           directFound: loaded.directFound,
           sourceFormat: dataset.meta.sourceFormat,
           sourceClass: dataset.ds.constructor.name,
+          isFmap: (await dataset.ds.getStats()).isFmap,
           red: Array.from(await readBandWindowBIP(dataset.meta, dataset.ds, 0, 0, 0, 2, 2, 1, 2))
         };
       } finally {
@@ -293,7 +387,8 @@ test.describe("fmap browser integration", () => {
 
     expect(result.directFound).toBe(1);
     expect(result.sourceFormat).toBe("tiff");
-    expect(result.sourceClass).not.toBe("FmapDataSource");
+    expect(result.sourceClass.toLowerCase()).toContain("tiff");
+    expect(result.isFmap).toBe(true);
     expect(result.red).toEqual([255, 0, 10, 40]);
   });
 

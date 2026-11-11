@@ -50,6 +50,22 @@ function rgbTiffFixture() {
   return Buffer.from(buffer);
 }
 
+function packBitsTiffFixture() {
+  const entries = [[256, 4, 2], [257, 4, 2], [258, 3, 8], [259, 3, 32773],
+    [262, 3, 1], [273, 4, 0], [277, 3, 1], [278, 4, 2], [279, 4, 5]];
+  const pixelOffset = 8 + 2 + entries.length * 12 + 4;
+  const bytes = Buffer.alloc(pixelOffset + 5);
+  bytes.write("II"); bytes.writeUInt16LE(42, 2); bytes.writeUInt32LE(8, 4);
+  bytes.writeUInt16LE(entries.length, 8);
+  entries.forEach(([tag, type, value], index) => {
+    const offset = 10 + index * 12;
+    bytes.writeUInt16LE(tag, offset); bytes.writeUInt16LE(type, offset + 2);
+    bytes.writeUInt32LE(1, offset + 4); bytes.writeUInt32LE(tag === 273 ? pixelOffset : value, offset + 8);
+  });
+  bytes.set([3, 10, 20, 30, 40], pixelOffset);
+  return bytes;
+}
+
 test("single-file package opens an fmap ENVI dataset without network access", async ({ page }) => {
   test.skip(process.env.FMAP_PACKAGED !== "1", "Run with scripts/run-fmap-packaged-test.mjs.");
 
@@ -62,20 +78,32 @@ test("single-file package opens an fmap ENVI dataset without network access", as
   });
   await page.addInitScript(() => {
     const NativeWorker = globalThis.Worker;
-    globalThis.__fmapWorkerTrace = { results: [], errors: [] };
+    globalThis.__fmapWorkerTrace = { results: [], decoded: [], errors: [] };
     globalThis.Worker = class TracedWorker extends NativeWorker {
       constructor(...args) {
         super(...args);
+        this.fmapRequestTypes = new Map();
         this.addEventListener("message", (event) => {
           const data = event.data || {};
           if (data.error) globalThis.__fmapWorkerTrace.errors.push(String(data.error.message || data.error));
-          if (data.result?.buffer instanceof ArrayBuffer) {
+          const type = this.fmapRequestTypes.get(data.id);
+          this.fmapRequestTypes.delete(data.id);
+          if ((type === "window" || type === "spectrum") && data.result?.buffer instanceof ArrayBuffer) {
             globalThis.__fmapWorkerTrace.results.push(Array.from(new Float32Array(data.result.buffer).subarray(0, 128)));
+          }
+          const decoded = data.decoded || data.buffer;
+          if (type === "decode:32773" && decoded instanceof ArrayBuffer) {
+            globalThis.__fmapWorkerTrace.decoded.push(Array.from(new Uint8Array(decoded).subarray(0, 128)));
           }
         });
         this.addEventListener("error", (event) => {
           globalThis.__fmapWorkerTrace.errors.push(String(event.message || "Worker error"));
         });
+      }
+      postMessage(message, ...args) {
+        if (message?.type) this.fmapRequestTypes.set(message.id, message.type);
+        if (message?.fileDirectory) this.fmapRequestTypes.set(message.id, `decode:${message.fileDirectory.Compression}`);
+        return super.postMessage(message, ...args);
       }
     };
   });
@@ -111,5 +139,14 @@ test("single-file package opens an fmap ENVI dataset without network access", as
   await expect(page.locator("#datasetList .ds-item")).toHaveCount(2);
   await expect(page.locator("#datasetList")).toContainText("offline-rgb");
   await expect(page.locator("#datasetList")).toContainText("bands:3");
+  await page.locator("#filePicker").setInputFiles([
+    { name: "offline-packbits.tiff", mimeType: "image/tiff", buffer: packBitsTiffFixture() }
+  ]);
+  await expect(page.locator("#datasetList .ds-item")).toHaveCount(3);
+  await expect(page.locator("#datasetList")).toContainText("offline-packbits");
+  await expect(page.locator("#displayDock")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (
+    globalThis.__fmapWorkerTrace.decoded.some((values) => values.length === 4 && values.every((value, index) => value === [10, 20, 30, 40][index]))
+  ))).toBe(true);
   expect(errors).toEqual([]);
 });

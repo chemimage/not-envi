@@ -6,10 +6,10 @@ Use `npm run benchmark:fmap` for the deterministic 8 GiB logical-source pager mi
 Use `npm run test:fmap-large` for the opt-in sparse-file browser gate; it creates a temporary file with markers beyond 4 GiB and removes it afterward.
 Use `npm run test:fmap-core` for the C/WASM ABI and fixed-pool tests.
 Use `npm run test:fmap-browser` for the format/cancellation matrix on desktop and mobile Chromium emulation profiles.
-Use `npm run test:fmap-packaged` to build the single HTML and load an ENVI dataset offline.
-Use `npm run benchmark:fmap-browser -- --output test-results/fmap-performance.json` for checked browser workloads, p50/p95 latency, and a sparse-spectrum comparison with the chunk cache.
+Use `npm run test:fmap-packaged` to build the single HTML and check ENVI and compressed TIFF worker values offline.
+Use `npm run benchmark:fmap-browser -- --output test-results/fmap-performance.json` for checked ENVI/TIFF browser workloads, p50/p95 latency, read/copy counters, a page-policy reference, and a sparse-spectrum comparison with the chunk cache. Add `--envi-only` to isolate the ENVI workloads.
 
-The format matrix covers all nine supported ENVI numeric types, three layouts, and both byte orders. BSQ Float32 uses fmap; the other cases verify the existing fallback. It also checks TIFF fallback pixel values. Mobile emulation checks browser behavior at mobile viewport/touch settings; physical device validation and its protocol are tracked in [issue #26](https://github.com/chemimage/Hyve/issues/26).
+The format matrix exercises all nine supported ENVI numeric types, three layouts, and both byte orders through fmap. It checks Float64/64-bit integer precision, chunked large results, and cancellation. TIFF checks cover C/WASM-backed ranges, block decoding, retained backing storage, lifecycle, and bounded fallback behavior. The performance harness compares fmap with the existing backend on identical raw/PackBits/Deflate tiles and strips, checking warm-read I/O and decode reservations. Existing-backend copy counts are unavailable and reported as null. Mobile emulation checks browser behavior at mobile viewport/touch settings; physical device validation and its protocol are tracked in [issue #26](https://github.com/chemimage/Hyve/issues/26).
 
 ## Choosing the test boundary
 

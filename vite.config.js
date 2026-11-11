@@ -35,6 +35,8 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     minify: "esbuild",
-    assetsInlineLimit: Number.MAX_SAFE_INTEGER
+    assetsInlineLimit: Number.MAX_SAFE_INTEGER,
+    // Codec imports must survive after the single-file packager removes assets.
+    rollupOptions: { output: { inlineDynamicImports: true } }
   }
 });

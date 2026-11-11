@@ -69,6 +69,20 @@ function ensureOutputArray(meta, out, n) {
   return allocBandArray(meta, n);
 }
 
+function checkedWindowLength(ds, meta, out, width, height) {
+  const count = width * height;
+  if (ds?.maxWindowResultBytes == null) return count;
+  const limit = Number(ds.maxWindowResultBytes);
+  const bytes = out && out.length >= count
+    ? Number(out.BYTES_PER_ELEMENT || 8)
+    : Number(meta.dataTypeInfo?.ctor?.BYTES_PER_ELEMENT || 8);
+  if (!Number.isSafeInteger(width) || width < 0 || !Number.isSafeInteger(height) || height < 0
+      || !Number.isSafeInteger(count * bytes) || count * bytes > limit) {
+    throw new RangeError(`Raster window exceeds the ${limit}-byte output limit.`);
+  }
+  return count;
+}
+
 function ensureRasterStats(ds) {
   if (!ds || (typeof ds !== "object" && typeof ds !== "function")) return null;
   if (!ds.stats || typeof ds.stats !== "object") ds.stats = {};
@@ -155,6 +169,23 @@ async function readViaCustomWindowReader(meta, reader, band, x0, y0, outW, outH,
   return { out: outArr, safeOutW, safeOutH };
 }
 
+// Budgeted readers must admit their logical result before allocating it. They
+// explicitly opt in to owning clipping, padding, output type and destination.
+async function readManagedWindow(meta, reader, band, x0, y0, outW, outH, step, out, options, stats, t0) {
+  const result = await reader(meta, band, x0, y0, outW, outH, step, out, options);
+  if (stats) {
+    const safeX = clamp(Math.floor(Number(x0) || 0), 0, meta.samples - 1);
+    const safeY = clamp(Math.floor(Number(y0) || 0), 0, meta.lines - 1);
+    const stride = Math.max(1, Math.floor(Number(step ?? 1)));
+    const width = Math.min(Math.floor(outW), Math.ceil((meta.samples - safeX) / stride));
+    const height = Math.min(Math.floor(outH), Math.ceil((meta.lines - safeY) / stride));
+    stats.rowWindowCalls += 1;
+    stats.decodedPixels += Math.max(0, width) * Math.max(0, height);
+    stats.windowReadMs += perfNow() - t0;
+  }
+  return result;
+}
+
 async function decodeBandRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOutH, concurrency, outArr) {
   const bytes = meta.dataTypeInfo.bytes;
   const rowStrideBytes = (meta.interleave === "bil")
@@ -218,10 +249,14 @@ async function decodeBipRowSlabs(meta, ds, band, x0, y0, outW, safeOutW, safeOut
 }
 
 export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2, out = null, options = null) {
-  const outArr = ensureOutputArray(meta, out, outW * outH);
   const stats = ensureRasterStats(ds);
   const t0 = perfNow();
   if (stats) stats.windowCalls += 1;
+
+  if (ds?.managesWindowOutput && typeof ds.readBandWindow === "function") {
+    return readManagedWindow(meta, ds.readBandWindow.bind(ds), band, x0, y0, outW, outH, step, out, options, stats, t0);
+  }
+  const outArr = ensureOutputArray(meta, out, checkedWindowLength(ds, meta, out, outW, outH));
 
   if (typeof ds?.readBandWindow === "function") {
     const custom = await readViaCustomWindowReader(meta, ds.readBandWindow.bind(ds), band, x0, y0, outW, outH, step, outArr, options);
@@ -284,7 +319,6 @@ export async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, c
 }
 
 export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, concurrency = 2, out = null, options = null) {
-  const outArr = ensureOutputArray(meta, out, outW * outH);
   const stats = ensureRasterStats(ds);
   const t0 = perfNow();
   if (stats) {
@@ -295,6 +329,10 @@ export async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step
   const customReader = (typeof ds?.readBandWindowBIP === "function")
     ? ds.readBandWindowBIP.bind(ds)
     : ((typeof ds?.readBandWindow === "function") ? ds.readBandWindow.bind(ds) : null);
+  if (ds?.managesWindowOutput && customReader) {
+    return readManagedWindow(meta, customReader, band, x0, y0, outW, outH, step, out, options, stats, t0);
+  }
+  const outArr = ensureOutputArray(meta, out, checkedWindowLength(ds, meta, out, outW, outH));
   if (customReader) {
     const custom = await readViaCustomWindowReader(meta, customReader, band, x0, y0, outW, outH, step, outArr, options);
     if (stats) {
