@@ -21,6 +21,7 @@ export {
 export function createSpectrumController(deps) {
   const {
     els,
+    arrangeAnalysisPanels,
     specCtx,
     getActive,
     bandLabel,
@@ -264,6 +265,7 @@ export function createSpectrumController(deps) {
   }
 
   function positionSpectrumFromOptions(ds, opts = {}) {
+    if (arrangeAnalysisPanels?.()) return;
     if (opts.noReposition) return;
     const pointerType = opts.pointerType === "touch" ? "touch" : "mouse";
     const hasAreaPlacement = (specState.source.type === "area" && opts.selectionBounds);

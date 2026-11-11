@@ -18,6 +18,7 @@ export function bindCoreEvents({ els, handlers }) {
 
 export function createInteractionController(deps) {
   const {
+    isUiInteractionActive,
     els,
     state,
     getActive,
@@ -149,6 +150,7 @@ export function createInteractionController(deps) {
   }
 
   function onPointerMove(ev) {
+    if (isUiInteractionActive?.()) return;
     const ds = getActive();
     const rect = els.main.getBoundingClientRect();
     state.mouse.in = true;

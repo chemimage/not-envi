@@ -6,6 +6,7 @@ import { createSpectralDragController } from "./wiring/spectral-drag.js";
 export function wireApp(deps) {
   const {
     state,
+    selectionActions,
     els,
     clamp,
     getActive,
@@ -128,6 +129,7 @@ export function wireApp(deps) {
   });
 
   const { resolveActiveViewportCenter } = wireDrawToolInteractions({
+    selectionActions,
     state,
     els,
     getActive,
@@ -503,8 +505,7 @@ export function wireApp(deps) {
   setGpuBadgeAvailable();
   wireFlyoutPanel({
     panel: els.displayPanel,
-    header: els.displayHeader,
-    btnPin: els.btnDisplayPin
+    header: els.displayHeader
   });
 }
 
