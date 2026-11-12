@@ -26,14 +26,16 @@ async function parallelFor(count, limit, fn) {
   await Promise.all(workers);
 }
 
-export async function probeValueAtBand(ds, ix, iy, band) {
+export async function probeValueAtBand(ds, ix, iy, band, options = null) {
+  throwIfCancelled(options);
   const m = ds.meta;
   if (ix < 0 || iy < 0 || ix >= m.samples || iy >= m.lines) return null;
   if (typeof ds?.ds?.probeValueAtBand === "function") {
-    return ds.ds.probeValueAtBand(m, ix, iy, band);
+    return options ? ds.ds.probeValueAtBand(m, ix, iy, band, options) : ds.ds.probeValueAtBand(m, ix, iy, band);
   }
   if (typeof ds?.ds?.readBandWindow === "function") {
-    const out = await ds.ds.readBandWindow(m, band, ix, iy, 1, 1, 1);
+    const out = options ? await ds.ds.readBandWindow(m, band, ix, iy, 1, 1, 1, null, options)
+      : await ds.ds.readBandWindow(m, band, ix, iy, 1, 1, 1);
     return Number(out?.[0]);
   }
   const bytes = m.dataTypeInfo.bytes;

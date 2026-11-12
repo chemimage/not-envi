@@ -1,10 +1,16 @@
 # fmap ROI reductions: spans, fptrs and measured enablement
 
-This study implements the exploration in [#35](https://github.com/chemimage/not-envi/issues/35).
+This study records the exploration in [#35](https://github.com/chemimage/not-envi/issues/35).
 It adds a C span kernel, an actual file-worker reduction operation, numeric/mask
 parity checks, a placement-matched JavaScript control and a reproducible browser
 benchmark. It enables the measured uint8 specialization selectively; it does not
-enable the slower generic float reduction in the viewer.
+enable the slower generic float reduction in the viewer at that stage.
+
+The subsequent [#24 streaming driver](streaming-statistics.md) now uses bounded
+moments/fixed-edge operations for source-backed analysis. Small float histograms
+retain one bounded batch; larger ones accept the two-pass latency tradeoff to
+bound temporary storage. The historical benchmark below does not establish a
+speedup for that newer driver.
 
 The subsequent [C module split](../wasm/README.md) moves scalar decoding into
 `wasm/numeric`, the allocation-free reduction kernel into `wasm/reduction`,
@@ -88,7 +94,7 @@ and numeric output capacity, even if a particular reduction does not use that
 output buffer. This is not the shared application budget from #33, nor a
 whole-browser heap bound.
 
-## Viewer decision
+## Original viewer decision (before #24 streaming)
 
 Use the C one-pass path for whole-image and single-rectangle histograms with at
 least 262,144 sampled pixels, **only for uint8 sources exposing

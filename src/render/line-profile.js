@@ -148,7 +148,12 @@ export function createLineProfileController({
       timer = null;
       try {
         const data = await readProfile(next.ds, next.item, next.band, {
-          maxSamples, concurrency, cancelled: () => seq !== sequence
+          maxSamples, concurrency, cancelled: () => seq !== sequence,
+          onProgress: ({ completed, total }) => {
+            if (seq !== sequence) return;
+            message = `Computing line profile… ${completed}/${total} samples`;
+            els.lineProfileStatus.textContent = message;
+          }
         });
         if (seq !== sequence) return;
         result = data;

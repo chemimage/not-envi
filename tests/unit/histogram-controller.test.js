@@ -175,6 +175,7 @@ describe("histogram controller", () => {
     let readOptions = null;
     const readBandWindow = vi.fn((_meta, _source, _band, _x0, _y0, outW, outH, _step, scratch, options) => new Promise((resolve) => {
       readOptions = options;
+      if (releaseRead) { scratch.fill(2); resolve(scratch); return; }
       releaseRead = () => {
         scratch.set(new Float32Array(outW * outH).fill(2));
         resolve(scratch);
@@ -218,7 +219,7 @@ describe("histogram controller", () => {
     ctrl.drawHistogram(ds);
     expect(labels).toContain("Histogram not ready");
     expect(labels).not.toContain("Estimated");
-    expect(readBandWindow).toHaveBeenCalled();
+    await vi.waitFor(() => expect(readBandWindow).toHaveBeenCalled());
     expect(readOptions?.priority).toBe("background");
     expect(readOptions?.cancelled()).toBe(false);
     ds.view.x += 1;
@@ -338,7 +339,8 @@ describe("histogram controller", () => {
 
     expect(capturedOut).toBeInstanceOf(Float32Array);
     expect(capturedOptions?.priority).toBe("background");
-    expect(computeHistogram).toHaveBeenCalledWith(capturedOut, 256);
+    expect(ds.bandStatsWhole.get(0).count).toBe(4);
+    expect(ds.bandStatsWhole.get(0).mean).toBeCloseTo(2.5);
     expect(ds.bandStatsWhole.has(0)).toBe(true);
   });
 });

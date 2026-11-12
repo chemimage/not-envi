@@ -28,8 +28,18 @@ test("single-file package reduces large uint8 histograms in its embedded fmap wo
     { name: "hist.hdr", mimeType: "text/plain", buffer: Buffer.from("ENVI\nsamples = 512\nlines = 512\nbands = 1\ndata type = 1\ninterleave = bsq\nbyte order = 0\n") },
     { name: "hist.raw", mimeType: "application/octet-stream", buffer: Buffer.from(Uint8Array.from({ length: 262144 }, (_, i) => i % 256)) }
   ]);
-  await expect.poll(() => page.evaluate(() => globalThis.__reductionResults.length)).toBeGreaterThan(0);
-  const values = await page.evaluate(() => globalThis.__reductionResults[0]);
+  await expect.poll(() => page.evaluate(() => globalThis.__reductionResults.reduce((sum, part) => sum + (part[2] || 0), 0))).toBe(262144);
+  const values = await page.evaluate(() => {
+    const parts = globalThis.__reductionResults;
+    if (parts.some((part) => !Array.isArray(part) || part[2] > 16384)) throw new Error("Unexpected reduction batch");
+    const merged = Array(261).fill(0);
+    merged[0] = Infinity; merged[1] = -Infinity;
+    for (const part of parts) {
+      merged[0] = Math.min(merged[0], part[0]); merged[1] = Math.max(merged[1], part[1]);
+      for (let i = 2; i < merged.length; i++) merged[i] += part[i];
+    }
+    return merged;
+  });
   expect(values.slice(0, 3)).toEqual([0, 255, 262144]);
   expect(values.slice(5)).toEqual(Array(256).fill(1024));
 });

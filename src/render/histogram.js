@@ -9,6 +9,8 @@ import {
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import { APP_CONFIG } from "../app/config.js";
 import { histogramFromReduction } from "./display-math.js";
+import { ANALYSIS_BATCH_VALUES, createAnalysisPlan } from "../core/analysis-batches.js";
+import { streamStatistics } from "../core/stream-statistics.js";
 
 function isAbortError(error) {
   return error?.name === "AbortError";
@@ -34,6 +36,7 @@ export function createHistogramController(deps) {
     getDevicePixelRatio
   } = deps;
   const floatScratchPool = createFloat32ScratchPool({
+    maxRetainedBytes: ANALYSIS_BATCH_VALUES * 8,
     maxRetainedBuffers: APP_CONFIG.scratch.histogram.maxRetainedBuffers,
     maxRetainedElements: APP_CONFIG.scratch.histogram.maxRetainedElements
   });
@@ -71,9 +74,8 @@ export function createHistogramController(deps) {
     };
   }
 
-  // Checked uint8 workloads benefit from one-pass source-side counts. Keep
-  // generic observed-range float histograms on the current path: two source
-  // passes saved memory but regressed measured latency, especially on eviction.
+  // Compatibility for providers exposing only the original compact histogram
+  // operation. The streaming driver otherwise uses reduceStatisticsWindow.
   function canReduce(ds, count) {
     return ds.meta.dataType === 1 && count >= 262144 && typeof ds.ds?.reduceBandWindow === "function";
   }
@@ -152,36 +154,6 @@ export function createHistogramController(deps) {
     return null;
   }
 
-  function appendSelectionValues(selection, f32, outW, outH, x0, y0, step, rowStride, seen, values) {
-    if (!selection || !f32 || !values) return;
-    const isShape = selection.tool === "shape" && Array.isArray(selection.points) && selection.points.length >= 3;
-    for (let row = 0; row < outH; row += 1) {
-      const iy = y0 + row * step;
-      for (let col = 0; col < outW; col += 1) {
-        const ix = x0 + col * step;
-        if (isShape) {
-          const cx = ix + (0.5 * step);
-          const cy = iy + (0.5 * step);
-          if (!pointInPolygon(cx, cy, selection.points)) continue;
-        }
-        const key = iy * rowStride + ix;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        ensureSelectionValueCapacity(values, values.length + 1);
-        values.buffer[values.length] = f32[row * outW + col];
-        values.length += 1;
-      }
-    }
-  }
-
-  function ensureSelectionValueCapacity(values, needed) {
-    if (!values || values.buffer.length >= needed) return;
-    const nextSize = Math.max(needed, values.buffer.length ? values.buffer.length * 2 : 1024);
-    const next = new Float32Array(nextSize);
-    if (values.length > 0) next.set(values.buffer.subarray(0, values.length), 0);
-    values.buffer = next;
-  }
-
   async function readWindowF32(ds, band, x0, y0, outW, outH, step, options = null) {
     const length = Math.max(0, outW * outH);
     const scratch = floatScratchPool.acquire(length);
@@ -220,7 +192,7 @@ export function createHistogramController(deps) {
 
     const targetSamples = 700_000;
     const step = Math.max(1, Math.ceil(Math.sqrt(totalArea / targetSamples)));
-    if (valid.length === 1 && valid[0].selection.tool === "rect") {
+    if (!ds.ds?.reduceStatisticsWindow && valid.length === 1 && valid[0].selection.tool === "rect") {
       const { bounds, width, height } = valid[0];
       const outW = Math.ceil(width / step), outH = Math.ceil(height / step);
       if (canReduce(ds, outW * outH)) {
@@ -232,38 +204,27 @@ export function createHistogramController(deps) {
         }) : null;
       }
     }
-    const seen = new Set();
-    const estimatedSamples = Math.max(1, Math.ceil(totalArea / Math.max(1, step * step)));
-    const values = {
-      buffer: new Float32Array(estimatedSamples),
-      length: 0
-    };
+    const plan = createAnalysisPlan(valid.map(({ selection, bounds, width, height }) => ({
+      selection, bounds, outW: Math.ceil(width / step), outH: Math.ceil(height / step)
+    })), step, (selection, x, y) => pointInPolygon(x, y, selection.points));
+    const stats = await streamStatistics({ ds, band, plan, histogram: true,
+      cancelled: options?.cancelled, onProgress: options?.onProgress,
+      readWindow: (batch, readOptions) => readWindowF32(ds, band, batch.x0, batch.y0,
+        batch.outW, batch.outH, step, readOptions) });
+    return stats.count ? decorateHistogramStats(stats, {
+      band, sampleStep: step, trueRawSamples: step === 1,
+      samplingMode: step === 1 ? "selection-raw" : "selection-subsampled"
+    }) : null;
+  }
 
-    for (const item of valid) {
-      const { selection, bounds, width, height } = item;
-      const outW = Math.max(1, Math.ceil(width / step));
-      const outH = Math.max(1, Math.ceil(height / step));
-      const window = await readWindowF32(ds, band, bounds.x0, bounds.y0, outW, outH, step, options);
-      try {
-        appendSelectionValues(selection, window.data, outW, outH, bounds.x0, bounds.y0, step, ds.meta.samples, seen, values);
-      } finally {
-        window.release();
-      }
+  async function streamWindowHistogram(ds, band, x0, y0, outW, outH, step, options = {}) {
+    if (!ds.ds?.reduceStatisticsWindow && canReduce(ds, outW * outH)) {
+      return histogramFromReduction(await ds.ds.reduceBandWindow(ds.meta, band, x0, y0, outW, outH, step, options));
     }
-
-    if (!values.length) return null;
-    const samples = values.length === values.buffer.length
-      ? values.buffer
-      : values.buffer.subarray(0, values.length);
-    return decorateHistogramStats(
-      computeHistogram(samples, 256),
-      {
-        band,
-        sampleStep: step,
-        trueRawSamples: step === 1,
-        samplingMode: step === 1 ? "selection-raw" : "selection-subsampled"
-      }
-    );
+    const plan = createAnalysisPlan([{ bounds: { x0, y0 }, outW, outH }], step);
+    return streamStatistics({ ds, band, plan, histogram: true, ...options,
+      readWindow: (batch, readOptions) => readWindowF32(ds, band, batch.x0, batch.y0,
+        batch.outW, batch.outH, step, readOptions) });
   }
 
   async function buildBandStatsWhole(ds, band) {
@@ -285,28 +246,16 @@ export function createHistogramController(deps) {
     const task = (async () => {
       try {
         setStatus("histogram…", "warn");
-        const reduce = canReduce(ds, outW * outH);
-        const window = reduce ? null
-          : await readWindowF32(ds, band, 0, 0, outW, outH, step, { priority: "background" });
-        try {
-          const stats = decorateHistogramStats(
-            reduce ? histogramFromReduction(await ds.ds.reduceBandWindow(ds.meta, band, 0, 0, outW, outH, step,
-              { priority: "background" })) : computeHistogram(window.data, 256),
-            {
-              band,
-              sampleStep: step,
-              trueRawSamples: step === 1,
-              samplingMode: step === 1 ? "whole-raw" : "whole-subsampled"
-            }
-          );
-          ds.bandStatsWhole.set(band, stats);
-
-          if (ds.id === state.activeId && resolveDisplayBand(ds) === band && state.histMode === "whole") {
-            syncRangeInputsFromSettings(ds);
-            drawHistogram(ds);
-          }
-        } finally {
-          window?.release();
+        const stats = decorateHistogramStats(
+          await streamWindowHistogram(ds, band, 0, 0, outW, outH, step), {
+            band, sampleStep: step, trueRawSamples: step === 1,
+            samplingMode: step === 1 ? "whole-raw" : "whole-subsampled"
+          });
+        if (ds.ds?.closed) return;
+        ds.bandStatsWhole.set(band, stats);
+        if (ds.id === state.activeId && resolveDisplayBand(ds) === band && state.histMode === "whole") {
+          syncRangeInputsFromSettings(ds);
+          drawHistogram(ds);
         }
         setStatus("ready", "ok");
       } catch (e) {
@@ -378,27 +327,17 @@ export function createHistogramController(deps) {
 
     const task = (async () => {
       try {
-        const window = await readWindowF32(ds, band, x0, y0, outW, outH, step, {
-          cancelled: () => estimatedViewKey(ds, band) !== key,
-          priority: "background"
+        const stats = await streamWindowHistogram(ds, band, x0, y0, outW, outH, step, {
+          cancelled: () => estimatedViewKey(ds, band) !== key
         });
-        try {
-          if (estimatedViewKey(ds, band) !== key) return;
-          ds.bandStatsView = decorateHistogramStats(
-            computeHistogram(window.data, 256),
-            {
-              band,
-              sampleStep: step,
-              trueRawSamples: false,
-              samplingMode: step === 1 ? "view-estimated" : "view-subsampled"
-            }
-          );
-          if (ds.id === state.activeId && resolveDisplayBand(ds) === band && !ds.bandStatsWhole.has(band)) {
-            syncRangeInputsFromSettings(ds);
-            drawHistogram(ds);
-          }
-        } finally {
-          window.release();
+        if (estimatedViewKey(ds, band) !== key || ds.ds?.closed) return;
+        ds.bandStatsView = decorateHistogramStats(stats, {
+          band, sampleStep: step, trueRawSamples: false,
+          samplingMode: step === 1 ? "view-estimated" : "view-subsampled"
+        });
+        if (ds.id === state.activeId && resolveDisplayBand(ds) === band && !ds.bandStatsWhole.has(band)) {
+          syncRangeInputsFromSettings(ds);
+          drawHistogram(ds);
         }
       } catch (e) {
         if (isAbortError(e) && estimatedViewKey(ds, band) !== key) return;
@@ -433,7 +372,7 @@ export function createHistogramController(deps) {
     drawHistogram(ds);
   }
 
-  async function updateSelectionHistogram(ds, selections) {
+  async function updateSelectionHistogram(ds, selections, onProgress) {
     if (!ds) return;
     const band = resolveDisplayBand(ds);
     const list = Array.isArray(selections) ? selections.filter((item) => isHistogramSelection(item)) : [];
@@ -454,7 +393,7 @@ export function createHistogramController(deps) {
       setStatus("histogram…", "warn");
       const stats = await computeSelectionStats(ds, band, list, {
         cancelled: () => token !== ds.__selectionHistToken,
-        priority: "background"
+        priority: "background", onProgress
       });
       if (token !== ds.__selectionHistToken) return;
       ds.bandStatsSelection = stats ? { band, selectionKey, stats } : null;

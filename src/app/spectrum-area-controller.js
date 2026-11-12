@@ -1,5 +1,7 @@
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import { APP_CONFIG } from "./config.js";
+import { ANALYSIS_BATCH_VALUES, createAnalysisPlan } from "../core/analysis-batches.js";
+import { streamStatistics } from "../core/stream-statistics.js";
 
 export function createSpectrumAreaController(deps) {
   const {
@@ -14,20 +16,17 @@ export function createSpectrumAreaController(deps) {
     readBandWindow,
     readBandWindowBIP,
     toFloat32,
-    areaReducer,
     pointInPolygon,
     wavelengthArrayOrNull,
     fmtNoGroup
   } = deps;
   const floatScratchPool = createFloat32ScratchPool({
+    maxRetainedBytes: ANALYSIS_BATCH_VALUES * 8,
     maxRetainedBuffers: APP_CONFIG.scratch.spectrumArea.maxRetainedBuffers,
     maxRetainedElements: APP_CONFIG.scratch.spectrumArea.maxRetainedElements
   });
 
   const ABORTED = Symbol("spectrum-area-aborted");
-  const ABORT_CHECK_MASK = 1023;
-  const BAND_PROGRESS_UPDATE_INTERVAL = 64;
-  const BAND_UI_YIELD_INTERVAL = 24;
   let nonAreaSeq = 0;
   let areaReqSeq = 0;
   let areaInFlight = false;
@@ -40,113 +39,6 @@ export function createSpectrumAreaController(deps) {
 
   function isAbortError(error) {
     return error?.name === "AbortError";
-  }
-
-  function reduceBandValuesLocal(values, sampleIndices) {
-    let sum = 0;
-    let sumSq = 0;
-    let count = 0;
-    for (let i = 0; i < sampleIndices.length; i += 1) {
-      const v = values[sampleIndices[i]];
-      if (!Number.isFinite(v)) continue;
-      sum += v;
-      sumSq += (v * v);
-      count += 1;
-    }
-    return { sum, sumSq, count };
-  }
-
-  function nextFrame() {
-    return new Promise((resolve) => {
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => resolve());
-        return;
-      }
-      setTimeout(resolve, 0);
-    });
-  }
-
-  async function yieldToUi(shouldAbort) {
-    await nextFrame();
-    return isAborted(shouldAbort) ? ABORTED : null;
-  }
-
-  function buildSamplePlan(ds, valid, sampleStep, shouldAbort) {
-    const sampleItems = [];
-    const seen = new Set();
-    let sampleCount = 0;
-    const rowStride = ds.meta.samples;
-
-    for (const item of valid) {
-      if (isAborted(shouldAbort)) return ABORTED;
-      const { selection, bounds } = item;
-      const outW = Math.max(1, Math.ceil(bounds.width / sampleStep));
-      const outH = Math.max(1, Math.ceil(bounds.height / sampleStep));
-      const isShape = selection.tool === "shape" && Array.isArray(selection.points) && selection.points.length >= 3;
-      const sampleIndices = [];
-      let loopCount = 0;
-
-      for (let row = 0; row < outH; row += 1) {
-        const iy = bounds.y0 + row * sampleStep;
-        if (iy > bounds.y1) continue;
-        for (let col = 0; col < outW; col += 1) {
-          loopCount += 1;
-          if ((loopCount & ABORT_CHECK_MASK) === 0 && isAborted(shouldAbort)) return ABORTED;
-          const ix = bounds.x0 + col * sampleStep;
-          if (ix > bounds.x1) continue;
-          if (isShape) {
-            const cx = ix + (0.5 * sampleStep);
-            const cy = iy + (0.5 * sampleStep);
-            if (!pointInPolygon({ x: cx, y: cy }, selection.points)) continue;
-          }
-          const key = iy * rowStride + ix;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          sampleIndices.push((row * outW) + col);
-          sampleCount += 1;
-        }
-      }
-
-      if (sampleIndices.length) {
-        sampleItems.push({
-          bounds,
-          outW,
-          outH,
-          sampleIndices: Uint32Array.from(sampleIndices)
-        });
-      }
-    }
-
-    if (!sampleCount || !sampleItems.length) return null;
-    return { sampleItems, sampleCount };
-  }
-
-  async function reduceBandValues(values, sampleIndices, shouldAbort) {
-    if (isAborted(shouldAbort)) return ABORTED;
-    if (!values || !sampleIndices || !sampleIndices.length) return { sum: 0, sumSq: 0, count: 0 };
-    if (areaReducer && typeof areaReducer.reduce === "function") {
-      try {
-        const out = await areaReducer.reduce(values, sampleIndices);
-        if (isAborted(shouldAbort)) return ABORTED;
-        const reduced = {
-          sum: Number(out?.sum) || 0,
-          sumSq: Number(out?.sumSq) || 0,
-          count: Number(out?.count) || 0
-        };
-        const looksValid = Number.isFinite(reduced.sum)
-          && Number.isFinite(reduced.sumSq)
-          && Number.isFinite(reduced.count)
-          && reduced.count >= 0
-          && reduced.count <= sampleIndices.length;
-        if (looksValid && reduced.count > 0) return reduced;
-        const local = reduceBandValuesLocal(values, sampleIndices);
-        if (local.count > 0 || !looksValid || reduced.count === 0) return local;
-        return reduced;
-      } catch (_err) {
-        // Fallback to local reduction if worker/client path fails.
-      }
-    }
-    return reduceBandValuesLocal(values, sampleIndices);
   }
 
   async function readWindowF32(ds, band, x0, y0, outW, outH, step, options = null) {
@@ -188,46 +80,31 @@ export function createSpectrumAreaController(deps) {
     const bands = ds.meta.bands;
     const spectrumMean = new Float32Array(bands);
     const spectrumStd = new Float32Array(bands);
-    const samplePlan = buildSamplePlan(ds, valid, sampleStep, shouldAbort);
-    if (samplePlan === ABORTED) return ABORTED;
-    if (!samplePlan) return null;
-    const { sampleItems, sampleCount } = samplePlan;
-    if (typeof options.onProgress === "function") {
-      await Promise.resolve(options.onProgress({ completedBands: 0, totalBands: bands }));
-      if (isAborted(shouldAbort)) return ABORTED;
-    }
-
+    const finiteCounts = new Float64Array(bands);
+    const plan = createAnalysisPlan(valid.map(({ selection, bounds }) => ({ selection, bounds,
+      outW: Math.max(1, Math.ceil(bounds.width / sampleStep)),
+      outH: Math.max(1, Math.ceil(bounds.height / sampleStep)) })), sampleStep,
+    (selection, x, y) => pointInPolygon({ x, y }, selection.points));
+    let sampleCount = 0;
     for (let band = 0; band < bands; band += 1) {
       if (isAborted(shouldAbort)) return ABORTED;
-      let sum = 0;
-      let sumSq = 0;
-      let finiteCount = 0;
-
-      for (const item of sampleItems) {
-        if (isAborted(shouldAbort)) return ABORTED;
-        const { bounds, outW, outH, sampleIndices } = item;
-        let window;
-        try {
-          window = await readWindowF32(ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep, {
-            cancelled: shouldAbort,
-            priority: "background"
-          });
-        } catch (error) {
-          if (isAbortError(error) && isAborted(shouldAbort)) return ABORTED;
-          throw error;
-        }
-        try {
-          if (isAborted(shouldAbort)) return ABORTED;
-          const reduced = await reduceBandValues(window.data, sampleIndices, shouldAbort);
-          if (reduced === ABORTED) return ABORTED;
-          sum += reduced.sum;
-          sumSq += reduced.sumSq;
-          finiteCount += reduced.count;
-        } finally {
-          window.release();
-        }
+      let stats;
+      try {
+        stats = await streamStatistics({ ds, band, plan, cancelled: shouldAbort,
+          readWindow: (batch, readOptions) => readWindowF32(ds, band, batch.x0, batch.y0,
+            batch.outW, batch.outH, sampleStep, readOptions),
+          onProgress: ({ completed, total }) => options.onProgress?.({
+            completedBands: band + (total ? completed / total : 0), totalBands: bands,
+            completedBatches: band * plan.batchCount + completed, totalBatches: bands * plan.batchCount
+          }) });
+      } catch (error) {
+        if (isAbortError(error) && (isAborted(shouldAbort) || ds.ds?.closed)) return ABORTED;
+        throw error;
       }
-
+      if (isAborted(shouldAbort)) return ABORTED;
+      const { sum, sumSq, count: finiteCount } = stats;
+      finiteCounts[band] = finiteCount;
+      sampleCount = stats.sampleCount;
       if (finiteCount > 0) {
         const mean = sum / finiteCount;
         const variance = Math.max(0, (sumSq / finiteCount) - (mean * mean));
@@ -238,16 +115,6 @@ export function createSpectrumAreaController(deps) {
         spectrumStd[band] = Number.NaN;
       }
 
-      const completedBands = band + 1;
-      if (typeof options.onProgress === "function"
-        && (completedBands === bands || (completedBands % BAND_PROGRESS_UPDATE_INTERVAL) === 0)) {
-        await Promise.resolve(options.onProgress({ completedBands, totalBands: bands }));
-        if (isAborted(shouldAbort)) return ABORTED;
-      }
-      if ((completedBands % BAND_UI_YIELD_INTERVAL) === 0) {
-        const yielded = await yieldToUi(shouldAbort);
-        if (yielded === ABORTED) return ABORTED;
-      }
     }
 
     if (!sampleCount) return null;
@@ -256,6 +123,8 @@ export function createSpectrumAreaController(deps) {
       stdVals: spectrumStd,
       sampleCount,
       sampleStep,
+      finiteCounts,
+      complete: true,
       selectionCount: valid.length
     };
   }
@@ -316,7 +185,8 @@ export function createSpectrumAreaController(deps) {
                 sourceMeta: {
                   sampleCount: 0,
                   selectionCount,
-                  sampleStep: 1
+                  sampleStep: 1,
+                  complete: false
                 },
                 selectionBounds,
                 selectionOccluders: occluderBounds
@@ -325,11 +195,11 @@ export function createSpectrumAreaController(deps) {
             if (shouldAbort()) continue;
             const areaWithProgress = await buildAreaAverageSpectrum(req.ds, reqSelections, {
               shouldAbort,
-              onProgress: ({ completedBands, totalBands }) => {
-                if (!shouldAbort()) req.work?.update(completedBands, totalBands);
+              onProgress: ({ completedBands, totalBands, completedBatches, totalBatches }) => {
+                if (!shouldAbort()) req.work?.update(completedBatches, totalBatches);
                 if (!spectrum || typeof spectrum.updateSpectrumStatus !== "function" || shouldAbort()) return;
                 spectrum.updateSpectrumStatus({
-                  footLabel: `Computing ${fmtNoGroup(completedBands)}/${fmtNoGroup(totalBands)} bands`,
+                  footLabel: `Computing ${fmtNoGroup(completedBatches)}/${fmtNoGroup(totalBatches)} batches (${fmtNoGroup(Math.floor(completedBands))}/${fmtNoGroup(totalBands)} bands)`,
                   placeholderText: "Computing area average..."
                 });
               }
@@ -358,7 +228,8 @@ export function createSpectrumAreaController(deps) {
               sourceMeta: {
                 sampleCount: areaWithProgress.sampleCount,
                 selectionCount: areaWithProgress.selectionCount,
-                sampleStep: areaWithProgress.sampleStep
+                sampleStep: areaWithProgress.sampleStep,
+                finiteCounts: areaWithProgress.finiteCounts, complete: true
               },
               selectionBounds,
               selectionOccluders: occluderBounds

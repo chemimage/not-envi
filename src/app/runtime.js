@@ -56,7 +56,6 @@ import { APP_CONFIG, resolveHardwareConcurrencyLimit } from "./config.js";
 import { createAnalysisHistogramController } from "./analysis-histogram-controller.js";
 import { createAnnotationController } from "./annotation-controller.js";
 import { createSpectrumAreaController } from "./spectrum-area-controller.js";
-import { createAreaReductionWorkerClient } from "./area-reduction-worker-client.js";
 import { createSelectionSyncController } from "./selection-sync-controller.js";
 import { getThreeBandAdjustColor, isThreeBandColorMode } from "./three-band-display.js";
 import { annotationsShareImageSpace, remapAnnotationItem, remapAnnotationState } from "./linked-annotations.js";
@@ -652,7 +651,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     const work = ds && selections?.length
       ? beginAnnotationWork(ds, { items: selections, label: "Computing histogram" }) : null;
     try {
-      await histogram.updateSelectionHistogram(ds, selections);
+      await histogram.updateSelectionHistogram(ds, selections, ({ completed, total }) => work?.update(completed, total));
     } finally {
       work?.done();
     }
@@ -1272,7 +1271,6 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   analysisPanelLayout = createAnalysisPanelLayout({ els, getWindow: (id) => floatingWindows.get(id) });
 
-  const areaReducer = createAreaReductionWorkerClient();
   function resetDatasetSession() {
     lineProfile?.close();
     closeAllDatasets();
@@ -1282,13 +1280,11 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     resetDatasetSession();
     floatingWindows.destroy();
     compositionWorker.dispose();
-    if (areaReducer && typeof areaReducer.dispose === "function") areaReducer.dispose();
   }, { once: true });
   window.addEventListener("pagehide", (ev) => {
     if (!ev.persisted) return;
     resetDatasetSession();
     compositionWorker.clear();
-    if (areaReducer && typeof areaReducer.dispose === "function") areaReducer.dispose();
   });
   window.addEventListener("pageshow", (ev) => {
     resetFilePicker();
@@ -1315,7 +1311,6 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     readBandWindow,
     readBandWindowBIP,
     toFloat32,
-    areaReducer,
     pointInPolygon,
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
     fmtNoGroup

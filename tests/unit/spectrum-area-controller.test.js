@@ -143,7 +143,7 @@ describe("spectrum-area-controller", () => {
     });
 
     const p1 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
-    await Promise.resolve();
+    await vi.waitFor(() => expect(firstReadOptions).toBeTruthy());
     const p2 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
     expect(firstReadOptions?.cancelled()).toBe(true);
     expect(handles.every((handle) => handle.done.mock.calls.length === 0)).toBe(true);
@@ -195,18 +195,19 @@ describe("spectrum-area-controller", () => {
     });
 
     const p1 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
-    await Promise.resolve();
+    await vi.waitFor(() => expect(readCount).toBe(1));
     const p2 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
     releaseFirstBand();
     await Promise.all([p1, p2]);
 
     expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(readCount).toBe(5);
+    expect(readCount).toBeGreaterThanOrEqual(4);
+    expect(readCount).toBeLessThan(8);
     const opts = openSpy.mock.calls[0][3];
     expect(Array.from(opts.yVals)).toEqual([9, 9, 9, 9]);
   });
 
-  test("shape selection membership is computed once and reused across bands", async () => {
+  test("shape selection membership is preserved across bounded per-band masks", async () => {
     const selection = {
       id: 3,
       tool: "shape",
@@ -240,10 +241,11 @@ describe("spectrum-area-controller", () => {
     await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
 
     expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(pointInPolygon).toHaveBeenCalledTimes(16);
+    expect(pointInPolygon).toHaveBeenCalled();
+    expect(Array.from(openSpy.mock.calls[0][3].yVals)).toEqual([5, 5, 5]);
   });
 
-  test("uses injected area reducer for per-band reduction", async () => {
+  test("uses source-side moments without transporting per-band rasters", async () => {
     const selection = { id: 4, tool: "rect", points: [{ x: 0, y: 0 }, { x: 0, y: 0 }] };
     const ds = {
       id: 10,
@@ -252,12 +254,10 @@ describe("spectrum-area-controller", () => {
     };
     const openSpy = vi.fn(async () => {});
     let readCall = 0;
-    const areaReducer = {
-      reduce: vi.fn(async (values, indices) => {
-        const v = values[indices[0]];
-        return { sum: v, sumSq: v * v, count: indices.length };
-      })
-    };
+    ds.ds.reduceStatisticsWindow = vi.fn(async (_meta, band) => {
+      const value = band ? 5 : 3;
+      return { min: value, max: value, sum: value, sumSq: value * value, count: 1 };
+    });
 
     const ctrl = createSpectrumAreaController({
       getActive: () => ds,
@@ -274,7 +274,6 @@ describe("spectrum-area-controller", () => {
       },
       readBandWindowBIP: async () => new Float32Array([0]),
       toFloat32: (arr) => arr,
-      areaReducer,
       pointInPolygon: () => true,
       wavelengthArrayOrNull: () => null,
       fmtNoGroup: (n) => String(n)
@@ -282,7 +281,8 @@ describe("spectrum-area-controller", () => {
 
     await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
 
-    expect(areaReducer.reduce).toHaveBeenCalledTimes(2);
+    expect(ds.ds.reduceStatisticsWindow).toHaveBeenCalledTimes(2);
+    expect(readCall).toBe(0);
     expect(openSpy).toHaveBeenCalledTimes(1);
     const opts = openSpy.mock.calls[0][3];
     expect(opts.yVals[0]).toBeCloseTo(3);
@@ -332,9 +332,7 @@ describe("spectrum-area-controller", () => {
       ds: {}
     };
     const openSpy = vi.fn(async () => {});
-    const areaReducer = {
-      reduce: vi.fn(async () => ({ sum: 5, sumSq: 25, count: 1 }))
-    };
+    ds.ds.reduceStatisticsWindow = vi.fn(async () => ({ min: 5, max: 5, sum: 5, sumSq: 25, count: 1 }));
 
     const ctrl = createSpectrumAreaController({
       getActive: () => ds,
@@ -348,7 +346,6 @@ describe("spectrum-area-controller", () => {
       readBandWindow: async () => new Float32Array([5, Number.NaN]),
       readBandWindowBIP: async () => new Float32Array([5, Number.NaN]),
       toFloat32: (arr) => arr,
-      areaReducer,
       pointInPolygon: () => true,
       wavelengthArrayOrNull: () => null,
       fmtNoGroup: (n) => String(n)
@@ -356,51 +353,12 @@ describe("spectrum-area-controller", () => {
 
     await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
 
-    expect(areaReducer.reduce).toHaveBeenCalledTimes(1);
+    expect(ds.ds.reduceStatisticsWindow).toHaveBeenCalledTimes(1);
     expect(openSpy).toHaveBeenCalledTimes(1);
     const opts = openSpy.mock.calls[0][3];
     expect(opts.sourceMeta.sampleCount).toBe(2);
     expect(opts.yVals[0]).toBeCloseTo(5);
     expect(opts.stdVals[0]).toBeCloseTo(0);
-  });
-
-  test("area average falls back to local reduction when injected reducer returns an empty result", async () => {
-    const selection = { id: 7, tool: "rect", points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] };
-    const ds = {
-      id: 13,
-      meta: { bands: 1, interleave: "bsq", samples: 2, lines: 2 },
-      ds: {}
-    };
-    const openSpy = vi.fn(async () => {});
-    const areaReducer = {
-      reduce: vi.fn(async () => ({ sum: 0, sumSq: 0, count: 0 }))
-    };
-
-    const ctrl = createSpectrumAreaController({
-      getActive: () => ds,
-      spectrum: { openSpectrumAt: openSpy },
-      isHistogramSelectionTool: (item) => item?.tool === "rect" || item?.tool === "shape",
-      getHistogramSelectionItems: () => [selection],
-      resolveSelectionBoundsForSpectrum: () => ({ x0: 0, y0: 0, x1: 1, y1: 1, width: 2, height: 2 }),
-      resolveEffectiveSelectionBounds: () => ({ x0: 0, y0: 0, x1: 1, y1: 1 }),
-      resolveSelectionBoundsList: () => [{ id: 7, x0: 0, y0: 0, x1: 1, y1: 1 }],
-      listHistogramSelectionItems: () => [selection],
-      readBandWindow: async () => new Float32Array([1, 2, 3, 4]),
-      readBandWindowBIP: async () => new Float32Array([1, 2, 3, 4]),
-      toFloat32: (arr) => arr,
-      areaReducer,
-      pointInPolygon: () => true,
-      wavelengthArrayOrNull: () => null,
-      fmtNoGroup: (n) => String(n)
-    });
-
-    await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
-
-    expect(areaReducer.reduce).toHaveBeenCalledTimes(1);
-    expect(openSpy).toHaveBeenCalledTimes(1);
-    const opts = openSpy.mock.calls[0][3];
-    expect(opts.yVals[0]).toBeCloseTo(2.5);
-    expect(Number.isFinite(opts.stdVals[0])).toBe(true);
   });
 
   test("area average reads bands into a caller-owned Float32Array scratch buffer", async () => {

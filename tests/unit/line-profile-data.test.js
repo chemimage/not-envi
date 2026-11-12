@@ -22,7 +22,7 @@ test("cancellation stops bounded workers before they schedule more reads", async
   const ds = { meta: { samples: 100, lines: 100 }, ds: { probeValueAtBand: probe } };
   const pending = readLineProfile(ds, { points: [{ x: 0, y: 0 }, { x: 99, y: 0 }] }, 0,
     { concurrency: 2, cancelled: () => cancelled });
-  expect(probe).toHaveBeenCalledTimes(2);
+  await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
   cancelled = true;
   releases.forEach(resolve => resolve(1));
   expect(await pending).toBeNull();

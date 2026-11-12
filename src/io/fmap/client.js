@@ -564,6 +564,12 @@ export class FmapDataSource {
     }
   }
 
+  /** One-pass moments, optionally with caller-specified fixed histogram edges. */
+  async reduceStatisticsWindow(meta, band, x0, y0, outW, outH, step, options = {}) {
+    return this.reduceBandWindow(meta, band, x0, y0, outW, outH, step,
+      { ...options, statisticsOnly: true });
+  }
+
   /** Observed-range histogram over sampled source pixels (one pass for uint8,
    * two passes for other types). Numeric
    * decoding/reduction stays beside pinned pages; only compact sums and bins
@@ -624,6 +630,16 @@ export class FmapDataSource {
       };
       // The uint8 domain permits an exact one-pass frequency table; observed
       // edges can then be applied to 256 counts without rereading the image.
+      if (options.statisticsOnly) {
+        const bins = options.bins ?? 0;
+        if (bins && (!Number.isFinite(options.min) || !Number.isFinite(options.max) || options.max < options.min)) {
+          throw new RangeError("Fixed histogram edges must be finite and ordered.");
+        }
+        const values = await pass(bins, options.min ?? 0, options.max ?? 1);
+        this.#requireLogicalCurrent(logical);
+        return { min: values[0], max: values[1], count: values[2], sum: values[3], sumSq: values[4],
+          bins: Uint32Array.from(values.subarray(5, 5 + bins)) };
+      }
       const uint8 = Number(meta.dataType) === 1;
       const range = await pass(uint8 ? 256 : 0, 0, 255);
       const min = range[2] ? range[0] : 0;

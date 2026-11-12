@@ -135,7 +135,9 @@ export function createSpectrumController(deps) {
       type: opts.sourceType === "area" ? "area" : "pixel",
       sampleCount: Number.isFinite(opts?.sourceMeta?.sampleCount) ? opts.sourceMeta.sampleCount : 0,
       selectionCount: Number.isFinite(opts?.sourceMeta?.selectionCount) ? opts.sourceMeta.selectionCount : 0,
-      sampleStep: Number.isFinite(opts?.sourceMeta?.sampleStep) ? opts.sourceMeta.sampleStep : 1
+      sampleStep: Number.isFinite(opts?.sourceMeta?.sampleStep) ? opts.sourceMeta.sampleStep : 1,
+      finiteCounts: opts.sourceMeta?.finiteCounts || null,
+      complete: opts.sourceMeta?.complete !== false
     };
   }
 
