@@ -63,6 +63,7 @@ describe("spectrum-area-controller", () => {
     let releaseFirst = null;
     const firstRead = new Promise((resolve) => { releaseFirst = resolve; });
     let readCount = 0;
+    let firstReadOptions = null;
 
     const ctrl = createSpectrumAreaController({
       getActive: () => ds,
@@ -73,9 +74,10 @@ describe("spectrum-area-controller", () => {
       resolveEffectiveSelectionBounds: () => ({ x0: 0, y0: 0, x1: 0, y1: 0 }),
       resolveSelectionBoundsList: () => [{ id: 2, x0: 0, y0: 0, x1: 0, y1: 0 }],
       listHistogramSelectionItems: () => [selection],
-      readBandWindow: async () => {
+      readBandWindow: async (...args) => {
         readCount += 1;
         if (readCount === 1) {
+          firstReadOptions = args[9];
           await firstRead;
           return new Float32Array([1]);
         }
@@ -91,6 +93,7 @@ describe("spectrum-area-controller", () => {
     const p1 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
     await Promise.resolve();
     const p2 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
+    expect(firstReadOptions?.cancelled()).toBe(true);
     releaseFirst();
     await Promise.all([p1, p2]);
 
@@ -353,6 +356,7 @@ describe("spectrum-area-controller", () => {
     };
     const openSpy = vi.fn(async () => {});
     let capturedOut = null;
+    let capturedOptions = null;
 
     const ctrl = createSpectrumAreaController({
       getActive: () => ds,
@@ -365,6 +369,7 @@ describe("spectrum-area-controller", () => {
       listHistogramSelectionItems: () => [selection],
       readBandWindow: async (...args) => {
         capturedOut = args[8];
+        capturedOptions = args[9];
         capturedOut[0] = 7;
         return capturedOut;
       },
@@ -378,6 +383,8 @@ describe("spectrum-area-controller", () => {
     await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
 
     expect(capturedOut).toBeInstanceOf(Float32Array);
+    expect(capturedOptions?.priority).toBe("background");
+    expect(capturedOptions?.cancelled()).toBe(false);
     expect(openSpy).toHaveBeenCalledTimes(1);
     const opts = openSpy.mock.calls[0][3];
     expect(opts.yVals[0]).toBeCloseTo(7);

@@ -1,4 +1,5 @@
-import { buildMeta, buildRgbDisplayMeta, isRawCompatibleSummary, photometricName, resolveTiffCacheBudgets, resolveUniformSampleType, supportsNativeJpegTileDecode } from "../shared.js";
+import { buildMeta, buildRgbDisplayMeta, isRawCompatibleSummary, listTagValues, photometricName, resolveTiffCacheBudgets, resolveUniformSampleType, summarizeImage, supportsNativeJpegTileDecode } from "../shared.js";
+import { buildTiffImageCatalog } from "../metadata-index.js";
 import { TiffBlockIndexedDataSource, buildRawBandSpecs, buildRgbBandSpecs } from "../data-sources.js";
 import { openGeotiffFallback } from "./geotiff-fallback.js";
 
@@ -9,11 +10,13 @@ const TAG_NAMES = new Map([
   [258, "BitsPerSample"],
   [259, "Compression"],
   [262, "PhotometricInterpretation"],
+  [270, "ImageDescription"],
   [273, "StripOffsets"],
   [277, "SamplesPerPixel"],
   [278, "RowsPerStrip"],
   [279, "StripByteCounts"],
   [284, "PlanarConfiguration"],
+  [285, "PageName"],
   [297, "PageNumber"],
   [317, "Predictor"],
   [322, "TileWidth"],
@@ -44,6 +47,8 @@ const TYPE_SIZES = new Map([
 
 const TIFF_MAGIC = 42;
 const BIGTIFF_MAGIC = 43;
+const DEFAULT_MAX_METADATA_BYTES = 16 * 1024 * 1024;
+const MAX_SAMPLES_PER_PIXEL = 4096;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 function canNativeDecodeJpeg() {
@@ -61,6 +66,41 @@ function ensureSafeInt(value, label) {
     throw new Error(`Unsupported TIFF ${label}: ${String(value)}`);
   }
   return Math.trunc(num);
+}
+
+function metadataLimitError(message) {
+  const error = new Error(message);
+  error.code = "TIFF_METADATA_LIMIT";
+  error.tiffNoFallback = true;
+  return error;
+}
+
+function ensureMetadataSafeInt(value, label) {
+  try {
+    return ensureSafeInt(value, label);
+  } catch (_error) {
+    throw metadataLimitError(`Unsupported TIFF ${label}: ${String(value)}`);
+  }
+}
+
+function checkedAdd(a, b, label) {
+  const total = ensureMetadataSafeInt(a, label) + ensureMetadataSafeInt(b, label);
+  if (!Number.isSafeInteger(total)) throw metadataLimitError(`Unsupported TIFF ${label}: exceeds the exact integer range.`);
+  return total;
+}
+
+function checkedMultiply(a, b, label) {
+  const total = ensureMetadataSafeInt(a, label) * ensureMetadataSafeInt(b, label);
+  if (!Number.isSafeInteger(total)) throw metadataLimitError(`Unsupported TIFF ${label}: exceeds the exact integer range.`);
+  return total;
+}
+
+function reserveMetadata(budget, bytes, label) {
+  const count = ensureMetadataSafeInt(bytes, label);
+  if (budget.used + count > budget.limit) {
+    throw metadataLimitError(`TIFF metadata exceeds the ${budget.limit}-byte parsing limit while reading ${label}.`);
+  }
+  budget.used += count;
 }
 
 function readUnsigned(dv, offset, bytes, littleEndian) {
@@ -150,14 +190,27 @@ async function blobToUint8(blob) {
 }
 
 class FileReader {
-  constructor(file) {
+  constructor(file, rangeSource = null) {
     this.file = file;
     this.size = Number(file?.size || 0);
+    this.rangeSource = rangeSource;
   }
 
   async read(offset, length) {
     const safeOffset = clamp(Math.floor(Number(offset) || 0), 0, this.size);
     const safeLength = Math.max(0, Math.floor(Number(length) || 0));
+    if (this.rangeSource) {
+      const count = Math.min(safeLength, this.size - safeOffset);
+      const result = new Uint8Array(count);
+      const chunkBytes = Math.max(1, Math.min(1024 * 1024,
+        this.rangeSource.maxLogicalResultBytes || Infinity,
+        this.rangeSource.maxWorkingSetBytes ? Math.floor(this.rangeSource.maxWorkingSetBytes / 2) : Infinity));
+      for (let cursor = 0; cursor < count; cursor += chunkBytes) {
+        const bytes = await this.rangeSource.read(safeOffset + cursor, Math.min(chunkBytes, count - cursor));
+        result.set(bytes, cursor);
+      }
+      return result;
+    }
     return blobToUint8(this.file.slice(safeOffset, Math.min(this.size, safeOffset + safeLength)));
   }
 }
@@ -195,13 +248,16 @@ async function parseHeader(reader) {
   throw new Error("Unrecognized TIFF header.");
 }
 
-async function parseIfdAt(reader, header, ifdOffset) {
-  const offset = ensureSafeInt(ifdOffset, "IFD offset");
+async function parseIfdAt(reader, header, ifdOffset, metadataBudget) {
+  const offset = ensureMetadataSafeInt(ifdOffset, "IFD offset");
   const countBytes = await reader.read(offset, header.entryCountBytes);
   if (countBytes.length < header.entryCountBytes) throw new Error("TIFF IFD count is truncated.");
   const countView = new DataView(countBytes.buffer, countBytes.byteOffset, countBytes.byteLength);
-  const entryCount = readUnsigned(countView, 0, header.entryCountBytes, header.littleEndian);
-  const totalBytes = header.entryCountBytes + (entryCount * header.entrySize) + header.valueBytes;
+  const entryCount = ensureMetadataSafeInt(readUnsigned(countView, 0, header.entryCountBytes, header.littleEndian), "IFD entry count");
+  const entriesBytes = checkedMultiply(entryCount, header.entrySize, "IFD entry table size");
+  const totalBytes = checkedAdd(checkedAdd(header.entryCountBytes, entriesBytes, "IFD size"), header.valueBytes, "IFD size");
+  reserveMetadata(metadataBudget, totalBytes, "IFD entry table");
+  if (checkedAdd(offset, totalBytes, "IFD end offset") > reader.size) throw new Error("TIFF IFD is truncated.");
   const raw = await reader.read(offset, totalBytes);
   if (raw.length < totalBytes) throw new Error("TIFF IFD is truncated.");
   const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
@@ -211,21 +267,39 @@ async function parseIfdAt(reader, header, ifdOffset) {
     const entryOffset = header.entryCountBytes + (index * header.entrySize);
     const tag = dv.getUint16(entryOffset, header.littleEndian);
     const type = dv.getUint16(entryOffset + 2, header.littleEndian);
-    const count = readUnsigned(dv, entryOffset + 4, header.bigTiff ? 8 : 4, header.littleEndian);
+    const name = TAG_NAMES.get(tag);
+    if (!name) continue;
+    const count = ensureMetadataSafeInt(
+      readUnsigned(dv, entryOffset + 4, header.bigTiff ? 8 : 4, header.littleEndian),
+      `tag ${tag} value count`
+    );
     const bytesPerValue = TYPE_SIZES.get(type);
     if (!bytesPerValue || count <= 0) continue;
-    const totalValueBytes = count * bytesPerValue;
+    const totalValueBytes = checkedMultiply(count, bytesPerValue, `tag ${tag} value size`);
     let valueBytes = null;
     if (totalValueBytes <= header.valueBytes) {
       valueBytes = raw.subarray(entryOffset + header.entrySize - header.valueBytes, entryOffset + header.entrySize - header.valueBytes + totalValueBytes);
     } else {
-      const valueOffset = readUnsigned(dv, entryOffset + header.entrySize - header.valueBytes, header.valueBytes, header.littleEndian);
+      reserveMetadata(metadataBudget, totalValueBytes, `tag ${tag} values`);
+      const valueOffset = ensureMetadataSafeInt(
+        readUnsigned(dv, entryOffset + header.entrySize - header.valueBytes, header.valueBytes, header.littleEndian),
+        `tag ${tag} value offset`
+      );
+      if (checkedAdd(valueOffset, totalValueBytes, `tag ${tag} value end`) > reader.size) {
+        throw new Error(`TIFF tag ${tag} value is truncated.`);
+      }
       valueBytes = await reader.read(valueOffset, totalValueBytes);
       if (valueBytes.length < totalValueBytes) throw new Error(`TIFF tag ${tag} value is truncated.`);
     }
-    const name = TAG_NAMES.get(tag);
-    if (!name) continue;
-    fileDirectory[name] = decodeValues(valueBytes, type, count, header.littleEndian);
+    if ([273, 279, 324, 325, 330].includes(tag) && [3, 4, 16, 18].includes(type)) {
+      const Values = type === 16 || type === 18 ? Float64Array : Uint32Array;
+      const values = new Values(count);
+      const valueView = new DataView(valueBytes.buffer, valueBytes.byteOffset, valueBytes.byteLength);
+      for (let item = 0; item < count; item += 1) {
+        values[item] = ensureMetadataSafeInt(readUnsigned(valueView, item * bytesPerValue, bytesPerValue, header.littleEndian), `tag ${tag} value`);
+      }
+      fileDirectory[name] = values;
+    } else fileDirectory[name] = decodeValues(valueBytes, type, count, header.littleEndian);
   }
 
   const nextIfdOffset = readUnsigned(
@@ -308,23 +382,29 @@ class NativeTiffImage {
   getFileDirectory() { return this.fileDirectory; }
 
   summary() {
+    const samplesPerPixel = this.getSamplesPerPixel();
+    if (!Number.isSafeInteger(samplesPerPixel) || samplesPerPixel < 1 || samplesPerPixel > MAX_SAMPLES_PER_PIXEL) {
+      throw metadataLimitError(
+        `TIFF SamplesPerPixel ${String(samplesPerPixel)} exceeds the supported limit of ${MAX_SAMPLES_PER_PIXEL}.`
+      );
+    }
     return {
       image: this,
       fileDirectory: this.fileDirectory,
       width: this.getWidth(),
       height: this.getHeight(),
-      samplesPerPixel: this.getSamplesPerPixel(),
-      bitsPerSample: normalizeNumericArray(this.fileDirectory.BitsPerSample, 1, this.getSamplesPerPixel()),
-      sampleFormats: normalizeNumericArray(this.fileDirectory.SampleFormat, 1, this.getSamplesPerPixel()),
+      samplesPerPixel,
+      bitsPerSample: normalizeNumericArray(this.fileDirectory.BitsPerSample, 1, samplesPerPixel),
+      sampleFormats: normalizeNumericArray(this.fileDirectory.SampleFormat, 1, samplesPerPixel),
       planarConfiguration: Number(this.fileDirectory.PlanarConfiguration || 1),
       photometricInterpretation: Number(this.fileDirectory.PhotometricInterpretation || (this.getSamplesPerPixel() === 3 ? 2 : 1)),
       compression: Number(this.fileDirectory.Compression || 1),
       rowsPerStrip: Number(this.fileDirectory.RowsPerStrip || this.getHeight()),
-      stripOffsets: Array.isArray(this.fileDirectory.StripOffsets) ? this.fileDirectory.StripOffsets.map(Number) : [],
-      stripByteCounts: Array.isArray(this.fileDirectory.StripByteCounts) ? this.fileDirectory.StripByteCounts.map(Number) : [],
-      tileOffsets: Array.isArray(this.fileDirectory.TileOffsets) ? this.fileDirectory.TileOffsets.map(Number) : [],
-      subIFDOffsets: Array.isArray(this.fileDirectory.SubIFDs) ? this.fileDirectory.SubIFDs.map(Number) : [],
-      pageNumber: Array.isArray(this.fileDirectory.PageNumber) ? this.fileDirectory.PageNumber.map(Number) : [],
+      stripOffsets: listTagValues(this.fileDirectory.StripOffsets),
+      stripByteCounts: listTagValues(this.fileDirectory.StripByteCounts),
+      tileOffsets: listTagValues(this.fileDirectory.TileOffsets),
+      subIFDOffsets: listTagValues(this.fileDirectory.SubIFDs),
+      pageNumber: listTagValues(this.fileDirectory.PageNumber),
       newSubfileType: Number(this.fileDirectory.NewSubfileType || 0)
     };
   }
@@ -415,13 +495,21 @@ class NativeTiffImage {
 export class NativeTiffBackend {
   constructor(file, deps = {}) {
     this.file = file;
-    this.reader = new FileReader(file);
+    this.reader = new FileReader(file, deps?.tiffFmapRangeSource || null);
+    const metadataLimit = Number(deps?.tiffMaxMetadataBytes ?? DEFAULT_MAX_METADATA_BYTES);
+    this.metadataBudget = {
+      limit: Number.isSafeInteger(metadataLimit) && metadataLimit > 0 ? metadataLimit : DEFAULT_MAX_METADATA_BYTES,
+      used: 0
+    };
     this.ioConcurrency = Number(deps?.ioConcurrency) || 2;
     this.budgets = resolveTiffCacheBudgets(deps);
     this.littleEndian = true;
     this.bigTiff = false;
     this.header = null;
     this.images = [];
+    this.ifdRecords = new Map();
+    this.metadataIndex = null;
+    this.metadataWarnings = [];
     this._fallback = null;
   }
 
@@ -430,14 +518,65 @@ export class NativeTiffBackend {
     this.littleEndian = this.header.littleEndian;
     this.bigTiff = this.header.bigTiff;
     let offset = this.header.firstIfdOffset;
-    let guard = 0;
+    const mainOffsets = new Set();
     while (offset) {
-      if (guard++ > 4096) throw new Error("TIFF contains too many image directories.");
-      const parsed = await parseIfdAt(this.reader, this.header, offset);
-      this.images.push(new NativeTiffImage(this, this.images.length, parsed.fileDirectory, parsed.ifdOffset));
-      offset = Number(parsed.nextIfdOffset || 0);
+      if (mainOffsets.has(offset)) throw metadataLimitError("TIFF contains a cyclic main IFD chain.");
+      mainOffsets.add(offset);
+      const record = await this.readDirectoryAt(offset, this.images.length);
+      this.images.push(record.image);
+      offset = ensureMetadataSafeInt(record.nextIFDByteOffset || 0, "next IFD offset");
     }
     if (!this.images.length) throw new Error("TIFF has no readable image directories.");
+    const parents = new Map(), pending = [], queued = new Set(), visited = new Set(mainOffsets);
+    let links = 0;
+    const enqueue = (childOffset, parentOffset) => {
+      const child = ensureMetadataSafeInt(childOffset, "SubIFD offset");
+      if (!child) return;
+      if (!parents.has(child)) {
+        if (parents.size >= 4096) throw metadataLimitError("TIFF contains too many SubIFD references.");
+        parents.set(child, new Set());
+      }
+      if (!parents.get(child).has(parentOffset)) {
+        if (++links > 65536) throw metadataLimitError("TIFF contains too many SubIFD relationships.");
+        parents.get(child).add(parentOffset);
+      }
+      if (visited.has(child) || queued.has(child)) return;
+      queued.add(child);
+      pending.push([child, parentOffset]);
+    };
+    const enqueueChildren = (record) => {
+      for (const child of listTagValues(record.fileDirectory.SubIFDs)) {
+        enqueue(child, record.image.ifdOffset);
+      }
+    };
+    for (const record of this.ifdRecords.values()) enqueueChildren(record);
+    for (let cursor = 0; cursor < pending.length; cursor += 1) {
+      const [childOffset, parentOffset] = pending[cursor];
+      if (visited.has(childOffset)) continue;
+      visited.add(childOffset);
+      let record;
+      try { record = await this.readDirectoryAt(childOffset); }
+      catch (error) {
+        if (error?.code === "TIFF_METADATA_LIMIT") throw error;
+        this.metadataWarnings.push({ offset: childOffset, message: String(error?.message || error) });
+        continue; // Preserve usable base images when an optional overview is malformed.
+      }
+      enqueueChildren(record);
+      if (record.nextIFDByteOffset) enqueue(record.nextIFDByteOffset, parentOffset);
+    }
+    const summaries = new Map([...this.ifdRecords.values()].map((record) => [record.image, summarizeImage(record.image)]));
+    this.metadataIndex = buildTiffImageCatalog(this.images.map((image) => summaries.get(image)), [...summaries.values()], parents);
+  }
+
+  async readDirectoryAt(offset, imageIndex = null) {
+    const safeOffset = ensureMetadataSafeInt(offset, "IFD offset");
+    if (this.ifdRecords.has(safeOffset)) return this.ifdRecords.get(safeOffset);
+    if (this.ifdRecords.size >= 4096) throw metadataLimitError("TIFF contains too many image directories.");
+    const parsed = await parseIfdAt(this.reader, this.header, safeOffset, this.metadataBudget);
+    const image = new NativeTiffImage(this, imageIndex, parsed.fileDirectory, parsed.ifdOffset);
+    const record = { image, fileDirectory: parsed.fileDirectory, geoKeyDirectory: null, nextIFDByteOffset: parsed.nextIfdOffset };
+    this.ifdRecords.set(safeOffset, record);
+    return record;
   }
 
   async ensureFallback() {
@@ -456,14 +595,7 @@ export class NativeTiffBackend {
   }
 
   async parseFileDirectoryAt(offset) {
-    const parsed = await parseIfdAt(this.reader, this.header, offset);
-    const image = new NativeTiffImage(this, null, parsed.fileDirectory, parsed.ifdOffset);
-    return {
-      image,
-      fileDirectory: parsed.fileDirectory,
-      geoKeyDirectory: null,
-      nextIFDByteOffset: parsed.nextIfdOffset
-    };
+    return this.readDirectoryAt(offset);
   }
 
   async readRgbNative(image, options = {}) {
@@ -538,7 +670,9 @@ export class NativeTiffBackend {
   }
 
   close() {
-    for (const image of this.images) image.close();
+    for (const record of this.ifdRecords.values()) record.image.close();
+    this.ifdRecords.clear();
+    this.metadataIndex = null;
     this.images = [];
     if (this._fallback && typeof this._fallback.close === "function") {
       try { this._fallback.close(); } catch (_err) {}

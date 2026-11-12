@@ -1,9 +1,21 @@
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
+import { verifyFmapArtifact } from "./scripts/fmap-sources.mjs";
 
 const packageJson = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8")
 );
+
+const fmapWasmUrl = new URL("./wasm/fmap/pkg/fmap_core.wasm", import.meta.url);
+const fmapBuildUrl = new URL("./wasm/fmap/pkg/fmap_core.build.json", import.meta.url);
+
+function verifiedFmapWasm() {
+  const bytes = readFileSync(fmapWasmUrl);
+  const build = JSON.parse(readFileSync(fmapBuildUrl, "utf8"));
+  return verifyFmapArtifact(bytes, build, new URL("./wasm/fmap/src/", import.meta.url));
+}
+
+verifiedFmapWasm();
 
 export default defineConfig({
   define: {
@@ -12,6 +24,9 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    minify: "esbuild"
+    minify: "esbuild",
+    assetsInlineLimit: Number.MAX_SAFE_INTEGER,
+    // Codec imports must survive after the single-file packager removes assets.
+    rollupOptions: { output: { inlineDynamicImports: true } }
   }
 });

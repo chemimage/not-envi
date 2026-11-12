@@ -138,8 +138,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     console.info(`[state${suffix}] ${statusText || "idle"}`);
   }
 
-  async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, out = null){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out); }
-  async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, out = null){ return readBandWindowBIPCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out); }
+  async function readBandWindow(meta, ds, band, x0, y0, outW, outH, step, out = null, options = null){ return readBandWindowCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out, options); }
+  async function readBandWindowBIP(meta, ds, band, x0, y0, outW, outH, step, out = null, options = null){ return readBandWindowBIPCore(meta, ds, band, x0, y0, outW, outH, step, IO_CONCURRENCY, out, options); }
   function toFloat32(arr){ return toFloat32Core(arr); }
 
   // ========= Pyramid cache (per-band tiles) =========
@@ -154,6 +154,13 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     onProgressiveRender: () => scheduleRender(),
     getActiveDatasetId: () => state.activeId,
     getVisibleDatasetIds: () => getVisibleDatasetPanels().map((entry) => entry?.dataset?.id).filter((id) => id != null),
+    getVisibleViews: (ds) => getVisibleDatasetPanels()
+      .filter((entry) => entry.dataset === ds)
+      .map(({ panel }) => {
+        const viewport = getPanelRectDevice(panel.slot);
+        return { view: panel.view, bands: isThreeBandColorMode(ds) ? [0, 1, 2] : [resolveDisplayPanelBand(panel, ds)],
+          eff: panel.view.scale * (window.devicePixelRatio || 1), width: viewport.w, height: viewport.h };
+      }),
     getDevicePixelRatio: () => window.devicePixelRatio || 1,
     getViewportSize: () => ({ width: els.cpuCanvas.width, height: els.cpuCanvas.height }),
     getIOConcurrency: () => IO_CONCURRENCY
@@ -910,9 +917,9 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   function resolveDisplayRange(ds, band, fallbackArray){ return resolveDisplayRangeCore(ds, band, fallbackArray, getBandSettings); }
 
-  async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null){
+  async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null, options = {}){
     ds.__pyrPreferImmediate = !!state.mouse.dragging;
-    return pyramid.tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
+    return pyramid.tryRasterFromPyramid(ds, band, eff, viewportW, viewportH, options);
   }
 
   function buildGrayCanvas(rasterF32, w, h, params, opts = {}){
@@ -1227,7 +1234,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     downloadBlob,
     setActiveBand,
     discreteBarMaxBands: APP_CONFIG.spectrum.discreteBarMaxBands,
-    readSpectrumAtPixel: (ds, ix, iy) => readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY),
+    readSpectrumAtPixel: (ds, ix, iy, options = null) => readSpectrumAtPixelCore(ds, ix, iy, IO_CONCURRENCY, options),
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });
 

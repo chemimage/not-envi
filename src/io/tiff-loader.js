@@ -2,6 +2,40 @@ import { APP_CONFIG } from "../app/config.js";
 import { openTiffBackend } from "./tiff/backend/index.js";
 import { describeTiffDataset } from "./tiff/describe.js";
 import { TIFF_EXT_RE, yieldToEventLoop } from "./tiff/shared.js";
+import { createFmapRangeDataSource } from "./fmap/index.js";
+import { createFmapTiffDataSource } from "./fmap/tiff-range-source.js";
+import { loadFmapWasmBytes } from "./fmap/wasm.js";
+
+async function openTiffFmapRangeSource(file, deps) {
+  if (!deps?.fmapEnabled) return null;
+  const configured = { ...APP_CONFIG.fmap, ...(deps?.fmapOptions || {}) };
+  const wasmBytes = deps?.fmapWasmBytes ?? await loadFmapWasmBytes();
+  const rangeFactory = deps?.createFmapRangeDataSource || createFmapRangeDataSource;
+  const maxLogicalResultBytes = deps?.tiffFmapOptions?.maxLogicalResultBytes ?? (128 * 1024 * 1024);
+  const maxLogicalBytes = deps?.tiffFmapOptions?.maxLogicalBytes ?? maxLogicalResultBytes;
+  return createFmapTiffDataSource(file, {
+    createRangeSource: (selectedFile) => rangeFactory(selectedFile, {
+      pageSize: configured.pageSizeBytes,
+      poolBytes: configured.poolBytes,
+      concurrency: deps?.ioConcurrency ?? configured.maxInflightRequests,
+      maxInflightBytes: configured.maxInflightBytes,
+      maxResultBytes: configured.maxResultBytes,
+      maxQueuedRequests: configured.maxQueuedRequests,
+      maxQueuedBytes: configured.maxQueuedBytes,
+      maxLogicalResultBytes,
+      maxLogicalBytes,
+      batchBytes: configured.batchBytes,
+      wasmBytes
+    }),
+    pageSize: configured.pageSizeBytes,
+    poolBytes: configured.poolBytes,
+    concurrency: deps?.ioConcurrency ?? configured.maxInflightRequests,
+    maxWorkingSetBytes: deps?.tiffFmapOptions?.maxWorkingSetBytes ?? configured.maxQueuedBytes,
+    maxLogicalResultBytes,
+    maxQueuedReservations: deps?.tiffFmapOptions?.maxQueuedReservations ?? configured.maxQueuedRequests,
+    maxQueuedReservationBytes: deps?.tiffFmapOptions?.maxQueuedReservationBytes ?? (configured.maxQueuedBytes * 2)
+  });
+}
 
 function configureDatasetSource(desc, deps) {
   if (desc.mode === "linear" && desc.cached && desc.base) {
@@ -37,10 +71,19 @@ export async function addDatasetFromFile(file, deps = {}) {
 
   deps?.setStatus?.("opening TIFF…", "warn");
   await yieldToEventLoop();
-  const tiff = await openTiffBackend(file, deps);
-  await yieldToEventLoop();
-
-  const desc = await describeTiffDataset(tiff, file, deps);
+  let tiff = null;
+  let fmapRangeSource = null;
+  let desc = null;
+  try {
+    fmapRangeSource = await openTiffFmapRangeSource(file, deps);
+    tiff = await openTiffBackend(file, { ...deps, tiffFmapRangeSource: fmapRangeSource });
+    await yieldToEventLoop();
+    desc = await describeTiffDataset(tiff, file, { ...deps, tiffFmapRangeSource: fmapRangeSource });
+  } catch (error) {
+    try { fmapRangeSource?.close?.(); } catch (_closeError) {}
+    try { tiff?.close?.(); } catch (_closeError) {}
+    throw error;
+  }
   configureDatasetSource(desc, deps);
   maybeCloseLinearTiff(tiff, desc);
 

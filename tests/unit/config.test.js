@@ -3,6 +3,7 @@ import {
   APP_CONFIG,
   detectDeviceMemoryGiB,
   detectHardwareCores,
+  isFmapRequested,
   resolveHardwareConcurrencyLimit,
   resolvePreviewOverviewLongEdge
 } from "../../src/app/config.js";
@@ -22,6 +23,14 @@ afterEach(() => {
 });
 
 describe("config hardware concurrency", () => {
+  test("fmap remains opt-in through an explicit query switch", () => {
+    expect(APP_CONFIG.fmap.enabledByDefault).toBe(false);
+    expect(isFmapRequested("?fmap=1")).toBe(true);
+    expect(isFmapRequested("?fmap=true")).toBe(true);
+    expect(isFmapRequested("?fmap=0")).toBe(false);
+    expect(isFmapRequested("")).toBe(false);
+  });
+
   test("resolveHardwareConcurrencyLimit applies configurable fractions", () => {
     Object.defineProperty(navigator, "hardwareConcurrency", {
       configurable: true,

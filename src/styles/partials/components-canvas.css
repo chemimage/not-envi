@@ -83,7 +83,6 @@
     @apply absolute left-0 top-1/2 flex flex-col items-center gap-1.5 rounded-xs border border-gray-700 bg-gray-900/80 p-1.5;
     transform: translateY(-50%);
     width: 100%;
-    padding-bottom: 10px;
     max-height: 100%;
     backdrop-filter: blur(4px);
   }

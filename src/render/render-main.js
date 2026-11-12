@@ -21,6 +21,10 @@ import {
   resolveThreeBandChannelOrder
 } from "../app/three-band-display.js";
 
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
 export function createRenderer(deps) {
   const {
     state,
@@ -345,6 +349,14 @@ export function createRenderer(deps) {
       Number(compositeRaster?.refineFactor) || 1
     );
     const approximate = !!(raster?.approximate || compositeRaster?.approximate);
+    // Pyramid reads have no direct-read refinement key. Tile completion wakes
+    // the renderer; polling an unchanged preview just repeats composition and
+    // histograms while competing with the pyramid's idle work scheduler.
+    if (!currentRenderKey) {
+      setPanelRefineState(ds, panelSlot, null);
+      setForcedFullRenderKey(ds, panelSlot, null);
+      return false;
+    }
     if (!approximate) {
       if (currentRenderKey && getForcedFullRenderKey(ds, panelSlot) === currentRenderKey) {
         setForcedFullRenderKey(ds, panelSlot, null);
@@ -367,7 +379,7 @@ export function createRenderer(deps) {
     return true;
   }
 
-  async function readRasterDirect(ds, band, eff, viewportW, viewportH) {
+  async function readRasterDirect(ds, band, eff, viewportW, viewportH, options = null) {
     const t0 = now();
     let approximate = false;
     const panelSlot = Number(ds.__renderPanelSlot) || 1;
@@ -397,9 +409,9 @@ export function createRenderer(deps) {
       try {
         let raw;
         if (ds.meta.interleave === "bip") {
-          raw = await readBandWindowBIP(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step, scratch);
+          raw = await readBandWindowBIP(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step, scratch, options);
         } else {
-          raw = await readBandWindow(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step, scratch);
+          raw = await readBandWindow(ds.meta, ds.ds, band, srcX0, srcY0, validW, validH, step, scratch, options);
         }
         const src = raw === scratch ? scratch : toFloat32(raw, scratch);
         if (fullCoverage) {
@@ -436,17 +448,19 @@ export function createRenderer(deps) {
     };
   }
 
-  async function readRasterForBand(ds, band, eff, viewportW, viewportH) {
+  async function readRasterForBand(ds, band, eff, viewportW, viewportH, options = null) {
     const stats = ensureRenderStats(ds);
     stats.pyramidAttempts += 1;
-    let raster = await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
+    let raster = options?.pyramidBands
+      ? await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH, { bands: options.pyramidBands })
+      : await tryRasterFromPyramid(ds, band, eff, viewportW, viewportH);
     if (raster) {
       stats.pyramidHits += 1;
     }
     if (!raster) {
       stats.pyramidMisses += 1;
       setStatus("reading…", "warn");
-      raster = await readRasterDirect(ds, band, eff, viewportW, viewportH);
+      raster = await readRasterDirect(ds, band, eff, viewportW, viewportH, options);
     }
     return raster;
   }
@@ -563,6 +577,7 @@ export function createRenderer(deps) {
         const t0 = now();
         const composite = await ds.ds.readCompositeWindow(ds.meta, srcX0, srcY0, validW, validH, step, {
           cancelled: typeof options?.cancelled === "function" ? options.cancelled : null,
+          priority: options?.priority || "foreground",
           onProgress: typeof options?.onPartial === "function"
             ? async (partialComposite) => {
               const partialRasters = packCompositeBandsToRasters(
@@ -599,7 +614,9 @@ export function createRenderer(deps) {
       }
     }
     if (!rasters) {
-      rasters = await Promise.all(sourceBands.map((band) => readRasterForBand(ds, band, eff, viewportW, viewportH)));
+      rasters = await Promise.all(sourceBands.map((band) => readRasterForBand(ds, band, eff, viewportW, viewportH, {
+        ...options, pyramidBands: sourceBands
+      })));
     }
     const rasterByBand = new Map(rasters.map((raster) => [raster.band, raster]));
     return {
@@ -761,6 +778,7 @@ export function createRenderer(deps) {
       } else {
         compositeRaster = await getOrStartPanelRead(ds, panelSlot, requestKey, () => readCompositeRaster(ds, eff, els.cpuCanvas.width, els.cpuCanvas.height, {
           cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
+          priority: "foreground",
           onPartial: async (partialCompositeRaster) => {
             if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
             const partialCanvas = buildCompositeCanvas(ds, partialCompositeRaster, { transparentNoData: true });
@@ -776,7 +794,10 @@ export function createRenderer(deps) {
       if (reuseGray) {
         raster = ds.lastRaster;
       } else {
-        raster = await readRasterForBand(ds, band, eff, els.cpuCanvas.width, els.cpuCanvas.height);
+        raster = await readRasterForBand(ds, band, eff, els.cpuCanvas.width, els.cpuCanvas.height, {
+          cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
+          priority: "foreground"
+        });
       }
     }
     if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
@@ -842,6 +863,7 @@ export function createRenderer(deps) {
         ensureViewHistogram(d);
       }, 180);
     } catch (e) {
+      if (isAbortError(e)) return;
       console.error(e);
       if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
       setStatus("render error", "err");
@@ -914,6 +936,7 @@ export function createRenderer(deps) {
             if (colorMode) {
               compositeRaster = await getOrStartPanelRead(ds, panelSlot, requestKey, () => readCompositeRaster(ds, eff, viewport.w, viewport.h, {
                 cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
+                priority: "foreground",
                 onPartial: async (partialCompositeRaster) => {
                   if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
                   const partialCanvas = buildCompositeCanvas(ds, partialCompositeRaster, { transparentNoData: true });
@@ -925,7 +948,10 @@ export function createRenderer(deps) {
               if (!compositeRaster || !isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
               raster = compositeRaster.rasterByBand.get(band) || compositeRaster.rasterByBand.get(0) || null;
             } else {
-              raster = await readRasterForBand(ds, band, eff, viewport.w, viewport.h);
+              raster = await readRasterForBand(ds, band, eff, viewport.w, viewport.h, {
+                cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
+                priority: "foreground"
+              });
             }
             if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
 
@@ -1003,6 +1029,7 @@ export function createRenderer(deps) {
         }, 180);
       }
     } catch (e) {
+      if (isAbortError(e)) return;
       console.error(e);
       if (seq !== state.renderSeq) return;
       setStatus("render error", "err");
@@ -1043,7 +1070,10 @@ export function createRenderer(deps) {
           try {
             clampView(panel.slot, ds);
             const eff = ds.view.scale * dpr;
-            const raster = await readRasterForBand(ds, band, eff, viewport.w, viewport.h);
+            const raster = await readRasterForBand(ds, band, eff, viewport.w, viewport.h, {
+              cancelled: () => seq !== state.renderSeq,
+              priority: "foreground"
+            });
             if (seq !== state.renderSeq) return;
 
             const stableRaster = isStableRaster(raster);
@@ -1127,6 +1157,7 @@ export function createRenderer(deps) {
         }, 180);
       }
     } catch (e) {
+      if (isAbortError(e)) return;
       console.error(e);
       if (seq !== state.renderSeq) return;
       setStatus("render error", "err");
@@ -1134,6 +1165,17 @@ export function createRenderer(deps) {
   }
 
   async function render(opts = {}) {
+    try {
+      return await renderView(opts);
+    } catch (error) {
+      // View changes can abort during raster loading, before the drawing
+      // handlers run. Scheduled renders have no caller to consume that normal
+      // cancellation; preserve unexpected read errors for their caller.
+      if (!isAbortError(error)) throw error;
+    }
+  }
+
+  async function renderView(opts = {}) {
     if (shouldDeferRender?.()) { onDeferredRender?.(); return; }
     const visible = listVisiblePanels();
     if (!visible.length) {

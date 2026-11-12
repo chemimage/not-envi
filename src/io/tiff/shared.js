@@ -12,6 +12,7 @@ export const TIFF_EXT_RE = /\.(tif|tiff)$/i;
 export const TIFF_PHOTOMETRIC_WHITE_IS_ZERO = 0;
 export const TIFF_PHOTOMETRIC_BLACK_IS_ZERO = 1;
 export const TIFF_PHOTOMETRIC_RGB = 2;
+const MAX_TIFF_SAMPLES_PER_PIXEL = 4096;
 export const RGB_U8_TYPE = 1;
 export const RGB_U8_INFO = DATA_TYPES.get(RGB_U8_TYPE);
 
@@ -53,7 +54,8 @@ export function createTiffStats() {
 
 export function listTagValues(value) {
   if (Array.isArray(value)) return value.map((entry) => Number(entry));
-  if (ArrayBuffer.isView(value)) return Array.from(value, (entry) => Number(entry));
+  if (ArrayBuffer.isView(value) && !(value instanceof BigUint64Array) && !(value instanceof BigInt64Array)) return value;
+  if (ArrayBuffer.isView(value)) return Float64Array.from(value, (entry) => Number(entry));
   if (value == null) return [];
   return [Number(value)];
 }
@@ -109,6 +111,13 @@ export function summarizeImage(image) {
   const width = Number(image.getWidth());
   const height = Number(image.getHeight());
   const samplesPerPixel = Number(image.getSamplesPerPixel()) || 1;
+  if (!Number.isSafeInteger(samplesPerPixel) || samplesPerPixel < 1 || samplesPerPixel > MAX_TIFF_SAMPLES_PER_PIXEL) {
+    const error = new Error(
+      `TIFF SamplesPerPixel ${String(samplesPerPixel)} exceeds the supported limit of ${MAX_TIFF_SAMPLES_PER_PIXEL}.`
+    );
+    error.code = "TIFF_METADATA_LIMIT";
+    throw error;
+  }
   const bitsPerSample = [];
   const sampleFormats = [];
   for (let sample = 0; sample < samplesPerPixel; sample += 1) {
@@ -172,7 +181,12 @@ function isCompatibleOverviewSummary(base, candidate) {
 }
 
 export async function loadSubIfdOverviewSummaries(tiff, baseSummary, deps = {}) {
-  const offsets = (Array.isArray(baseSummary?.subIFDOffsets) ? baseSummary.subIFDOffsets : [])
+  if (tiff?.metadataIndex) {
+    const family = tiff.metadataIndex.families.find((entry) => entry.base === baseSummary
+      || entry.base.fileDirectory?.__ifdOffset === baseSummary.fileDirectory?.__ifdOffset);
+    return family ? family.levels.slice(1) : [];
+  }
+  const offsets = Array.from(baseSummary?.subIFDOffsets || [])
     .map((value) => firstSafeOffsetOrNull([value]))
     .filter((value) => value != null);
   if (!offsets.length || !tiff || typeof tiff.parseFileDirectoryAt !== "function") return [];
@@ -421,6 +435,7 @@ function isImageEnumerationRangeError(err) {
 }
 
 export async function loadImageSummaries(tiff, deps = {}) {
+  if (tiff?.metadataIndex) return tiff.metadataIndex.mainImages;
   const images = [];
   let imageCount = null;
   if (typeof tiff?.getImageCount === "function") {

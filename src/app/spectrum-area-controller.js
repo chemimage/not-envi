@@ -38,6 +38,10 @@ export function createSpectrumAreaController(deps) {
     return !!(typeof shouldAbort === "function" && shouldAbort());
   }
 
+  function isAbortError(error) {
+    return error?.name === "AbortError";
+  }
+
   function reduceBandValuesLocal(values, sampleIndices) {
     let sum = 0;
     let sumSq = 0;
@@ -145,13 +149,13 @@ export function createSpectrumAreaController(deps) {
     return reduceBandValuesLocal(values, sampleIndices);
   }
 
-  async function readWindowF32(ds, band, x0, y0, outW, outH, step) {
+  async function readWindowF32(ds, band, x0, y0, outW, outH, step, options = null) {
     const length = Math.max(0, outW * outH);
     const scratch = floatScratchPool.acquire(length);
     try {
       const raw = ds.meta.interleave === "bip"
-        ? await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch)
-        : await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch);
+        ? await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch, options)
+        : await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch, options);
       return {
         data: raw === scratch ? scratch : toFloat32(raw, scratch),
         release() {
@@ -202,7 +206,16 @@ export function createSpectrumAreaController(deps) {
       for (const item of sampleItems) {
         if (isAborted(shouldAbort)) return ABORTED;
         const { bounds, outW, outH, sampleIndices } = item;
-        const window = await readWindowF32(ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep);
+        let window;
+        try {
+          window = await readWindowF32(ds, band, bounds.x0, bounds.y0, outW, outH, sampleStep, {
+            cancelled: shouldAbort,
+            priority: "background"
+          });
+        } catch (error) {
+          if (isAbortError(error) && isAborted(shouldAbort)) return ABORTED;
+          throw error;
+        }
         try {
           if (isAborted(shouldAbort)) return ABORTED;
           const reduced = await reduceBandValues(window.data, sampleIndices, shouldAbort);
