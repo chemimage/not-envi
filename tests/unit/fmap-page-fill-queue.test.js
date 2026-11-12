@@ -25,11 +25,11 @@ async function flushMicrotasks(turns = 6) {
   for (let index = 0; index < turns; index += 1) await Promise.resolve();
 }
 
-async function harness({ slots = 4, concurrency = 2, maxQueuedRequests = 16, maxQueuedBytes = PAGE_SIZE * 16 } = {}) {
+async function harness({ slots = 4, concurrency = 2, maxQueuedRequests = 16, maxQueuedBytes = PAGE_SIZE * 16, fileSize = PAGE_SIZE * 6 } = {}) {
   const { instance } = await WebAssembly.instantiate(wasmBytes, {});
   const core = instance.exports;
   expect(Number(core.fmap_init(PAGE_SIZE, slots))).toBe(0);
-  const fileBytes = Uint8Array.from({ length: PAGE_SIZE * 6 }, (_value, index) => (index * 17) & 0xff);
+  const fileBytes = Uint8Array.from({ length: fileSize }, (_value, index) => (index * 17) & 0xff);
   const reads = [];
   const tasks = [];
   const readFile = vi.fn((offset, length) => {
@@ -86,6 +86,37 @@ function settled(promise) {
 }
 
 describe("FmapPageFillQueue", () => {
+  test("dense fills stop at EOF and retain exact caller bounds", async () => {
+    const h = await harness({ fileSize: PAGE_SIZE + 13 });
+    const request = h.queue.request({ pageIndex: 1, offset: 10, length: 3, fillBytes: PAGE_SIZE });
+    await h.runTasks();
+    expect(h.reads[0]).toMatchObject({ offset: PAGE_SIZE, length: 13 });
+    await h.finishRead();
+    const lease = await request.promise;
+    expect(h.leaseBytes(lease)).toEqual(Array.from(h.fileBytes.subarray(PAGE_SIZE + 10)));
+    lease.release(); h.queue.close();
+  });
+
+  test("dense hints fetch adjacent channel bytes once while plain sparse requests stay exact", async () => {
+    const h = await harness();
+    const row = h.queue.request({ pageIndex: 0, offset: 100, length: 382, fillBytes: 4096 });
+    await h.runTasks();
+    expect(h.reads[0]).toMatchObject({ offset: 0, length: 4096 });
+    await h.finishRead();
+    const lease = await row.promise;
+    expect(h.leaseBytes(lease)).toEqual(Array.from(h.fileBytes.subarray(100, 482)));
+    lease.release();
+    const tail = h.queue.request({ pageIndex: 0, offset: 482, length: 2 });
+    expect(tail.lease).toBeTruthy(); tail.lease.release();
+    const sparse = h.queue.request({ pageIndex: 1, offset: 17, length: 1 });
+    await h.runTasks();
+    expect(h.reads[1]).toMatchObject({ offset: PAGE_SIZE + 17, length: 1 });
+    await h.finishRead(); (await sparse.promise).release();
+    expect(h.core.fmap_pinned_bytes()).toBe(0);
+    expect(() => h.queue.request({ pageIndex: 0, offset: 0, length: 1, fillBytes: PAGE_SIZE * 2 })).toThrow(/grain/);
+    h.queue.close();
+  });
+
   test("deduplicates overlapping waiters and reads only a missing tail", async () => {
     const h = await harness({ concurrency: 2 });
     const first = h.queue.request({ pageIndex: 0, offset: 0, length: 64, priority: 1, generation: 1, requestId: 1 });

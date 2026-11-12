@@ -112,10 +112,12 @@ export class FmapPageFillQueue {
     };
   }
 
-  request({ pageIndex, offset, length, priority = 0, generation = this.generation, requestId } = {}) {
+  request({ pageIndex, offset, length, fillBytes = 0, priority = 0, generation = this.generation, requestId } = {}) {
     if (this.closed) throw aborted("fmap page queue is closed.");
     if (generation !== this.generation) throw aborted("Obsolete fmap page generation.");
     integer(pageIndex, "page index"); integer(offset, "page offset"); integer(length, "page length", 1);
+    integer(fillBytes, "fill grain");
+    if (fillBytes > this.pageSize) throw new RangeError("fmap fill grain exceeds one page.");
     const base = integer(pageIndex * this.pageSize, "page file offset");
     const end = integer(base + offset + length, "page range end");
     if (offset + length > this.pageSize || end > this.fileSize) throw new RangeError("fmap page range exceeds its page or EOF.");
@@ -134,7 +136,7 @@ export class FmapPageFillQueue {
     }
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-    const waiter = { id: ++this.nextId, requestId, record: null, generation, pageIndex, offset, length,
+    const waiter = { id: ++this.nextId, requestId, record: null, generation, pageIndex, offset, length, fillBytes,
       priority: priority === 1 ? 1 : 0, resolve, reject, settled: false };
     this.parked.set(waiter.id, waiter);
     this.#admit();
@@ -271,7 +273,16 @@ export class FmapPageFillQueue {
           start: waiter.offset, end: waiter.offset + waiter.length
         })));
         const missing = record.forceFull ? [{ start: 0, end: pageLength }] : missingRanges(wanted, this.#ranges(slot));
-        const range = missing[0];
+        let range = missing[0];
+        // Dense raster hints coalesce nearby channel/column demands without
+        // growing fpages or bypassing sparse validity. Active bytes use the
+        // expanded length, bounded by this file page and EOF; callers still
+        // receive only their original exact range/lease.
+        const grain = Math.max(0, ...[...record.waiters.values()].map((waiter) => waiter.fillBytes));
+        if (range && grain && !record.forceFull) range = {
+          start: Math.floor(range.start / grain) * grain,
+          end: Math.min(pageLength, Math.ceil(range.end / grain) * grain)
+        };
         if (!range) throw new Error("fmap page demand has no missing or resident range.");
         const io = { record, slot, generation: this.generation, start: range.start,
           length: range.end - range.start, full: record.forceFull };

@@ -44,6 +44,11 @@ export function computeHistogram(arr, bins = 256) {
     sum += v;
     sumSq += v * v;
   }
+  return finishHistogram(out, min, max, count, sum, sumSq);
+}
+
+function finishHistogram(out, min, max, count, sum, sumSq) {
+  const bins = out.length;
   let modeBin = 0;
   let modeCount = -1;
   for (let i = 0; i < out.length; i += 1) {
@@ -61,6 +66,26 @@ export function computeHistogram(arr, bins = 256) {
   const binWidth = (max - min) / Math.max(1, bins);
   const mode = min + ((modeBin + 0.5) / Math.max(1, bins)) * (max - min);
   return { bins: out, min, max, count, p1, p99, mean, rms, stdDev, mode, modeBin, binWidth };
+}
+
+/** Exact ordinary histogram from a retained uint8 frequency table, including
+ * the same observed min/max and percentile-bin semantics as computeHistogram. */
+export function histogramFromUint8Counts(counts) {
+  let min = Infinity, max = -Infinity, count = 0, sum = 0, sumSq = 0;
+  for (let value = 0; value < 256; value += 1) {
+    const n = counts[value];
+    if (!n) continue;
+    min = Math.min(min, value); max = value; count += n; sum += value * n; sumSq += value * value * n;
+  }
+  if (!count) { min = 0; max = 1; }
+  else if (min === max) max = min + 1e-6;
+  const out = new Uint32Array(256);
+  const scale = 255 / (max - min);
+  for (let value = 0; value < 256; value += 1) if (counts[value]) {
+    const bin = clamp(Math.floor((value - min) * scale), 0, 255);
+    out[bin] += counts[value];
+  }
+  return finishHistogram(out, min, max, count, sum, sumSq);
 }
 
 export function tone01(v, minVal, maxVal, brightness, gain, contrast) {
@@ -82,7 +107,7 @@ export function typeDefaultRange(meta) {
   return { min: null, max: null };
 }
 
-export function resolveDisplayRange(ds, band, fallbackArray, getBandSettings) {
+export function resolveDisplayRange(ds, band, fallbackArray, getBandSettings, raster = null) {
   const s = getBandSettings(ds, band);
   let minVal = s.min;
   let maxVal = s.max;
@@ -92,7 +117,7 @@ export function resolveDisplayRange(ds, band, fallbackArray, getBandSettings) {
   )
     ? ds.bandStatsView
     : null;
-  const stats = ds.bandStatsWhole.get(band) || viewStats;
+  const stats = ds.bandStatsWhole.get(band) || raster?.displayRangeStats || raster?.histogramStats || viewStats;
   if ((minVal == null || maxVal == null) && stats) {
     if (minVal == null) minVal = stats.p1;
     if (maxVal == null) maxVal = stats.p99;

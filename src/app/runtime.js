@@ -41,6 +41,7 @@ import { createGpuRuntime } from "../render/gpu-runtime.js";
 import { createHudController } from "../render/hud.js";
 import { createOverlayRenderer } from "../render/overlay.js";
 import { createPyramidController } from "../render/pyramid-cache.js";
+import { createRgbCompositor } from "../render/rgb-composition.js";
 import { createRenderer } from "../render/render-main.js";
 import { createSpectrumController } from "../render/spectrum.js";
 import { createLineProfileController } from "../render/line-profile.js";
@@ -639,7 +640,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   async function buildBandStatsWhole(ds, band){ await histogram.buildBandStatsWhole(ds, band); }
   async function buildEstimatedViewHistogram(ds){ await histogram.buildEstimatedViewHistogram(ds); }
-  function ensureViewHistogram(ds){ histogram.ensureViewHistogram(ds); }
+  function ensureViewHistogram(ds, raster = null){ histogram.ensureViewHistogram(ds, raster); }
   async function updateSelectionHistogram(ds, selections){ await histogram.updateSelectionHistogram(ds, selections); }
   function clearSelectionHistogram(ds){ histogram.clearSelectionHistogram(ds); }
   function drawHistogram(ds){ histogram.drawHistogram(ds); }
@@ -915,7 +916,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     render();
   }
 
-  function resolveDisplayRange(ds, band, fallbackArray){ return resolveDisplayRangeCore(ds, band, fallbackArray, getBandSettings); }
+  function resolveDisplayRange(ds, band, fallbackArray, raster = null){ return resolveDisplayRangeCore(ds, band, fallbackArray, getBandSettings, raster); }
 
   async function tryRasterFromPyramid(ds, band, eff, viewportW = null, viewportH = null, options = {}){
     ds.__pyrPreferImmediate = !!state.mouse.dragging;
@@ -972,47 +973,11 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     return off;
   }
 
+  const colorCompositor = createRgbCompositor({ createCanvas: () => document.createElement("canvas"),
+    createImageData: (w, h) => cpuCtx.createImageData(w, h), tone01 });
+  state.colorCompositionStats = colorCompositor.stats;
   function buildColorCanvas(rasters, paramsByChannel, opts = {}){
-    if (!Array.isArray(rasters) || rasters.length < 3) return;
-    const [rRaster, gRaster, bRaster] = rasters;
-    if (!rRaster || !gRaster || !bRaster) return;
-    const transparentNoData = !!opts?.transparentNoData;
-    const w = rRaster.w;
-    const h = rRaster.h;
-    const img = cpuCtx.createImageData(w, h);
-    const dst = img.data;
-    const rData = rRaster.dataF32;
-    const gData = gRaster.dataF32;
-    const bData = bRaster.dataF32;
-    const rParams = paramsByChannel[0];
-    const gParams = paramsByChannel[1];
-    const bParams = paramsByChannel[2];
-
-    for (let i = 0, j = 0; i < rData.length; i += 1, j += 4) {
-      if (
-        transparentNoData
-        && (!Number.isFinite(rData[i]) || !Number.isFinite(gData[i]) || !Number.isFinite(bData[i]))
-      ) {
-        dst[j] = 0;
-        dst[j + 1] = 0;
-        dst[j + 2] = 0;
-        dst[j + 3] = 0;
-        continue;
-      }
-      const r = Math.round(tone01(rData[i], rParams.minVal, rParams.maxVal, rParams.brightness, rParams.gain, rParams.contrast) * 255);
-      const g = Math.round(tone01(gData[i], gParams.minVal, gParams.maxVal, gParams.brightness, gParams.gain, gParams.contrast) * 255);
-      const b = Math.round(tone01(bData[i], bParams.minVal, bParams.maxVal, bParams.brightness, bParams.gain, bParams.contrast) * 255);
-      dst[j] = r;
-      dst[j + 1] = g;
-      dst[j + 2] = b;
-      dst[j + 3] = 255;
-    }
-
-    const off = document.createElement("canvas");
-    off.width = w;
-    off.height = h;
-    off.getContext("2d", { alpha: transparentNoData }).putImageData(img, 0, 0);
-    return off;
+    return colorCompositor.compose(rasters, paramsByChannel, opts);
   }
 
   function cpuRenderColor(rasters, paramsByChannel){
@@ -1156,6 +1121,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     cpuRenderColor,
     buildGrayCanvas,
     buildColorCanvas,
+    clearColorComposition: () => colorCompositor.clear(),
     drawCanvasToViewport,
     tryRasterFromPyramid,
     readBandWindow,
