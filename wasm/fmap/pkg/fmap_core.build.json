@@ -74,7 +74,7 @@
     },
     {
       "path": "numeric/include/numeric.h",
-      "sha256": "c23e661eeacc2fd57edfd8d18db4b2eeda8ebc7c3bd6346cd363157a9ae8157e"
+      "sha256": "3600f75a6b24e86e530198040f355247510b1a2c5fdcafbca8cd49a92d96eba6"
     },
     {
       "path": "numeric/src/numeric.c",
@@ -89,7 +89,7 @@
       "sha256": "193aa4e3c3b8a5dd355ef9726b3a7bc837d79b86204886edfa3457e7c6bd0083"
     }
   ],
-  "sourceSha256": "b3ad22cf7288153a9f3e787402f70faa2db630c6c7f9305a398766146ebfbf4a",
+  "sourceSha256": "fd4182b26d22646df235a27cd5fc5ff84d57f967f5930f061c649f168b252605",
   "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
   "target": "wasm32-unknown-unknown",
   "optimization": "-O2 -flto",
