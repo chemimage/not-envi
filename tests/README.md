@@ -2,6 +2,19 @@
 
 Run `npm test` for unit/controller tests followed by the browser smoke workflow.
 Use `npm run test:unit -- tests/unit/<name>.test.js` for a focused unit run.
+
+CI runs lint first, builds the pinned C/WASM core once, and shares that exact
+artifact with parallel unit, app-browser/large-file, iPhone-emulation,
+Pixel-emulation and checked-benchmark jobs. The app suite already contains all
+desktop fmap cases, so CI does not run that profile twice. Standalone
+`npm run test:fmap-browser` still runs all three profiles. Benchmarks stay
+sequential on their own runner to avoid interference from other test suites.
+The matrix stops remaining jobs on failure, and newer runs cancel superseded
+runs on the same ref. Packaging waits for every check: it builds one HTML file,
+tests that exact file offline, then retains `site-dist`. The stable `validate`
+check fails if any prerequisite failed, was cancelled or was skipped. These CI
+artifacts do not publish a release; release/Pages publication remains tag-based.
+
 Use `npm run benchmark:fmap` for the deterministic 8 GiB logical-source pager microbenchmark.
 Use `npm run test:fmap-large` for the opt-in sparse-file browser gate; it creates a temporary file with markers beyond 4 GiB and removes it afterward.
 Use `npm run test:fmap-core` for the C/WASM ABI and fixed-pool tests.

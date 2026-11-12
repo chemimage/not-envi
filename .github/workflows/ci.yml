@@ -1,45 +1,139 @@
 name: CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
+  fmap-core:
+    name: Lint and build shared fmap core
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-validation
         with:
-          node-version: "22"
-          cache: "npm"
+          fmap-core: 'false'
+      - run: npm run lint
+      - name: Cache pinned fmap C toolchain
+        id: wasi
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/wasi-sdk-24.0-x86_64-linux
+          key: ${{ runner.os }}-wasi-sdk-24-c6c38aab56e5de88
       - name: Install pinned fmap C toolchain
+        if: steps.wasi.outputs.cache-hit != 'true'
         shell: bash
         run: |
           curl --fail --location --retry 3 https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-x86_64-linux.tar.gz --output "$RUNNER_TEMP/wasi-sdk.tar.gz"
           printf '%s  %s\n' c6c38aab56e5de88adf6c1ebc9c3ae8da72f88ec2b656fb024eda8d4167a0bc5 "$RUNNER_TEMP/wasi-sdk.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/wasi-sdk.tar.gz" -C "$RUNNER_TEMP"
-          echo "FMAP_CLANG=$RUNNER_TEMP/wasi-sdk-24.0-x86_64-linux/bin/clang" >> "$GITHUB_ENV"
-      - run: npm install
-      - run: npx playwright install --with-deps chromium
-      - run: npm run build:fmap
-      - run: npm run test:unit
-      - run: npm run test:e2e
-      - run: npm run test:fmap-browser
-      - run: npm run test:fmap-large
-      - run: npm run test:fmap-packaged
-      - run: npm run benchmark:fmap-browser -- --output test-results/fmap-performance.json
-      - run: npm run benchmark:fmap-queues -- --output test-results/fmap-queues.json
-      - run: npm run lint
-      - run: npm run build
+      - name: Build and test the C/WASM ABI
+        run: npm run build:fmap
+        env:
+          FMAP_CLANG: ${{ runner.temp }}/wasi-sdk-24.0-x86_64-linux/bin/clang
       - uses: actions/upload-artifact@v4
         with:
-          name: site-dist
-          path: dist/index.html
-      - uses: actions/upload-artifact@v4
+          name: fmap-core
+          path: wasm/fmap/pkg/
+          if-no-files-found: error
+          retention-days: 1
+
+  checks:
+    name: Test ${{ matrix.suite }}
+    needs: fmap-core
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        suite:
+          - unit
+          - app-browser
+          - iphone-13-chromium-emulation
+          - pixel-7-chromium-emulation
+          - benchmarks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-validation
+        with:
+          browser: ${{ matrix.suite != 'unit' }}
+      - name: Unit and controller tests
+        if: matrix.suite == 'unit'
+        run: npm run test:unit
+      - name: Desktop browser and large-file tests
+        if: matrix.suite == 'app-browser'
+        run: |
+          npm run test:e2e
+          npm run test:fmap-large
+      # The app suite already includes every desktop fmap spec. Run the two
+      # remaining emulation profiles separately, without repeating desktop.
+      - name: fmap browser emulation
+        if: contains(matrix.suite, 'chromium-emulation')
+        run: npx playwright test --config=playwright.fmap.config.js --project=${{ matrix.suite }}
+      # Keep checked benchmarks sequential on their own runner: concurrent
+      # browser/unit tests would contaminate the reported latency measurements.
+      - name: Checked browser and queue benchmarks
+        if: matrix.suite == 'benchmarks'
+        run: |
+          npm run benchmark:fmap-browser -- --output test-results/fmap-performance.json
+          npm run benchmark:fmap-queues -- --output test-results/fmap-queues.json
+      - name: Retain checked benchmark reports
+        if: always() && matrix.suite == 'benchmarks'
+        uses: actions/upload-artifact@v4
         with:
           name: fmap-performance
           path: |
             test-results/fmap-performance.json
             test-results/fmap-queues.json
+          if-no-files-found: warn
+      - name: Retain browser failure diagnostics
+        if: failure() && matrix.suite != 'unit' && matrix.suite != 'benchmarks'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.suite }}
+          path: test-results/
+          if-no-files-found: ignore
+
+  package:
+    name: Package and verify tested distribution
+    needs: [fmap-core, checks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-validation
+        with:
+          browser: 'true'
+      - name: Build the single-file distribution once
+        run: npm run build
+      - name: Test this exact packaged HTML offline
+        run: npx playwright test --config=playwright.fmap-packaged.config.js
+        env:
+          FMAP_PACKAGED: '1'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-dist
+          path: dist/index.html
+          if-no-files-found: error
+
+  validate:
+    # Preserve the existing check name, and fail rather than report a skipped
+    # success when a prerequisite fails or the matrix is cancelled.
+    needs: [fmap-core, checks, package]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all checks and packaged-output verification to succeed
+        env:
+          CORE_RESULT: ${{ needs.fmap-core.result }}
+          CHECK_RESULT: ${{ needs.checks.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+        run: test "$CORE_RESULT" = success && test "$CHECK_RESULT" = success && test "$PACKAGE_RESULT" = success

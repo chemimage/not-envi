@@ -1,0 +1,36 @@
+name: Set up Hyve validation
+description: Install locked Node dependencies and reuse the shared fmap core, optionally with Chromium.
+
+inputs:
+  fmap-core:
+    description: Download the core built by this workflow run.
+    default: 'true'
+  browser:
+    description: Install Chromium and its system dependencies.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: npm
+    - run: npm ci
+      shell: bash
+    - name: Download shared fmap core
+      if: inputs.fmap-core == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: fmap-core
+        path: wasm/fmap/pkg
+    - name: Cache Chromium
+      if: inputs.browser == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+    - name: Install Chromium and system dependencies
+      if: inputs.browser == 'true'
+      run: npx playwright install --with-deps chromium
+      shell: bash
