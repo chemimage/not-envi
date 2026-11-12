@@ -1,6 +1,6 @@
 {
   "name": "hyve",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -28,7 +28,9 @@
     "test:fmap-browser": "node scripts/run-fmap-browser-tests.mjs",
     "test:fmap-packaged": "node scripts/run-fmap-packaged-test.mjs",
     "test": "npm run test:unit && npm run test:e2e",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "version:calc": "node scripts/calculate-version.mjs",
+    "version:prepare": "node scripts/calculate-version.mjs --write"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.2",

@@ -15,6 +15,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version:
+    name: Calculate release version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/calculate-version
+
   fmap-core:
     name: Lint and build shared fmap core
     runs-on: ubuntu-latest
@@ -105,7 +114,7 @@ jobs:
 
   package:
     name: Package and verify tested distribution
-    needs: [fmap-core, checks]
+    needs: [version, fmap-core, checks]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,13 +136,14 @@ jobs:
   validate:
     # Preserve the existing check name, and fail rather than report a skipped
     # success when a prerequisite fails or the matrix is cancelled.
-    needs: [fmap-core, checks, package]
+    needs: [version, fmap-core, checks, package]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require all checks and packaged-output verification to succeed
         env:
+          VERSION_RESULT: ${{ needs.version.result }}
           CORE_RESULT: ${{ needs.fmap-core.result }}
           CHECK_RESULT: ${{ needs.checks.result }}
           PACKAGE_RESULT: ${{ needs.package.result }}
-        run: test "$CORE_RESULT" = success && test "$CHECK_RESULT" = success && test "$PACKAGE_RESULT" = success
+        run: test "$VERSION_RESULT" = success && test "$CORE_RESULT" = success && test "$CHECK_RESULT" = success && test "$PACKAGE_RESULT" = success

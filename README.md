@@ -24,3 +24,17 @@ continue to use the compatible decoder automatically.
 
 - `npm run build`
 - Output: `dist/index.html` (self-contained single file)
+
+## Release version
+
+Install the .NET 10 SDK, then run `dotnet tool restore` once.
+`npm run version:calc` previews the next stable version using the pinned
+GitVersion tool and `+semver:` commit-body annotations since the last tag.
+The highest bump wins across an unreleased batch; feature commits do not
+each add another minor version. CI calculates the same version independently.
+
+For a release, run `npm run version:prepare` to update both package files,
+commit with `+semver: none`, and wait for CI to pass on that exact commit.
+Create and push the matching `vX.Y.Z` tag. The tag workflows verify the
+calculated version and package files, then publish the HTML and deploy Pages.
+Release titles must exactly match the version tag.

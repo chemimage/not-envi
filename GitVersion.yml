@@ -1,0 +1,13 @@
+workflow: GitHubFlow/v1
+mode: ContinuousDelivery
+tag-prefix: '[vV]?'
+commit-message-incrementing: Enabled
+update-build-number: false
+strategies:
+  - TaggedCommit
+branches:
+  main:
+    label: ''
+    increment: Patch
+    prevent-increment:
+      of-merged-branch: false

@@ -20,6 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/calculate-version
+        with:
+          check-package: 'true'
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -37,7 +42,7 @@ jobs:
             echo "Expected tag: ${EXPECTED_TAG}"
             exit 1
           fi
-      - run: npm install
+      - run: npm ci
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

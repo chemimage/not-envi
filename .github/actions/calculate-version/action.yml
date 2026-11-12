@@ -1,0 +1,24 @@
+name: Calculate release version
+description: Use the same pinned GitVersion configuration locally and in CI.
+inputs:
+  check-package:
+    description: Require package files and the release tag to match GitVersion.
+    default: 'false'
+outputs:
+  version:
+    description: Calculated stable release version.
+    value: ${{ steps.calculate.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    - run: dotnet tool restore
+      shell: bash
+    - id: calculate
+      run: node scripts/calculate-version.mjs --github-output
+      shell: bash
+    - if: inputs.check-package == 'true'
+      run: node scripts/calculate-version.mjs --check
+      shell: bash
