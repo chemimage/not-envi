@@ -132,6 +132,7 @@ export function createSpectrumAreaController(deps) {
 
   async function openSpectrumAt(ds, ix, iy, opts = {}) {
     if (!ds) return;
+    opts = { ...opts, plotSlot: deps.getPanelSlot?.() || 1 };
     const selections = getHistogramSelectionItems(ds);
     const useArea = !opts.forcePoint && !!(opts.forceArea || selections.length);
     if (!useArea) {
@@ -183,6 +184,7 @@ export function createSpectrumAreaController(deps) {
                 subLabel: `Area average (${fmtNoGroup(selectionCount)} region${selectionCount > 1 ? "s" : ""}, computing...)`,
                 footLabel: `Computing 0/${fmtNoGroup(req.ds.meta.bands)} bands`,
                 placeholderText: "Computing area average...",
+                plotItems: reqSelections.map((item) => ({ ...item, points: item.points.map((p) => ({ ...p })) })),
                 sourceColor,
                 sourceType: "area",
                 sourceMeta: {
@@ -227,6 +229,7 @@ export function createSpectrumAreaController(deps) {
               stdVals: areaWithProgress.stdVals,
               xVals: wavelengthArrayOrNull(req.ds),
               subLabel,
+              plotItems: reqSelections.map((item) => ({ ...item, points: item.points.map((p) => ({ ...p })) })),
               sourceColor,
               sourceType: "area",
               sourceMeta: {

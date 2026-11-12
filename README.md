@@ -7,6 +7,10 @@
 A lightweight, browser-based hyperspectral data viewer for band browsing,
 simple spatial-spectral statistics, and format conversion.
 
+Use **Combine…** in a plot to compare calculated spectra, histograms, or line
+profiles. Each legend entry can be opened separately without splitting the
+whole chart. See [plot comparisons](docs/plot-comparisons.md).
+
 ## Development
 
 Requires Node.js 22 and Git.

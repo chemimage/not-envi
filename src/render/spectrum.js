@@ -26,6 +26,7 @@ export function createSpectrumController(deps) {
   const {
     els,
     arrangeAnalysisPanels,
+    onResult,
     specCtx,
     getActive,
     bandLabel,
@@ -917,6 +918,7 @@ export function createSpectrumController(deps) {
       specState.xVals = xVals;
       specState.yVals = yVals;
       specState.stdVals = stdVals;
+      onResult?.({ ds, ix, iy, xVals, yVals, opts, source: { ...specState.source } });
       const stats = summarizeSpectrum(yVals);
       if (!stats) {
         setSpecFoot("No finite values.");

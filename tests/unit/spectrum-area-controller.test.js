@@ -58,7 +58,7 @@ describe("spectrum-area-controller", () => {
       readBandWindow
     });
     await ctrl.openSpectrumAt(ds, 12, 34, { forcePoint: true });
-    expect(openSpy).toHaveBeenCalledWith(ds, 12, 34, { forcePoint: true });
+    expect(openSpy).toHaveBeenCalledWith(ds, 12, 34, { forcePoint: true, plotSlot: 1 });
     expect(readBandWindow).not.toHaveBeenCalled();
   });
 

@@ -67,6 +67,8 @@ import {
   resolveSelectionBoundsUnion
 } from "./selection-bounds.js";
 import { pointInPolygon } from "./draw-geometry.js";
+import { createPlotComparisons } from "./plot-comparisons.js";
+import { createComparisonSources } from "./comparison-sources.js";
 import { createFloatingWindowManager } from "./floating-windows.js";
 
 (() => {
@@ -119,6 +121,30 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   const els = collectElements();
   const floatingWindows = createFloatingWindowManager({ container: els.main, onInteractionEnd: () => drawOverlays() });
+  const plotComparisons = createPlotComparisons({ container: els.main, floatingWindows });
+  const comparisonSources = createComparisonSources({
+    comparisons: plotComparisons,
+    getPanel: (slot) => getDisplayPanel(state, slot),
+    getDataset: (id) => state.datasets.find((ds) => ds.id === id),
+    deleteSources: ({ dsId, slot, items, point }) => {
+      const ds = state.datasets.find((dataset) => dataset.id === dsId);
+      const panel = getDisplayPanel(state, slot);
+      if (!ds || panel?.datasetId !== dsId) return;
+      setActivePanel(slot);
+      if (point) {
+        if (state.contextPoint?.dsId === dsId && state.contextPoint.x === point.x && state.contextPoint.y === point.y) {
+          state.contextPoint = null;
+          closeSpectrum();
+        }
+      } else {
+        const lines = panel.annotations.drawings.filter((item) => items.some((source) => source.id === item.id)
+          && (item.tool === "line" || item.tool === "ruler"));
+        if (lines.length) for (const item of lines) annotation.removeLineAnnotation(ds, item.id, panel.annotations);
+        else annotation.removeAreaAnnotations(items.map((item) => item.id));
+      }
+      scheduleOverlayDraw();
+    }
+  });
   function resetFilePicker() {
     if (!els.filePicker) return;
     try { els.filePicker.value = ""; } catch (_err) {}
@@ -468,10 +494,11 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   function bandLabel(ds, b){ return datasetRuntime ? datasetRuntime.bandLabel(ds, b) : `Band ${b}`; }
   async function addDatasetsFromFileList(files){ if (datasetRuntime) await datasetRuntime.addDatasetsFromFileList(files); }
   async function addDatasetFromFiles(hdrFile, dataFile){ if (datasetRuntime) await datasetRuntime.addDatasetFromFiles(hdrFile, dataFile); }
-  function closeAllDatasets(){ if (datasetRuntime) datasetRuntime.closeAllDatasets(); }
+  function closeAllDatasets(){ if (datasetRuntime) datasetRuntime.closeAllDatasets(); plotComparisons.sync(); }
   function closeDataset(id){
     if (spectrum && spectrum.isOpenForDatasetId(id)) closeSpectrum();
     if (datasetRuntime) datasetRuntime.closeDataset(id);
+    plotComparisons.sync();
   }
 
   const annotation = createAnnotationController({
@@ -538,7 +565,12 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   function updateRulerHoverAtPointer(ev) { return annotation.updateRulerHoverAtPointer(ev); }
   function clearRulerHover() { return annotation.clearRulerHover(); }
   function eraseDrawingAtPointer(ev) { return annotation.eraseDrawingAtPointer(ev); }
-  function clearAllAnnotations() { return annotation.clearAllAnnotations(); }
+  function clearAllAnnotations() {
+    comparisonSources.clearPoints(getActive()?.id);
+    const result = annotation.clearAllAnnotations();
+    plotComparisons.sync();
+    return result;
+  }
   function isDrawingPointer(pointerId) { return annotation.isDrawingPointer(pointerId); }
   function beginDrawingAtPointer(ev, opts) { return annotation.beginDrawingAtPointer(ev, opts); }
   function updateDrawingAtPointer(ev) { return annotation.updateDrawingAtPointer(ev); }
@@ -662,6 +694,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   function applyHistogramDrag(ds, kind, clientX){ histogram.applyHistogramDrag(ds, kind, clientX); }
 
   const analysisHistogram = createAnalysisHistogramController({
+    onResult: comparisonSources.histogram,
+    getPanelSlot: () => getActivePanel()?.slot || 1,
     arrangeAnalysisPanels,
     state,
     els,
@@ -1040,6 +1074,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     lineProfile?.refresh();
     selectionSync?.ensureMarqueeTicker?.();
     syncLinkedAnnotationsFromActivePanel();
+    plotComparisons.sync();
     overlayRenderer.clearOverlay();
     const layout = getDisplayPanelLayoutDevice();
     const activeSlot = Number(getActivePanel()?.slot) || 1;
@@ -1214,6 +1249,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   // ========= Spectrum (z-profile) panel =========
 
   const spectrum = createSpectrumController({
+    onResult: comparisonSources.spectrum,
     arrangeAnalysisPanels,
     els,
     specCtx,
@@ -1229,6 +1265,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   });
 
   lineProfile = createLineProfileController({
+    onResult: comparisonSources.line,
     els,
     bandLabel,
     ...APP_CONFIG.lineProfile,
@@ -1281,8 +1318,12 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   });
 
   analysisPanelLayout = createAnalysisPanelLayout({ els, getWindow: (id) => floatingWindows.get(id) });
+  plotComparisons.attach("line", els.lineProfilePanel, () => lineProfile.close());
+  plotComparisons.attach("histogram", els.analysisHistPanel, () => analysisHistogram.closePanel());
+  plotComparisons.attach("spectrum", els.specPanel, () => closeSpectrum());
 
   function resetDatasetSession() {
+    plotComparisons.clear();
     lineProfile?.close();
     closeAllDatasets();
     resetFilePicker();
@@ -1310,6 +1351,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   });
 
   const spectrumArea = createSpectrumAreaController({
+    getPanelSlot: () => getActivePanel()?.slot || 1,
     beginAnnotationWork,
     getActive,
     spectrum,

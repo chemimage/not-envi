@@ -5,6 +5,8 @@ export function createAnalysisHistogramController(deps) {
   const {
     state,
     arrangeAnalysisPanels,
+    onResult,
+    getPanelSlot,
     els,
     clamp,
     fmtNoGroup,
@@ -338,7 +340,10 @@ export function createAnalysisHistogramController(deps) {
       return;
     }
 
-    const sourceColor = resolveAnalysisColor(getHistogramSelectionItems(ds), ds.selectedAreaId);
+    const items = getHistogramSelectionItems(ds).map((item) => ({ ...item, points: item.points?.map((p) => ({ ...p })) }));
+    const sourceColor = resolveAnalysisColor(items, ds.selectedAreaId);
+    const slot = getPanelSlot?.() || 1;
+    const band = resolveHistogramBand(ds);
     setBusy(true);
     setStatus("histogram…", "warn");
     try {
@@ -346,6 +351,7 @@ export function createAnalysisHistogramController(deps) {
       if (sequence !== refreshSequence) return;
       state.analysisHist.stats = stats;
       state.analysisHist.sourceColor = sourceColor;
+      if (stats) onResult?.({ ds, slot, items, stats, band, color: sourceColor });
       updateSummary(stats);
       updateSamplingWarning(stats);
       updateHoverText(stats, -1);

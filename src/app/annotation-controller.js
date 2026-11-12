@@ -1426,15 +1426,6 @@ export function createAnnotationController(deps) {
       keep = points.length >= 3;
     }
     if (keep) {
-      if (draft.tool === "ruler") {
-        const targetColor = String(draft.color || "").toLowerCase();
-        for (let i = ds.drawings.length - 1; i >= 0; i -= 1) {
-          const cur = ds.drawings[i];
-          if (!cur || cur.tool !== "ruler") continue;
-          const curColor = String(cur.color || "").toLowerCase();
-          if (curColor === targetColor) ds.drawings.splice(i, 1);
-        }
-      }
       const newItem = {
         id: state.draw.nextItemId++,
         tool: draft.tool,

@@ -2,6 +2,7 @@
 @import './partials/components-core.css';
 @import './partials/components-canvas.css';
 @import './partials/components-panels.css';
+@import './partials/plot-comparisons.css';
 @import './partials/range-inputs.css';
 
 @source '../../index.html';

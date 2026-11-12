@@ -398,7 +398,7 @@ describe("annotation-controller", () => {
     ann.finishDrawingAtPointer({ pointerId: 32, pointerType: "mouse", clientX: 0, clientY: 40 });
   });
 
-  test("new ruler replaces only same-color rulers", () => {
+  test("new profile line preserves existing lines, including the same color", () => {
     const { ds, deps } = makeBase();
     ds.drawings = [
       { id: 30, tool: "ruler", color: "#ff2d2d", points: [{ x: 3, y: 3 }, { x: 9, y: 9 }] },
@@ -407,12 +407,13 @@ describe("annotation-controller", () => {
     const ann = createAnnotationController(deps);
     ann.setDrawTool("ruler");
     ann.setDrawColor("#ff2d2d");
-    expect(ann.beginDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 20, clientY: 20 })).toBe(true);
-    ann.updateDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 28, clientY: 28 });
-    ann.finishDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 28, clientY: 28 });
+    expect(ann.beginDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 60, clientY: 60 })).toBe(true);
+    ann.updateDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 70, clientY: 70 });
+    ann.finishDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 70, clientY: 70 });
 
     const rulers = ds.drawings.filter((d) => d.tool === "ruler");
-    expect(rulers).toHaveLength(2);
+    expect(rulers).toHaveLength(3);
+    expect(rulers.map((item) => item.id)).toContain(30);
     expect(rulers.some((r) => r.color.toLowerCase() === "#22c55e")).toBe(true);
     expect(rulers.some((r) => r.color.toLowerCase() === "#ff2d2d")).toBe(true);
   });

@@ -2,7 +2,7 @@ import { fmtUm } from "../core/utils.js";
 import { readLineProfile } from "./line-profile-data.js";
 
 export function createLineProfileController({
-  els, getTarget, bandLabel, onShow = () => {}, onDelete = () => {},
+  els, getTarget, bandLabel, onShow = () => {}, onDelete = () => {}, onResult,
   readProfile = readLineProfile, maxSamples = 1024, concurrency = 3
 }) {
   const canvas = els.lineProfileCanvas;
@@ -158,6 +158,7 @@ export function createLineProfileController({
         if (seq !== sequence) return;
         result = data;
         message = "";
+        if (data) onResult?.({ anchor: { ...anchor }, target: next, result: data });
       } catch (error) {
         if (seq !== sequence) return;
         message = "Could not read this line profile.";
