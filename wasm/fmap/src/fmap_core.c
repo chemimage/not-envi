@@ -27,18 +27,9 @@
  */
 
 #include "fmap_internal.h"
+#include <numeric.h>
 
 #define FMAP_VALID_INTERVAL_CAPACITY 64u
-
-#define ENVI_TYPE_UINT8 1u
-#define ENVI_TYPE_INT16 2u
-#define ENVI_TYPE_INT32 3u
-#define ENVI_TYPE_FLOAT32 4u
-#define ENVI_TYPE_FLOAT64 5u
-#define ENVI_TYPE_UINT16 12u
-#define ENVI_TYPE_UINT32 13u
-#define ENVI_TYPE_INT64 14u
-#define ENVI_TYPE_UINT64 15u
 
 typedef struct {
     uint32_t start;
@@ -73,10 +64,6 @@ static uint64_t g_tick;
 static uint64_t g_hits;
 static uint64_t g_misses;
 static uint64_t g_evictions;
-/* Synchronous span result: min, max, count, sum, sumSq, then 256 bins.
- * The worker consumes this before yielding and merges into its own job state. */
-static double g_reduction[261];
-
 static void clear_slot(fmap_slot *slot) {
     slot->page_index = 0;
     slot->last_touch = 0;
@@ -167,77 +154,6 @@ static uint32_t slot_is_valid(uint32_t slot_index) {
     return g_initialized && slot_index < g_slot_count && g_slots[slot_index].occupied;
 }
 
-static float decode_f32(const uint8_t *source, uint32_t little_endian) {
-    uint32_t bits;
-    union { uint32_t bits; float value; } decoded;
-    if (little_endian) {
-        bits = (uint32_t)source[0]
-            | ((uint32_t)source[1] << 8)
-            | ((uint32_t)source[2] << 16)
-            | ((uint32_t)source[3] << 24);
-    } else {
-        bits = ((uint32_t)source[0] << 24)
-            | ((uint32_t)source[1] << 16)
-            | ((uint32_t)source[2] << 8)
-            | (uint32_t)source[3];
-    }
-    decoded.bits = bits;
-    return decoded.value;
-}
-
-static uint64_t decode_uint(const uint8_t *source, uint32_t width, uint32_t little_endian) {
-    uint64_t value = 0;
-    uint32_t index;
-    if (little_endian) {
-        for (index = 0; index < width; index++) value |= (uint64_t)source[index] << (index * 8u);
-    } else {
-        for (index = 0; index < width; index++) value = (value << 8u) | source[index];
-    }
-    return value;
-}
-
-static double decode_signed(uint64_t bits, uint32_t width) {
-    uint64_t sign_bit = 1ull << (width * 8u - 1u);
-    uint64_t mask = width == 8u ? U64_MAX_VALUE : ((1ull << (width * 8u)) - 1u);
-    uint64_t magnitude;
-    if ((bits & sign_bit) == 0) return (double)bits;
-    magnitude = ((~bits) & mask) + 1u;
-    return -(double)magnitude;
-}
-
-static uint32_t numeric_type_size(uint32_t data_type) {
-    switch (data_type) {
-        case ENVI_TYPE_UINT8: return 1;
-        case ENVI_TYPE_INT16:
-        case ENVI_TYPE_UINT16: return 2;
-        case ENVI_TYPE_INT32:
-        case ENVI_TYPE_FLOAT32:
-        case ENVI_TYPE_UINT32: return 4;
-        case ENVI_TYPE_FLOAT64:
-        case ENVI_TYPE_INT64:
-        case ENVI_TYPE_UINT64: return 8;
-        default: return 0;
-    }
-}
-
-static double decode_numeric(const uint8_t *source, uint32_t data_type, uint32_t little_endian) {
-    union { uint64_t bits; double value; } decoded_f64;
-    switch (data_type) {
-        case ENVI_TYPE_UINT8: return (double)source[0];
-        case ENVI_TYPE_INT16: return decode_signed(decode_uint(source, 2, little_endian), 2);
-        case ENVI_TYPE_INT32: return decode_signed(decode_uint(source, 4, little_endian), 4);
-        case ENVI_TYPE_FLOAT32: return (double)decode_f32(source, little_endian);
-        case ENVI_TYPE_FLOAT64:
-            decoded_f64.bits = decode_uint(source, 8, little_endian);
-            return decoded_f64.value;
-        case ENVI_TYPE_UINT16: return (double)decode_uint(source, 2, little_endian);
-        case ENVI_TYPE_UINT32: return (double)decode_uint(source, 4, little_endian);
-        case ENVI_TYPE_INT64: return decode_signed(decode_uint(source, 8, little_endian), 8);
-        case ENVI_TYPE_UINT64: return (double)decode_uint(source, 8, little_endian);
-        default: return 0;
-    }
-}
-
 static int32_t extract_f32(
     const uint8_t *source,
     uint32_t valid_bytes,
@@ -255,7 +171,7 @@ static int32_t extract_f32(
         uint64_t relative = (uint64_t)byte_offset + (uint64_t)output_index * stride_bytes;
         if (relative + 4u > valid_bytes) return FMAP_ERR_OUT_OF_BOUNDS;
         if (slot && !range_is_valid(slot, (uint32_t)relative, 4u)) return FMAP_ERR_OUT_OF_BOUNDS;
-        g_output[output_index] = decode_f32(source + (uint32_t)relative, little_endian);
+        g_output[output_index] = numeric_decode_f32(source + (uint32_t)relative, little_endian);
     }
     return (int32_t)count;
 }
@@ -284,7 +200,7 @@ static int32_t extract_numeric(
         if (slot && !range_is_valid(slot, (uint32_t)relative, element_size)) {
             return FMAP_ERR_OUT_OF_BOUNDS;
         }
-        g_output_f64[output_index] = decode_numeric(
+        g_output_f64[output_index] = numeric_decode(
             source + (uint32_t)relative,
             data_type,
             little_endian
@@ -549,76 +465,6 @@ EXPORT("fmap_output_f64_ptr") uint32_t fmap_output_f64_ptr(void) {
 }
 EXPORT("fmap_output_f64_capacity") uint32_t fmap_output_f64_capacity(void) {
     return g_initialized ? g_output_f64_count : 0;
-}
-
-static int32_t reduce_numeric(
-    const uint8_t *source, uint32_t valid_bytes, const fmap_slot *slot,
-    uint32_t byte_offset, uint32_t count, uint32_t stride_bytes,
-    uint32_t data_type, uint32_t little_endian, uint32_t as_f32,
-    uint32_t bins, double min, double max
-) {
-    uint32_t size = numeric_type_size(data_type);
-    if (!size) return FMAP_ERR_UNSUPPORTED_TYPE;
-    if (bins > 256 || (count > 1 && stride_bytes < size)) return FMAP_ERR_INVALID_LENGTH;
-    if (bins && (!__builtin_isfinite(min) || !__builtin_isfinite(max) || max < min)) {
-        return FMAP_ERR_INVALID_CONFIG;
-    }
-    for (uint32_t i = 0; i < 261; i++) g_reduction[i] = 0;
-    g_reduction[0] = __builtin_inf();
-    g_reduction[1] = -__builtin_inf();
-    double scale = bins ? (double)(bins - 1) / (max - min) : 0;
-    for (uint32_t i = 0; i < count; i++) {
-        uint64_t at = (uint64_t)byte_offset + (uint64_t)i * stride_bytes;
-        if (at > valid_bytes || size > (uint64_t)valid_bytes - at) return FMAP_ERR_OUT_OF_BOUNDS;
-        if (slot && !range_is_valid(slot, (uint32_t)at, size)) return FMAP_ERR_OUT_OF_BOUNDS;
-        double value = decode_numeric(source + (uint32_t)at, data_type, little_endian);
-        if (as_f32) value = (double)(float)value;
-        if (!__builtin_isfinite(value)) continue;
-        if (value < g_reduction[0]) g_reduction[0] = value;
-        if (value > g_reduction[1]) g_reduction[1] = value;
-        g_reduction[2] += 1;
-        g_reduction[3] += value;
-        g_reduction[4] += value * value;
-        if (bins) {
-            double bin = __builtin_floor((value - min) * scale);
-            /* Match JS's ignored NaN index for a constant too large for
-             * min + 1e-6 to change its double representation. */
-            if (bin != bin) continue;
-            if (bin < 0) bin = 0;
-            if (bin > bins - 1) bin = bins - 1;
-            g_reduction[5 + (uint32_t)bin] += 1;
-        }
-    }
-    return (int32_t)count;
-}
-
-EXPORT("fmap_reduction_ptr")
-uint32_t fmap_reduction_ptr(void) { return (uint32_t)(uintptr_t)g_reduction; }
-
-EXPORT("fmap_reduce_numeric")
-int32_t fmap_reduce_numeric(
-    uint32_t slot_index, uint32_t byte_offset, uint32_t count, uint32_t stride_bytes,
-    uint32_t data_type, uint32_t little_endian, uint32_t as_f32,
-    uint32_t bins, double min, double max
-) {
-    if (!slot_is_valid(slot_index) || !g_slots[slot_index].pin_count) return FMAP_ERR_INVALID_SLOT;
-    int32_t result = reduce_numeric(g_bytes + (uint64_t)slot_index * g_page_size,
-        g_slots[slot_index].valid_bytes, &g_slots[slot_index], byte_offset, count,
-        stride_bytes, data_type, little_endian, as_f32, bins, min, max);
-    if (result >= 0) touch_slot(slot_index);
-    return result;
-}
-
-EXPORT("fmap_reduce_scratch_numeric")
-int32_t fmap_reduce_scratch_numeric(
-    uint32_t byte_offset, uint32_t count, uint32_t stride_bytes,
-    uint32_t data_type, uint32_t little_endian, uint32_t as_f32,
-    uint32_t bins, double min, double max, uint32_t valid_bytes
-) {
-    if (!g_initialized) return FMAP_ERR_NOT_INITIALIZED;
-    if (valid_bytes > g_page_size) return FMAP_ERR_INVALID_LENGTH;
-    return reduce_numeric(g_scratch, valid_bytes, (const fmap_slot *)0, byte_offset,
-        count, stride_bytes, data_type, little_endian, as_f32, bins, min, max);
 }
 
 EXPORT("fmap_extract_f32")

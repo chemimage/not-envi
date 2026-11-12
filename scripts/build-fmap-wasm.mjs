@@ -3,13 +3,14 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
-import { collectFmapSources } from "./fmap-sources.mjs";
+import { collectFmapSources, FMAP_LINKED_MODULES, FMAP_SOURCE_SCOPES } from "./fmap-sources.mjs";
+import { testLinkedCModules } from "./test-linked-c-modules.mjs";
 
 const pinnedClang = "18.1.2";
 const clang = process.env.FMAP_CLANG || "clang";
 const root = process.cwd();
-const sourceDirectory = path.join(root, "wasm", "fmap");
-const sourceManifest = collectFmapSources(sourceDirectory, ["src", "include"]);
+const sourceDirectory = path.join(root, "wasm");
+const sourceManifest = collectFmapSources(sourceDirectory, FMAP_SOURCE_SCOPES);
 const sources = sourceManifest.sources.filter((entry) => /\.c$/i.test(entry.path))
   .map((entry) => path.join(sourceDirectory, entry.path));
 const buildDir = path.join(root, "wasm", "fmap", "build");
@@ -23,6 +24,7 @@ if (!clangVersion.includes(`clang version ${pinnedClang}`)) {
 
 mkdirSync(buildDir, { recursive: true });
 mkdirSync(outputDir, { recursive: true });
+await testLinkedCModules({ clang, root, buildDir, sources: sourceManifest.sources });
 const command = [
   "--target=wasm32-unknown-unknown",
   "-std=c11",
@@ -35,7 +37,7 @@ const command = [
   "-Wextra",
   "-Werror",
   "-nostdlib",
-  "-I", path.join(sourceDirectory, "include"),
+  ...FMAP_LINKED_MODULES.flatMap(name => ["-I", path.join(sourceDirectory, name, "include")]),
   "-x", "c",
   ...sources,
   "-Wl,--no-entry",
@@ -59,6 +61,7 @@ const exports = WebAssembly.Module.exports(module).map((entry) => entry.name).so
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 const build = {
   module: "fmap_core",
+  linkedModules: FMAP_LINKED_MODULES,
   language: "C11",
   ...sourceManifest,
   compiler: clangVersion.split(/\r?\n/, 1)[0],

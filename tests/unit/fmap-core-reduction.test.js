@@ -35,6 +35,10 @@ test("reduction rejects sparse holes, invalid types/ranges and oversized scratch
   expect(c.fmap_commit_range(slot, 0, 4)).toBe(0);
   expect(c.fmap_commit_range(slot, 8, 4)).toBe(0);
   expect(c.fmap_reduce_numeric(slot, 0, 3, 4, 4, 1, 1, 0, 0, 1)).toBe(-5);
+  const data = new DataView(c.memory.buffer, c.fmap_slot_ptr(slot), 4096);
+  data.setFloat32(0, 1.5, true); data.setFloat32(8, 2.5, true);
+  expect(c.fmap_reduce_numeric(slot, 0, 2, 8, 4, 1, 1, 0, 0, 1)).toBe(2);
+  expect(Array.from(new Float64Array(c.memory.buffer, c.fmap_reduction_ptr(), 5))).toEqual([1.5, 2.5, 2, 4, 8.5]);
   expect(c.fmap_reduce_numeric(slot, 0, 1, 1, 99, 1, 1, 0, 0, 1)).toBe(-7);
   expect(c.fmap_reduce_numeric(slot, 0, 1, 1, 1, 1, 1, 257, 0, 1)).toBe(-4);
   expect(c.fmap_reduce_numeric(slot, 0, 1, 1, 1, 1, 1, 256, 2, 1)).toBe(-6);

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
-import { verifyFmapArtifact } from "./scripts/fmap-sources.mjs";
+import { verifyFmapArtifact, FMAP_SOURCE_SCOPES } from "./scripts/fmap-sources.mjs";
 
 const packageJson = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8")
@@ -12,7 +12,7 @@ const fmapBuildUrl = new URL("./wasm/fmap/pkg/fmap_core.build.json", import.meta
 function verifiedFmapWasm() {
   const bytes = readFileSync(fmapWasmUrl);
   const build = JSON.parse(readFileSync(fmapBuildUrl, "utf8"));
-  return verifyFmapArtifact(bytes, build, new URL("./wasm/fmap/", import.meta.url), ["src", "include"]);
+  return verifyFmapArtifact(bytes, build, new URL("./wasm/", import.meta.url), FMAP_SOURCE_SCOPES);
 }
 
 verifiedFmapWasm();

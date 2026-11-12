@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync }
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { collectFmapSources, verifyFmapArtifact } from "../../scripts/fmap-sources.mjs";
+import { collectFmapSources, verifyFmapArtifact, FMAP_LINKED_MODULES, FMAP_SOURCE_SCOPES } from "../../scripts/fmap-sources.mjs";
 
 const directories = [];
 const bytes = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]);
@@ -87,3 +87,25 @@ test("verification detects an altered binary or incomplete source list", () => {
   expect(() => verifyFmapArtifact(bytes, { ...build, sources: build.sources.slice(1) }, directory))
     .toThrow(/does not match its build manifest/);
 });
+
+test.each(["numeric/include/numeric.h", "reduction/src/reduction.c", "fmap/include/fmap/cache.h"])(
+  "linked artifact verification rejects a stale %s", (changed) => {
+    const directory = fixture();
+    for (const name of FMAP_LINKED_MODULES) {
+      mkdirSync(path.join(directory, name, "src"), { recursive: true });
+      mkdirSync(path.join(directory, name, "include"), { recursive: true });
+      writeFileSync(path.join(directory, name, "src", `${name}.c`), "int module;\n");
+      writeFileSync(path.join(directory, name, "include", `${name}.h`), "int module(void);\n");
+    }
+    mkdirSync(path.join(directory, "fmap/include/fmap"));
+    writeFileSync(path.join(directory, "fmap/include/fmap/cache.h"), "int cache(void);\n");
+    mkdirSync(path.join(directory, "reduction/build"));
+    writeFileSync(path.join(directory, "reduction/build/generated.c"), "not a source input\n");
+    const source = collectFmapSources(directory, FMAP_SOURCE_SCOPES);
+    expect(source.sources).toHaveLength(7);
+    const build = { ...source, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+    expect(verifyFmapArtifact(bytes, build, directory, FMAP_SOURCE_SCOPES)).toBe(bytes);
+    writeFileSync(path.join(directory, changed), "int changed(void);\n");
+    expect(() => verifyFmapArtifact(bytes, build, directory, FMAP_SOURCE_SCOPES)).toThrow(/does not match/);
+  }
+);

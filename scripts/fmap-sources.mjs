@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceHashFormat = "fmap-source-set-v1";
+export const FMAP_LINKED_MODULES = Object.freeze(["fmap", "numeric", "reduction"]);
+export const FMAP_SOURCE_SCOPES = Object.freeze(FMAP_LINKED_MODULES.flatMap(name => [`${name}/src`, `${name}/include`]));
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 /** Hash every C translation unit and header, including its portable relative

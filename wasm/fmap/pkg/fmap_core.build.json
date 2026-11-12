@@ -1,42 +1,95 @@
 {
   "module": "fmap_core",
+  "linkedModules": [
+    "fmap",
+    "numeric",
+    "reduction"
+  ],
   "language": "C11",
   "sourceHashFormat": "fmap-source-set-v1",
   "sources": [
     {
-      "path": "include/fmap.h",
-      "sha256": "ff3734f7eacd17e4027c5e950fb8fb679cceeab14c7824f313e3978b3b1e3525"
+      "path": "fmap/include/fmap.h",
+      "sha256": "34dd853966af2fdbedb2b3189bc8ddd362c5e6f1a91c8805e0ff1fac53015972"
     },
     {
-      "path": "src/fmap_core.c",
-      "sha256": "f339116bda87c624aac8b4b97ae5d9c43a4ffe9967aace2862043bcd434474c7"
+      "path": "fmap/include/fmap/cache.h",
+      "sha256": "cf5824adc13b1839037dae4e9622c12f75dd612f9d733c8c79fef2ee9698d0e9"
     },
     {
-      "path": "src/fmap_fills.c",
+      "path": "fmap/include/fmap/diagnostics.h",
+      "sha256": "acd668bdfd6a70f696b31388fb31c5c0917e38ff633af6b34b97d32d2da2d18f"
+    },
+    {
+      "path": "fmap/include/fmap/fills.h",
+      "sha256": "787fd863df08996da7aae9b99205991d1710e46ddfa8710ef6e763893d48757c"
+    },
+    {
+      "path": "fmap/include/fmap/mappings.h",
+      "sha256": "69de540217a1d22c5b0989040388794988dad635c3f454dbb7626346ad3a3a34"
+    },
+    {
+      "path": "fmap/include/fmap/numeric.h",
+      "sha256": "7d1f33cae59c2da66b6b630e5494cb611ea110cbdbc0834384398baeac23e606"
+    },
+    {
+      "path": "fmap/include/fmap/reduction.h",
+      "sha256": "c460e0f60bd52938043fba195c6d122bb7aa33b14019dbd9726122a70ee05a80"
+    },
+    {
+      "path": "fmap/include/fmap/status.h",
+      "sha256": "464011da90b50adc5146aca5b265247d0315c2ed34383b03b4d271b4155a5572"
+    },
+    {
+      "path": "fmap/src/fmap_core.c",
+      "sha256": "6cf9a454bb6cd439aab7c4a6e0ce70a32848c41bce8933cabcbce946dfb7c2a3"
+    },
+    {
+      "path": "fmap/src/fmap_fills.c",
       "sha256": "d5de9dacc487036797adfccc605e44ae7f398477978259183eadeecef293b69f"
     },
     {
-      "path": "src/fmap_hash.c",
+      "path": "fmap/src/fmap_hash.c",
       "sha256": "d229d47bc96bd8c8f70a1230c696723412e2464aa3d42bee86d3074330b7598b"
     },
     {
-      "path": "src/fmap_internal.h",
+      "path": "fmap/src/fmap_internal.h",
       "sha256": "7ea48b7de93437e9525fda3d58c8052a8a4b44fd435f37f7a4aed7cd263b5cea"
     },
     {
-      "path": "src/fmap_mappings.c",
+      "path": "fmap/src/fmap_mappings.c",
       "sha256": "f8df7da77a79cf9a7c3d80a6068f4a69d635e0fe4fdbc82c219997857e16bf7c"
     },
     {
-      "path": "src/fmap_memory.c",
+      "path": "fmap/src/fmap_memory.c",
       "sha256": "aa1540ff0701fed002b0e7e83a43c489e97b6cd5094faeca6b26db9181755359"
     },
     {
-      "path": "src/fmap_page_index.c",
+      "path": "fmap/src/fmap_page_index.c",
       "sha256": "ec1193b4ade259ba1fbf3e0613e9bc569176c23473ba027cc5b24ce780c2347e"
+    },
+    {
+      "path": "fmap/src/fmap_reduction.c",
+      "sha256": "57533fc9fca96eb83edf9cdadca2cbfbfa0275b76ca495e665bafc921a5b69b8"
+    },
+    {
+      "path": "numeric/include/numeric.h",
+      "sha256": "c23e661eeacc2fd57edfd8d18db4b2eeda8ebc7c3bd6346cd363157a9ae8157e"
+    },
+    {
+      "path": "numeric/src/numeric.c",
+      "sha256": "dadd76bc7ca6dbdec52c062a03c2bd1d87b290c3d745bce1731f4e21b79b154a"
+    },
+    {
+      "path": "reduction/include/reduction.h",
+      "sha256": "faa09bc8450830d6b4c1b3a674fbbd86f4b7d85669c6e165cf0589330072b9fe"
+    },
+    {
+      "path": "reduction/src/reduction.c",
+      "sha256": "193aa4e3c3b8a5dd355ef9726b3a7bc837d79b86204886edfa3457e7c6bd0083"
     }
   ],
-  "sourceSha256": "ada604ae30cf0231cede62dea0d8afd9547894b5c02e4e7e0a59be062060dacc",
+  "sourceSha256": "b3ad22cf7288153a9f3e787402f70faa2db630c6c7f9305a398766146ebfbf4a",
   "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
   "target": "wasm32-unknown-unknown",
   "optimization": "-O2 -flto",
@@ -55,6 +108,10 @@
     "-nostdlib",
     "-I",
     "wasm\\fmap\\include",
+    "-I",
+    "wasm\\numeric\\include",
+    "-I",
+    "wasm\\reduction\\include",
     "-x",
     "c",
     "wasm\\fmap\\src\\fmap_core.c",
@@ -63,6 +120,9 @@
     "wasm\\fmap\\src\\fmap_mappings.c",
     "wasm\\fmap\\src\\fmap_memory.c",
     "wasm\\fmap\\src\\fmap_page_index.c",
+    "wasm\\fmap\\src\\fmap_reduction.c",
+    "wasm\\numeric\\src\\numeric.c",
+    "wasm\\reduction\\src\\reduction.c",
     "-Wl,--no-entry",
     "-Wl,--export-memory",
     "-Wl,--initial-memory=131072",
@@ -71,8 +131,8 @@
     "-o",
     "wasm\\fmap\\pkg\\fmap_core.wasm"
   ],
-  "bytes": 35540,
-  "sha256": "e74135cea5f9e0bf1b7ad95ae6d714d2c027609651129a6b199565c9851ea2e8",
+  "bytes": 35793,
+  "sha256": "eaa56a5cb6384ef944c5bc1c79aec4661b52de8ff8a24c6430212b0a869dccf0",
   "exports": [
     "fmap_acquire_page",
     "fmap_commit_page",
