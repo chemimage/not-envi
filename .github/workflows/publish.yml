@@ -1,0 +1,126 @@
+name: Publish validated main
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: automatic-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Download this successful run's tested distribution
+        uses: actions/download-artifact@v8
+        with:
+          name: site-dist
+          path: ${{ runner.temp }}/validated-dist
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Verify publication identity and create the calculated version tag
+        id: plan
+        uses: actions/github-script@v9
+        env:
+          TESTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          VALIDATED_DIST: ${{ runner.temp }}/validated-dist
+        with:
+          script: |
+            const { readFileSync } = require('node:fs');
+            const { execFileSync } = require('node:child_process');
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const local = name => import(pathToFileURL(path.resolve(name)).href);
+            const { planPublication, stampPackageVersion } = await local('scripts/publication.mjs');
+            const { calculateReleaseVersion } = await local('scripts/release-version.mjs');
+            const manifest = JSON.parse(readFileSync(path.join(process.env.VALIDATED_DIST, 'manifest.json'), 'utf8'));
+            const calculation = calculateReleaseVersion();
+            const tag = `v${manifest.version}`;
+            const main = await github.rest.git.getRef({ ...context.repo, ref: 'heads/main' });
+            async function existingTag() {
+              try {
+                let object = (await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` })).data.object;
+                for (let depth = 0; object.type === 'tag' && depth < 8; depth++) {
+                  object = (await github.rest.git.getTag({ ...context.repo, tag_sha: object.sha })).data.object;
+                }
+                if (object.type !== 'commit') throw new Error('Version tag does not resolve to a commit.');
+                return object.sha;
+              } catch (error) { if (error.status === 404) return null; throw error; }
+            }
+            const plan = planPublication({ manifest, calculatedVersion: calculation.version, sourceVersion: calculation.source,
+              testedCommit: process.env.TESTED_COMMIT, mainCommit: main.data.object.sha,
+              tagCommit: await existingTag() });
+            core.setOutput('publish', String(plan.publish));
+            if (!plan.publish) { core.info(plan.reason); return; }
+            stampPackageVersion(manifest.version);
+            execFileSync(process.execPath, ['.github/actions/validated-dist/verify.mjs'], {
+              stdio: 'inherit', env: { ...process.env, GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: tag }
+            });
+            // Tag pushes made with GITHUB_TOKEN do not start the tag workflows;
+            // release and Pages publication are explicit steps of this workflow.
+            if (plan.createTag) {
+              try {
+                await github.rest.git.createRef({ ...context.repo, ref: `refs/tags/${tag}`, sha: manifest.commit });
+              } catch (error) { if (await existingTag() !== manifest.commit) throw error; }
+            }
+            core.setOutput('tag', tag);
+            const notes = `docs/releases/${tag}.md`;
+            const { existsSync } = require('node:fs');
+            core.setOutput('notes', existsSync(notes) ? notes : '');
+      - name: Publish the exact tested release files
+        if: steps.plan.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.plan.outputs.tag }}
+          name: ${{ steps.plan.outputs.tag }}
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
+          body_path: ${{ steps.plan.outputs.notes }}
+          generate_release_notes: ${{ steps.plan.outputs.notes == '' }}
+          files: |
+            dist/index.html
+            dist/coverage-summary.json
+            dist/coverage-badge.json
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.plan.outputs.publish == 'true'
+        with:
+          path: dist
+
+  deploy:
+    needs: publish
+    if: needs.publish.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

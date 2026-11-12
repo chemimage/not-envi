@@ -46,21 +46,26 @@ each add another minor version. Unannotated commits default to a patch;
 `+semver: none` leaves that commit out of the bump calculation. CI uses the same
 calculator. Full Git history and release tags must be available.
 
-For a release, run `npm run version:prepare` to update both package files,
-review the release notes in `docs/releases/vX.Y.Z.md`, commit with
-`+semver: none`, and wait for CI to pass on that exact commit.
-Create and push the matching `vX.Y.Z` tag. The tag workflows retrieve the
-`site-dist` artifact from successful CI for that exact commit on main, verify its
-commit, calculated version, package files and SHA-256, then publish that same
-HTML to the release and Pages. They do not rebuild it. CI retains the artifact
-for 30 days; if CI is pending, wait for it before rerunning publication. For
-failed CI or an expired artifact, manually dispatch CI selecting the version
-tag, then rerun release/Pages after it passes. CI dispatched on that exact tag
-is also accepted, provided the tagged commit is reachable from main. Manual
-publication must select the version tag.
-Release titles must exactly match the version tag.
-The release workflow uses that version's authored notes when present, with
-GitHub-generated notes as a fallback so a new release has a description.
+After a successful push-to-main CI run, `Publish validated main` automatically
+creates the calculated `vX.Y.Z` tag, publishes the release, and deploys Pages.
+It downloads `site-dist` from that exact run and verifies commit/version/hashes;
+it does not rebuild. CI stamps the calculated version into its build checkout
+before packaging and offline tests, so the viewer reports the published version.
+The source package files need not receive a separate version-bump commit.
+
+Only the latest main commit is eligible. Failed/canceled CI cannot publish.
+Commits containing only `+semver: none` do not create a new release when the
+calculated version already belongs to an earlier tag. Rerunning publication for
+the same tagged commit can repair a failed release/Pages publication without
+moving its tag. Review `docs/releases/vX.Y.Z.md` before pushing a release batch;
+authored notes are used when present, otherwise GitHub generates release notes.
+Release titles exactly match the version tag.
+
+Manual tag publication remains available for recovery. Select a stable version
+tag for the Release Artifact or Deploy Pages workflow. They retrieve successful
+CI for that exact commit on main, normalize the build version, and verify the
+same artifact. CI retains artifacts for 30 days. If one expires, manually run
+CI selecting that tag and rerun the publication after CI succeeds.
 
 ### Deploy to the lab server
 

@@ -130,6 +130,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Set the calculated version in the build checkout
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: node --input-type=module -e 'import { stampPackageVersion } from "./scripts/publication.mjs"; stampPackageVersion(process.env.RELEASE_VERSION);'
       - uses: ./.github/actions/setup-validation
         with:
           browser: 'true'

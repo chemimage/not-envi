@@ -45,4 +45,6 @@ runs:
       env:
         VALIDATED_DIST: ${{ runner.temp }}/validated-dist
       shell: bash
-      run: node .github/actions/validated-dist/verify.mjs
+      run: |
+        node --input-type=module -e 'import { stampPackageVersion } from "./scripts/publication.mjs"; stampPackageVersion(process.env.GITHUB_REF_NAME.slice(1));'
+        node .github/actions/validated-dist/verify.mjs
