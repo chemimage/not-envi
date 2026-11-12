@@ -104,6 +104,9 @@
 
   .draw-tool-btn i,
   .draw-color-wrap i {
+    /* Font Awesome is unlayered; use its display variable so it preserves
+       centering instead of overriding display with inline-block. */
+    --fa-display: inline-flex;
     width: 90%;
     height: 90%;
     display: inline-flex;
@@ -467,6 +470,11 @@
     height: 52px;
   }
 
+  #bandDock.is-composite {
+    width: max-content;
+    max-width: calc(50% - 15px);
+  }
+
   .band-selector {
     @apply relative h-full w-full overflow-visible rounded-xs border border-gray-700 bg-gray-900/80 outline-hidden;
     cursor: ew-resize;
@@ -624,8 +632,12 @@
     width: calc(100% - 163px);
   }
 
+  .band-selector.locked .band-dock-bound,
+  .band-selector.locked .band-dock-track,
   .band-selector.locked .band-dock-value,
-  .band-selector.locked .band-dock-preview {
+  .band-selector.locked .band-dock-preview,
+  .band-selector.locked .band-dock-input,
+  .band-selector.locked .band-dock-candidates {
     display: none;
   }
 
@@ -653,17 +665,17 @@
   }
 
   .band-dock-lock {
-    @apply pointer-events-none absolute inset-y-1 left-12 hidden items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-300;
-    right: 91px;
+    @apply pointer-events-none hidden h-full items-center text-sm font-semibold text-gray-300;
+    padding: 0 58px 0 12px;
   }
 
-  .band-selector.locked {
-    cursor: not-allowed;
+  .band-dock-lock span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .band-selector.locked .band-dock-track {
-    opacity: 0.22;
-  }
+  .band-selector.locked { cursor: default; }
 
   .band-selector.locked .band-dock-lock {
     display: flex;

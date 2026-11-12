@@ -310,13 +310,21 @@ export function createBandDockController(deps) {
     const colorCapable = isThreeBandDataset(ds);
     const locked = isThreeBandColorMode(ds);
     els.bandDock?.classList?.toggle("has-color-mode", colorCapable);
+    els.bandDock?.classList?.toggle("is-composite", locked);
     selector.classList.toggle("locked", locked);
+    selector.setAttribute("role", locked ? "group" : "slider");
+    selector.setAttribute("aria-label", locked ? "Color composite" : "Current image wavenumber");
+    selector.tabIndex = locked ? -1 : 0;
     selector.setAttribute("aria-disabled", locked ? "true" : "false");
     const selected = entryForBand(activeBand(ds));
-    selector.setAttribute("aria-valuemin", "0");
-    selector.setAttribute("aria-valuemax", String(Math.max(0, entries.length - 1)));
-    selector.setAttribute("aria-valuenow", String(selected?.order ?? 0));
-    selector.setAttribute("aria-valuetext", selected?.label || "—");
+    if (locked) {
+      for (const name of ["aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-valuetext"]) selector.removeAttribute(name);
+    } else {
+      selector.setAttribute("aria-valuemin", "0");
+      selector.setAttribute("aria-valuemax", String(Math.max(0, entries.length - 1)));
+      selector.setAttribute("aria-valuenow", String(selected?.order ?? 0));
+      selector.setAttribute("aria-valuetext", selected?.label || "—");
+    }
     if (els.bandColorMode) {
       const mode = getThreeBandDisplayMode(ds);
       const label = mode === "rgb" ? "RGB" : (mode === "bgr" ? "BGR" : "Gray");

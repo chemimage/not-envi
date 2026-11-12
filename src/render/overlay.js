@@ -463,7 +463,7 @@ export function createOverlayRenderer(deps) {
 
     const inset = 10 * dpr;
     const tickLen = 6 * dpr;
-    const fontPx = 12 * dpr;
+    const fontPx = 14 * dpr; // Match the dataset-list title and composite label.
     overlayCtx.save();
     overlayCtx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
     overlayCtx.textAlign = "center";
