@@ -10,6 +10,10 @@ See the [Tailwind browser requirements](https://tailwindcss.com/docs/upgrade-gui
 - `npm install`
 - `npm run dev`
 
+The C/WASM fmap backend is enabled by default. Use `?fmap=0` (or
+`?fmap=false`) to use the existing backend, including for TIFF codecs or
+photometrics not supported by fmap. `?fmap=1` remains supported.
+
 ## Tests
 
 - `npm run test:unit`

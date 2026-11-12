@@ -23,12 +23,13 @@ afterEach(() => {
 });
 
 describe("config hardware concurrency", () => {
-  test("fmap remains opt-in through an explicit query switch", () => {
-    expect(APP_CONFIG.fmap.enabledByDefault).toBe(false);
+  test("fmap defaults on and supports an explicit query opt-out", () => {
     expect(isFmapRequested("?fmap=1")).toBe(true);
     expect(isFmapRequested("?fmap=true")).toBe(true);
     expect(isFmapRequested("?fmap=0")).toBe(false);
-    expect(isFmapRequested("")).toBe(false);
+    expect(isFmapRequested("?fmap=false")).toBe(false);
+    expect(isFmapRequested("")).toBe(true);
+    expect(isFmapRequested("?unrelated=1")).toBe(true);
   });
 
   test("resolveHardwareConcurrencyLimit applies configurable fractions", () => {
