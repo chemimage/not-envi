@@ -395,7 +395,7 @@ export function createHistogramController(deps) {
     if (!raster) return;
     const step = Number.isFinite(raster.step) ? raster.step : 1;
     const stats = decorateHistogramStats(
-      computeHistogram(raster.dataF32, 256),
+      raster.histogramStats || computeHistogram(raster.dataF32, 256),
       {
         band: b,
         sampleStep: step,

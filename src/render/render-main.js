@@ -47,6 +47,7 @@ export function createRenderer(deps) {
     cpuRenderColor,
     buildGrayCanvas,
     buildColorCanvas,
+    clearColorComposition,
     drawCanvasToViewport,
     tryRasterFromPyramid,
     readBandWindow,
@@ -511,7 +512,8 @@ export function createRenderer(deps) {
   function buildColorChannelParams(ds, compositeRaster) {
     return compositeRaster.channelBands.map((channelBand) => {
       const channelSettings = getBandSettings(ds, channelBand);
-      const channelRange = resolveDisplayRange(ds, channelBand, compositeRaster.rasterByBand.get(channelBand).dataF32);
+      const channelRaster = compositeRaster.rasterByBand.get(channelBand);
+      const channelRange = resolveDisplayRange(ds, channelBand, channelRaster.dataF32, channelRaster);
       return {
         minVal: channelRange.minVal,
         maxVal: channelRange.maxVal,
@@ -811,7 +813,7 @@ export function createRenderer(deps) {
       ds.lastRaster = stableRaster ? raster : null;
     }
 
-    const range = resolveDisplayRange(ds, band, raster.dataF32);
+    const range = resolveDisplayRange(ds, band, raster.dataF32, raster);
     const params = {
       minVal: range.minVal,
       maxVal: range.maxVal,
@@ -959,7 +961,7 @@ export function createRenderer(deps) {
             const stableRaster = colorMode ? stableComposite : isStableRaster(raster);
 
             const settings = getBandSettings(ds, band);
-            const range = resolveDisplayRange(ds, band, raster.dataF32);
+            const range = resolveDisplayRange(ds, band, raster.dataF32, raster);
             const params = {
               minVal: range.minVal,
               maxVal: range.maxVal,
@@ -1078,7 +1080,7 @@ export function createRenderer(deps) {
 
             const stableRaster = isStableRaster(raster);
             const settings = getBandSettings(ds, band);
-            const range = resolveDisplayRange(ds, band, raster.dataF32);
+            const range = resolveDisplayRange(ds, band, raster.dataF32, raster);
             const params = {
               minVal: range.minVal,
               maxVal: range.maxVal,
@@ -1179,6 +1181,7 @@ export function createRenderer(deps) {
     if (shouldDeferRender?.()) { onDeferredRender?.(); return; }
     const visible = listVisiblePanels();
     if (!visible.length) {
+      clearColorComposition?.();
       resizeCanvases();
       clearBaseCanvases(els, { clearOverlay: true });
       return;
