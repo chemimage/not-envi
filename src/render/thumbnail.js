@@ -222,7 +222,7 @@ export function createThumbnailController(deps) {
     }
   }
 
-  async function renderCompositeWindowToImageData(ds, x0, y0, outW, outH, step, readOptions = null) {
+  async function renderCompositeWindowToImageData(ds, x0, y0, outW, outH, step, readOptions = null, opts = {}) {
     if (typeof ds?.ds?.supportsCompositeWindow === "function" && ds.ds.supportsCompositeWindow() && typeof ds?.ds?.readCompositeWindow === "function") {
       const composite = await ds.ds.readCompositeWindow(ds.meta, x0, y0, outW, outH, step, readOptions);
       if (composite?.bands?.length === 3) {
@@ -231,7 +231,8 @@ export function createThumbnailController(deps) {
         const channelParams = channelBands.map((band, idx) => {
           const f32 = channelData[idx];
           const settings = getBandSettings(ds, band);
-          const range = resolveDisplayRange(ds, band, f32);
+          const range = opts.channelDisplayRanges?.[band] || (opts.displayRange && Number.isFinite(opts.displayRange.minVal) && Number.isFinite(opts.displayRange.maxVal)
+            ? opts.displayRange : resolveDisplayRange(ds, band, f32));
           return {
             minVal: range.minVal,
             maxVal: range.maxVal,
@@ -266,7 +267,8 @@ export function createThumbnailController(deps) {
       const channelParams = channelBands.map((band, idx) => {
         const f32 = channelData[idx];
         const settings = getBandSettings(ds, band);
-        const range = resolveDisplayRange(ds, band, f32);
+        const range = opts.channelDisplayRanges?.[band] || (opts.displayRange && Number.isFinite(opts.displayRange.minVal) && Number.isFinite(opts.displayRange.maxVal)
+            ? opts.displayRange : resolveDisplayRange(ds, band, f32));
         return {
           minVal: range.minVal,
           maxVal: range.maxVal,
@@ -552,6 +554,7 @@ export function createThumbnailController(deps) {
   }
 
   return {
+    renderCompositeWindowToImageData,
     renderWindowToImageData,
     renderThumbnail,
     onThumbClick,

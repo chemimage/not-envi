@@ -132,6 +132,8 @@ export function collectElements() {
     expScopeView: $("#expScopeView"),
     expLblScopeSel: $("#expLblScopeSel"),
     expBandWrap: $("#expBandWrap"),
+    expBandComposite: $("#expBandComposite"),
+    expBandCompositeWrap: $("#expBandCompositeWrap"),
     expBandCurrent: $("#expBandCurrent"),
     expBandAll: $("#expBandAll"),
     expScaled8Wrap: $("#expScaled8Wrap"),

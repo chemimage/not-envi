@@ -1,3 +1,4 @@
+import { isThreeBandColorMode } from "../app/three-band-display.js";
 export { createExportService } from "./export-service.js";
 
 export function createExportDialogController(deps) {
@@ -30,6 +31,7 @@ export function createExportDialogController(deps) {
 
   function selectedBandCount(ds, kind = selectedKind()) {
     if (!ds) return 0;
+    if (isThreeBandColorMode(ds) && els.expBandComposite?.checked) return selectedMode(kind) === "raw" ? 3 : 1;
     if (kind === "png") return 1;
     return els.expBandAll?.checked ? Math.max(1, Number(ds.meta?.bands) || 1) : 1;
   }
@@ -93,6 +95,7 @@ export function createExportDialogController(deps) {
   }
 
   function openExportDialog() {
+    if (state.exportRunning) return;
     const ds = getActive();
     if (!ds || ds.activeBand == null) {
       alertFn("Please select a dataset and band first.");
@@ -124,7 +127,8 @@ export function createExportDialogController(deps) {
       els.expModeRendered.checked = true;
       els.expModeRaw.checked = false;
       if (els.expScaled8) els.expScaled8.checked = false;
-      if (els.expBandCurrent) els.expBandCurrent.checked = true;
+      if (!isThreeBandColorMode(ds) && els.expBandCurrent) els.expBandCurrent.checked = true;
+      if (els.expBandAll?.checked && !els.expBandComposite?.checked && els.expBandCurrent) els.expBandCurrent.checked = true;
       if (els.expBandAll) els.expBandAll.checked = false;
     } else if (kind === "envi") {
       els.expModeRaw.checked = true;
@@ -142,6 +146,13 @@ export function createExportDialogController(deps) {
       els.expBandCurrent.checked = true;
     }
 
+    if (els.expBandComposite) {
+      els.expBandComposite.checked = isThreeBandColorMode(ds);
+      if (isThreeBandColorMode(ds)) {
+        els.expBandCurrent.checked = false;
+        els.expBandAll.checked = false;
+      }
+    }
     updateExportDialogUI();
     try { els.exportDlg.showModal(); } catch { els.exportDlg.open = true; }
   }
@@ -150,6 +161,13 @@ export function createExportDialogController(deps) {
     const ds = getActive();
     const kind = selectedKind();
     state.exportKind = kind;
+    const color = isThreeBandColorMode(ds);
+    if (els.expBandAll) els.expBandAll.disabled = kind === "png";
+    if (els.expBandCompositeWrap) els.expBandCompositeWrap.style.display = color ? "flex" : "none";
+    if (!color && els.expBandComposite?.checked) {
+      els.expBandComposite.checked = false;
+      if (els.expBandCurrent) els.expBandCurrent.checked = true;
+    }
     const offerScaled8 = shouldOfferScaled8(ds, kind);
     if (els.expScaled8Wrap) {
       els.expScaled8Wrap.style.display = offerScaled8 ? "block" : "none";
@@ -164,8 +182,9 @@ export function createExportDialogController(deps) {
       if (els.expScaled8) els.expScaled8.checked = false;
       els.expModeWrap.style.display = "none";
       els.expFormatHint.textContent = "PNG can only export rendered result.";
-      if (els.expBandWrap) els.expBandWrap.style.display = "none";
-      if (els.expBandCurrent) els.expBandCurrent.checked = true;
+      if (els.expBandWrap) els.expBandWrap.style.display = color ? "block" : "none";
+      if (!isThreeBandColorMode(ds) && els.expBandCurrent) els.expBandCurrent.checked = true;
+      if (els.expBandAll?.checked && !els.expBandComposite?.checked && els.expBandCurrent) els.expBandCurrent.checked = true;
       if (els.expBandAll) els.expBandAll.checked = false;
     } else if (kind === "envi") {
       els.expModeRaw.checked = true;
@@ -290,6 +309,11 @@ export function createExportDialogController(deps) {
       }
     }
 
+    if (isThreeBandColorMode(ds) && els.expBandComposite?.checked) {
+      note = note.replace(/from the current band|for the current band/g, "as the displayed color composite");
+      if (kind === "tiff") note = note.replace(/TIFF stack/g, "RGB TIFF").replace(/ \u00d7 <b>3<\/b> bands/g, " with three color channels");
+      note += ` ${String(ds.displayMode).toUpperCase()} channel order; ${mode === "raw" ? "original samples preserved" : "channel display settings applied"}.`;
+    }
     if (mode === "rendered") {
       note += annotationsOn ? " Includes annotations." : " Annotations will be omitted.";
       if (els.expScaleBar?.checked) note += " Includes scale bar.";

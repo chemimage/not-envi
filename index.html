@@ -384,9 +384,13 @@
     <div id="expBandWrap" style="flex:1 1 180px;">
       <label class="small">Bands</label>
       <div class="row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:6px;">
+        <label class="toggle" id="expBandCompositeWrap" style="display:none;">
+          <input type="radio" id="expBandComposite" name="expBands" value="composite" />
+          <span>Displayed RGB/BGR composite</span>
+        </label>
         <label class="toggle">
           <input type="radio" id="expBandCurrent" name="expBands" value="current" checked />
-          <span>Current band</span>
+          <span>Current band (grayscale)</span>
         </label>
         <label class="toggle">
           <input type="radio" id="expBandAll" name="expBands" value="all" />

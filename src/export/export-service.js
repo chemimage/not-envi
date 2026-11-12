@@ -1,9 +1,50 @@
-import { encodeRawMultipageTiff, encodeRenderedMultipageTiff, encodeRenderedTiff } from "./tiff-backend.js";
-import { buildEnviHeaderText, encodeEnviBandBytes } from "./envi-backend.js";
+import { encodeExportJob } from "./encode-job.js";
+import { createExportProgress, yieldExportUi } from "./export-progress.js";
+import { isThreeBandColorMode, resolveThreeBandChannelOrder } from "../app/three-band-display.js";
+import { buildEnviHeaderText } from "./envi-backend.js";
 import { createOverlayRenderer } from "../render/overlay.js";
 import { resolveRasterSampling } from "../render/raster-geometry.js";
 
 export function createExportService(deps) {
+  let activeJob = null;
+  const progress = deps.exportProgress || createExportProgress();
+  async function stage(label, completed, total) {
+    if (!activeJob) return;
+    progress.update({ stage: activeJob.region ? `${activeJob.region}: ${label}` : label, completed, total });
+    await yieldExportUi();
+  }
+  async function encode(kind, args) {
+    await stage("Encoding…");
+    const meta = args.meta ? { ...args.meta, dataTypeInfo: { ...args.meta.dataTypeInfo, ctor: undefined } } : undefined;
+    const result = await (deps.encodeExport || encodeExportJob)({ kind, ...args, meta });
+    await stage("Preparing downloads…");
+    return result;
+  }
+  async function encodePng(canvas) {
+    await stage("Encoding PNG…");
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("PNG encoder returned no image.");
+    await stage("Preparing downloads…");
+    return blob;
+  }
+  async function renderExportWindow(ds, band, x0, y0, w, h, step, opts = {}) {
+    // Chunk tone mapping so cached reads still leave time for UI paints.
+    const rows = Math.max(1, Math.floor(262144 / w));
+    const renderOptions = band === null
+      ? { ...opts, channelDisplayRanges: Object.fromEntries(resolveThreeBandChannelOrder(ds).map((b) => [b, opts.displayRange || resolveScaled8Range(ds, b)])) }
+      : { ...opts, displayRange: opts.displayRange || resolveScaled8Range(ds, band) };
+    const output = { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+    for (let y = 0; y < h; y += rows) {
+      const count = Math.min(rows, h - y);
+      await stage("Rendering rows…", y, h);
+      const part = band === null
+        ? await deps.renderCompositeWindowToImageData(ds, x0, y0 + y * step, w, count, step, null, renderOptions)
+        : await deps.renderWindowToImageData(ds, band, x0, y0 + y * step, w, count, step, renderOptions);
+      output.data.set(part.data, y * w * 4);
+    }
+    await stage("Rendered rows", h, h);
+    return typeof ImageData === "function" ? new ImageData(output.data, w, h) : output;
+  }
   const RAW_ENVI_INTERLEAVE = "bsq";
   const RAW_ENVI_LITTLE_ENDIAN = true;
 
@@ -48,6 +89,9 @@ export function createExportService(deps) {
 
   function selectedBandIndices(ds, kind = selectedKindFromDialog()) {
     if (!ds || ds.activeBand == null) return [];
+    if (isThreeBandColorMode(ds) && deps.els.expBandComposite?.checked) {
+      return selectedModeFromDialog(kind) === "rendered" ? [null] : resolveThreeBandChannelOrder(ds);
+    }
     if (kind === "png") return [ds.activeBand];
     if (deps.els.expBandAll?.checked) {
       return Array.from({ length: Math.max(1, Number(ds.meta?.bands) || 1) }, (_v, i) => i);
@@ -91,6 +135,7 @@ export function createExportService(deps) {
   }
 
   function bandExportToken(ds, bandIndices) {
+    if (activeJob?.composite) return `${ds.displayMode}-composite`;
     if (Array.isArray(bandIndices) && bandIndices.length === 1) {
       return sanitizeFilePart(deps.bandLabel(ds, bandIndices[0]));
     }
@@ -360,7 +405,7 @@ export function createExportService(deps) {
     return false;
   }
 
-  function buildSelectionMask(ds, job) {
+  async function buildSelectionMask(ds, job) {
     const { w, h, x0, y0 } = job;
     const mask = new Uint8Array(w * h);
     const rectOnly = job.selections.every((sel) => sel.tool === "rect");
@@ -378,6 +423,7 @@ export function createExportService(deps) {
     }
 
     for (let row = 0; row < h; row += 1) {
+      if (row % Math.max(1, Math.floor(262144 / w)) === 0) await stage("Preparing selection mask...", row, h);
       const gy = y0 + row;
       if (gy < 0 || gy >= ds.meta.lines) continue;
       for (let col = 0; col < w; col += 1) {
@@ -478,7 +524,7 @@ export function createExportService(deps) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (geom.validW > 0 && geom.validH > 0) {
-      const src = await deps.renderWindowToImageData(ds, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step, {
+      const src = await renderExportWindow(ds, band, geom.srcX0, geom.srcY0, geom.validW, geom.validH, geom.step, {
         displayRange: opts.displayRange || opts.colorBarRange || null
       });
       const srcCanvas = imageDataToCanvas(src);
@@ -522,10 +568,17 @@ export function createExportService(deps) {
   }
 
   async function readBandExportData(ds, bandIndex, x0, y0, w, h) {
-    if (ds.meta.interleave === "bip") {
-      return deps.readBandWindowBIP(ds.meta, ds.ds, bandIndex, x0, y0, w, h, 1);
+    const read = ds.meta.interleave === "bip" ? deps.readBandWindowBIP : deps.readBandWindow;
+    const rows = Math.max(1, Math.floor(262144 / w));
+    let output;
+    for (let y = 0; y < h; y += rows) {
+      await stage(`Reading band ${bandIndex + 1}, rows…`, y, h);
+      const part = await read(ds.meta, ds.ds, bandIndex, x0, y0 + y, w, Math.min(rows, h - y), 1);
+      if (!output) output = new part.constructor(w * h);
+      output.set(part, y * w);
     }
-    return deps.readBandWindow(ds.meta, ds.ds, bandIndex, x0, y0, w, h, 1);
+    await stage(`Read band ${bandIndex + 1} rows`, h, h);
+    return output;
   }
 
   function scaled8Meta(meta, bandIndices) {
@@ -556,25 +609,6 @@ export function createExportService(deps) {
       maxVal = tmp;
     }
     return { minVal, maxVal };
-  }
-
-  function scalePageToUint8(values, range) {
-    const n = Number(values?.length) || 0;
-    const out = new Uint8Array(n);
-    if (!n) return out;
-
-    const minVal = Number(range?.minVal);
-    const maxVal = Number(range?.maxVal);
-    if (!Number.isFinite(minVal) || !Number.isFinite(maxVal) || maxVal <= minVal) return out;
-
-    const scale = 255 / (maxVal - minVal);
-    for (let i = 0; i < n; i += 1) {
-      const v = Number(values[i]);
-      out[i] = Number.isFinite(v)
-        ? deps.clamp(Math.round((v - minVal) * scale), 0, 255)
-        : 0;
-    }
-    return out;
   }
 
   function imageDataFromCanvas(canvas) {
@@ -691,7 +725,7 @@ export function createExportService(deps) {
     if (Number.isFinite(minVal) && Number.isFinite(maxVal) && minVal !== maxVal) {
       return { minVal: Math.min(minVal, maxVal), maxVal: Math.max(minVal, maxVal) };
     }
-    return resolveBandDisplayRange(ds, bandIndex, null);
+    return resolveScaled8Range(ds, bandIndex);
   }
 
   function drawExportColorBar(ctx, metrics, x0, yCursor) {
@@ -750,7 +784,7 @@ export function createExportService(deps) {
 
   async function buildSelectionRenderedImageData(ds, bandIndex, job, opts = {}) {
     const srcWin = sourceWindowForJob(ds, job);
-    const mask = buildSelectionMask(ds, job);
+    const mask = await buildSelectionMask(ds, job);
     const outCanvas = document.createElement("canvas");
     outCanvas.width = job.w;
     outCanvas.height = job.h;
@@ -762,10 +796,11 @@ export function createExportService(deps) {
     }
 
     if (srcWin.w > 0 && srcWin.h > 0) {
-      const src = await deps.renderWindowToImageData(ds, bandIndex, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1, {
+      const src = await renderExportWindow(ds, bandIndex, srcWin.x0, srcWin.y0, srcWin.w, srcWin.h, 1, {
         displayRange: opts.displayRange || opts.colorBarRange || null
       });
       for (let row = 0; row < srcWin.h; row += 1) {
+        if (row % Math.max(1, Math.floor(262144 / srcWin.w)) === 0) await stage("Applying selection mask...", row, srcWin.h);
         const outRow = row + srcWin.offY;
         for (let col = 0; col < srcWin.w; col += 1) {
           const outCol = col + srcWin.offX;
@@ -801,7 +836,7 @@ export function createExportService(deps) {
     const rendered = target.mode === "viewport"
       ? await renderViewportToImageData(ds, bandIndex, target.rect, opts)
       : {
-          imageData: await deps.renderWindowToImageData(ds, bandIndex, target.rect.x0, target.rect.y0, target.outputW, target.outputH, 1, {
+          imageData: await renderExportWindow(ds, bandIndex, target.rect.x0, target.rect.y0, target.outputW, target.outputH, 1, {
             displayRange: opts.displayRange || opts.colorBarRange || null
           }),
           outputW: target.outputW,
@@ -846,6 +881,7 @@ export function createExportService(deps) {
 
     for (let i = 0; i < jobs.length; i += 1) {
       const job = jobs[i];
+      if (activeJob) activeJob.region = `Region ${i + 1}/${jobs.length}`;
       const pages = [];
       for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
         const bandIndex = bandIndices[bandPos];
@@ -860,13 +896,11 @@ export function createExportService(deps) {
 
       if (kind === "png") {
         const canvas = imageDataToCanvas(pages[0]);
-        const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+        const blob = await encodePng(canvas);
         deps.downloadBlob(blob, `${selectionBaseName(ds, bandIndices, job)}.png`);
       } else {
         const base = selectionBaseName(ds, bandIndices, job, bandIndices.length > 1 ? "renderedstack" : "rendered");
-        const blob = bandIndices.length > 1
-          ? encodeRenderedMultipageTiff({ pages })
-          : encodeRenderedTiff({ imageData: pages[0] });
+        const blob = await encode("rendered", { pages });
         deps.downloadBlob(blob, `${base}.tiff`);
       }
     }
@@ -898,22 +932,20 @@ export function createExportService(deps) {
     const base = rectBaseName(ds, bandIndices, target.rect, bandIndices.length > 1 ? "renderedstack" : "rendered", scope, w, h);
     if (kind === "png") {
       const canvas = imageDataToCanvas(pages[0]);
-      const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+      const blob = await encodePng(canvas);
       deps.downloadBlob(blob, `${rectBaseName(ds, bandIndices, target.rect, "", scope, w, h)}.png`);
       deps.setStatus("ready", "ok");
       return;
     }
 
-    const blob = bandIndices.length > 1
-      ? encodeRenderedMultipageTiff({ pages })
-      : encodeRenderedTiff({ imageData: pages[0] });
+    const blob = await encode("rendered", { pages });
     deps.downloadBlob(blob, `${base}.tiff`);
     deps.setStatus("ready", "ok");
   }
 
   async function buildRawSelectionPages(ds, job, bandIndices) {
     const srcWin = sourceWindowForJob(ds, job);
-    const mask = buildSelectionMask(ds, job);
+    const mask = await buildSelectionMask(ds, job);
     const pages = [];
     for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
       const bandIndex = bandIndices[bandPos];
@@ -926,6 +958,7 @@ export function createExportService(deps) {
       const out = new Ctor(job.w * job.h);
       if (src && srcWin.w > 0 && srcWin.h > 0) {
         for (let row = 0; row < srcWin.h; row += 1) {
+          if (row % Math.max(1, Math.floor(262144 / srcWin.w)) === 0) await stage("Applying selection mask...", row, srcWin.h);
           const outRow = row + srcWin.offY;
           for (let col = 0; col < srcWin.w; col += 1) {
             const outCol = col + srcWin.offX;
@@ -948,12 +981,14 @@ export function createExportService(deps) {
 
     for (let jobIdx = 0; jobIdx < jobs.length; jobIdx += 1) {
       const job = jobs[jobIdx];
+      if (activeJob) activeJob.region = `Region ${jobIdx + 1}/${jobs.length}`;
       const pages = await buildRawSelectionPages(ds, job, bandIndices);
       const base = selectionBaseName(ds, bandIndices, job, bandIndices.length > 1 ? "rawstack" : "raw");
       if (kind === "envi") {
         const meta = subsetMetaForBandIndices(ds.meta, bandIndices);
         const datName = `${base}.dat`;
-        const parts = pages.map((page) => encodeEnviBandBytes(meta, page, RAW_ENVI_LITTLE_ENDIAN));
+        const parts = [];
+        for (const page of pages) parts.push(await encode("envi", { meta, pages: [page] }));
         const hdrText = buildEnviHeaderText({
           meta,
           width: job.w,
@@ -966,7 +1001,7 @@ export function createExportService(deps) {
         deps.downloadBlob(new Blob(parts, { type: "application/octet-stream" }), datName);
         deps.downloadBlob(new Blob([hdrText], { type: "text/plain;charset=utf-8" }), `${base}.hdr`);
       } else {
-        const blob = encodeRawMultipageTiff({ meta: ds.meta, width: job.w, height: job.h, pages });
+        const blob = await encode("raw", { composite: !!activeJob?.composite, meta: ds.meta, width: job.w, height: job.h, pages });
         deps.downloadBlob(blob, `${base}.tiff`);
       }
     }
@@ -980,10 +1015,12 @@ export function createExportService(deps) {
 
     for (let jobIdx = 0; jobIdx < jobs.length; jobIdx += 1) {
       const job = jobs[jobIdx];
+      if (activeJob) activeJob.region = `Region ${jobIdx + 1}/${jobs.length}`;
       const rawPages = await buildRawSelectionPages(ds, job, bandIndices);
-      const pages = rawPages.map((page, bandPos) => scalePageToUint8(page, resolveScaled8Range(ds, bandIndices[bandPos])));
+      const pages = rawPages;
       const base = selectionBaseName(ds, bandIndices, job, bandIndices.length > 1 ? "scaled8stack" : "scaled8");
-      const blob = encodeRawMultipageTiff({
+      const blob = await encode("scaled8", { composite: !!activeJob?.composite,
+        ranges: bandIndices.map((band) => resolveScaled8Range(ds, band)),
         meta: scaled8Meta(ds.meta, bandIndices),
         width: job.w,
         height: job.h,
@@ -1007,7 +1044,7 @@ export function createExportService(deps) {
       pages.push(await readBandExportData(ds, bandIndices[bandPos], rect.x0, rect.y0, w, h));
     }
 
-    const blob = encodeRawMultipageTiff({ meta: ds.meta, width: w, height: h, pages });
+    const blob = await encode("raw", { composite: !!activeJob?.composite, meta: ds.meta, width: w, height: h, pages });
     deps.downloadBlob(blob, `${rectBaseName(ds, bandIndices, rect, bandIndices.length > 1 ? "rawstack" : "raw")}.tiff`);
     deps.setStatus("ready", "ok");
   }
@@ -1023,10 +1060,10 @@ export function createExportService(deps) {
     for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
       deps.setStatus(`export scaled 8-bit… ${bandPos + 1}/${bandIndices.length}`, "warn");
       const raw = await readBandExportData(ds, bandIndices[bandPos], rect.x0, rect.y0, w, h);
-      pages.push(scalePageToUint8(raw, resolveScaled8Range(ds, bandIndices[bandPos])));
+      pages.push(raw);
     }
 
-    const blob = encodeRawMultipageTiff({ meta: scaled8Meta(ds.meta, bandIndices), width: w, height: h, pages });
+    const blob = await encode("scaled8", { composite: !!activeJob?.composite, ranges: bandIndices.map((band) => resolveScaled8Range(ds, band)), meta: scaled8Meta(ds.meta, bandIndices), width: w, height: h, pages });
     deps.downloadBlob(blob, `${rectBaseName(ds, bandIndices, rect, bandIndices.length > 1 ? "scaled8stack" : "scaled8")}.tiff`);
     deps.setStatus("ready", "ok");
   }
@@ -1043,7 +1080,7 @@ export function createExportService(deps) {
     for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
       deps.setStatus(`export raw… ${bandPos + 1}/${bandIndices.length}`, "warn");
       const data = await readBandExportData(ds, bandIndices[bandPos], rect.x0, rect.y0, w, h);
-      parts.push(encodeEnviBandBytes(meta, data, RAW_ENVI_LITTLE_ENDIAN));
+      parts.push(await encode("envi", { meta, pages: [data] }));
     }
 
     const base = rectBaseName(ds, bandIndices, rect, bandIndices.length > 1 ? "rawstack" : "raw");
@@ -1063,8 +1100,26 @@ export function createExportService(deps) {
   }
 
   async function runExportFromDialog() {
+    if (activeJob || deps.state.exportRunning) return;
     const ds = deps.getActive();
     if (!ds || ds.activeBand == null) return;
+    activeJob = { composite: isThreeBandColorMode(ds) && !!deps.els.expBandComposite?.checked };
+    deps.state.exportRunning = true;
+    const button = deps.els.btnExpGo;
+    const wasDisabled = button?.disabled;
+    if (button) button.disabled = true;
+    try {
+      await stage("Preparing export…");
+      await executeExportFromDialog(ds);
+    } finally {
+      activeJob = null;
+      deps.state.exportRunning = false;
+      if (button) button.disabled = wasDisabled;
+      progress.close();
+    }
+  }
+
+  async function executeExportFromDialog(ds) {
     const kind = selectedKindFromDialog();
     const mode = selectedModeFromDialog(kind);
     const scope = selectedScopeFromDialog();

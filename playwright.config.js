@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/e2e",
-  testIgnore: "**/fmap-packaged.spec.js",
+  testIgnore: ["**/fmap-packaged.spec.js", "**/export-packaged.spec.js"],
   timeout: 30_000,
   use: {
     baseURL: "http://127.0.0.1:4173",

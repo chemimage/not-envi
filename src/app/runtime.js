@@ -1,3 +1,4 @@
+import { encodeInWorker } from "../export/encode-client.js";
 import { createExportDialogController, createExportService } from "../export/export-controller.js";
 import { createDatasetRuntime } from "./dataset-runtime.js";
 import { createCacheRuntime } from "./cache-runtime.js";
@@ -1366,6 +1367,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   // ========= Export =========
 
   const exportService = createExportService({
+    encodeExport: encodeInWorker,
+    renderCompositeWindowToImageData: (...args) => thumbnails.renderCompositeWindowToImageData(...args),
     state,
     els,
     getActive,
