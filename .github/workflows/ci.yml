@@ -143,6 +143,13 @@ jobs:
         run: npx playwright test --config=playwright.fmap-packaged.config.js
         env:
           FMAP_PACKAGED: '1'
+      - name: Retain packaged-browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-packaged
+          path: test-results/
+          if-no-files-found: ignore
       - name: Reuse coverage from this run's unit tests
         uses: actions/download-artifact@v8
         with:

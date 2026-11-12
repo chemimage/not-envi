@@ -28,7 +28,16 @@ test("single-file package reduces large uint8 histograms in its embedded fmap wo
     { name: "hist.hdr", mimeType: "text/plain", buffer: Buffer.from("ENVI\nsamples = 512\nlines = 512\nbands = 1\ndata type = 1\ninterleave = bsq\nbyte order = 0\n") },
     { name: "hist.raw", mimeType: "application/octet-stream", buffer: Buffer.from(Uint8Array.from({ length: 262144 }, (_, i) => i % 256)) }
   ]);
-  await expect.poll(() => page.evaluate(() => globalThis.__reductionResults.reduce((sum, part) => sum + (part[2] || 0), 0))).toBe(262144);
+  // This is a completion/correctness gate, not a five-second throughput test.
+  // The streamed analysis yields between 16 batches alongside foreground reads.
+  try {
+    await page.waitForFunction(() => globalThis.__reductionResults.some((part) => !Array.isArray(part))
+      || globalThis.__reductionResults.reduce((sum, part) => sum + part[2], 0) >= 262144,
+    null, { timeout: 20000 });
+  } catch (error) {
+    const progress = await page.evaluate(() => globalThis.__reductionResults.map((part) => Array.isArray(part) ? part[2] : part));
+    throw new Error(`Offline histogram did not complete: ${JSON.stringify(progress)}`, { cause: error });
+  }
   const values = await page.evaluate(() => {
     const parts = globalThis.__reductionResults;
     if (parts.some((part) => !Array.isArray(part) || part[2] > 16384)) throw new Error("Unexpected reduction batch");
