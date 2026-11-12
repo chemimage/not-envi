@@ -66,7 +66,7 @@ function packBitsTiffFixture() {
   return bytes;
 }
 
-test("single-file package reads fmap ENVI and compressed TIFF without network access", async ({ page }) => {
+test("single-file package reads and composes ENVI and TIFF through workers without network access", async ({ page }) => {
   test.skip(process.env.FMAP_PACKAGED !== "1", "Run with scripts/run-fmap-packaged-test.mjs.");
 
   const errors = [];
@@ -78,7 +78,7 @@ test("single-file package reads fmap ENVI and compressed TIFF without network ac
   });
   await page.addInitScript(() => {
     const NativeWorker = globalThis.Worker;
-    globalThis.__fmapWorkerTrace = { results: [], decoded: [], errors: [] };
+    globalThis.__fmapWorkerTrace = { results: [], decoded: [], pyramidFrames: [], rgbFrames: [], errors: [] };
     globalThis.Worker = class TracedWorker extends NativeWorker {
       constructor(...args) {
         super(...args);
@@ -95,6 +95,17 @@ test("single-file package reads fmap ENVI and compressed TIFF without network ac
           if (type === "decode:32773" && decoded instanceof ArrayBuffer) {
             globalThis.__fmapWorkerTrace.decoded.push(Array.from(new Uint8Array(decoded).subarray(0, 128)));
           }
+          if (type === "pyramid-composition" && !data.error && data.result?.histogramStats?.count > 0) {
+            globalThis.__fmapWorkerTrace.pyramidFrames.push({
+              count: data.result.histogramStats.count, filledCount: data.result.filledCount,
+              fineCount: data.result.fineCount
+            });
+          }
+          if (type === "rgb-composition" && data.bitmap instanceof ImageBitmap) {
+            globalThis.__fmapWorkerTrace.rgbFrames.push({
+              width: data.bitmap.width, height: data.bitmap.height, pixelsColored: data.pixelsColored
+            });
+          }
         });
         this.addEventListener("error", (event) => {
           globalThis.__fmapWorkerTrace.errors.push(String(event.message || "Worker error"));
@@ -103,6 +114,8 @@ test("single-file package reads fmap ENVI and compressed TIFF without network ac
       postMessage(message, ...args) {
         if (message?.type) this.fmapRequestTypes.set(message.id, message.type);
         if (message?.fileDirectory) this.fmapRequestTypes.set(message.id, `decode:${message.fileDirectory.Compression}`);
+        if (Array.isArray(message?.operations)) this.fmapRequestTypes.set(message.id, "pyramid-composition");
+        if (Array.isArray(message?.planes)) this.fmapRequestTypes.set(message.id, "rgb-composition");
         return super.postMessage(message, ...args);
       }
     };
@@ -131,6 +144,9 @@ test("single-file package reads fmap ENVI and compressed TIFF without network ac
   await expect.poll(() => page.evaluate(() => (
     globalThis.__fmapWorkerTrace.results.some((values) => values.includes(0.5) && values.includes(47.5))
   ))).toBe(true);
+  await expect.poll(() => page.evaluate(() => (
+    globalThis.__fmapWorkerTrace.pyramidFrames.some((frame) => frame.filledCount > 0 && frame.count > 0)
+  ))).toBe(true);
   expect(await page.evaluate(() => globalThis.__fmapWorkerTrace.errors)).toEqual([]);
 
   await page.locator("#filePicker").setInputFiles([
@@ -139,6 +155,9 @@ test("single-file package reads fmap ENVI and compressed TIFF without network ac
   await expect(page.locator("#datasetList .ds-item")).toHaveCount(2);
   await expect(page.locator("#datasetList")).toContainText("offline-rgb");
   await expect(page.locator("#datasetList")).toContainText("bands:3");
+  await expect.poll(() => page.evaluate(() => (
+    globalThis.__fmapWorkerTrace.rgbFrames.some((frame) => frame.width > 0 && frame.height > 0 && frame.pixelsColored > 0)
+  ))).toBe(true);
   await page.locator("#filePicker").setInputFiles([
     { name: "offline-packbits.tiff", mimeType: "image/tiff", buffer: packBitsTiffFixture() }
   ]);
@@ -148,5 +167,6 @@ test("single-file package reads fmap ENVI and compressed TIFF without network ac
   await expect.poll(() => page.evaluate(() => (
     globalThis.__fmapWorkerTrace.decoded.some((values) => values.length === 4 && values.every((value, index) => value === [10, 20, 30, 40][index]))
   ))).toBe(true);
+  expect(await page.evaluate(() => globalThis.__fmapWorkerTrace.errors)).toEqual([]);
   expect(errors).toEqual([]);
 });

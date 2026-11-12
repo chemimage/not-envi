@@ -53,6 +53,29 @@ function makeDeps(overrides = {}) {
 }
 
 describe("render-main", () => {
+  test("closes an obsolete worker bitmap without presenting it after the dataset closes", async () => {
+    let active = { id: "worker-view", activeBand: 0, displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 1 }, meta: { samples: 8, lines: 4, bands: 3, interleave: "bsq" },
+      ds: {}, bandStatsWhole: new Map() };
+    let finish;
+    const bitmap = { width: 8, height: 4, close: vi.fn() };
+    const buildColorCanvas = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const drawCanvasToViewport = vi.fn();
+    const deps = makeDeps({ getActive: () => active, buildColorCanvas, drawCanvasToViewport,
+      readBandWindow: async (_meta, _src, _band, _x, _y, w, h) => new Float32Array(w * h) });
+    const renderer = createRenderer(deps);
+    const pending = renderer.render();
+    await vi.waitFor(() => expect(buildColorCanvas).toHaveBeenCalledOnce());
+    const signal = buildColorCanvas.mock.calls[0][3].signal;
+    active = null;
+    await renderer.render();
+    expect(signal.aborted).toBe(true);
+    finish(bitmap);
+    await pending;
+    expect(drawCanvasToViewport).not.toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledOnce();
+  });
+
   test.each([1, 3])("consumes cancelled %i-band raster loads without hiding backing read failures", async (bands) => {
     const ds = { id: "cancelled-load", activeBand: 0, displayMode: bands === 3 ? "rgb" : "gray",
       view: { x: 0, y: 0, scale: 1 }, meta: { samples: 8, lines: 4, bands, interleave: "bsq" },
@@ -266,7 +289,7 @@ describe("render-main", () => {
     expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
   });
 
-  test("render paints progressive TIFF composite updates with transparent no-data", async () => {
+  test.each([false, true])("progressive TIFF updates preserve shared reads when a display update aborts: %s", async (abortPartial) => {
     const compositeWindow = vi.fn(async (_meta, _x0, _y0, outW, outH, _step, options) => {
       if (typeof options?.onProgress === "function") {
         const partialBands = [0, 1, 2].map((band) => {
@@ -299,7 +322,10 @@ describe("render-main", () => {
       lastCompositeRaster: null,
       bandStatsWhole: new Map()
     };
-    const buildColorCanvas = vi.fn(() => ({ width: 8, height: 4 }));
+    const buildColorCanvas = vi.fn((_rasters, _params, opts) => {
+      if (abortPartial && opts?.transparentNoData) return Promise.reject(Object.assign(new Error("Old display"), { name: "AbortError" }));
+      return { width: 8, height: 4 };
+    });
     const drawCanvasToViewport = vi.fn();
     const deps = makeDeps({
       getActive: () => ds,
@@ -314,10 +340,10 @@ describe("render-main", () => {
     await renderer.render();
 
     expect(compositeWindow).toHaveBeenCalledTimes(1);
-    expect(buildColorCanvas).toHaveBeenCalledTimes(1);
+    expect(buildColorCanvas).toHaveBeenCalledTimes(2);
     expect(buildColorCanvas.mock.calls[0][2]).toEqual(expect.objectContaining({ transparentNoData: true }));
-    expect(drawCanvasToViewport).toHaveBeenCalledTimes(1);
-    expect(deps.cpuRenderColor).toHaveBeenCalledTimes(1);
+    expect(drawCanvasToViewport).toHaveBeenCalledTimes(abortPartial ? 1 : 2);
+    expect(deps.cpuRenderColor).not.toHaveBeenCalled();
   });
 
   test("render coarsens expensive raw TIFF composite reads on first paint", async () => {

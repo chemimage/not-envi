@@ -1,7 +1,7 @@
 import { clamp } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
 import { APP_CONFIG } from "../app/config.js";
-import { CompositionCache } from "./incremental-composition.js";
+import { createPyramidCompositionClient } from "./pyramid-composition-client.js";
 
 const perfNow = () => (
   (typeof performance !== "undefined" && typeof performance.now === "function")
@@ -393,7 +393,7 @@ export function createPyramidController(deps) {
       maxLevel,
       limitBytes: ds.pyramidBudgetBytes || APP_CONFIG.pyramid.defaultLimitBytes,
       totalBytes: 0,
-      compositionCache: new CompositionCache(ds.pyramidBudgetBytes || APP_CONFIG.pyramid.defaultLimitBytes),
+      compositionCache: createPyramidCompositionClient(ds.pyramidBudgetBytes || APP_CONFIG.pyramid.defaultLimitBytes),
       tiles: new Map(),
       pending: new Map(),
       requests: new Map(),
@@ -418,7 +418,9 @@ export function createPyramidController(deps) {
         composeCalls: 0,
         tilesComposed: 0,
         composePixels: 0,
-        composeMs: 0
+        composeMs: 0,
+        composeMainMs: 0,
+        composeWaitMs: 0
       }
     };
   }
@@ -444,7 +446,7 @@ export function createPyramidController(deps) {
       pyr._idleHandle = null;
     }
     pyr.tiles.clear();
-    pyr.compositionCache?.clear();
+    pyr.compositionCache?.dispose();
     pyr.pending.clear();
     if (pyr.inflight) pyr.inflight.clear();
     pyr.queued.clear();
@@ -657,10 +659,14 @@ export function createPyramidController(deps) {
     return !!ds?.pyramid && !ds.pyramid.cancelled;
   }
 
-  function composePyramidRaster(ds, band, idealLevel, eff, viewportW, viewportH) {
+  async function composePyramidRaster(ds, band, idealLevel, eff, viewportW, viewportH) {
     const pyr = ds.pyramid;
     if (!pyr || pyr.cancelled) return null;
     const composeStart = perfNow();
+    const panelSlot = Number(ds.__renderPanelSlot) || 1;
+    const view = { x: ds.view.x, y: ds.view.y };
+    const viewKey = compositionViewKey(ds, idealLevel, eff, viewportW, viewportH);
+    const focusEpoch = pyr.focusEpoch;
     const ideal = collectViewportLevel(ds, pyr, band, idealLevel, eff, viewportW, viewportH);
     if (!ideal) return null;
 
@@ -687,11 +693,7 @@ export function createPyramidController(deps) {
       ? ((Math.floor(Number(sampling.rowStart) || 0)) - winY0)
       : (-winY0);
     pyr.compositionCache.setLimit(pyr.limitBytes);
-    const plane = pyr.compositionCache.get(`${Number(ds.__renderPanelSlot) || 1}:${band}`,
-      compositionViewKey(ds, idealLevel, eff, viewportW, viewportH),
-      { w: winW, h: winH, idealLevel }, Number(ds.meta.dataType) === 1);
-    plane.begin();
-    let tilesUsed = 0;
+    const operations = [];
 
     for (let level = pyr.maxLevel; level >= idealLevel; level -= 1) {
       const info = collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH);
@@ -718,20 +720,29 @@ export function createPyramidController(deps) {
         const right = Math.min(validX1, dstOriginX + ovX1 * factor);
         const bottom = Math.min(validY1, dstOriginY + ovY1 * factor);
         if (right <= x || bottom <= y) continue;
-        if (plane.apply(tile, task.key, { x, y, w: right - x, h: bottom - y }, factor,
-          dstOriginX, dstOriginY, tileDx0, tileDy0)) tilesUsed += 1;
+        operations.push({ tile, key: task.key, rect: { x, y, w: right - x, h: bottom - y },
+          factor, originX: dstOriginX, originY: dstOriginY, tileX: tileDx0, tileY: tileDy0 });
       }
     }
 
+    const pendingComposition = pyr.compositionCache.compose({ key: `${panelSlot}:${band}`, viewKey,
+      geometry: { w: winW, h: winH, idealLevel }, uint8: Number(ds.meta.dataType) === 1,
+      operations, requiredPixels });
+    const mainMs = perfNow() - composeStart;
+    const plane = await pendingComposition;
+    if (ds.pyramid !== pyr || pyr.cancelled || pyr.focusEpoch !== focusEpoch
+      || compositionViewKey(ds, idealLevel, eff, viewportW, viewportH) !== viewKey) return null;
     pyr.stats.composeCalls += 1;
-    pyr.stats.tilesComposed += tilesUsed;
+    pyr.stats.tilesComposed += plane.tilesUsed;
     pyr.stats.composePixels += plane.changedPixels;
-    pyr.stats.composeMs += perfNow() - composeStart;
+    pyr.stats.composeMainMs += mainMs;
+    pyr.stats.composeWaitMs += perfNow() - composeStart;
+    pyr.stats.composeMs += mainMs + (pyr.compositionCache.stats.mode === "worker" ? plane.workerMs : 0);
     if (!plane.filledCount) return null;
-    const incremental = plane.finish(requiredPixels);
     return {
       band,
-      ...incremental,
+      compositionId: plane.compositionId, revision: plane.revision, previousRevision: plane.previousRevision,
+      dirtyRects: plane.dirtyRects, histogramStats: plane.histogramStats, displayRangeStats: plane.displayRangeStats,
       dataF32: plane.data,
       w: winW,
       h: winH,
@@ -739,8 +750,8 @@ export function createPyramidController(deps) {
       level: plane.bestLevel == null ? idealLevel : plane.bestLevel,
       idealLevel,
       step: (1 << (plane.bestLevel == null ? idealLevel : plane.bestLevel)),
-      x0: ds.view.x,
-      y0: ds.view.y,
+      x0: view.x,
+      y0: view.y,
       partial: plane.filledCount < requiredPixels,
       coverage: plane.filledCount / Math.max(1, requiredPixels),
       approximate: plane.fineCount < requiredPixels
@@ -924,12 +935,13 @@ export function createPyramidController(deps) {
     refillBackgroundTasks(ds);
     schedulePyramidWork(ds);
 
-    let raster = prefer ? composePyramidRaster(ds, band, lvl, eff, width, height) : null;
+    let raster = prefer ? await composePyramidRaster(ds, band, lvl, eff, width, height) : null;
+    if (!currentFocus()) return null;
     if ((!raster || raster.partial) && eff < 1) {
       const loaded = await ensureOverviewLevelsCached(ds, band, APP_CONFIG.pyramid.immediateOverviewMaxTiles);
       if (!currentFocus()) return null;
       if (loaded) {
-        raster = composePyramidRaster(ds, band, lvl, eff, width, height) || raster;
+        raster = await composePyramidRaster(ds, band, lvl, eff, width, height) || raster;
       }
     }
     const needImmediateCoarse = !raster || raster.partial;
@@ -945,7 +957,7 @@ export function createPyramidController(deps) {
       );
       if (!currentFocus()) return null;
       if (loaded) {
-        raster = composePyramidRaster(ds, band, lvl, eff, width, height);
+        raster = await composePyramidRaster(ds, band, lvl, eff, width, height);
       }
     }
 
@@ -961,11 +973,11 @@ export function createPyramidController(deps) {
       );
       if (!currentFocus()) return null;
       if (loaded) {
-        raster = composePyramidRaster(ds, band, lvl, eff, width, height);
+        raster = await composePyramidRaster(ds, band, lvl, eff, width, height);
       }
     }
 
-    return raster;
+    return currentFocus() ? raster : null;
   }
 
   return {

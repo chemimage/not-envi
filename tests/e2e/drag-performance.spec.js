@@ -3,6 +3,37 @@ import { test, expect } from "@playwright/test";
 test("profile region movement while spectrum is open", async ({ page }, testInfo) => {
   test.setTimeout(60000);
   await page.setViewportSize({ width: 1200, height: 800 });
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    window.dragWorkerProbe = { pending: 0, lastActivity: 0 };
+    window.Worker = class extends NativeWorker {
+      constructor(...args) {
+        super(...args);
+        this.pendingIds = new Set();
+        this.addEventListener("message", ({ data }) => {
+          if (this.pendingIds.delete(data?.id)) window.dragWorkerProbe.pending -= 1;
+          window.dragWorkerProbe.lastActivity = performance.now();
+        });
+      }
+      postMessage(message, ...args) {
+        if (Number.isSafeInteger(message?.id) && !this.pendingIds.has(message.id)) {
+          this.pendingIds.add(message.id); window.dragWorkerProbe.pending += 1;
+        }
+        window.dragWorkerProbe.lastActivity = performance.now();
+        return super.postMessage(message, ...args);
+      }
+      terminate() {
+        window.dragWorkerProbe.pending -= this.pendingIds.size; this.pendingIds.clear();
+        return super.terminate();
+      }
+    };
+  });
+  await page.route("**/src/app/runtime.js*", async (route) => {
+    const response = await route.fetch();
+    const body = await response.text();
+    const index = body.lastIndexOf("})();");
+    await route.fulfill({ response, body: `${body.slice(0, index)}window.dragDataset = () => getActive();\n${body.slice(index)}` });
+  });
   await page.goto("/");
   const side = 512, bands = 32;
   const values = new Float32Array(side * side * bands);
@@ -18,6 +49,15 @@ test("profile region movement while spectrum is open", async ({ page }, testInfo
   await page.mouse.up();
   await page.locator("#btnToolSpectral").click();
   await expect(page.locator("#specFoot")).toContainText("Mean", { timeout: 30000 });
+  // Analysis completion does not imply that the initial display workers have
+  // drained. Measure drag work only after file/tile queues and worker replies
+  // settle; retain the zero-worker-message assertion throughout the drag.
+  await page.waitForFunction(() => {
+    const pyr = window.dragDataset()?.pyramid;
+    return pyr && !pyr.qHi.length && !pyr.qLo.length && !pyr.inflight.size
+      && !pyr.pending.size && window.dragWorkerProbe.pending === 0
+      && performance.now() - window.dragWorkerProbe.lastActivity > 200;
+  });
   const session = await page.context().newCDPSession(page);
   await session.send("Profiler.enable");
   await session.send("Profiler.setSamplingInterval", { interval: 500 });
