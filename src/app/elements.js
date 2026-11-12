@@ -67,6 +67,7 @@ export function collectElements() {
     iconToolAreaMode: $("#iconToolAreaMode"),
     btnToolSpectral: $("#btnToolSpectral"),
     btnToolHistogram: $("#btnToolHistogram"),
+    btnRemoveAnnotation: $("#btnRemoveAnnotation"),
     btnToolExport: $("#btnToolExport"),
     analysisHistPanel: $("#analysisHistPanel"),
     analysisHistCanvas: $("#analysisHistCanvas"),

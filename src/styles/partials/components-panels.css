@@ -1,4 +1,13 @@
 @layer components {
+  #exportDlg {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    height: fit-content;
+    max-height: calc(100dvh - 28px);
+    overflow-y: auto;
+  }
+
   .ds-list {
     @apply flex min-h-full flex-col gap-2;
   }

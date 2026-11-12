@@ -798,6 +798,10 @@
     gap: var(--selection-action-gap);
   }
 
+  #selectionActions[data-orientation="horizontal"] {
+    flex-direction: row;
+  }
+
   #selectionActions[hidden],
   #selectionActions button[hidden] {
     display: none;

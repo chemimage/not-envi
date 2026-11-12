@@ -1405,7 +1405,8 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     beginAreaMoveAtPointer, updateAreaMoveAtPointer, finishAreaMoveAtPointer, cancelAreaMove,
     selectAreaAtPointer, openSpectrumAt, openSpectrumForEffectiveArea,
     closeSpectrum, setAnalysisHistogramOpen, closeAnalysisHistogramPanel,
-    drawOverlays, onPointerDown
+    drawOverlays, onPointerDown,
+    removeAreaAnnotations: (ids) => annotation.removeAreaAnnotations(ids)
   });
 
   wireApp({

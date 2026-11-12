@@ -1110,6 +1110,26 @@ export function createAnnotationController(deps) {
     return true;
   }
 
+  function removeAreaAnnotations(ids) {
+    const ds = getActive();
+    if (!ds) return false;
+    const annotationState = resolveAnnotationState(ds);
+    const targets = new Set(ids);
+    let removed = false;
+    for (let i = annotationState.drawings.length - 1; i >= 0; i -= 1) {
+      const item = annotationState.drawings[i];
+      if (!isHistogramSelectionTool(item) || !targets.has(item.id)) continue;
+      annotationState.drawings.splice(i, 1);
+      removed = true;
+    }
+    if (!removed) return false;
+    ensureSelectedAreaId(ds, { preferLatest: true });
+    updateSelectionHistogramForDataset(ds);
+    ensureMarqueeTicker();
+    render({ reuseRaster: true });
+    return true;
+  }
+
   function clearAllAnnotations() {
     const ds = getActive();
     if (!ds) return false;
@@ -1467,6 +1487,7 @@ export function createAnnotationController(deps) {
     updateRulerHoverAtPointer,
     clearRulerHover,
     eraseDrawingAtPointer,
+    removeAreaAnnotations,
     clearAllAnnotations,
     isDrawingPointer,
     beginDrawingAtPointer,

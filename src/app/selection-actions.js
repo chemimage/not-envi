@@ -7,7 +7,7 @@ export function createSelectionActionsController(deps) {
     beginAreaMoveAtPointer, updateAreaMoveAtPointer, finishAreaMoveAtPointer, cancelAreaMove,
     selectAreaAtPointer, openSpectrumAt, openSpectrumForEffectiveArea,
     closeSpectrum, setAnalysisHistogramOpen, closeAnalysisHistogramPanel,
-    drawOverlays, onPointerDown
+    drawOverlays, onPointerDown, removeAreaAnnotations
   } = deps;
   let gesture = null;
   let spaceHeld = false;
@@ -31,7 +31,7 @@ export function createSelectionActionsController(deps) {
     const items = getHistogramSelectionItems(ds);
     const points = items.flatMap((item) => item.points || []);
     if (!points.length) return null;
-    return { ds, points, key: `${ds.id}:${slot()}:area:${items.map((item) => item.id).join(",")}` };
+    return { ds, items, points, key: `${ds.id}:${slot()}:area:${items.map((item) => item.id).join(",")}` };
   }
 
   function viewport() {
@@ -64,23 +64,29 @@ export function createSelectionActionsController(deps) {
       return;
     }
     els.btnToolHistogram.hidden = !!current.point;
+    const horizontal = !!current.point || right - left >= bottom - top;
+    toolbar.dataset.orientation = horizontal ? "horizontal" : "vertical";
+    toolbar.setAttribute("aria-orientation", toolbar.dataset.orientation);
     toolbar.hidden = false;
     els.btnToolSpectral.setAttribute("aria-pressed", String(!!state.spectrumPickEnabled));
     els.btnToolHistogram.setAttribute("aria-pressed", String(!!state.analysisHist.open));
     const gap = Number.parseFloat(window.getComputedStyle(toolbar).gap) || 4;
-    const width = toolbar.offsetWidth || 36;
-    const height = toolbar.offsetHeight || (current.point ? 36 : 72 + gap);
+    const width = toolbar.offsetWidth;
+    const height = toolbar.offsetHeight;
     const inset = 8;
-    let x = right + gap;
-    let y = current.point ? top + gap : top;
-    const above = x + width > vp.x + vp.w - inset;
-    if (above) {
-      x = left;
+    let placement = current.point ? "right" : horizontal ? "bottom" : "right";
+    let x = horizontal && !current.point ? left : right + gap;
+    let y = current.point ? top + gap : horizontal ? bottom + gap : top;
+    if (!current.point && horizontal && y + height > vp.y + vp.h - inset) {
+      placement = "top";
       y = top - height - gap;
+    } else if (!horizontal && x + width > vp.x + vp.w - inset) {
+      placement = "left";
+      x = left - width - gap;
     }
     x = Math.max(vp.x + inset, Math.min(x, vp.x + vp.w - width - inset));
     y = Math.max(vp.y + inset, Math.min(y, vp.y + vp.h - height - inset));
-    toolbar.dataset.placement = above ? "top" : "right";
+    toolbar.dataset.placement = placement;
     toolbar.style.left = `${x}px`;
     toolbar.style.top = `${y}px`;
   }
@@ -221,5 +227,15 @@ export function createSelectionActionsController(deps) {
     refresh();
   }
 
-  return { bind, refresh, isPanGesture, openSpectral, openSpatial };
+  function removeAnnotation() {
+    const current = target();
+    if (!current) return;
+    clearAnalysis();
+    if (current.point) state.contextPoint = null;
+    else removeAreaAnnotations(current.items.map((item) => item.id));
+    drawOverlays();
+    refresh();
+  }
+
+  return { bind, refresh, isPanGesture, openSpectral, openSpatial, removeAnnotation };
 }

@@ -22,11 +22,18 @@ test("point selection places its action in quadrant IV and preserves the target"
   await page.mouse.click(550, 340);
   await expect(toolbar).toBeVisible();
   await expect(toolbar).toHaveAttribute("data-placement", "right");
+  await expect(toolbar).toHaveAttribute("aria-orientation", "horizontal");
   const position = await toolbar.boundingBox();
   expect(position.x - 555).toBeCloseTo(4, 0);
   expect(position.y - 345).toBeCloseTo(4, 0);
   await page.screenshot({ path: testInfo.outputPath("point-actions.png") });
   await expect(page.getByRole("button", { name: "Spatial histogram", exact: true })).toBeHidden();
+  const remove = page.getByRole("button", { name: "Remove annotation", exact: true });
+  await expect(remove.locator("svg.icon-tabler-x")).toHaveCount(1);
+  const removeBox = await remove.boundingBox();
+  const spectrumBox = await page.locator("#btnToolSpectral").boundingBox();
+  expect(removeBox.y).toBe(spectrumBox.y);
+  expect(removeBox.x).toBeGreaterThan(spectrumBox.x);
   await expect(page.locator("#specPanel")).toBeHidden();
   await page.getByRole("button", { name: "Spectrum", exact: true }).click();
   await expect(page.locator("#specPanel")).toBeVisible();
@@ -35,6 +42,9 @@ test("point selection places its action in quadrant IV and preserves the target"
   await page.locator("#btnSpecClose").click();
   await expect(page.locator("#specPanel")).toBeHidden();
   await expect(toolbar).toBeVisible();
+  await remove.click();
+  await expect(toolbar).toBeHidden();
+  await expect(page.locator("#specPanel")).toBeHidden();
   expect(errors).toEqual([]);
 });
 
@@ -49,14 +59,15 @@ test("dragged regions offer both analyses and follow the image during zoom", asy
   await expect(toolbar).toBeHidden();
   await page.mouse.up();
   await expect(toolbar).toBeVisible();
-  await expect(toolbar).toHaveAttribute("data-placement", "right");
+  await expect(toolbar).toHaveAttribute("data-placement", "bottom");
+  await expect(toolbar).toHaveAttribute("aria-orientation", "horizontal");
   const regionActions = await toolbar.boundingBox();
   const spectrumButton = await page.locator("#btnToolSpectral").boundingBox();
   const spatialButton = await page.locator("#btnToolHistogram").boundingBox();
-  const buttonGap = spatialButton.y - spectrumButton.y - spectrumButton.height;
+  const buttonGap = spatialButton.x - spectrumButton.x - spectrumButton.width;
   expect(buttonGap).toBeCloseTo(4, 0);
-  expect(regionActions.x - 620).toBeCloseTo(buttonGap, 0);
-  expect(regionActions.y).toBeCloseTo(290, 0);
+  expect(regionActions.x).toBeCloseTo(400, 0);
+  expect(regionActions.y - 440).toBeCloseTo(buttonGap, 0);
   await page.screenshot({ path: testInfo.outputPath("selection-actions.png") });
   await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
   await expect(page.locator("#analysisHistPanel")).toBeVisible();
@@ -113,7 +124,7 @@ test("dragged regions offer both analyses and follow the image during zoom", asy
   expect(errors).toEqual([]);
 });
 
-test("near the right edge actions fall back above the selection", async ({ page }) => {
+test("near the right edge point actions stay horizontal and inside the viewport", async ({ page }) => {
   await loadImage(page);
   await page.mouse.move(600, 400);
   for (let i = 0; i < 3; i++) {
@@ -124,10 +135,37 @@ test("near the right edge actions fall back above the selection", async ({ page 
   await page.mouse.click(1180, 250);
   const toolbar = page.locator("#selectionActions");
   await expect(toolbar).toBeVisible();
-  await expect(toolbar).toHaveAttribute("data-placement", "top");
+  await expect(toolbar).toHaveAttribute("aria-orientation", "horizontal");
   const box = await toolbar.boundingBox();
   expect(box.x + box.width).toBeLessThanOrEqual(1200);
-  expect(box.y + box.height).toBeLessThan(250);
+  expect(box.y).toBeGreaterThan(250);
+});
+
+test("tall regions place vertical actions along the long edge and can be removed", async ({ page }, testInfo) => {
+  await loadImage(page);
+  await page.mouse.move(440, 230);
+  await page.mouse.down();
+  await page.mouse.move(530, 530, { steps: 8 });
+  await page.mouse.up();
+  const toolbar = page.locator("#selectionActions");
+  await expect(toolbar).toHaveAttribute("aria-orientation", "vertical");
+  await expect(toolbar).toHaveAttribute("data-placement", "right");
+  const box = await toolbar.boundingBox();
+  expect(box.x).toBeCloseTo(534, 0);
+  expect(box.y).toBeCloseTo(230, 0);
+  const spectrum = await page.locator("#btnToolSpectral").boundingBox();
+  const histogram = await page.locator("#btnToolHistogram").boundingBox();
+  const remove = await page.locator("#btnRemoveAnnotation").boundingBox();
+  expect(histogram.x).toBe(spectrum.x);
+  expect(remove.x).toBe(spectrum.x);
+  expect(remove.y).toBeGreaterThan(histogram.y);
+  await page.screenshot({ path: testInfo.outputPath("tall-region-actions.png") });
+  await page.getByRole("button", { name: "Remove annotation", exact: true }).click();
+  await expect(toolbar).toBeHidden();
+  // A new tap in the removed region offers point analysis, not region analysis.
+  await page.mouse.click(480, 340);
+  await expect(toolbar).toHaveAttribute("aria-orientation", "horizontal");
+  await expect(page.locator("#btnToolHistogram")).toBeHidden();
 });
 
 test.describe("high DPI", () => {

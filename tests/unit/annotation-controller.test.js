@@ -61,6 +61,18 @@ function makeBase() {
 }
 
 describe("annotation-controller", () => {
+  test("removing targeted areas preserves other areas and rulers", () => {
+    const { ds, deps } = makeBase();
+    ds.drawings.push({ id: 3, tool: "ruler", points: [{ x: 0, y: 0 }, { x: 9, y: 9 }] });
+    ds.selectedAreaId = 2;
+    const ann = createAnnotationController(deps);
+    expect(ann.removeAreaAnnotations([2, 3])).toBe(true);
+    expect(ds.drawings.map((item) => item.id)).toEqual([1, 3]);
+    expect(ds.selectedAreaId).toBe(1);
+    expect(deps.updateSelectionHistogramForDataset).toHaveBeenCalledWith(ds);
+    expect(ann.removeAreaAnnotations([999])).toBe(false);
+  });
+
   test("single mode defaults to latest selection and group mode returns all", () => {
     const { ds, deps } = makeBase();
     const ann = createAnnotationController(deps);

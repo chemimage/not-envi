@@ -342,6 +342,9 @@ export function wireDrawToolInteractions(deps) {
       else toggleSpectralMode();
     };
   }
+  if (els.btnRemoveAnnotation && selectionActions) {
+    els.btnRemoveAnnotation.onclick = () => selectionActions.removeAnnotation();
+  }
   if (els.toolEraser) {
     els.toolEraser.ondblclick = (ev) => clearAllAnnotationsFromEraser(ev);
   }
