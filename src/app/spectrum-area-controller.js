@@ -266,15 +266,22 @@ export function createSpectrumAreaController(deps) {
     const useArea = !opts.forcePoint && !!(opts.forceArea || selections.length);
     if (!useArea) {
       nonAreaSeq += 1;
-      await spectrum.openSpectrumAt(ds, ix, iy, opts);
+      const work = deps.beginAnnotationWork?.(ds, { point: { x: ix, y: iy }, label: "Computing spectrum" });
+      try {
+        await spectrum.openSpectrumAt(ds, ix, iy, opts);
+      } finally {
+        work?.done();
+      }
       return;
     }
+    areaPending?.work?.done();
     areaPending = {
       ds,
       ix,
       iy,
       opts: { ...opts },
-      reqSeq: ++areaReqSeq
+      reqSeq: ++areaReqSeq,
+      work: deps.beginAnnotationWork?.(ds, { items: selections, label: "Computing spectrum" })
     };
     if (areaInFlight) return areaPromise;
 
@@ -284,78 +291,85 @@ export function createSpectrumAreaController(deps) {
         while (areaPending) {
           const req = areaPending;
           areaPending = null;
-          const seqAtStart = nonAreaSeq;
-          const reqSelections = getHistogramSelectionItems(req.ds);
-          const selectionCount = reqSelections.length;
-          const shouldAbort = () => seqAtStart !== nonAreaSeq || req.reqSeq !== areaReqSeq;
-          if (!selectionCount) {
+          try {
+            const seqAtStart = nonAreaSeq;
+            const reqSelections = getHistogramSelectionItems(req.ds);
+            const selectionCount = reqSelections.length;
+            const shouldAbort = () => seqAtStart !== nonAreaSeq || req.reqSeq !== areaReqSeq;
+            if (!selectionCount) {
+              if (shouldAbort()) continue;
+              await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
+              continue;
+            }
+            const selectionBounds = resolveEffectiveSelectionBounds(req.ds, reqSelections);
+            const effectiveIds = new Set(reqSelections.map((item) => item.id));
+            const occluderBounds = resolveSelectionBoundsList(req.ds, listHistogramSelectionItems(req.ds))
+              .filter((b) => !effectiveIds.has(b.id))
+              .map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
+            if (spectrum && typeof spectrum.showPendingSpectrum === "function") {
+              await spectrum.showPendingSpectrum(req.ds, req.ix, req.iy, {
+                ...req.opts,
+                subLabel: `Area average (${fmtNoGroup(selectionCount)} region${selectionCount > 1 ? "s" : ""}, computing...)`,
+                footLabel: `Computing 0/${fmtNoGroup(req.ds.meta.bands)} bands`,
+                placeholderText: "Computing area average...",
+                sourceType: "area",
+                sourceMeta: {
+                  sampleCount: 0,
+                  selectionCount,
+                  sampleStep: 1
+                },
+                selectionBounds,
+                selectionOccluders: occluderBounds
+              });
+            }
             if (shouldAbort()) continue;
-            await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
-            continue;
-          }
-          const selectionBounds = resolveEffectiveSelectionBounds(req.ds, reqSelections);
-          const effectiveIds = new Set(reqSelections.map((item) => item.id));
-          const occluderBounds = resolveSelectionBoundsList(req.ds, listHistogramSelectionItems(req.ds))
-            .filter((b) => !effectiveIds.has(b.id))
-            .map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
-          if (spectrum && typeof spectrum.showPendingSpectrum === "function") {
-            await spectrum.showPendingSpectrum(req.ds, req.ix, req.iy, {
+            const areaWithProgress = await buildAreaAverageSpectrum(req.ds, reqSelections, {
+              shouldAbort,
+              onProgress: ({ completedBands, totalBands }) => {
+                if (!shouldAbort()) req.work?.update(completedBands, totalBands);
+                if (!spectrum || typeof spectrum.updateSpectrumStatus !== "function" || shouldAbort()) return;
+                spectrum.updateSpectrumStatus({
+                  footLabel: `Computing ${fmtNoGroup(completedBands)}/${fmtNoGroup(totalBands)} bands`,
+                  placeholderText: "Computing area average..."
+                });
+              }
+            });
+            if (areaPending) continue;
+            if (areaWithProgress === ABORTED || shouldAbort()) continue;
+            if (!areaWithProgress || !areaWithProgress.yVals || !areaWithProgress.yVals.length) {
+              if (shouldAbort()) continue;
+              await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
+              continue;
+            }
+
+            const sampled = areaWithProgress.sampleStep > 1;
+            const sampleLabel = sampled
+              ? `${fmtNoGroup(areaWithProgress.sampleCount)} sampled px (step ${areaWithProgress.sampleStep})`
+              : `${fmtNoGroup(areaWithProgress.sampleCount)} px`;
+            const subLabel = `Area average (${sampleLabel}, ${fmtNoGroup(areaWithProgress.selectionCount)} region${areaWithProgress.selectionCount > 1 ? "s" : ""})`;
+            if (shouldAbort()) continue;
+            await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, {
               ...req.opts,
-              subLabel: `Area average (${fmtNoGroup(selectionCount)} region${selectionCount > 1 ? "s" : ""}, computing...)`,
-              footLabel: `Computing 0/${fmtNoGroup(req.ds.meta.bands)} bands`,
-              placeholderText: "Computing area average...",
+              yVals: areaWithProgress.yVals,
+              stdVals: areaWithProgress.stdVals,
+              xVals: wavelengthArrayOrNull(req.ds),
+              subLabel,
               sourceType: "area",
               sourceMeta: {
-                sampleCount: 0,
-                selectionCount,
-                sampleStep: 1
+                sampleCount: areaWithProgress.sampleCount,
+                selectionCount: areaWithProgress.selectionCount,
+                sampleStep: areaWithProgress.sampleStep
               },
               selectionBounds,
               selectionOccluders: occluderBounds
             });
+          } finally {
+            req.work?.done();
           }
-          if (shouldAbort()) continue;
-          const areaWithProgress = await buildAreaAverageSpectrum(req.ds, reqSelections, {
-            shouldAbort,
-            onProgress: ({ completedBands, totalBands }) => {
-              if (!spectrum || typeof spectrum.updateSpectrumStatus !== "function" || shouldAbort()) return;
-              spectrum.updateSpectrumStatus({
-                footLabel: `Computing ${fmtNoGroup(completedBands)}/${fmtNoGroup(totalBands)} bands`,
-                placeholderText: "Computing area average..."
-              });
-            }
-          });
-          if (areaPending) continue;
-          if (areaWithProgress === ABORTED || shouldAbort()) continue;
-          if (!areaWithProgress || !areaWithProgress.yVals || !areaWithProgress.yVals.length) {
-            if (shouldAbort()) continue;
-            await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
-            continue;
-          }
-
-          const sampled = areaWithProgress.sampleStep > 1;
-          const sampleLabel = sampled
-            ? `${fmtNoGroup(areaWithProgress.sampleCount)} sampled px (step ${areaWithProgress.sampleStep})`
-            : `${fmtNoGroup(areaWithProgress.sampleCount)} px`;
-          const subLabel = `Area average (${sampleLabel}, ${fmtNoGroup(areaWithProgress.selectionCount)} region${areaWithProgress.selectionCount > 1 ? "s" : ""})`;
-          if (shouldAbort()) continue;
-          await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, {
-            ...req.opts,
-            yVals: areaWithProgress.yVals,
-            stdVals: areaWithProgress.stdVals,
-            xVals: wavelengthArrayOrNull(req.ds),
-            subLabel,
-            sourceType: "area",
-            sourceMeta: {
-              sampleCount: areaWithProgress.sampleCount,
-              selectionCount: areaWithProgress.selectionCount,
-              sampleStep: areaWithProgress.sampleStep
-            },
-            selectionBounds,
-            selectionOccluders: occluderBounds
-          });
         }
       } finally {
+        areaPending?.work?.done();
+        areaPending = null;
         areaInFlight = false;
       }
     })();
@@ -377,7 +391,15 @@ export function createSpectrumAreaController(deps) {
     return true;
   }
 
+  function cancel() {
+    nonAreaSeq += 1;
+    areaReqSeq += 1;
+    areaPending?.work?.done();
+    areaPending = null;
+  }
+
   return {
+    cancel,
     openSpectrumAt,
     openSpectrumForEffectiveArea
   };

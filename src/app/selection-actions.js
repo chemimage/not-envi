@@ -7,12 +7,13 @@ export function createSelectionActionsController(deps) {
     beginAreaMoveAtPointer, updateAreaMoveAtPointer, finishAreaMoveAtPointer, cancelAreaMove,
     selectAreaAtPointer, openSpectrumAt, openSpectrumForEffectiveArea,
     closeSpectrum, setAnalysisHistogramOpen, closeAnalysisHistogramPanel,
-    drawOverlays, onPointerDown, removeAreaAnnotations
+    drawOverlays, onPointerDown, removeAreaAnnotations, annotationWork
   } = deps;
   let gesture = null;
   let spaceHeld = false;
   const touchPanPointers = new Set();
   let dismissedKey = null;
+  const progressBars = new Map();
 
   const slot = () => Number(getActivePanel()?.slot || 1);
   const isUi = (target) => !!target?.closest?.("[data-ui-surface]");
@@ -42,10 +43,48 @@ export function createSelectionActionsController(deps) {
       h: (rect?.h || els.cpuCanvas.height) / dpr };
   }
 
+  function actionPlacement({ point, left, right, top, bottom, horizontal, vp, width, height, gap }) {
+    const inset = 8;
+    let placement = point ? "right" : horizontal ? "top" : "right";
+    let x = horizontal && !point ? left : right + gap;
+    let y = point ? top + gap : horizontal ? top - height - gap : top;
+    if (!point && horizontal && y < vp.y + inset) {
+      placement = "bottom";
+      y = bottom + gap;
+    } else if (!horizontal && x + width > vp.x + vp.w - inset) {
+      placement = "left";
+      x = left - width - gap;
+    }
+    return {
+      placement,
+      x: Math.max(vp.x + inset, Math.min(x, vp.x + vp.w - width - inset)),
+      y: Math.max(vp.y + inset, Math.min(y, vp.y + vp.h - height - inset))
+    };
+  }
+
+  function actionMetrics(point, horizontal) {
+    const toolbar = els.selectionActions;
+    const gap = Number.parseFloat(window.getComputedStyle(toolbar).gap) || 4;
+    const buttons = Array.from(toolbar.querySelectorAll("button"))
+      .filter((button) => !point || button !== els.btnToolHistogram);
+    const sizes = buttons.map((button) => {
+      const style = window.getComputedStyle(button);
+      return { width: button.offsetWidth || Number.parseFloat(style.width) || 0,
+        height: button.offsetHeight || Number.parseFloat(style.height) || 0 };
+    });
+    return { gap,
+      width: sizes.length ? (horizontal ? sizes.reduce((sum, size) => sum + size.width, 0)
+        + gap * (sizes.length - 1) : Math.max(...sizes.map((size) => size.width))) : toolbar.offsetWidth,
+      height: sizes.length ? (horizontal ? Math.max(...sizes.map((size) => size.height))
+        : sizes.reduce((sum, size) => sum + size.height, 0) + gap * (sizes.length - 1)) : toolbar.offsetHeight
+    };
+  }
+
   function refresh() {
     const toolbar = els.selectionActions;
     if (!toolbar) return;
     const current = target();
+    refreshProgress();
     const tool = state.draw.tool;
     if (!current || gesture || state.draw.draft || state.draw.areaMove
       || (tool !== "none" && tool !== "rect" && tool !== "shape") || dismissedKey === current.key) {
@@ -73,22 +112,72 @@ export function createSelectionActionsController(deps) {
     const gap = Number.parseFloat(window.getComputedStyle(toolbar).gap) || 4;
     const width = toolbar.offsetWidth;
     const height = toolbar.offsetHeight;
-    const inset = 8;
-    let placement = current.point ? "right" : horizontal ? "bottom" : "right";
-    let x = horizontal && !current.point ? left : right + gap;
-    let y = current.point ? top + gap : horizontal ? bottom + gap : top;
-    if (!current.point && horizontal && y + height > vp.y + vp.h - inset) {
-      placement = "top";
-      y = top - height - gap;
-    } else if (!horizontal && x + width > vp.x + vp.w - inset) {
-      placement = "left";
-      x = left - width - gap;
-    }
-    x = Math.max(vp.x + inset, Math.min(x, vp.x + vp.w - width - inset));
-    y = Math.max(vp.y + inset, Math.min(y, vp.y + vp.h - height - inset));
+    const { placement, x, y } = actionPlacement({ point: current.point, horizontal,
+      left, right, top, bottom, vp, width, height, gap });
     toolbar.dataset.placement = placement;
     toolbar.style.left = `${x}px`;
     toolbar.style.top = `${y}px`;
+  }
+
+  function refreshProgress() {
+    if (!annotationWork || !els.selectionActions?.parentElement) return;
+    const ds = getActive();
+    const panel = getActivePanel();
+    const drawings = panel?.annotations?.drawings || ds?.drawings || [];
+    const point = state.contextPoint && state.contextPoint.dsId === ds?.id && state.contextPoint.slot === slot()
+      ? state.contextPoint : null;
+    const running = annotationWork.list(ds, slot(), drawings, point);
+    const keep = new Set();
+    const vp = viewport();
+    const view = panel?.view || ds?.view;
+    for (const work of running) {
+      if (!view) continue;
+      const points = work.point ? [work.point] : work.points;
+      const xs = points.map((p) => vp.x + (p.x - view.x) * view.scale);
+      const ys = points.map((p) => vp.y + (p.y - view.y) * view.scale);
+      const left = Math.min(...xs), right = Math.max(...xs);
+      const top = Math.min(...ys), bottom = Math.max(...ys);
+      if (right < vp.x || left > vp.x + vp.w || bottom < vp.y || top > vp.y + vp.h) continue;
+      keep.add(work.key);
+      let bar = progressBars.get(work.key);
+      if (!bar) {
+        bar = document.createElement("div");
+        bar.className = "annotation-progress";
+        bar.setAttribute("role", "progressbar");
+        bar.setAttribute("aria-valuemin", "0");
+        bar.setAttribute("aria-valuemax", "100");
+        bar.append(document.createElement("span"));
+        els.selectionActions.parentElement.append(bar);
+        progressBars.set(work.key, bar);
+      }
+      const horizontal = !!work.point || right - left >= bottom - top;
+      // Follow the same outside edge as the contextual actions, including their
+      // viewport fallback. The bar stays on the region edge rather than moving
+      // with the toolbar's inset/clamping.
+      const { placement } = actionPlacement({ point: work.point, horizontal,
+        left, right, top, bottom, vp, ...actionMetrics(work.point, horizontal) });
+      const verticalEdge = placement === "left" ? left - 2 : right - 2;
+      const horizontalEdge = placement === "bottom" ? bottom - 2 : top - 2;
+      const edgeX = Math.max(vp.x, Math.min(verticalEdge, vp.x + vp.w - 4));
+      const edgeY = Math.max(vp.y, Math.min(horizontalEdge, vp.y + vp.h - 4));
+      const x = Math.max(vp.x, Math.min(left, vp.x + vp.w - 4));
+      const y = Math.max(vp.y, Math.min(top, vp.y + vp.h - 4));
+      bar.dataset.orientation = horizontal ? "horizontal" : "vertical";
+      bar.style.left = `${horizontal ? x : edgeX}px`;
+      bar.style.top = `${horizontal ? edgeY : y}px`;
+      bar.style.width = `${horizontal ? Math.max(4, Math.min(work.point ? 76 : right - x, vp.x + vp.w - x)) : 4}px`;
+      bar.style.height = `${horizontal ? 4 : Math.max(4, Math.min(bottom - y, vp.y + vp.h - y))}px`;
+      bar.setAttribute("aria-label", work.label);
+      bar.title = work.label;
+      bar.dataset.indeterminate = String(work.fraction == null);
+      if (work.fraction == null) bar.removeAttribute("aria-valuenow");
+      else bar.setAttribute("aria-valuenow", String(Math.round(work.fraction * 100)));
+      bar.firstChild.style.transform = work.fraction == null ? "" : (horizontal
+        ? `scaleX(${work.fraction})` : `scaleY(${work.fraction})`);
+    }
+    for (const [key, bar] of progressBars) {
+      if (!keep.has(key)) { bar.remove(); progressBars.delete(key); }
+    }
   }
 
   function clearAnalysis() {

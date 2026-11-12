@@ -6,6 +6,7 @@ import { createUIPanels } from "./ui-panels.js";
 import { createViewControls } from "./view-controls.js";
 import { createAnalysisPanelLayout } from "./analysis-panel-layout.js";
 import { createSelectionActionsController } from "./selection-actions.js";
+import { createAnnotationWorkTracker } from "./annotation-work.js";
 import { wireApp } from "./wiring.js";
 import {
   computeDisplayPanelLayout,
@@ -452,6 +453,10 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   let datasetRuntime = null;
   let lineProfile = null;
   let selectionActions = null;
+  const annotationWork = createAnnotationWorkTracker(() => selectionActions?.refresh());
+  const beginAnnotationWork = (ds, options) => annotationWork.begin(ds, {
+    ...options, slot: getActivePanel()?.slot || 1
+  });
   let analysisPanelLayout = null;
   const arrangeAnalysisPanels = () => analysisPanelLayout?.arrange() || false;
   let overlayFrame = null;
@@ -642,7 +647,15 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   async function buildBandStatsWhole(ds, band){ await histogram.buildBandStatsWhole(ds, band); }
   async function buildEstimatedViewHistogram(ds){ await histogram.buildEstimatedViewHistogram(ds); }
   function ensureViewHistogram(ds, raster = null){ histogram.ensureViewHistogram(ds, raster); }
-  async function updateSelectionHistogram(ds, selections){ await histogram.updateSelectionHistogram(ds, selections); }
+  async function updateSelectionHistogram(ds, selections){
+    const work = ds && selections?.length
+      ? beginAnnotationWork(ds, { items: selections, label: "Computing histogram" }) : null;
+    try {
+      await histogram.updateSelectionHistogram(ds, selections);
+    } finally {
+      work?.done();
+    }
+  }
   function clearSelectionHistogram(ds){ histogram.clearSelectionHistogram(ds); }
   function drawHistogram(ds){ histogram.drawHistogram(ds); }
   function histPickHandle(ds, px, py){ return histogram.histPickHandle(ds, px, py); }
@@ -1289,6 +1302,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   });
 
   const spectrumArea = createSpectrumAreaController({
+    beginAnnotationWork,
     getActive,
     spectrum,
     isHistogramSelectionTool,
@@ -1312,6 +1326,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   }
   function redrawSpectrum(){ spectrum.redrawSpectrum(); }
   function closeSpectrum(){
+    spectrumArea.cancel();
     state.spectrumPoint = null;
     spectrum.closeSpectrum();
     drawOverlays();
@@ -1399,6 +1414,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   analysisHistogram.setOpen(!!state.analysisHist.open);
 
   selectionActions = createSelectionActionsController({
+    annotationWork,
     state, els, getActive, getActivePanel, getPanelRectDevice,
     getHistogramSelectionItems, screenToImage,
     beginDrawingAtPointer, updateDrawingAtPointer, finishDrawingAtPointer, cancelDrawing,

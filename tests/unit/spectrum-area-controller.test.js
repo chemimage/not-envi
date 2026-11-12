@@ -2,6 +2,52 @@ import { describe, expect, test, vi } from "vitest";
 import { createSpectrumAreaController } from "../../src/app/spectrum-area-controller.js";
 
 describe("spectrum-area-controller", () => {
+  test("failed point reads release annotation work and allow a successful retry", async () => {
+    const handles = [];
+    const open = vi.fn().mockRejectedValueOnce(new Error("source read failed")).mockResolvedValueOnce(undefined);
+    const ctrl = createSpectrumAreaController({
+      getHistogramSelectionItems: () => [],
+      spectrum: { openSpectrumAt: open },
+      beginAnnotationWork: () => {
+        const handle = { done: vi.fn() };
+        handles.push(handle);
+        return handle;
+      }
+    });
+    await expect(ctrl.openSpectrumAt({ id: 1 }, 2, 3)).rejects.toThrow("source read failed");
+    expect(handles[0].done).toHaveBeenCalledTimes(1);
+    await ctrl.openSpectrumAt({ id: 1 }, 2, 3);
+    expect(handles[1].done).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  test("closing area work discards a delayed result and releases its progress lease", async () => {
+    const selection = { id: 1, tool: "rect", points: [{ x: 0, y: 0 }, { x: 0, y: 0 }] };
+    const ds = { id: "slide", meta: { bands: 1, samples: 1, lines: 1, interleave: "bsq" }, ds: {} };
+    let release;
+    const delayed = new Promise((resolve) => { release = resolve; });
+    const publish = vi.fn();
+    const work = { done: vi.fn(), update: vi.fn() };
+    const ctrl = createSpectrumAreaController({
+      spectrum: { openSpectrumAt: publish },
+      getHistogramSelectionItems: () => [selection],
+      isHistogramSelectionTool: () => true,
+      resolveSelectionBoundsForSpectrum: () => ({ x0: 0, y0: 0, width: 1, height: 1 }),
+      resolveEffectiveSelectionBounds: () => ({ x0: 0, y0: 0, x1: 0, y1: 0 }),
+      resolveSelectionBoundsList: () => [], listHistogramSelectionItems: () => [selection],
+      readBandWindow: async () => { await delayed; return new Float32Array([7]); },
+      toFloat32: (data) => data, fmtNoGroup: String,
+      beginAnnotationWork: () => work
+    });
+    const pending = ctrl.openSpectrumAt(ds, 0, 0);
+    await Promise.resolve();
+    ctrl.cancel();
+    release();
+    await pending;
+    expect(publish).not.toHaveBeenCalled();
+    expect(work.done).toHaveBeenCalledTimes(1);
+  });
+
   test("explicit point selection bypasses existing region averages", async () => {
     const ds = { id: 7 };
     const openSpy = vi.fn(async () => {});
@@ -64,8 +110,14 @@ describe("spectrum-area-controller", () => {
     const firstRead = new Promise((resolve) => { releaseFirst = resolve; });
     let readCount = 0;
     let firstReadOptions = null;
+    const handles = [];
 
     const ctrl = createSpectrumAreaController({
+      beginAnnotationWork: () => {
+        const handle = { done: vi.fn(), update: vi.fn() };
+        handles.push(handle);
+        return handle;
+      },
       getActive: () => ds,
       spectrum: { openSpectrumAt: openSpy },
       isHistogramSelectionTool: (item) => item?.tool === "rect" || item?.tool === "shape",
@@ -94,12 +146,16 @@ describe("spectrum-area-controller", () => {
     await Promise.resolve();
     const p2 = ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
     expect(firstReadOptions?.cancelled()).toBe(true);
+    expect(handles.every((handle) => handle.done.mock.calls.length === 0)).toBe(true);
     releaseFirst();
     await Promise.all([p1, p2]);
 
     expect(openSpy).toHaveBeenCalledTimes(1);
     const opts = openSpy.mock.calls[0][3];
     expect(opts.yVals[0]).toBeCloseTo(9);
+    expect(handles).toHaveLength(2);
+    expect(handles.every((handle) => handle.done.mock.calls.length === 1)).toBe(true);
+    expect(handles[1].update).toHaveBeenLastCalledWith(1, 1);
   });
 
   test("new area request aborts older long-running average before all bands finish", async () => {

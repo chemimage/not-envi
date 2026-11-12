@@ -818,4 +818,42 @@
   .selection-action[aria-pressed="true"] {
     @apply border-gray-300 bg-gray-700/80;
   }
+
+  .annotation-progress {
+    position: absolute;
+    z-index: 31;
+    overflow: hidden;
+    pointer-events: none;
+    background: rgb(17 24 39 / 0.95);
+    outline: 1px solid rgb(255 255 255 / 0.85);
+  }
+
+  .annotation-progress > span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: white;
+    transform-origin: top left;
+  }
+
+  .annotation-progress[data-indeterminate="true"] > span {
+    width: 35%;
+    animation: annotation-progress-x 1s linear infinite;
+  }
+
+  .annotation-progress[data-indeterminate="true"][data-orientation="vertical"] > span {
+    width: 100%;
+    height: 35%;
+    animation-name: annotation-progress-y;
+  }
+}
+
+@keyframes annotation-progress-x {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(286%); }
+}
+
+@keyframes annotation-progress-y {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(286%); }
 }

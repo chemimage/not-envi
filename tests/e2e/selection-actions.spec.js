@@ -1,12 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-async function loadImage(page) {
+async function loadImage(page, bands = 2) {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/");
-  const data = Buffer.alloc(100 * 80 * 2 * 4);
-  for (let i = 0; i < 16000; i++) data.writeFloatLE(i % 100 + Math.floor(i / 8000) * 100, i * 4);
+  const data = Buffer.alloc(100 * 80 * bands * 4);
+  for (let i = 0; i < 8000 * bands; i++) data.writeFloatLE(i % 100 + Math.floor(i / 8000) * 100, i * 4);
   await page.locator("#filePicker").setInputFiles([
-    { name: "selection.hdr", mimeType: "text/plain", buffer: Buffer.from("ENVI\nsamples = 100\nlines = 80\nbands = 2\ndata type = 4\ninterleave = bsq\nbyte order = 0\nband names = {First, Second}\n") },
+    { name: "selection.hdr", mimeType: "text/plain", buffer: Buffer.from(`ENVI\nsamples = 100\nlines = 80\nbands = ${bands}\ndata type = 4\ninterleave = bsq\nbyte order = 0\nband names = {First, Second}\n`) },
     { name: "selection.raw", mimeType: "application/octet-stream", buffer: data }
   ]);
   await expect(page.locator("#displayDock")).toBeVisible();
@@ -59,7 +59,7 @@ test("dragged regions offer both analyses and follow the image during zoom", asy
   await expect(toolbar).toBeHidden();
   await page.mouse.up();
   await expect(toolbar).toBeVisible();
-  await expect(toolbar).toHaveAttribute("data-placement", "bottom");
+  await expect(toolbar).toHaveAttribute("data-placement", "top");
   await expect(toolbar).toHaveAttribute("aria-orientation", "horizontal");
   const regionActions = await toolbar.boundingBox();
   const spectrumButton = await page.locator("#btnToolSpectral").boundingBox();
@@ -67,7 +67,7 @@ test("dragged regions offer both analyses and follow the image during zoom", asy
   const buttonGap = spatialButton.x - spectrumButton.x - spectrumButton.width;
   expect(buttonGap).toBeCloseTo(4, 0);
   expect(regionActions.x).toBeCloseTo(400, 0);
-  expect(regionActions.y - 440).toBeCloseTo(buttonGap, 0);
+  expect(290 - regionActions.y - regionActions.height).toBeCloseTo(buttonGap, 0);
   await page.screenshot({ path: testInfo.outputPath("selection-actions.png") });
   await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
   await expect(page.locator("#analysisHistPanel")).toBeVisible();
@@ -139,6 +139,30 @@ test("near the right edge point actions stay horizontal and inside the viewport"
   const box = await toolbar.boundingBox();
   expect(box.x + box.width).toBeLessThanOrEqual(1200);
   expect(box.y).toBeGreaterThan(250);
+});
+
+test("running spectrum reports progress on the annotation edge and clears on removal", async ({ page }, testInfo) => {
+  await loadImage(page, 512);
+  await page.mouse.move(400, 290);
+  await page.mouse.down();
+  await page.mouse.move(620, 440, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator(".annotation-progress")).toHaveCount(0);
+  await page.getByRole("button", { name: "Spectrum", exact: true }).click();
+  const progress = page.getByRole("progressbar", { name: "Computing spectrum", exact: true });
+  await expect(progress).toBeVisible();
+  const bar = await progress.boundingBox();
+  expect(bar.x).toBeCloseTo(400, 0);
+  expect(bar.y).toBeCloseTo(288, 0);
+  expect(bar.width).toBeCloseTo(220, 0);
+  expect(bar.height).toBe(4);
+  await page.screenshot({ path: testInfo.outputPath("annotation-progress.png") });
+  await page.getByRole("button", { name: "Remove annotation", exact: true }).click();
+  await expect(page.locator(".annotation-progress")).toHaveCount(0);
+  await expect(page.locator("#selectionActions")).toBeHidden();
+  // A background completion must not reopen a removed annotation's spectrum.
+  await page.waitForTimeout(400);
+  await expect(page.locator("#specPanel")).toBeHidden();
 });
 
 test("tall regions place vertical actions along the long edge and can be removed", async ({ page }, testInfo) => {
