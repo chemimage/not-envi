@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -16,40 +17,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/calculate-version
-        with:
-          check-package: 'true'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-      - name: Verify tag matches package version
-        run: |
-          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
-            echo "This workflow only supports tag pushes."
-            exit 1
-          fi
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          EXPECTED_TAG="v${PACKAGE_VERSION}"
-          if [ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${PACKAGE_VERSION}."
-            echo "Expected tag: ${EXPECTED_TAG}"
-            exit 1
-          fi
-      - run: npm ci
-      - run: npm run build
+      - uses: ./.github/actions/validated-dist
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
-    needs: build
+    needs: prepare
     runs-on: ubuntu-latest
     environment:
       name: github-pages

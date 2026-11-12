@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -16,28 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/calculate-version
-        with:
-          check-package: 'true'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-      - name: Verify tag matches package version
-        run: |
-          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
-            echo "This workflow only supports tag pushes."
-            exit 1
-          fi
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          EXPECTED_TAG="v${PACKAGE_VERSION}"
-          if [ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${PACKAGE_VERSION}."
-            echo "Expected tag: ${EXPECTED_TAG}"
-            exit 1
-          fi
-      - run: npm ci
-      - run: npm run build
+      - uses: ./.github/actions/validated-dist
       - name: Select authored release notes or generated fallback
         id: notes
         shell: bash
@@ -55,4 +35,7 @@ jobs:
           name: ${{ github.ref_name }}
           body_path: ${{ steps.notes.outputs.path }}
           generate_release_notes: ${{ steps.notes.outputs.generate == 'true' }}
-          files: dist/index.html
+          files: |
+            dist/index.html
+            dist/coverage-summary.json
+            dist/coverage-badge.json

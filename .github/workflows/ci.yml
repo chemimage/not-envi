@@ -18,11 +18,14 @@ jobs:
   version:
     name: Calculate release version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/calculate-version
+        id: version
 
   fmap-core:
     name: Lint and build shared fmap core
@@ -135,11 +138,37 @@ jobs:
         run: npx playwright test --config=playwright.fmap-packaged.config.js
         env:
           FMAP_PACKAGED: '1'
+      - name: Reuse coverage from this run's unit tests
+        uses: actions/download-artifact@v4
+        with:
+          name: js-coverage
+          path: dist
+      - name: Record the tested distribution identity
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { execFileSync } from 'node:child_process';
+          const sha256 = name => createHash('sha256').update(readFileSync(`dist/${name}`)).digest('hex');
+          writeFileSync('dist/manifest.json', JSON.stringify({
+            commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+            version: process.env.RELEASE_VERSION,
+            sha256: sha256('index.html'),
+            reports: Object.fromEntries(['coverage-summary.json', 'coverage-badge.json'].map(name => [name, sha256(name)]))
+          }, null, 2) + '\n');
+          NODE
       - uses: actions/upload-artifact@v4
         with:
           name: site-dist
-          path: dist/index.html
+          path: |
+            dist/index.html
+            dist/manifest.json
+            dist/coverage-summary.json
+            dist/coverage-badge.json
           if-no-files-found: error
+          retention-days: 30
 
   validate:
     # Preserve the existing check name, and fail rather than report a skipped
