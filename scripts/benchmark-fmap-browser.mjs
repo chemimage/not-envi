@@ -509,6 +509,14 @@ try {
     const { compositionWorkload } = await import("/tests/fixtures/composition-workload.js");
     return compositionWorkload();
   });
+  report.compositionWorker = await page.evaluate(async () => {
+    const { compositionWorkerWorkload } = await import("/tests/fixtures/composition-worker-workload.js");
+    return compositionWorkerWorkload();
+  });
+  report.pyramidWorker = await page.evaluate(async () => {
+    const { pyramidWorkerWorkload } = await import("/tests/fixtures/pyramid-worker-workload.js");
+    return pyramidWorkerWorkload();
+  });
   const json = `${JSON.stringify(report, null, 2)}\n`;
   console.log(json.trimEnd());
   if (outputPath) {

@@ -8,7 +8,7 @@ const baseUse = {
 
 export default defineConfig({
   testDir: "tests/e2e",
-  testMatch: ["fmap-browser.spec.js", "fmap-tiff-coverage.spec.js", "fmap-page-fill.spec.js", "fmap-mappings.spec.js", "pyramid-cancellation.spec.js", "incremental-composition.spec.js"],
+  testMatch: ["fmap-browser.spec.js", "fmap-tiff-coverage.spec.js", "fmap-page-fill.spec.js", "fmap-mappings.spec.js", "pyramid-cancellation.spec.js", "incremental-composition.spec.js", "composition-worker.spec.js", "pyramid-composition-worker.spec.js"],
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,

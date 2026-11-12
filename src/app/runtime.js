@@ -42,6 +42,7 @@ import { createHudController } from "../render/hud.js";
 import { createOverlayRenderer } from "../render/overlay.js";
 import { createPyramidController } from "../render/pyramid-cache.js";
 import { createRgbCompositor } from "../render/rgb-composition.js";
+import { createCompositionWorkerClient } from "../render/composition-worker-client.js";
 import { createRenderer } from "../render/render-main.js";
 import { createSpectrumController } from "../render/spectrum.js";
 import { createLineProfileController } from "../render/line-profile.js";
@@ -976,12 +977,16 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   const colorCompositor = createRgbCompositor({ createCanvas: () => document.createElement("canvas"),
     createImageData: (w, h) => cpuCtx.createImageData(w, h), tone01 });
   state.colorCompositionStats = colorCompositor.stats;
-  function buildColorCanvas(rasters, paramsByChannel, opts = {}){
-    return colorCompositor.compose(rasters, paramsByChannel, opts);
+  const compositionWorker = createCompositionWorkerClient({
+    fallback: (rasters, params, opts) => colorCompositor.compose(rasters, params, opts)
+  });
+  state.compositionWorkerStats = compositionWorker.stats;
+  function buildColorCanvas(rasters, paramsByChannel, opts = {}, job = {}){
+    return compositionWorker.compose(rasters, paramsByChannel, opts, job);
   }
 
   function cpuRenderColor(rasters, paramsByChannel){
-    const off = buildColorCanvas(rasters, paramsByChannel);
+    const off = colorCompositor.compose(rasters, paramsByChannel);
     if (!off) return null;
     cpuCtx.save();
     cpuCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1121,7 +1126,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     cpuRenderColor,
     buildGrayCanvas,
     buildColorCanvas,
-    clearColorComposition: () => colorCompositor.clear(),
+    clearColorComposition: () => { compositionWorker.clear(); colorCompositor.clear(); },
     drawCanvasToViewport,
     tryRasterFromPyramid,
     readBandWindow,
@@ -1262,11 +1267,13 @@ import { createFloatingWindowManager } from "./floating-windows.js";
   window.addEventListener("beforeunload", () => {
     resetDatasetSession();
     floatingWindows.destroy();
+    compositionWorker.dispose();
     if (areaReducer && typeof areaReducer.dispose === "function") areaReducer.dispose();
   }, { once: true });
   window.addEventListener("pagehide", (ev) => {
     if (!ev.persisted) return;
     resetDatasetSession();
+    compositionWorker.clear();
     if (areaReducer && typeof areaReducer.dispose === "function") areaReducer.dispose();
   });
   window.addEventListener("pageshow", (ev) => {
