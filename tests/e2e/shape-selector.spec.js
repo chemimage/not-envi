@@ -34,7 +34,7 @@ test("shape mode opens from a side button and updates the main selector", async 
   await expect(flyout).toBeHidden();
   await expect(sideButton).toBeVisible();
   await expect(selector.locator("#toolShapeLabel")).toHaveText("3:4");
-  await expect(selector).toHaveAttribute("title", "Shape: Aspect ratio 3:4 or 4:3");
+  await expect(selector).toHaveAttribute("title", "Aspect ratio 3:4 or 4:3");
   await expect(selector).toHaveClass(/active/);
   await sideButton.click();
   await page.screenshot({ path: testInfo.outputPath("shape-side-selector.png") });
@@ -53,7 +53,7 @@ test("shape mode opens from a side button and updates the main selector", async 
   await expect(sideButton).toBeVisible();
   await expect(sideButton).toBeFocused();
   await sideButton.click();
-  await page.getByRole("button", { name: "Ruler", exact: true }).click();
+  await page.getByRole("button", { name: "Line profile", exact: true }).click();
   await expect(sideButton).toBeHidden();
   await expect(flyout).toBeHidden();
 });

@@ -1130,6 +1130,21 @@ export function createAnnotationController(deps) {
     return true;
   }
 
+  function removeLineAnnotation(ds, id, explicitState = null) {
+    if (!ds) return false;
+    const annotations = resolveAnnotationState(ds, explicitState);
+    const index = annotations.drawings.findIndex((item) => item.id === id
+      && (item.tool === "ruler" || item.tool === "line"));
+    if (index < 0) return false;
+    annotations.drawings.splice(index, 1);
+    // Ruler interactions store array indices, which can shift after deletion.
+    for (const key of ["rulerDrag", "rulerMove", "rulerProfileDrag", "rulerProfileHover", "rulerHover"]) {
+      state.draw[key] = null;
+    }
+    renderWithRasterReuse();
+    return true;
+  }
+
   function clearAllAnnotations() {
     const ds = getActive();
     if (!ds) return false;
@@ -1488,6 +1503,7 @@ export function createAnnotationController(deps) {
     clearRulerHover,
     eraseDrawingAtPointer,
     removeAreaAnnotations,
+    removeLineAnnotation,
     clearAllAnnotations,
     isDrawingPointer,
     beginDrawingAtPointer,

@@ -1232,6 +1232,11 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     els,
     bandLabel,
     ...APP_CONFIG.lineProfile,
+    onDelete: ({ dsId, itemId, slot }) => {
+      const panel = getDisplayPanel(state, slot);
+      const ds = state.datasets.find((dataset) => dataset.id === dsId);
+      if (ds && panel?.datasetId === dsId) annotation.removeLineAnnotation(ds, itemId, panel.annotations);
+    },
     getTarget: ({ dsId, itemId, slot }) => {
       const panel = getDisplayPanel(state, slot);
       const ds = state.datasets.find((dataset) => dataset.id === dsId);

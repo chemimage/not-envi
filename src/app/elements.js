@@ -81,6 +81,7 @@ export function collectElements() {
     lineProfileCoordinates: $("#lineProfileCoordinates"),
     lineProfileBand: $("#lineProfileBand"),
     lineProfileStatus: $("#lineProfileStatus"),
+    btnLineProfileDelete: $("#btnLineProfileDelete"),
     btnLineProfileClose: $("#btnLineProfileClose"),
     btnLineProfileUm: $("#btnLineProfileUm"),
     btnLineProfilePx: $("#btnLineProfilePx"),

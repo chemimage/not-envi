@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("ruler profile opens, switches units, refreshes bands, and reopens after editing", async ({ page }) => {
+test("line profile opens, switches units, refreshes bands, and deletes only its own line", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/");
   const data = Buffer.alloc(100 * 80 * 2 * 4);
@@ -9,7 +9,7 @@ test("ruler profile opens, switches units, refreshes bands, and reopens after ed
     { name: "profile.hdr", mimeType: "text/plain", buffer: Buffer.from("ENVI\nsamples = 100\nlines = 80\nbands = 2\nheader offset = 0\nfile type = ENVI Standard\ndata type = 4\ninterleave = bsq\nbyte order = 0\npixel size = {2, 3}\nunits = um\nband names = {First, Second}\n") },
     { name: "profile.raw", mimeType: "application/octet-stream", buffer: data }
   ]);
-  await page.locator("#toolRuler").click();
+  await page.getByRole("button", { name: "Line profile", exact: true }).click();
   await page.mouse.move(350, 350);
   await page.mouse.down();
   await page.mouse.move(620, 440, { steps: 10 });
@@ -28,6 +28,22 @@ test("ruler profile opens, switches units, refreshes bands, and reopens after ed
   await page.mouse.move(620, 440);
   await page.mouse.down();
   await page.mouse.move(660, 420, { steps: 10 });
+  await page.mouse.up();
+  await expect(panel).toBeVisible();
+  // A second line replaces the chart target, not the first annotation.
+  await page.locator("#btnLineProfileClose").click();
+  await page.mouse.move(350, 500);
+  await page.mouse.down();
+  await page.mouse.move(600, 550, { steps: 10 });
+  await page.mouse.up();
+  await expect(panel).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("line-profile-delete.png") });
+  await page.getByRole("button", { name: "Delete line", exact: true }).click();
+  await expect(panel).toBeHidden();
+  // The first line is still editable and can reopen its chart.
+  await page.mouse.move(660, 420);
+  await page.mouse.down();
+  await page.mouse.move(680, 400, { steps: 10 });
   await page.mouse.up();
   await expect(panel).toBeVisible();
   await page.locator("#toolEraser").click();

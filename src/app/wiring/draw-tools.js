@@ -146,7 +146,7 @@ export function wireDrawToolInteractions(deps) {
     }
     if (els.toolRect) {
       els.toolRect.classList.toggle("draw-mode-trigger-polygon", shapeMode === "polygon");
-      els.toolRect.title = `Shape: ${shapeModeMeta.title}`;
+      els.toolRect.title = shapeModeMeta.title;
     }
     if (els.toolShape) {
       els.toolShape.classList.toggle("active", shapeModeFlyoutOpen);

@@ -2,7 +2,7 @@ import { fmtUm } from "../core/utils.js";
 import { readLineProfile } from "./line-profile-data.js";
 
 export function createLineProfileController({
-  els, getTarget, bandLabel, onShow = () => {},
+  els, getTarget, bandLabel, onShow = () => {}, onDelete = () => {},
   readProfile = readLineProfile, maxSamples = 1024, concurrency = 3
 }) {
   const canvas = els.lineProfileCanvas;
@@ -178,6 +178,12 @@ export function createLineProfileController({
     return refresh(true);
   }
 
+  els.btnLineProfileDelete?.addEventListener("click", () => {
+    if (!anchor) return;
+    const deleted = { ...anchor };
+    close(); // Retire an in-flight read before removing its source annotation.
+    onDelete(deleted);
+  });
   els.btnLineProfileClose.addEventListener("click", close);
   for (const [button, value] of [[els.btnLineProfileUm, "um"], [els.btnLineProfilePx, "px"]]) {
     button.addEventListener("click", () => { unit = value; redraw(); });
