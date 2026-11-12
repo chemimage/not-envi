@@ -155,7 +155,6 @@ test("single-file package reads and composes ENVI and TIFF through workers witho
   await page.route(/^https?:\/\//, (route) => route.abort("blockedbyclient"));
   await page.context().setOffline(true);
   const url = new URL(pathToFileURL(path.resolve("dist/index.html")).href);
-  url.searchParams.set("fmap", "1");
   await page.goto(url.href);
 
   const data = Buffer.alloc((8 * 6 * 2 * 4) + 3, 0);

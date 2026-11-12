@@ -14,9 +14,8 @@ Requires Node.js 22 and Git.
 - `npm ci`
 - `npm run dev`
 
-The C/WASM fmap backend is built in and always enabled. There is no backend
-selection setting or URL switch. TIFF formats outside its supported paths
-continue to use the compatible decoder automatically.
+The C/WASM fmap backend is built in and always enabled. TIFF formats outside
+its supported paths continue to use the compatible decoder automatically.
 
 ## Tests
 

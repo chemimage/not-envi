@@ -356,7 +356,7 @@ export async function describeTiffDataset(tiff, file, deps = {}) {
       : photometricName(unsupported.photometricInterpretation);
     throw new Error(
       `TIFF fmap does not have a verified bounded decoder for ${reason}. `
-      + "Disable fmap to use the existing TIFF backend, or re-encode with uncompressed, PackBits, LZW, or Deflate blocks."
+      + "Re-encode with uncompressed, PackBits, LZW, or Deflate blocks."
     );
   }
   const raw = {

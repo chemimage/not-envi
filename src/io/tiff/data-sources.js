@@ -994,7 +994,7 @@ export class TiffBlockIndexedDataSource {
     if (this.usesFmapRangeSource) {
       const fmapSpec = overviewPlan.fmapSpecs?.[overviewPlan.singleBand ? 0 : band] || null;
       if (!fmapSpec) {
-        throw new Error("This TIFF overview requires a decoder that is not routed through the bounded fmap range path. Disable fmap or use a raw-compatible overview.");
+        throw new Error("This TIFF overview requires an unsupported decoder. Use a raw-compatible overview.");
       }
       await this.#readFmapOverviewSpec(fmapSpec, overviewPlan, target, x0, y0, outW, outH, outW, step, options);
       return target;
@@ -1038,7 +1038,7 @@ export class TiffBlockIndexedDataSource {
     if (this.usesFmapRangeSource) {
       const fmapSpecs = overviewPlan.fmapSpecs?.slice(0, 3) || [];
       if (fmapSpecs.length < 3) {
-        throw new Error("This TIFF overview requires a decoder that is not routed through the bounded fmap range path. Disable fmap or use a raw-compatible overview.");
+        throw new Error("This TIFF overview requires an unsupported decoder. Use a raw-compatible overview.");
       }
       for (let channel = 0; channel < 3; channel += 1) {
         await this.#readFmapOverviewSpec(fmapSpecs[channel], overviewPlan, outputs[channel], x0, y0, outW, outH, fullOutW, step, options);
@@ -1152,7 +1152,7 @@ export class TiffBlockIndexedDataSource {
     return this.#loadDecodedOnce(cacheKey, async () => {
       const compression = Number(spec?.table?.summary?.compression) || 1;
       if (this.usesFmapRangeSource && !BOUNDED_FMAP_RAW_COMPRESSIONS.has(compression)) {
-        throw new Error(`TIFF compression ${compression} is not supported by the bounded fmap block decoder. Disable fmap to use the existing fallback.`);
+        throw new Error(`TIFF compression ${compression} is not supported by the bounded block decoder. Re-encode with uncompressed, PackBits, LZW, or Deflate blocks.`);
       }
       const storageHeight = spec.table.isTiled ? spec.table.blockHeight : block.h;
       const decodedBytes = checkedWorkingBytes(
@@ -1242,7 +1242,7 @@ export class TiffBlockIndexedDataSource {
     return this.#loadDecodedOnce(cacheKey, async () => {
       const expectedBytes = checkedWorkingBytes(scaledW * scaledH * 3);
       if (this.usesFmapRangeSource) {
-        throw new Error("TIFF RGB fallback decoding is not routed through the bounded fmap range path. Disable fmap for this photometric/codec combination.");
+        throw new Error("This TIFF photometric/codec combination is not supported by the bounded RGB decoder. Re-encode with a supported photometric and compression format.");
       }
       const lease = await this.#reserveWorkingSet(block.byteCount, expectedBytes, expectedBytes, "rgb-fallback");
       try {
@@ -1319,7 +1319,7 @@ export class TiffBlockIndexedDataSource {
         }
         if (!decoded) {
           if (this.usesFmapRangeSource) {
-            throw new Error("TIFF JPEG tile could not be decoded by the bounded native path. Disable fmap to use the existing fallback.");
+            throw new Error("TIFF JPEG tile could not be decoded by the bounded native path. Re-encode with uncompressed, PackBits, LZW, or Deflate blocks.");
           }
           const rgb = await spec.table.image.readRGB({
             window: [block.x0, block.y0, block.x0 + block.w, block.y0 + block.h],
@@ -1372,7 +1372,7 @@ export class TiffBlockIndexedDataSource {
     return this.#loadDecodedOnce(cacheKey, async () => {
       const expectedBytes = checkedWorkingBytes(scaledW * scaledH * Number(this.meta?.dataTypeInfo?.bytes || 1));
       if (this.usesFmapRangeSource) {
-        throw new Error("TIFF window fallback decoding is not routed through the bounded fmap range path. Disable fmap for this codec.");
+        throw new Error("This TIFF codec is not supported by the bounded window decoder. Re-encode with uncompressed, PackBits, LZW, or Deflate blocks.");
       }
       const lease = await this.#reserveWorkingSet(block.byteCount, expectedBytes, expectedBytes, "window-fallback");
       try {

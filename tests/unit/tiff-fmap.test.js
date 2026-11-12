@@ -408,11 +408,11 @@ describe("TIFF fmap fallback policy", () => {
     await expect(describeTiffDataset(tiff, file, {
       tiffFmapRangeSource: fmap,
       cacheBytes: 64
-    })).rejects.toThrow(/does not have a verified bounded decoder for compression 7.*Disable fmap/i);
+    })).rejects.toThrow(/does not have a verified bounded decoder for compression 7.*Re-encode/i);
     expect(fmap.close).toHaveBeenCalledTimes(1);
   });
 
-  test("preserves the existing unsupported-codec fallback when fmap is disabled", async () => {
+  test("supports the compatibility reader without an injected range source", async () => {
     const { tiff } = fallbackHarness();
     const file = new File([new Uint8Array(4)], "jpeg-gray.tif", { type: "image/tiff" });
     const result = await describeTiffDataset(tiff, file, { cacheBytes: 64 });
