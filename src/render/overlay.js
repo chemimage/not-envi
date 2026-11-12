@@ -558,19 +558,28 @@ export function createOverlayRenderer(deps) {
       const startY = Math.floor(ds.view.y / step) * step;
       const endY = ds.view.y + viewH;
 
-      overlayCtx.strokeStyle = "rgba(255,255,255,0.12)";
-      overlayCtx.lineWidth = 1 * dpr;
+      // Align the light core to device pixels so its dark outline remains
+      // distinct even at DPR 1. Both passes share one path; no image readback
+      // or background-dependent color changes are needed during refinement.
+      const coreWidth = 1 * dpr;
+      const pixelOffset = (Math.round(coreWidth) % 2) / 2;
+      const align = (position) => Math.round(position - pixelOffset) + pixelOffset;
       overlayCtx.beginPath();
       for (let x = startX; x <= endX; x += step) {
-        const sx = viewport.x + ((x - ds.view.x) * eff);
+        const sx = align(viewport.x + ((x - ds.view.x) * eff));
         overlayCtx.moveTo(sx, viewport.y);
         overlayCtx.lineTo(sx, viewport.y + viewport.h);
       }
       for (let y = startY; y <= endY; y += step) {
-        const sy = viewport.y + ((y - ds.view.y) * eff);
+        const sy = align(viewport.y + ((y - ds.view.y) * eff));
         overlayCtx.moveTo(viewport.x, sy);
         overlayCtx.lineTo(viewport.x + viewport.w, sy);
       }
+      overlayCtx.strokeStyle = "rgba(0,0,0,0.45)";
+      overlayCtx.lineWidth = 2 * dpr;
+      overlayCtx.stroke();
+      overlayCtx.strokeStyle = "rgba(255,255,255,0.65)";
+      overlayCtx.lineWidth = coreWidth;
       overlayCtx.stroke();
     }
 

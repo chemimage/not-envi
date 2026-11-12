@@ -65,8 +65,8 @@ describe("overlay renderer", () => {
     expect(ctx.stroke).toHaveBeenCalled();
     const moveCalls = ctx.moveTo.mock.calls;
     expect(moveCalls.length).toBeGreaterThan(1);
-    expect(moveCalls[0][0]).toBe(0);
-    expect(moveCalls[1][0]).toBe(100);
+    expect(moveCalls[0][0]).toBe(0.5);
+    expect(moveCalls[1][0]).toBe(100.5);
   });
 
   test("drawOverlays boundary follows rendered raster footprint", () => {
