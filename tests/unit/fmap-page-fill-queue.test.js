@@ -86,6 +86,40 @@ function settled(promise) {
 }
 
 describe("FmapPageFillQueue", () => {
+  test.each([
+    ["a truncated ArrayBuffer", () => new ArrayBuffer(15), /Truncated/],
+    ["a non-byte result", () => ({ length: 16 }), /must return bytes/]
+  ])("rejects shared consumers on %s and permits a later retry", async (_name, result, message) => {
+    const h = await harness();
+    const first = h.queue.request({ pageIndex: 0, offset: 0, length: 16 });
+    const second = h.queue.request({ pageIndex: 0, offset: 0, length: 16 });
+    const outcomes = [settled(first.promise), settled(second.promise)];
+    await h.runTasks();
+    h.reads[0].finished = true; h.reads[0].resolve(result());
+    await flushMicrotasks(); await h.runTasks();
+    for (const outcome of outcomes) expect((await outcome).error.message).toMatch(message);
+    expect(h.queue.getStats()).toMatchObject({ fillActiveReads: 0, fillQueueRequests: 0, fillLiveDemands: 0, pageFillFailures: 1 });
+    expect(h.core.fmap_pinned_bytes()).toBe(0);
+    const retry = h.queue.request({ pageIndex: 0, offset: 0, length: 16 });
+    await h.runTasks(); await h.finishRead();
+    const lease = await retry.promise;
+    expect(h.leaseBytes(lease)).toEqual(Array.from(h.fileBytes.subarray(0, 16)));
+    lease.release(); h.queue.close();
+  });
+
+  test("reacquires WASM memory after allocation growth while a provider read is pending", async () => {
+    const h = await harness();
+    const request = h.queue.request({ pageIndex: 0, offset: 0, length: 16 });
+    await h.runTasks();
+    const buffer = h.core.memory.buffer;
+    for (let id = 1n; id <= 1000n; id++) expect(h.core.fmap_map_region(id * 8192n, 4096n, 0n, id)).toBe(0);
+    expect(h.core.memory.buffer).not.toBe(buffer);
+    await h.finishRead();
+    const lease = await request.promise;
+    expect(h.leaseBytes(lease)).toEqual(Array.from(h.fileBytes.subarray(0, 16)));
+    lease.release(); h.queue.close();
+  });
+
   test("dense fills stop at EOF and retain exact caller bounds", async () => {
     const h = await harness({ fileSize: PAGE_SIZE + 13 });
     const request = h.queue.request({ pageIndex: 1, offset: 10, length: 3, fillBytes: PAGE_SIZE });

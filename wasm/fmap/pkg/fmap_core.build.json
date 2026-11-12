@@ -5,7 +5,11 @@
   "sources": [
     {
       "path": "fmap_core.c",
-      "sha256": "da4f92747191128709dcc4987797eb5cfa4d1952bebacd6b8f53c7285f7e2f20"
+      "sha256": "531557c8d8a79cc7243fad6620869592e95b7f3e58a736f0fa7bb56a4fe6cecc"
+    },
+    {
+      "path": "fmap_fills.c",
+      "sha256": "399f79ffd2b0c8eb41998e7bfd9a176ecc7be24c3548aeeb830f44bad897211a"
     },
     {
       "path": "fmap_hash.c",
@@ -13,22 +17,22 @@
     },
     {
       "path": "fmap_internal.h",
-      "sha256": "d1917759be80c2f97dd46314d00699823eca2ecd284e83fc7991061829bb00ee"
+      "sha256": "9c0ef444a24b849d661cf09879aa21e6fa4068381b3f018c5540a7f68718df31"
     },
     {
       "path": "fmap_mappings.c",
-      "sha256": "a1c8acebf7a6350de34de320e2cc8f408652eb5393b1ef42d636694a312767ad"
+      "sha256": "f8df7da77a79cf9a7c3d80a6068f4a69d635e0fe4fdbc82c219997857e16bf7c"
     },
     {
       "path": "fmap_memory.c",
-      "sha256": "935ccace2f0b618f2506affb1a7301194d23b60683303cbe85d2fb2c51890af8"
+      "sha256": "aa1540ff0701fed002b0e7e83a43c489e97b6cd5094faeca6b26db9181755359"
     },
     {
       "path": "fmap_page_index.c",
       "sha256": "ec1193b4ade259ba1fbf3e0613e9bc569176c23473ba027cc5b24ce780c2347e"
     }
   ],
-  "sourceSha256": "25c5b0dc2101486f9ed1d31779bf54cdd2adb049441e07402f0e52cdbc5bfee0",
+  "sourceSha256": "5b83c309a58c7e6ed0051e51676191ac5a3c416cca75d4e812078592bed76894",
   "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
   "target": "wasm32-unknown-unknown",
   "optimization": "-O2 -flto",
@@ -48,6 +52,7 @@
     "-x",
     "c",
     "wasm\\fmap\\src\\fmap_core.c",
+    "wasm\\fmap\\src\\fmap_fills.c",
     "wasm\\fmap\\src\\fmap_hash.c",
     "wasm\\fmap\\src\\fmap_mappings.c",
     "wasm\\fmap\\src\\fmap_memory.c",
@@ -60,8 +65,8 @@
     "-o",
     "wasm\\fmap\\pkg\\fmap_core.wasm"
   ],
-  "bytes": 23767,
-  "sha256": "a87459651c1fd1f3ba09313bde37d28dd181ed6de44cc37754e7fa61c5e46f92",
+  "bytes": 33925,
+  "sha256": "c40f12b62891450447bca8734b2ee3cef97812a3f8fc7a83e0860eca4a9f927e",
   "exports": [
     "fmap_acquire_page",
     "fmap_commit_page",
@@ -73,6 +78,17 @@
     "fmap_extract_numeric",
     "fmap_extract_scratch_f32",
     "fmap_extract_scratch_numeric",
+    "fmap_fill_cancel",
+    "fmap_fill_clear",
+    "fmap_fill_complete",
+    "fmap_fill_concurrency",
+    "fmap_fill_event",
+    "fmap_fill_init",
+    "fmap_fill_poll",
+    "fmap_fill_prepare",
+    "fmap_fill_release",
+    "fmap_fill_stat",
+    "fmap_fill_submit",
     "fmap_find_page",
     "fmap_generation",
     "fmap_hits",

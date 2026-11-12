@@ -9,11 +9,14 @@ responsible for file range I/O.
 
 `fmap_core.c` owns resident pages and numeric extraction; `fmap_page_index.c`
 provides the pool-bounded page-ID lookup. `fmap_mappings.c` owns the sparse
-mapping tree, handle index and gap summaries. `fmap_hash.c` shares the documented
-ID mixer, and `fmap_memory.c` supplies shared memory helpers.
+mapping tree, handle index and gap summaries. `fmap_fills.c` owns page-demand
+admission, priorities, overlap deduplication, exact missing-range planning,
+fill reservations, completion/cancellation and independently pinned leases.
+`fmap_hash.c` shares the documented ID mixer, and `fmap_memory.c` supplies
+shared memory helpers and a reusable metadata arena.
 `fmap_internal.h` declares their small internal interface; mutable state stays
 private to its owning module. Pool initialization establishes one layout and
-places mapping allocations after the pool, scratch and output regions. Cache
+places mapping and fill allocations after the pool, scratch and output regions. Cache
 reset preserves mappings; successful pool reinitialization resets them.
 Page lookup uses a fixed hash table sized from resident slots, while eviction
 victim selection retains its separate linear LRU scan.
@@ -70,3 +73,87 @@ cross-origin isolation. It grows linear memory once to establish the requested
 fixed pool, and can grow further for sparse mapping metadata. Reinitializing
 reuses the same heap base and does not accumulate resident pools; WASM memory
 itself cannot shrink.
+
+## Fill policy ABI and resource boundaries
+
+`fmap_fill_init(fileSize:u64, concurrency:u32, maxCount:u32, maxBytes:u32)`
+configures one queue per pool. `fmap_fill_submit(page:u64, offset, length,
+fillGrain, priority)` returns a positive opaque demand ID or a negative status.
+Priority 0 precedes priority 1; foreground demands can displace unstarted
+background admission without cancelling consumers. Admitted count/bytes and
+active provider concurrency remain separate limits. Full-refill fallback on
+validity-table exhaustion and fill-grain expansion are bounded by the page/EOF.
+
+`fmap_fill_poll()` returns zero or a pointer to a 24-byte command snapshot:
+four little-endian u32 fields (fill ID, slot, page-relative start, length),
+followed by the exact u64 file offset. The browser adapter copies this snapshot
+and performs the asynchronous read. After settlement, `fmap_fill_prepare(id)`
+returns zero for a retired command, or a write pointer checked against the
+fill epoch, cache generation, slot page and reservation identity. Copy bytes
+synchronously into a freshly acquired memory view, then call
+`fmap_fill_complete(id, success)`. Failure uses success=0; duplicate settlement
+is harmless. No pointer or WASM view may cross an await or allocating C call.
+
+`fmap_fill_event()` returns zero or a pointer to a 24-byte event snapshot:
+six little-endian fields (demand ID, slot, offset, length, signed error status,
+failure fill ID). Success transfers the reserved pin to a delivered lease.
+Release it with `fmap_fill_release(demandId)`; each consumer owns its own pin.
+`fmap_fill_cancel(id)` cancels pending consumers, preserving shared fills.
+Errors -9 and -10 denote cancellation and provider failure respectively.
+
+`fmap_fill_clear()` invalidates pending demands and delivered leases, clears
+the cache while preserving mappings, and retires active commands. Started
+provider reads remain charged until `complete`, even after close. Old commands
+cannot get a write pointer or release a new slot reservation. Demand/fill IDs
+are never reused within a module instance; exhaustion fails explicitly. Raw
+cache reset/pool reinitialization reject live fill state: use fill clear and
+drain provider reads first. Mapping reset returns only its own arena blocks,
+so it cannot overwrite fill descriptors or leases.
+
+`fmap_fill_concurrency(n)` changes the read limit without dropping active work.
+`fmap_fill_stat(index)` returns u64 counters; their names and stable order are
+listed in `src/io/fmap/page-fill-queue.js`. In addition to queue/read/copy
+counts, `fillLiveDemands` includes pending events and unreleased leases, and
+`peakFillLiveDemands` records its high water mark. `fillMetadataBytes` counts
+allocated fill-node payload storage, excluding shared allocator headers,
+mapping storage, JS callbacks/Promises and browser buffers. Reusable 32-node
+chunks retain their high water capacity until pool reinitialization. Parked
+metadata can grow with outstanding demand until wasm32 memory allocation fails;
+it is not bounded by the admitted-demand limits. ID lookup and queue selection
+use linear lists, so repeated submission/cancellation can take quadratic time.
+This change establishes policy ownership, not a whole-tab memory budget (#24)
+or a general speedup.
+
+### Local validation, 2026-11-11
+
+Windows 11 build 26100, Playwright Chromium 145.0.7632.6, pinned Clang
+18.1.2. Baseline file tree: `c584695` (same tree as `769a9c0`). The
+regenerated core is 33,925 bytes. All 524 unit tests, 40 desktop browser
+tests, four opt-in large-file tests, the offline ENVI/TIFF single-file worker
+test, the core ABI suite, lint and the packaged build passed.
+
+The checked browser benchmark preserved ENVI read/delivered/copy counts:
+cold 162 fills / 3,149,825 browser bytes / 8,764,585 copied bytes; warm
+zero fills and zero browser bytes; adjacent pans three fills / 196,608
+browser bytes; sparse spectra 768 fills / 3,072 browser bytes / 6,144 copied
+bytes. Value checks, warm-cache reuse, TIFF codec/reservation workloads and
+worker parity also passed. These are synthetic browser File workloads, not
+physical-drive throughput measurements.
+
+The queue benchmark uses five rounds per size, two admitted descriptors,
+one held provider read, and cancellation of every other demand. Each round
+issued one 64-byte provider read and drained all queue counts and pins.
+Times below are p50/p95 milliseconds; timer resolution and run noise apply.
+
+| Demands | Enqueue before | Enqueue after | Cancel before | Cancel after | C node payload storage |
+| --- | --- | --- | --- | --- | --- |
+| 128 | 0.4 / 0.8 | 0.2 / 0.4 | 0.4 / 0.7 | 0.4 / 0.5 | 9,984 B |
+| 512 | 2.3 / 2.6 | 1.0 / 1.3 | 4.4 / 4.6 | 4.3 / 4.4 | 31,488 B |
+| 2,048 | 31.8 / 66.5 | 20.1 / 28.0 | 31.8 / 33.9 | 38.2 / 55.9 | 117,504 B |
+
+Enqueue improved in this run; large-queue cancellation regressed. This does
+not establish a general performance improvement or change the linear-list
+complexity. Raw before/after reports are local ignored outputs under
+`test-results/fmap-{browser,queues}-{before,after}-29.json`; rerun the two
+documented benchmark commands for current measurements. The summary above
+preserves the observed comparison independently of those temporary reports.

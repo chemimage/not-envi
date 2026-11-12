@@ -303,7 +303,7 @@ int32_t fmap_init(uint32_t page_size, uint32_t slot_count) {
     uint64_t required_end;
     uint32_t index;
 
-    if (page_size == 0 || slot_count == 0) return FMAP_ERR_INVALID_CONFIG;
+    if (page_size == 0 || slot_count == 0 || fmap_fills_busy()) return FMAP_ERR_INVALID_CONFIG;
     resident_bytes = (uint64_t)page_size * slot_count;
     output_count = page_size / 4u;
     if (output_count == 0) output_count = 1;
@@ -342,12 +342,13 @@ int32_t fmap_init(uint32_t page_size, uint32_t slot_count) {
     fmap_clear_bytes(g_bytes, (uint32_t)resident_bytes);
     fmap_clear_bytes(g_scratch, g_page_size);
     fmap_clear_bytes((uint8_t *)g_output, g_output_bytes);
-    fmap_mappings_init(required_end);
+    fmap_metadata_init(required_end);
+    fmap_mappings_init();
+    fmap_fills_storage_init();
     return FMAP_OK;
 }
 
-EXPORT("fmap_reset")
-int32_t fmap_reset(void) {
+int32_t fmap_cache_reset(void) {
     uint32_t index;
     if (!g_initialized) return FMAP_ERR_NOT_INITIALIZED;
     fmap_page_index_reset();
@@ -362,6 +363,12 @@ int32_t fmap_reset(void) {
     g_misses = 0;
     g_evictions = 0;
     return FMAP_OK;
+}
+
+EXPORT("fmap_reset")
+int32_t fmap_reset(void) {
+    if (fmap_fills_busy()) return FMAP_ERR_INVALID_CONFIG;
+    return fmap_cache_reset();
 }
 
 EXPORT("fmap_generation") uint32_t fmap_generation(void) { return g_initialized ? g_generation : 0; }

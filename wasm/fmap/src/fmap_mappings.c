@@ -23,13 +23,16 @@ static fmap_map_node *g_map_root, *g_map_free;
 static fmap_map_id *g_map_ids;
 static uint32_t g_map_capacity, g_map_count, g_map_free_count;
 static uint32_t g_mapping_initialized;
-static uint64_t g_map_heap_base, g_map_heap_end;
+typedef struct map_allocation { struct map_allocation *next; uint32_t reserved; } map_allocation;
+static map_allocation *g_map_allocations;
+static uint32_t g_map_bytes;
 static uint32_t g_map_gap_nodes_visited, g_map_gap_entries_visited;
 static void mapping_reset_internal(void);
 
-void fmap_mappings_init(uint64_t heap_base) {
+void fmap_mappings_init(void) {
     g_mapping_initialized = 1;
-    g_map_heap_base = fmap_align_up_u64(heap_base, 8);
+    /* Pool reinitialization has already reset the shared arena. */
+    g_map_allocations = (map_allocation *)0;
     mapping_reset_internal();
 }
 
@@ -40,18 +43,23 @@ static void mapping_reset_internal(void) {
     g_map_capacity = 0;
     g_map_count = 0;
     g_map_free_count = 0;
-    g_map_heap_end = g_map_heap_base;
+    while (g_map_allocations) {
+        map_allocation *allocation = g_map_allocations;
+        g_map_allocations = allocation->next;
+        fmap_metadata_free(allocation);
+    }
+    g_map_bytes = 0;
     g_map_gap_nodes_visited = 0;
     g_map_gap_entries_visited = 0;
 }
 
 static void *mapping_allocate(uint32_t bytes) {
-    uint64_t start = fmap_align_up_u64(g_map_heap_end, 8);
-    uint64_t end = start + bytes;
-    if (end > U32_MAX_VALUE || fmap_ensure_linear_memory(end) != FMAP_OK) return (void *)0;
-    g_map_heap_end = end;
-    fmap_clear_bytes((uint8_t *)(uint32_t)start, bytes);
-    return (void *)(uint32_t)start;
+    if (bytes > U32_MAX_VALUE - sizeof(map_allocation)) return (void *)0;
+    map_allocation *allocation = (map_allocation *)fmap_metadata_allocate(bytes + sizeof(map_allocation));
+    if (!allocation) return (void *)0;
+    allocation->next = g_map_allocations; g_map_allocations = allocation;
+    g_map_bytes += bytes + sizeof(map_allocation);
+    return allocation + 1;
 }
 
 static uint32_t mapping_id_slot(uint64_t id) {
@@ -375,7 +383,7 @@ EXPORT("fmap_mapping_file_offset") uint64_t fmap_mapping_file_offset(uint64_t id
     return entry ? entry->file_offset : 0;
 }
 EXPORT("fmap_mapping_count") uint32_t fmap_mapping_count(void) { return g_map_count; }
-EXPORT("fmap_mapping_bytes") uint32_t fmap_mapping_bytes(void) { return (uint32_t)(g_map_heap_end - g_map_heap_base); }
+EXPORT("fmap_mapping_bytes") uint32_t fmap_mapping_bytes(void) { return g_map_bytes; }
 EXPORT("fmap_mapping_reset") void fmap_mapping_reset(void) { mapping_reset_internal(); }
 
 typedef struct {

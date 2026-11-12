@@ -23,11 +23,34 @@ typedef int int32_t;
 
 /* The cache establishes the fixed pool first, then gives mapping metadata the
  * following address. A successful pool reinitialization resets mapping state. */
-void fmap_mappings_init(uint64_t heap_base);
+void fmap_mappings_init(void);
 uint64_t fmap_align_up_u64(uint64_t value, uint32_t alignment);
 int fmap_ensure_linear_memory(uint64_t required_end);
 void fmap_clear_bytes(uint8_t *bytes, uint32_t length);
 uint32_t fmap_hash_u64(uint64_t value);
+void *fmap_metadata_allocate(uint32_t bytes);
+void fmap_metadata_free(void *pointer);
+void fmap_metadata_init(uint64_t heap_base);
+void fmap_fills_storage_init(void);
+int fmap_fills_busy(void);
+
+/* Cache operations used by the fill-policy module. The cache retains slot
+ * ownership; fills reserve pins and query exact sparse validity through here. */
+uint32_t fmap_page_size(void);
+uint32_t fmap_generation(void);
+int32_t fmap_reset(void);
+int32_t fmap_cache_reset(void);
+int32_t fmap_find_page(uint64_t page);
+int32_t fmap_acquire_page(uint64_t page);
+int32_t fmap_release_page(uint32_t slot);
+int32_t fmap_range_valid(uint32_t slot, uint32_t offset, uint32_t length);
+int32_t fmap_commit_range(uint32_t slot, uint32_t offset, uint32_t length);
+int32_t fmap_commit_page(uint32_t slot, uint32_t length);
+uint32_t fmap_slot_ptr(uint32_t slot);
+uint64_t fmap_slot_page(uint32_t slot);
+uint32_t fmap_slot_range_count(uint32_t slot);
+uint32_t fmap_slot_range_offset(uint32_t slot, uint32_t index);
+uint32_t fmap_slot_range_length(uint32_t slot, uint32_t index);
 
 /* Fixed-size resident-page index. Storage is reserved by the cache layout;
  * capacity depends only on pool slots, never on backing-file length. */
