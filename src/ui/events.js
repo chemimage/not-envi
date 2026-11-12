@@ -1,4 +1,6 @@
 export function bindCoreEvents({ els, handlers }) {
+  // Right-drag pans the viewer; do not open the browser's canvas/image menu.
+  els.main?.addEventListener("contextmenu", (event) => event.preventDefault());
   if (els.main && handlers.onPointerDown) {
     els.main.addEventListener("pointerdown", handlers.onPointerDown);
   }
