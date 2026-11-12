@@ -187,7 +187,7 @@ export function createSelectionActionsController(deps) {
       const fraction = work.dataOnly ? work.dataFraction : work.fraction;
       if (fraction == null) bar.removeAttribute("aria-valuenow");
       else bar.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
-      bar.setAttribute("aria-description", "Dashed lane: selected image detail at view resolution. Solid lane: requested analysis, including its data reads.");
+      bar.setAttribute("aria-description", "Blue patterned fill: selected image detail at view resolution. Pale solid fill: requested analysis, including its data reads.");
       for (const [lane, value] of [[bar.firstChild, work.dataFraction],
         [bar.lastChild, work.dataOnly ? 0 : work.fraction]]) {
         lane.style.transform = value == null ? "" : (horizontal ? `scaleX(${value})` : `scaleY(${value})`);

@@ -854,28 +854,28 @@
     z-index: 31;
     overflow: hidden;
     pointer-events: none;
-    background: rgb(17 24 39 / 0.95);
-    outline: 1px solid rgb(255 255 255 / 0.85);
+    background: #0b1220;
+    outline: 1px solid rgb(229 244 255 / 0.65);
+    box-shadow: 0 0 0 2px rgb(0 0 0 / 0.65);
   }
 
+  /* Both stages fill the same track from its origin. Pale analysis overlays
+     blue image readiness; their independent fractions are never added. */
   .annotation-progress > span {
     display: block;
-    width: 100%;
     position: absolute;
-    height: 2px;
-    background: white;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     transform-origin: top left;
   }
 
   .annotation-progress > .annotation-progress-data {
-    background: repeating-linear-gradient(to right, white 0 3px, transparent 3px 5px);
+    background: repeating-linear-gradient(135deg, #397cba 0 3px, #5796cd 3px 4px);
   }
-  .annotation-progress > .annotation-progress-analysis { bottom: 0; }
-  .annotation-progress[data-orientation="vertical"] > span { width: 2px; height: 100%; }
-  .annotation-progress[data-orientation="vertical"] > .annotation-progress-data {
-    background: repeating-linear-gradient(to bottom, white 0 3px, transparent 3px 5px);
+  .annotation-progress > .annotation-progress-analysis {
+    background: #e5f4ff;
   }
-  .annotation-progress[data-orientation="vertical"] > .annotation-progress-analysis { right: 0; }
   .annotation-progress > [hidden] { display: none; }
 
   .annotation-progress[data-indeterminate="true"] > .annotation-progress-analysis {
@@ -884,7 +884,7 @@
   }
 
   .annotation-progress[data-indeterminate="true"][data-orientation="vertical"] > .annotation-progress-analysis {
-    width: 2px;
+    width: 100%;
     height: 35%;
     animation-name: annotation-progress-y;
   }

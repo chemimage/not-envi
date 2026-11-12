@@ -46,12 +46,17 @@ pending foreground image tiles. It does not start statistics. Click Spatial or
 Spectrum to calculate. Existing provider reads finish normally; selection
 reorders queued work without duplicating reads or starting an extra ROI load.
 
-The existing 4 px annotation-edge strip has two 2 px lanes and no tooltip:
-- Dashed: image tiles ready at the current view resolution, across visible bands.
-- Solid: requested analysis completion, including its required input reads.
+The 4 px annotation-edge strip overlays two fills in one track, without a tooltip:
+- Blue with a subtle diagonal pattern: image tiles ready at the current view
+  resolution, across visible bands.
+- Pale solid fill: requested analysis completion, including its required input
+  reads. This fill draws over image readiness from the same starting edge.
+
+The unfilled track is dark. Lightness and pattern distinguish the stages as well
+as hue. Unknown analysis progress sweeps instead of inventing a percentage.
 
 These fractions overlap and must not be added. Coarse fallback imagery does not
-count as requested-resolution readiness. The data lane is shown only where the
+count as requested-resolution readiness. The blue fill is shown only where the
 pyramid cache can measure readiness; direct reads without tile accounting do
 not invent a percentage. The data-only strip disappears once ready, while a
 running analysis keeps its own strip until it settles.
