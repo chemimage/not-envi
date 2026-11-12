@@ -17,25 +17,7 @@ Requires Node.js 22 and Git.
 The C/WASM fmap backend is built in and always enabled. TIFF formats outside
 its supported paths continue to use the compatible decoder automatically.
 
-## Deploy to the lab server
-
-Run `build-and-deploy-remote.bat` from Windows with Node.js 22+, an authenticated
-GitHub CLI (`gh auth login`), and working `ssh`/`scp` access through the local
-`inference` SSH alias. Remote installation may prompt for your sudo password.
-
-The script downloads `site-dist` from the latest successful push-to-main CI run,
-verifies its commit and SHA-256 hashes, then deploys to `/srv/www/hyve`. It does
-not build your local checkout. If newer CI runs failed or are still running,
-the selected successful run can be older than main; its URL and commit are
-printed before deployment. Missing or expired artifacts stop deployment.
-
-Use `build-and-deploy-remote.bat --download-only` to download and verify without
-connecting to the server. The downloaded files remain in the printed temporary
-directory for inspection. Normal deployment verifies the uploaded files again
-on the server and replaces the single-file app by rename, without clearing the
-live directory. GitHub-hosted runners do not need access to the lab network.
-
-## Tests
+### Tests
 
 - `npm run test:unit`
 - `npm run test:e2e`
@@ -55,7 +37,7 @@ Local coverage reports are written to `coverage/`.
 The built viewer uses Tailwind CSS 4 and targets Safari 16.4+, Chrome 111+,
 or Firefox 128+. See the [Tailwind browser requirements](https://tailwindcss.com/docs/compatibility).
 
-## Preparing a release
+### Preparing a release
 
 `npm run version:calc` previews the next stable version using Git tags and
 `+semver:` commit-body annotations. It runs in Node.js, with no additional SDK.
@@ -79,3 +61,21 @@ publication must select the version tag.
 Release titles must exactly match the version tag.
 The release workflow uses that version's authored notes when present, with
 GitHub-generated notes as a fallback so a new release has a description.
+
+### Deploy to the lab server
+
+Run `build-and-deploy-remote.bat` from Windows with Node.js 22+, an authenticated
+GitHub CLI (`gh auth login`), and working `ssh`/`scp` access through the local
+`inference` SSH alias. Remote installation may prompt for your sudo password.
+
+The script downloads `site-dist` from the latest successful push-to-main CI run,
+verifies its commit and SHA-256 hashes, then deploys to `/srv/www/hyve`. It does
+not build your local checkout. If newer CI runs failed or are still running,
+the selected successful run can be older than main; its URL and commit are
+printed before deployment. Missing or expired artifacts stop deployment.
+
+Use `build-and-deploy-remote.bat --download-only` to download and verify without
+connecting to the server. The downloaded files remain in the printed temporary
+directory for inspection. Normal deployment verifies the uploaded files again
+on the server and replaces the single-file app by rename, without clearing the
+live directory. GitHub-hosted runners do not need access to the lab network.
