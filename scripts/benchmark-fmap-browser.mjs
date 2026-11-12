@@ -505,6 +505,10 @@ try {
     }
     return results;
   });
+  report.composition = await page.evaluate(async () => {
+    const { compositionWorkload } = await import("/tests/fixtures/composition-workload.js");
+    return compositionWorkload();
+  });
   const json = `${JSON.stringify(report, null, 2)}\n`;
   console.log(json.trimEnd());
   if (outputPath) {

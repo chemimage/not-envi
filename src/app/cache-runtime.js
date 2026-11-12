@@ -135,7 +135,10 @@ export function createCacheRuntime(deps) {
       ds.chunkBudgetBytes = chunkBytes;
       ds.pyramidBudgetBytes = pyramidBytes;
       if (ds.ds && ds.ds.setMaxBytes) ds.ds.setMaxBytes(chunkBytes);
-      if (ds.pyramid) ds.pyramid.limitBytes = pyramidBytes;
+      if (ds.pyramid) {
+        ds.pyramid.limitBytes = pyramidBytes;
+        ds.pyramid.compositionCache?.setLimit(pyramidBytes);
+      }
     }
     updatePerf();
   }

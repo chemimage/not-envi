@@ -125,7 +125,7 @@ function resolveMapping(mappingId, address, length) {
   return integer(Number(call("fmap_mapping_file_offset", id)) + (address - start), "mapped file offset");
 }
 
-function rangeDemand(message, pageIndex, offset, length) {
+function rangeDemand(message, pageIndex, offset, length, fillBytes = 0) {
   const fileOffset = integer(pageIndex * state.pageSize + offset, "fault file offset");
   const mappingId = message.mappingId ?? 1;
   const address = message.mappingId == null ? fileOffset
@@ -133,7 +133,7 @@ function rangeDemand(message, pageIndex, offset, length) {
   if (resolveMapping(mappingId, address, length) !== fileOffset) {
     throw new RangeError("fmap address does not resolve to the requested file bytes.");
   }
-  return { kind: "range", pageIndex, offset, length, priority: message.priority,
+  return { kind: "range", pageIndex, offset, length, fillBytes, priority: message.priority,
     generation: message.generation, requestId: message.id };
 }
 
@@ -141,14 +141,14 @@ function checkpoint(bytes) {
   return { kind: "checkpoint", bytes };
 }
 
-function* copyRange(offset, length, target, targetOffset, message) {
+function* copyRange(offset, length, target, targetOffset, message, fillBytes = 0) {
   let cursor = offset;
   let remaining = length;
   while (remaining > 0) {
     const pageIndex = Math.floor(cursor / state.pageSize);
     const inPage = cursor - (pageIndex * state.pageSize);
     const take = Math.min(remaining, state.pageSize - inPage);
-    const lease = yield rangeDemand(message, pageIndex, inPage, take);
+    const lease = yield rangeDemand(message, pageIndex, inPage, take, fillBytes);
     try {
       target.set(new Uint8Array(state.exports.memory.buffer,
         call("fmap_slot_ptr", lease.slot) + inPage, take), targetOffset);
@@ -193,7 +193,7 @@ function extractScratch(byteOffset, take, stride, length, spec) {
 
 // Each range yield resumes with a pinned lease. The lease and every WASM view are
 // released before the generator yields again.
-function* readValues(offset, count, stride, target, targetOffset, preferPage, message) {
+function* readValues(offset, count, stride, target, targetOffset, preferPage, message, fillBytes = 0) {
   integer(offset, "sample offset"); integer(count, "sample count"); integer(stride, "sample stride");
   const spec = numericSpec();
   if (stride < spec.sampleBytes) throw new RangeError("Numeric stride is smaller than one sample.");
@@ -216,7 +216,7 @@ function* readValues(offset, count, stride, target, targetOffset, preferPage, me
       if (take <= 0) throw new Error("Truncated fmap page.");
       const demandOffset = preferPage ? 0 : inPage;
       const demandLength = preferPage ? pageLength : (((take - 1) * stride) + spec.sampleBytes);
-      const lease = yield rangeDemand(message, pageIndex, demandOffset, demandLength);
+      const lease = yield rangeDemand(message, pageIndex, demandOffset, demandLength, fillBytes);
       try {
         const result = extractPage(lease.slot, inPage, take, stride, spec);
         if (result !== take) throw new Error(`fmap extraction failed (status ${result}).`);
@@ -232,7 +232,7 @@ function* readValues(offset, count, stride, target, targetOffset, preferPage, me
       const take = stride - spec.sampleBytes <= state.sparseReadMaxGapBytes
         ? Math.min(count, Math.floor((maxSpan - spec.sampleBytes) / stride) + 1, capacity) : 1;
       const length = ((take - 1) * stride) + spec.sampleBytes;
-      const lease = yield rangeDemand(message, pageIndex, inPage, length);
+      const lease = yield rangeDemand(message, pageIndex, inPage, length, fillBytes);
       try {
         const result = extractPage(lease.slot, inPage, take, stride, spec);
         if (result !== take) throw new Error(`fmap sparse extraction failed (status ${result}).`);
@@ -313,6 +313,11 @@ function* readWindowRows(message, values, spec, stride) {
   const rowSpan = outW ? ((outW - 1) * stride) + spec.sampleBytes : 0;
   const usefulRowBytes = outW * spec.sampleBytes;
   const capacity = numericCapacity(spec);
+  // A measured small fill grain, not an OS/virtual page size. Dense rows benefit
+  // from adjacent pixel/channel bytes arriving together; scattered spectra and
+  // heavily strided bands retain exact ranges. All bytes stay in the same pool.
+  const fillBytes = usefulRowBytes >= 64 && stride <= spec.sampleBytes * 4
+    ? Math.min(4096, state.pageSize) : 0;
 
   for (let row = 0; row < outH;) {
     requireGeneration(generation);
@@ -322,7 +327,7 @@ function* readWindowRows(message, values, spec, stride) {
     const slabLength = slabRows > 1 ? ((slabRows - 1) * rowSourceStride) + rowSpan : rowSpan;
     if (slabRows > 1 && !rangeIsResident(offset, slabLength)) {
       const bytes = new Uint8Array(slabLength);
-      yield* copyRange(offset, slabLength, bytes, 0, message);
+      yield* copyRange(offset, slabLength, bytes, 0, message, fillBytes);
       new Uint8Array(state.exports.memory.buffer, call("fmap_scratch_ptr"), slabLength).set(bytes);
       state.stats.requestedBytes += slabRows * usefulRowBytes;
       for (let localRow = 0; localRow < slabRows; localRow += 1) {
@@ -336,7 +341,7 @@ function* readWindowRows(message, values, spec, stride) {
       yield checkpoint(slabLength);
       continue;
     }
-    yield* readValues(offset, outW, stride, values, row * requestedW, false, message);
+    yield* readValues(offset, outW, stride, values, row * requestedW, false, message, fillBytes);
     row += 1;
   }
 }
