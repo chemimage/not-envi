@@ -4,35 +4,39 @@
   "sourceHashFormat": "fmap-source-set-v1",
   "sources": [
     {
-      "path": "fmap_core.c",
+      "path": "include/fmap.h",
+      "sha256": "adc19504e4eddf03f8bf8aef7c269382732acd3bb8631a810d74cd955b406644"
+    },
+    {
+      "path": "src/fmap_core.c",
       "sha256": "531557c8d8a79cc7243fad6620869592e95b7f3e58a736f0fa7bb56a4fe6cecc"
     },
     {
-      "path": "fmap_fills.c",
-      "sha256": "399f79ffd2b0c8eb41998e7bfd9a176ecc7be24c3548aeeb830f44bad897211a"
+      "path": "src/fmap_fills.c",
+      "sha256": "d5de9dacc487036797adfccc605e44ae7f398477978259183eadeecef293b69f"
     },
     {
-      "path": "fmap_hash.c",
+      "path": "src/fmap_hash.c",
       "sha256": "d229d47bc96bd8c8f70a1230c696723412e2464aa3d42bee86d3074330b7598b"
     },
     {
-      "path": "fmap_internal.h",
-      "sha256": "9c0ef444a24b849d661cf09879aa21e6fa4068381b3f018c5540a7f68718df31"
+      "path": "src/fmap_internal.h",
+      "sha256": "7ea48b7de93437e9525fda3d58c8052a8a4b44fd435f37f7a4aed7cd263b5cea"
     },
     {
-      "path": "fmap_mappings.c",
+      "path": "src/fmap_mappings.c",
       "sha256": "f8df7da77a79cf9a7c3d80a6068f4a69d635e0fe4fdbc82c219997857e16bf7c"
     },
     {
-      "path": "fmap_memory.c",
+      "path": "src/fmap_memory.c",
       "sha256": "aa1540ff0701fed002b0e7e83a43c489e97b6cd5094faeca6b26db9181755359"
     },
     {
-      "path": "fmap_page_index.c",
+      "path": "src/fmap_page_index.c",
       "sha256": "ec1193b4ade259ba1fbf3e0613e9bc569176c23473ba027cc5b24ce780c2347e"
     }
   ],
-  "sourceSha256": "5b83c309a58c7e6ed0051e51676191ac5a3c416cca75d4e812078592bed76894",
+  "sourceSha256": "847dbd1a24eeee33e37a3454ed0c0bd1e338131835405672bfefa084e4aa4a0d",
   "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
   "target": "wasm32-unknown-unknown",
   "optimization": "-O2 -flto",
@@ -49,6 +53,8 @@
     "-Wextra",
     "-Werror",
     "-nostdlib",
+    "-I",
+    "wasm\\fmap\\include",
     "-x",
     "c",
     "wasm\\fmap\\src\\fmap_core.c",

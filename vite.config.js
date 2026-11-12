@@ -12,7 +12,7 @@ const fmapBuildUrl = new URL("./wasm/fmap/pkg/fmap_core.build.json", import.meta
 function verifiedFmapWasm() {
   const bytes = readFileSync(fmapWasmUrl);
   const build = JSON.parse(readFileSync(fmapBuildUrl, "utf8"));
-  return verifyFmapArtifact(bytes, build, new URL("./wasm/fmap/src/", import.meta.url));
+  return verifyFmapArtifact(bytes, build, new URL("./wasm/fmap/", import.meta.url), ["src", "include"]);
 }
 
 verifiedFmapWasm();

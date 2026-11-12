@@ -8,8 +8,8 @@ import { collectFmapSources } from "./fmap-sources.mjs";
 const pinnedClang = "18.1.2";
 const clang = process.env.FMAP_CLANG || "clang";
 const root = process.cwd();
-const sourceDirectory = path.join(root, "wasm", "fmap", "src");
-const sourceManifest = collectFmapSources(sourceDirectory);
+const sourceDirectory = path.join(root, "wasm", "fmap");
+const sourceManifest = collectFmapSources(sourceDirectory, ["src", "include"]);
 const sources = sourceManifest.sources.filter((entry) => /\.c$/i.test(entry.path))
   .map((entry) => path.join(sourceDirectory, entry.path));
 const buildDir = path.join(root, "wasm", "fmap", "build");
@@ -35,6 +35,7 @@ const command = [
   "-Wextra",
   "-Werror",
   "-nostdlib",
+  "-I", path.join(sourceDirectory, "include"),
   "-x", "c",
   ...sources,
   "-Wl,--no-entry",

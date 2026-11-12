@@ -8,8 +8,9 @@ const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 /** Hash every C translation unit and header, including its portable relative
  * path. Stable ordering and normalized line endings work across Git checkouts;
- * discovery rather than a hand-maintained list prevents unnoticed new files. */
-export function collectFmapSources(sourceDirectory) {
+ * discovery rather than a hand-maintained list prevents unnoticed new files.
+ * Optional subtree scopes include src/include without generated build output. */
+export function collectFmapSources(sourceDirectory, directories = ["."]) {
   const root = sourceDirectory instanceof URL ? fileURLToPath(sourceDirectory) : path.resolve(sourceDirectory);
   const paths = [];
   const visit = (directory) => {
@@ -20,7 +21,7 @@ export function collectFmapSources(sourceDirectory) {
       else if (entry.isFile() && /\.[ch]$/i.test(entry.name)) paths.push(path.relative(root, fullPath).split(path.sep).join("/"));
     }
   };
-  visit(root);
+  for (const directory of directories) visit(path.join(root, directory));
   paths.sort();
   if (!paths.some((name) => /\.c$/i.test(name))) throw new Error("No fmap C translation units were found.");
   const sources = paths.map((name) => ({
@@ -32,8 +33,8 @@ export function collectFmapSources(sourceDirectory) {
   return { sourceHashFormat, sources, sourceSha256: sha256(JSON.stringify(sources)) };
 }
 
-export function verifyFmapArtifact(bytes, build, sourceDirectory) {
-  const source = collectFmapSources(sourceDirectory);
+export function verifyFmapArtifact(bytes, build, sourceDirectory, directories) {
+  const source = collectFmapSources(sourceDirectory, directories);
   if (sha256(bytes) !== build.sha256 || bytes.length !== build.bytes
       || source.sourceHashFormat !== build.sourceHashFormat
       || source.sourceSha256 !== build.sourceSha256

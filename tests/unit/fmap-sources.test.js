@@ -43,6 +43,24 @@ test("source discovery covers nested translation units and headers in portable s
   expect(collectFmapSources(directory)).toEqual(first);
 });
 
+test("package verification includes public headers and excludes build output", () => {
+  const directory = fixture();
+  mkdirSync(path.join(directory, "src"));
+  mkdirSync(path.join(directory, "include"));
+  mkdirSync(path.join(directory, "build"));
+  writeFileSync(path.join(directory, "src", "core.c"), '#include <fmap.h>\n');
+  const header = path.join(directory, "include", "fmap.h");
+  writeFileSync(header, "int fmap_init(void);\n");
+  writeFileSync(path.join(directory, "build", "ignored.c"), "int generated;\n");
+  const scopes = ["src", "include"];
+  const source = collectFmapSources(directory, scopes);
+  expect(source.sources.map(entry => entry.path)).toEqual(["include/fmap.h", "src/core.c"]);
+  const build = { ...source, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+  expect(verifyFmapArtifact(bytes, build, directory, scopes)).toBe(bytes);
+  writeFileSync(header, "int fmap_init(int slots);\n");
+  expect(() => verifyFmapArtifact(bytes, build, directory, scopes)).toThrow(/does not match/);
+});
+
 test.each([
   ["edit a C source", (directory) => writeFileSync(path.join(directory, "core.c"), "int changed;\n")],
   ["edit a header", (directory) => writeFileSync(path.join(directory, "internal.h"), "int changed;\n")],

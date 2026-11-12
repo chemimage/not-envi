@@ -15,15 +15,42 @@
 #define READY 3u
 #define LEASE 4u
 #define ERROR 5u
-#define CANCELLED -9
-#define IO_ERROR -10
 #define CHUNK 32u
 
 enum {
-    READS, DEDUP, HITS, MISSES, FAILURES, CANCELS, FALLBACKS, COPIED,
-    PEAK_ACTIVE, PEAK_ACTIVE_BYTES, PEAK_QUEUED, PEAK_QUEUED_BYTES,
-    ACTIVE, ACTIVE_BYTES, QUEUED, QUEUED_BYTES, PARKED_COUNT, PEAK_PARKED,
-    METADATA_BYTES, LIVE_DEMANDS, PEAK_DEMANDS, COUNT_STATS
+    /* Cumulative fill activity. */
+    READS,
+    DEDUP,
+    HITS,
+    MISSES,
+    FAILURES,
+    CANCELS,
+    FALLBACKS,
+    COPIED,
+
+    /* High water marks for provider I/O and admitted demand. */
+    PEAK_ACTIVE,
+    PEAK_ACTIVE_BYTES,
+    PEAK_QUEUED,
+    PEAK_QUEUED_BYTES,
+
+    /* Current provider I/O and admitted demand. */
+    ACTIVE,
+    ACTIVE_BYTES,
+    QUEUED,
+    QUEUED_BYTES,
+
+    /* Current and peak parked descriptors. */
+    PARKED_COUNT,
+    PEAK_PARKED,
+
+    /* Metadata storage and outstanding demand/lease accounting. */
+    METADATA_BYTES,
+    LIVE_DEMANDS,
+    PEAK_DEMANDS,
+
+    /* Array bound; not a statistic. Keep indices aligned with STAT_NAMES in JS. */
+    COUNT_STATS
 };
 typedef struct record record;
 typedef struct demand {
@@ -227,7 +254,7 @@ EXPORT("fmap_fill_cancel")
 void fmap_fill_cancel(uint32_t id) {
     demand *d = find_demand(id);
     if (!d || (d->state != PARKED && d->state != ADMITTED)) return;
-    g_stats[CANCELS]++; reject(d, CANCELLED, 0); admit(); peaks();
+    g_stats[CANCELS]++; reject(d, FMAP_ERR_CANCELLED, 0); admit(); peaks();
 }
 
 /* Poll ready/error events. READY transfers its reserved pin into a lease whose
@@ -356,7 +383,7 @@ void fmap_fill_complete(uint32_t id, uint32_t success) {
     if (!f) return;
     if (current(f)) {
         record *r = f->record;
-        int32_t status = IO_ERROR;
+        int32_t status = FMAP_ERR_IO;
         if (success) {
             g_stats[COPIED] += f->length;
             status = f->full ? fmap_commit_page(f->slot, f->length) : fmap_commit_range(f->slot, f->start, f->length);
@@ -384,7 +411,7 @@ void fmap_fill_clear(void) {
     while (d) {
         demand *next = d->next;
         if (d->state == LEASE) remove_demand(d);
-        else reject(d, CANCELLED, 0);
+        else reject(d, FMAP_ERR_CANCELLED, 0);
         d = next;
     }
     while (g_records) {

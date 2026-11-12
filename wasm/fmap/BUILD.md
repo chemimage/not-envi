@@ -14,7 +14,14 @@ admission, priorities, overlap deduplication, exact missing-range planning,
 fill reservations, completion/cancellation and independently pinned leases.
 `fmap_hash.c` shares the documented ID mixer, and `fmap_memory.c` supplies
 shared memory helpers and a reusable metadata arena.
-`fmap_internal.h` declares their small internal interface; mutable state stays
+`include/fmap.h` declares the public WASM ABI and status codes. Browser callers
+instantiate `fmap_core.wasm` and call `instance.exports.fmap_*`; C callers use
+`#include <fmap.h>` with `wasm/fmap/include` on their include path. The header
+describes the WASM ABI, including linear-memory addresses; this package does
+not currently produce a native library. `src/fmap_internal.h` stays private:
+it includes the public header and declares only cross-module implementation
+helpers. Moving that file into the public include directory would expose those
+helpers without making them exported functions. Mutable state stays
 private to its owning module. Pool initialization establishes one layout and
 places mapping and fill allocations after the pool, scratch and output regions. Cache
 reset preserves mappings; successful pool reinitialization resets them.
@@ -62,7 +69,8 @@ remain offline and reproduce the single-file application. Do not hand-edit
 them. Regenerate both through the build script after changing any C source or header,
 then review the recorded compiler, command, exports, size, and SHA-256.
 The build discovers and compiles every `.c` file under `wasm/fmap/src`, including
-subdirectories. The manifest records every `.c` and `.h` path and its normalized
+subdirectories. The manifest records every `.c` and `.h` path under `src` and
+`include`, relative to `wasm/fmap`, and its normalized
 LF source hash, plus a deterministic hash of that complete sorted source set.
 Build and Vite verification use the same discovery and hashing helper. Vite
 rejects a stale binary after a source/header edit, addition, removal or rename
