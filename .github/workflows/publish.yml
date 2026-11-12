@@ -1,4 +1,4 @@
-name: Publish validated main
+name: Publish release and Pages
 
 on:
   workflow_run:
@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   publish:
+    name: Publish release
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
@@ -109,6 +110,7 @@ jobs:
           path: dist
 
   deploy:
+    name: Deploy Pages
     needs: publish
     if: needs.publish.outputs.publish == 'true'
     runs-on: ubuntu-24.04

@@ -1,4 +1,4 @@
-name: Release Artifact
+name: Publish release
 
 on:
   push:
@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   release:
+    name: Publish release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

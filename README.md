@@ -46,7 +46,7 @@ each add another minor version. Unannotated commits default to a patch;
 `+semver: none` leaves that commit out of the bump calculation. CI uses the same
 calculator. Full Git history and release tags must be available.
 
-After a successful push-to-main CI run, `Publish validated main` automatically
+After a successful push-to-main CI run, `Publish release and Pages` automatically
 creates the calculated `vX.Y.Z` tag, publishes the release, and deploys Pages.
 It downloads `site-dist` from that exact run and verifies commit/version/hashes;
 it does not rebuild. CI stamps the calculated version into its build checkout
@@ -62,7 +62,7 @@ authored notes are used when present, otherwise GitHub generates release notes.
 Release titles exactly match the version tag.
 
 Manual tag publication remains available for recovery. Select a stable version
-tag for the Release Artifact or Deploy Pages workflow. They retrieve successful
+tag for the Publish release or Deploy Pages workflow. They retrieve successful
 CI for that exact commit on main, normalize the build version, and verify the
 same artifact. CI retains artifacts for 30 days. If one expires, manually run
 CI selecting that tag and rerun the publication after CI succeeds.
