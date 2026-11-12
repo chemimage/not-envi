@@ -7,14 +7,19 @@ compatibility/Float64 numeric output buffer. The generic ABI decodes all nine
 supported ENVI scalar types in either byte order; browser code remains
 responsible for file range I/O.
 
-`fmap_core.c` owns resident pages, numeric extraction and span reductions; `fmap_page_index.c`
+The source/API boundaries are described in [the C module overview](../README.md).
+`fmap_core.c` owns resident pages and numeric extraction adapters; `fmap_page_index.c`
 provides the pool-bounded page-ID lookup. `fmap_mappings.c` owns the sparse
 mapping tree, handle index and gap summaries. `fmap_fills.c` owns page-demand
 admission, priorities, overlap deduplication, exact missing-range planning,
 fill reservations, completion/cancellation and independently pinned leases.
 `fmap_hash.c` shares the documented ID mixer, and `fmap_memory.c` supplies
 shared memory helpers and a reusable metadata arena.
-`include/fmap.h` declares the public WASM ABI and status codes. Browser callers
+`fmap_reduction.c` validates pinned spans and adapts the independent
+`wasm/reduction` kernels; extraction and reduction share `wasm/numeric` decoding.
+`include/fmap.h` is a compatibility umbrella over functional public headers in
+`include/fmap/` (cache, numeric, reduction, fills, mappings, diagnostics and status).
+These headers declare the public WASM ABI and status codes. Browser callers
 instantiate `fmap_core.wasm` and call `instance.exports.fmap_*`; C callers use
 `#include <fmap.h>` with `wasm/fmap/include` on their include path. The header
 describes the WASM ABI, including linear-memory addresses; this package does
@@ -49,8 +54,10 @@ For Linux CI the matching archive is
 SHA-256 `c6c38aab56e5de88adf6c1ebc9c3ae8da72f88ec2b656fb024eda8d4167a0bc5`.
 Set `FMAP_CLANG` to its `bin/clang` executable. CI checks the download hash before extraction.
 
-The script rejects a compiler that does not report Clang 18.1.2, builds the
-freestanding module, runs the direct ABI suite, verifies the WASM magic bytes,
+The script rejects a compiler that does not report Clang 18.1.2, compiles every
+public header independently as C/C++, checks a numeric/reduction-only consumer
+without fmap dependencies, links the freestanding module, runs the direct ABI
+suite, verifies the WASM magic bytes,
 and writes:
 
 - `wasm/fmap/pkg/fmap_core.wasm`
@@ -68,9 +75,10 @@ The `.wasm` file and build manifest are committed so the JavaScript build can
 remain offline and reproduce the single-file application. Do not hand-edit
 them. Regenerate both through the build script after changing any C source or header,
 then review the recorded compiler, command, exports, size, and SHA-256.
-The build discovers and compiles every `.c` file under `wasm/fmap/src`, including
-subdirectories. The manifest records every `.c` and `.h` path under `src` and
-`include`, relative to `wasm/fmap`, and its normalized
+The build discovers and compiles every `.c` file under the `src` directories of
+`wasm/fmap`, `wasm/numeric` and `wasm/reduction`, including subdirectories.
+The manifest records the linked module names, every `.c` and `.h` path under
+their `src` and `include` directories relative to `wasm`, and its normalized
 LF source hash, plus a deterministic hash of that complete sorted source set.
 Build and Vite verification use the same discovery and hashing helper. Vite
 rejects a stale binary after a source/header edit, addition, removal or rename
@@ -168,6 +176,11 @@ preserves the observed comparison independently of those temporary reports.
 
 
 ## Synchronous span reduction ABI
+
+These `fmap_*` exports are compatibility adapters in `fmap_reduction.c`.
+The independent `<reduction.h>` API takes caller-owned spans and result buffers;
+it has no pager dependency or shared global result. Clang/LLD links it alongside
+fmap into one WASM memory before the ordinary HTML embedding step.
 
 `fmap_reduce_numeric(slot, offset, count, stride, type, littleEndian, asF32,
 bins, min, max)` reads a pinned resident span and checks sample validity.

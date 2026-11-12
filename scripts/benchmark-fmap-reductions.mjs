@@ -33,6 +33,7 @@ try {
   report.platform = process.platform;
   report.arch = process.arch;
   report.commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  report.workingTreeDirty = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim().length > 0;
   report.wasmSha256 = JSON.parse(await readFile("wasm/fmap/pkg/fmap_core.build.json", "utf8")).sha256;
   report.timestamp = new Date().toISOString();
   await mkdir(path.dirname(output), { recursive: true });

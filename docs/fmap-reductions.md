@@ -6,6 +6,25 @@ parity checks, a placement-matched JavaScript control and a reproducible browser
 benchmark. It enables the measured uint8 specialization selectively; it does not
 enable the slower generic float reduction in the viewer.
 
+The subsequent [C module split](../wasm/README.md) moves scalar decoding into
+`wasm/numeric`, the allocation-free reduction kernel into `wasm/reduction`,
+and the pinned-page adapter into `fmap/src/fmap_reduction.c`. Public fmap
+declarations are split by function, with `<fmap.h>` retained as an umbrella.
+The modules are statically linked at the WASM build step and then embedded in
+the offline HTML. This keeps one coordinated memory without making the kernel
+depend on fmap internals. The measurements below identify the original
+implementation/artifact; they remain historical checked results, not fresh
+timings for every subsequent source refactor.
+
+The [module-split recheck](benchmarks/fmap-reductions-modules-2026-11-12.json)
+uses the same workload, controls, browser and five cold/repeat rounds with
+artifact SHA-256 `eaa56a5cb6384ef944c5bc1c79aec4661b52de8ff8a24c6430212b0a869dccf0`.
+Uint8 remained faster in all checked cases: for warm, pool-fitting 1024² BSQ,
+materialized/C medians were 16.2/7.2 ms; BIP medians were 17.1/8.1 ms.
+Generic Float32 retained the two-pass tradeoff, so the enablement decision
+did not change. This recheck also validates numerical results and byte counters;
+it does not establish that the source split itself caused a speedup.
+
 ## Why a leased span is sufficient
 
 `FmapRegion.ptr()` creates an opaque logical mapping identity and virtual file

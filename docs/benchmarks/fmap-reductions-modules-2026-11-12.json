@@ -1,0 +1,1356 @@
+{
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+  "results": [
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          12.099999994039536,
+          6,
+          6.300000011920929,
+          6.299999997019768,
+          9.299999997019768
+        ],
+        "warm": [
+          5.700000002980232,
+          4.9000000059604645,
+          5,
+          4.699999988079071,
+          6
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 2097152,
+        "outputBytes": 2097152
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          7.5999999940395355,
+          5.700000002980232,
+          5.0999999940395355,
+          5.199999988079071,
+          5.799999997019768
+        ],
+        "warm": [
+          5.899999991059303,
+          4.399999991059303,
+          3.9000000059604645,
+          4,
+          4.0999999940395355
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          5.299999997019768,
+          4.399999991059303,
+          3.8999999910593033,
+          4.399999991059303,
+          4.300000011920929
+        ],
+        "warm": [
+          3.199999988079071,
+          2.800000011920929,
+          2.2999999970197678,
+          2.5,
+          2.4000000059604645
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          10.400000005960464,
+          5.9000000059604645,
+          6.899999991059303,
+          6.100000008940697,
+          6.0999999940395355
+        ],
+        "warm": [
+          7.100000008940697,
+          6,
+          8.100000008940697,
+          6.100000008940697,
+          6
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 262144,
+        "copiedBytes": 2359296,
+        "outputBytes": 2097152
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          6.700000002980232,
+          5.200000002980232,
+          5,
+          5.0999999940395355,
+          5.300000011920929
+        ],
+        "warm": [
+          7.5,
+          5.200000002980232,
+          5.100000008940697,
+          5.4000000059604645,
+          5.4000000059604645
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 262144,
+        "copiedBytes": 262144,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          4.800000011920929,
+          4,
+          3.7999999970197678,
+          3.3999999910593033,
+          4.200000002980232
+        ],
+        "warm": [
+          4,
+          4.200000002980232,
+          3.5999999940395355,
+          3.7999999970197678,
+          3.5999999940395355
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 262144,
+        "copiedBytes": 262144,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          13.200000002980232,
+          9.799999997019768,
+          9.200000002980232,
+          9.900000005960464,
+          9.5
+        ],
+        "warm": [
+          7.5,
+          5.5999999940395355,
+          5.100000008940697,
+          7.0999999940395355,
+          4.5999999940395355
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 2097152,
+        "outputBytes": 2097152
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          9.5,
+          8.300000011920929,
+          8.899999991059303,
+          9.300000011920929,
+          12.199999988079071
+        ],
+        "warm": [
+          6,
+          4,
+          4.4000000059604645,
+          4.9000000059604645,
+          4.200000002980232
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          8,
+          7.600000008940697,
+          9.5,
+          9.299999997019768,
+          10.399999991059303
+        ],
+        "warm": [
+          3.5,
+          3.2000000029802322,
+          2.7000000029802322,
+          2.7999999970197678,
+          2.7000000029802322
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          11.5,
+          8.399999991059303,
+          10.300000011920929,
+          8.599999994039536,
+          8
+        ],
+        "warm": [
+          10.100000008940697,
+          8.399999991059303,
+          8.299999997019768,
+          9.200000002980232,
+          8.100000008940697
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 786432,
+        "copiedBytes": 4456396,
+        "outputBytes": 2097152
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          14.800000011920929,
+          7.399999991059303,
+          8.200000002980232,
+          10.299999997019768,
+          7.700000002980232
+        ],
+        "warm": [
+          13,
+          8.299999997019768,
+          8.600000008940697,
+          7.799999997019768,
+          8.900000005960464
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 786432,
+        "copiedBytes": 2359244,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          8.5,
+          6.799999997019768,
+          11.200000002980232,
+          6,
+          6.5999999940395355
+        ],
+        "warm": [
+          8.899999991059303,
+          7.299999997019768,
+          6.799999997019768,
+          6.799999997019768,
+          6.299999997019768
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 786432,
+        "copiedBytes": 2359244,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          28.700000002980232,
+          21.799999997019768,
+          20.200000002980232,
+          22.599999994039536,
+          20.799999997019768
+        ],
+        "warm": [
+          16.900000005960464,
+          15.100000008940697,
+          15.099999994039536,
+          16.19999998807907,
+          17.200000002980232
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 8388608,
+        "outputBytes": 8388608
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          19.599999994039536,
+          18.600000008940697,
+          19.30000001192093,
+          20.599999994039536,
+          17.400000005960464
+        ],
+        "warm": [
+          14.299999997019768,
+          13.200000002980232,
+          14.899999991059303,
+          14,
+          13.799999997019768
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          14.200000002980232,
+          13.100000008940697,
+          12.599999994039536,
+          12.400000005960464,
+          11.600000008940697
+        ],
+        "warm": [
+          7.5,
+          9.799999997019768,
+          7.200000002980232,
+          7.200000002980232,
+          7.0999999940395355
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          25.5,
+          21.099999994039536,
+          20.600000008940697,
+          20.799999997019768,
+          20
+        ],
+        "warm": [
+          21.299999997019768,
+          20.799999997019768,
+          23.5,
+          21.400000005960464,
+          24.299999997019768
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 1048576,
+        "copiedBytes": 9437184,
+        "outputBytes": 8388608
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          18.299999997019768,
+          18.5,
+          19.599999994039536,
+          21.599999994039536,
+          18.400000005960464
+        ],
+        "warm": [
+          20.5,
+          19.299999997019768,
+          19.700000002980232,
+          19.099999994039536,
+          19
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 1048576,
+        "copiedBytes": 1048576,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          14.200000002980232,
+          11.5,
+          13.200000002980232,
+          13.099999994039536,
+          12.5
+        ],
+        "warm": [
+          13.599999994039536,
+          12.800000011920929,
+          13.099999994039536,
+          11.700000002980232,
+          13.100000008940697
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 1048576,
+        "copiedBytes": 1048576,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          39.6000000089407,
+          36.79999999701977,
+          33.1000000089407,
+          36.70000000298023,
+          38.1000000089407
+        ],
+        "warm": [
+          18.799999997019768,
+          19.299999997019768,
+          17.099999994039536,
+          16,
+          17.099999994039536
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 8388608,
+        "outputBytes": 8388608
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          35.1000000089407,
+          33.20000000298023,
+          31.900000005960464,
+          35.599999994039536,
+          37.20000000298023
+        ],
+        "warm": [
+          15.200000002980232,
+          13.900000005960464,
+          13.900000005960464,
+          14,
+          14.200000002980232
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          29.200000002980232,
+          27.69999998807907,
+          30.399999991059303,
+          30.599999994039536,
+          28.5
+        ],
+        "warm": [
+          9.200000002980232,
+          8.100000008940697,
+          7.9000000059604645,
+          8.299999997019768,
+          8.100000008940697
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          35.80000001192093,
+          38,
+          34.70000000298023,
+          32.79999999701977,
+          39.599999994039536
+        ],
+        "warm": [
+          43.79999999701977,
+          40.599999994039536,
+          44.80000001192093,
+          33.1000000089407,
+          37.099999994039536
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 3145728,
+        "copiedBytes": 17825592,
+        "outputBytes": 8388608
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          41.900000005960464,
+          39.400000005960464,
+          37.29999999701977,
+          33.29999999701977,
+          35
+        ],
+        "warm": [
+          36.29999999701977,
+          37,
+          33,
+          32,
+          34.70000000298023
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 3145728,
+        "copiedBytes": 9436988,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 1,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          30.599999994039536,
+          25.900000005960464,
+          28.700000002980232,
+          44.5,
+          27.299999997019768
+        ],
+        "warm": [
+          28.5,
+          26.099999994039536,
+          25.900000005960464,
+          27.299999997019768,
+          28.19999998807907
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 3145728,
+        "copiedBytes": 9436988,
+        "outputBytes": 2088
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          15.900000005960464,
+          7.200000002980232,
+          7.399999991059303,
+          7.5999999940395355,
+          7
+        ],
+        "warm": [
+          3.8999999910593033,
+          3.2000000029802322,
+          3.300000011920929,
+          2.8999999910593033,
+          3.2000000029802322
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 1048576,
+        "outputBytes": 1048576
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          22.5,
+          10.5,
+          12.200000002980232,
+          10.399999991059303,
+          10.799999997019768
+        ],
+        "warm": [
+          6.799999997019768,
+          6.200000002980232,
+          6.299999997019768,
+          6.299999997019768,
+          6.200000002980232
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          11.599999994039536,
+          8.600000008940697,
+          8.200000002980232,
+          8.399999991059303,
+          10.5
+        ],
+        "warm": [
+          4.800000011920929,
+          4.399999991059303,
+          4.0999999940395355,
+          4.200000002980232,
+          4.0999999940395355
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          11.400000005960464,
+          7.299999997019768,
+          9.300000011920929,
+          6.899999991059303,
+          7.4000000059604645
+        ],
+        "warm": [
+          8,
+          7.899999991059303,
+          7.200000002980232,
+          6.799999997019768,
+          8.799999997019768
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 1048576,
+        "copiedBytes": 2097152,
+        "outputBytes": 1048576
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          26.799999997019768,
+          14.099999994039536,
+          14.600000008940697,
+          14.200000002980232,
+          15.200000002980232
+        ],
+        "warm": [
+          16.100000008940697,
+          15.5,
+          16.399999991059303,
+          14.700000002980232,
+          15
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 2097152,
+        "copiedBytes": 2097152,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          24.400000005960464,
+          12.899999991059303,
+          13.400000005960464,
+          15.5,
+          12.799999997019768
+        ],
+        "warm": [
+          15.200000002980232,
+          13.599999994039536,
+          12.900000005960464,
+          12.299999997019768,
+          13.299999997019768
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 2097152,
+        "copiedBytes": 2097152,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          28.400000005960464,
+          23.5,
+          22.700000002980232,
+          26.400000005960464,
+          26.200000002980232
+        ],
+        "warm": [
+          5.5,
+          3.9000000059604645,
+          3.5,
+          3.5,
+          3.5999999940395355
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 1048576,
+        "outputBytes": 1048576
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          43.70000000298023,
+          26.900000005960464,
+          28.200000002980232,
+          26.099999994039536,
+          25.899999991059303
+        ],
+        "warm": [
+          7.5,
+          7.200000002980232,
+          7.200000002980232,
+          7.0999999940395355,
+          6.9000000059604645
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          26.899999991059303,
+          28.700000002980232,
+          23.5,
+          23.900000005960464,
+          25.5
+        ],
+        "warm": [
+          5.700000002980232,
+          5.0999999940395355,
+          5.399999991059303,
+          5.0999999940395355,
+          5
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          27.5,
+          23.200000002980232,
+          23.399999991059303,
+          23.100000008940697,
+          21.900000005960464
+        ],
+        "warm": [
+          24.799999997019768,
+          23.19999998807907,
+          26.400000005960464,
+          21.299999997019768,
+          23
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 3145728,
+        "copiedBytes": 10484928,
+        "outputBytes": 1048576
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          56.400000005960464,
+          50.3999999910593,
+          45.8999999910593,
+          44.80000001192093,
+          49.20000000298023
+        ],
+        "warm": [
+          45.19999998807907,
+          46,
+          44.79999999701977,
+          60.900000005960464,
+          53.79999999701977
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 6291456,
+        "copiedBytes": 18872704,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 512,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          54.6000000089407,
+          42.69999998807907,
+          48.29999999701977,
+          48.29999999701977,
+          42
+        ],
+        "warm": [
+          45.79999999701977,
+          44.6000000089407,
+          49.30000001192093,
+          64.09999999403954,
+          42
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 6291456,
+        "copiedBytes": 18872704,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          30.5,
+          26.400000005960464,
+          26.400000005960464,
+          27.5,
+          30.600000008940697
+        ],
+        "warm": [
+          10.599999994039536,
+          10.5,
+          10.700000002980232,
+          11.399999991059303,
+          11.099999994039536
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 4194304,
+        "outputBytes": 4194304
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          53.29999999701977,
+          39.79999999701977,
+          38.6000000089407,
+          41.6000000089407,
+          38.70000000298023
+        ],
+        "warm": [
+          21.399999991059303,
+          21.400000005960464,
+          21.700000002980232,
+          21.200000002980232,
+          21.5
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": true,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          34.1000000089407,
+          28.799999997019768,
+          31.400000005960464,
+          29,
+          32
+        ],
+        "warm": [
+          13.5,
+          13.099999994039536,
+          13,
+          13.5,
+          13.100000008940697
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          30.200000002980232,
+          29.099999994039536,
+          27.599999994039536,
+          27.400000005960464,
+          26.900000005960464
+        ],
+        "warm": [
+          30.899999991059303,
+          29.600000008940697,
+          30.099999994039536,
+          29.599999994039536,
+          27.5
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 4194304,
+        "copiedBytes": 8388608,
+        "outputBytes": 4194304
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          72.20000000298023,
+          67.5,
+          53.5,
+          53,
+          61.19999998807907
+        ],
+        "warm": [
+          53.599999994039536,
+          55,
+          57.099999994039536,
+          58.70000000298023,
+          55
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 8388608,
+        "copiedBytes": 8388608,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bsq",
+      "poolFits": false,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          48.19999998807907,
+          45.3999999910593,
+          43.900000005960464,
+          63.5,
+          44
+        ],
+        "warm": [
+          48.30000001192093,
+          46.79999999701977,
+          48.5,
+          46.400000005960464,
+          47.6000000089407
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 8388608,
+        "copiedBytes": 8388608,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          93.20000000298023,
+          98.79999999701977,
+          88.5,
+          101.20000000298023,
+          95.40000000596046
+        ],
+        "warm": [
+          13.599999994039536,
+          12,
+          12,
+          12.200000002980232,
+          11.100000008940697
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 4194304,
+        "outputBytes": 4194304
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          115.5,
+          102.20000000298023,
+          132.79999999701977,
+          369.09999999403954,
+          217.20000000298023
+        ],
+        "warm": [
+          23.399999991059303,
+          24.19999998807907,
+          51.099999994039536,
+          31.799999997019768,
+          27.299999997019768
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": true,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          217.79999999701977,
+          225.40000000596046,
+          128.70000000298023,
+          145.59999999403954,
+          131.5
+        ],
+        "warm": [
+          24.399999991059303,
+          18.799999997019768,
+          15.799999997019768,
+          14.800000011920929,
+          15.5
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 0,
+        "copiedBytes": 0,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "materialized",
+      "timings": {
+        "cold": [
+          177.70000000298023,
+          116,
+          121.3999999910593,
+          110.5,
+          108.59999999403954
+        ],
+        "warm": [
+          132.3999999910593,
+          107.70000000298023,
+          121.40000000596046,
+          114.20000000298023,
+          102.90000000596046
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 12582912,
+        "copiedBytes": 41939760,
+        "outputBytes": 4194304
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "reduced-js",
+      "timings": {
+        "cold": [
+          214.90000000596046,
+          206.70000000298023,
+          209.8999999910593,
+          203.79999999701977,
+          235.79999999701977
+        ],
+        "warm": [
+          196.70000000298023,
+          195.59999999403954,
+          193.59999999403954,
+          239.70000000298023,
+          198.5
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 25165824,
+        "copiedBytes": 75490912,
+        "outputBytes": 4176
+      }
+    },
+    {
+      "dataType": 4,
+      "samples": 1024,
+      "layout": "bip",
+      "poolFits": false,
+      "path": "reduced",
+      "timings": {
+        "cold": [
+          202.69999998807907,
+          171.1000000089407,
+          179.5,
+          193.79999999701977,
+          165.29999999701977
+        ],
+        "warm": [
+          178.1000000089407,
+          195.59999999403954,
+          186.79999999701977,
+          187.79999999701977,
+          213.70000000298023
+        ]
+      },
+      "lastWarmBytes": {
+        "browserBytes": 25165824,
+        "copiedBytes": 75490912,
+        "outputBytes": 4176
+      }
+    }
+  ],
+  "browser": "145.0.7632.6",
+  "platform": "win32",
+  "arch": "x64",
+  "commit": "5c3e4bff8289fd096d8776c5b327a67a29fe8b21",
+  "wasmSha256": "eaa56a5cb6384ef944c5bc1c79aec4661b52de8ff8a24c6430212b0a869dccf0",
+  "timestamp": "2026-11-12T18:35:30.651Z",
+  "workingTree": "module split based on 5c3e4bf; source and this report committed together"
+}
