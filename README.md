@@ -1,4 +1,10 @@
-# Hyve
+# not-envi
+
+[![CI](https://github.com/chemimage/not-envi/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/chemimage/not-envi/actions/workflows/ci.yml)
+[![Release](https://github.com/chemimage/not-envi/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/chemimage/not-envi/actions/workflows/release.yml)
+
+A lightweight, browser-based hyperspectral data viewer for band browsing,
+simple spatial-spectral statistics, and format conversion.
 
 Versioning follows SemVer, starting at `1.0.0`.
 
