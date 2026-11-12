@@ -1,0 +1,80 @@
+import { resolveSpectralUnit } from "../render/spectrum-units.js";
+
+// The catalog owns small, completed plot arrays. Source geometry is retained
+// only to detect edits/deletion; viewing or regrouping never reads image data.
+export function createComparisonSources({ comparisons, getPanel, getDataset, deleteSources }) {
+  const pointEpoch = new Map();
+
+  function source(ds, slot, items = [], point = null) {
+    const geometry = items.map((item) => ({ id: item.id, points: JSON.stringify(item.points) }));
+    const epoch = pointEpoch.get(ds.id) || 0;
+    let removed = false;
+    const descriptor = { dsId: ds.id, slot, items: geometry, point };
+    return {
+      key: `${ds.id}:${slot}:${point ? `point:${point.x},${point.y}` : geometry.map((item) => item.id).sort((a, b) => a - b).join(",") || "whole"}`,
+      label: point ? `Point (${point.x}, ${point.y})` : geometry.length ? `Region ${geometry.map((item) => item.id).join(" + ")}` : "Whole image",
+      check: () => {
+        if (removed || getDataset(ds.id) !== ds || ds.ds?.closed) return "deleted";
+        if (point) return (pointEpoch.get(ds.id) || 0) === epoch ? "ready" : "deleted";
+        const panel = getPanel(slot);
+        if (panel?.datasetId !== ds.id) return "deleted";
+        const current = geometry.map((item) => panel.annotations?.drawings?.find((drawing) => drawing.id === item.id));
+        if (current.some((item) => !item)) return "deleted";
+        return current.some((item, i) => JSON.stringify(item.points) !== geometry[i].points) ? "changed" : "ready";
+      },
+      deleteSource: () => {
+        removed = true;
+        deleteSources(descriptor);
+      }
+    };
+  }
+
+  function publish(kind, ds, slot, items, point, detail) {
+    const origin = source(ds, slot, items, point);
+    const scale = JSON.stringify(ds.meta.scale);
+    comparisons.publish({ ...origin, ...detail, kind,
+      check: () => {
+        const status = origin.check();
+        return kind === "line" && status === "ready" && JSON.stringify(ds.meta.scale) !== scale ? "changed" : status;
+      },
+      id: `${kind}:${origin.key}:${detail.band ?? "all"}`,
+      label: `${detail.label || origin.label} · ${ds.name || "Image"}`,
+      color: detail.color || items.at(-1)?.color || "#e5e7eb" });
+  }
+
+  function histogram({ ds, slot, items, stats, band, color }) {
+    if (!stats?.bins?.length) return;
+    publish("histogram", ds, slot, items, null, {
+      compatibility: "histogram:value", band, color, approximate: stats.trueRawSamples === false,
+      label: `${items.length ? `Region ${items.map((item) => item.id).join(" + ")}` : "Whole image"} · Band ${band + 1}`,
+      data: { values: Float64Array.from(stats.bins), min: stats.min, max: stats.max,
+        binWidth: stats.binWidth, count: stats.count }
+    });
+  }
+
+  function spectrum({ ds, ix, iy, xVals, yVals, opts, source: metadata }) {
+    const unit = xVals ? resolveSpectralUnit(ds) || "spectral coordinate" : "band index";
+    publish("spectrum", ds, opts.plotSlot || 1, opts.plotItems || [],
+      metadata.type === "area" ? null : { x: ix, y: iy }, {
+        compatibility: `spectrum:${unit}`, color: metadata.color, approximate: metadata.sampleStep > 1,
+        xLabel: xVals ? `Spectral coordinate (${unit})` : "Band index",
+        data: { values: Float64Array.from(yVals), x: xVals ? Float64Array.from(xVals) : null }
+      });
+  }
+
+  function line({ anchor, target, result }) {
+    if (!result?.values?.length) return;
+    const { ds, item, band } = target;
+    const a = item.points[0], b = item.points.at(-1), scale = ds.meta.scale;
+    const lengthUm = scale?.umPerPixelX > 0 && scale?.umPerPixelY > 0
+      ? Math.hypot((b.x - a.x) * scale.umPerPixelX, (b.y - a.y) * scale.umPerPixelY) : null;
+    publish("line", ds, anchor.slot, [item], null, {
+      compatibility: "line:distance", band, color: item.color, approximate: result.sampled,
+      label: `Line ${item.id} · Band ${band + 1}`,
+      data: { values: Float64Array.from(result.values), lengthPx: result.lengthPx, lengthUm }
+    });
+  }
+
+  return { histogram, spectrum, line,
+    clearPoints: (dsId) => pointEpoch.set(dsId, (pointEpoch.get(dsId) || 0) + 1) };
+}

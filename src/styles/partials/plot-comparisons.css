@@ -1,0 +1,55 @@
+@layer components {
+  .plot-comparison-panel {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    width: 450px;
+    height: 370px;
+    overflow: hidden;
+    color: #e5e7eb;
+    background: rgb(17 24 39 / 0.96);
+    border: 1px solid #6b7280;
+    border-radius: 3px;
+    box-shadow: 0 12px 28px rgb(0 0 0 / 0.35);
+  }
+  .plot-action { min-height: 28px; min-width: 28px; white-space: nowrap; }
+  .plot-comparison-panel .analysis-hist-head { flex: 0 0 auto; }
+  .plot-comparison-canvas { width: 100%; flex: 1 1 120px; min-height: 80px; }
+  .plot-comparison-legend {
+    flex: 0 1 auto;
+    max-height: 130px;
+    overflow-y: auto;
+    padding: 3px 8px;
+  }
+  .plot-legend-entry { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+  .plot-legend-entry > svg { width: 28px; height: 8px; flex-shrink: 0; }
+  .plot-legend-name { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .plot-comparison-status { padding: 4px 9px 7px; color: #b6c0cf; font-size: 11px; }
+  .plot-comparison-controls { display: flex; justify-content: flex-end; padding: 4px 8px; }
+  .plot-comparison-controls:empty { display: none; }
+  .plot-comparison-controls select {
+    border: 1px solid #6b7280;
+    border-radius: 3px;
+    background: #172033;
+    color: #e5e7eb;
+    padding: 2px 5px;
+    font-size: 12px;
+  }
+  .plot-picker {
+    flex: 0 1 auto;
+    min-height: 120px;
+    overflow: auto;
+    padding: 8px;
+    border-bottom: 1px solid #6b7280;
+    background: #172033;
+  }
+  .plot-picker-choices { max-height: 130px; overflow: auto; margin: 5px 0; }
+  .plot-picker-choice { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 12px; }
+  .plot-picker-choice input { width: 16px; height: 16px; flex-shrink: 0; }
+  .plot-picker-actions { display: flex; gap: 6px; margin-top: 6px; }
+  .plot-picker-status { color: #d4dce8; }
+  @media (pointer: coarse) {
+    .plot-action { min-height: 36px; min-width: 36px; }
+    .plot-picker-choice { min-height: 36px; }
+  }
+}
