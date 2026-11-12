@@ -1,6 +1,7 @@
 import { clamp } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
 import { APP_CONFIG } from "../app/config.js";
+import { CompositionCache } from "./incremental-composition.js";
 
 const perfNow = () => (
   (typeof performance !== "undefined" && typeof performance.now === "function")
@@ -392,6 +393,7 @@ export function createPyramidController(deps) {
       maxLevel,
       limitBytes: ds.pyramidBudgetBytes || APP_CONFIG.pyramid.defaultLimitBytes,
       totalBytes: 0,
+      compositionCache: new CompositionCache(ds.pyramidBudgetBytes || APP_CONFIG.pyramid.defaultLimitBytes),
       tiles: new Map(),
       pending: new Map(),
       requests: new Map(),
@@ -442,6 +444,7 @@ export function createPyramidController(deps) {
       pyr._idleHandle = null;
     }
     pyr.tiles.clear();
+    pyr.compositionCache?.clear();
     pyr.pending.clear();
     if (pyr.inflight) pyr.inflight.clear();
     pyr.queued.clear();
@@ -515,18 +518,25 @@ export function createPyramidController(deps) {
 
   function enqueueViewportTasks(ds, band, minLevel, eff, viewportW, viewportH) {
     const pyr = ds.pyramid;
+    const composed = pyr.compositionCache.peek(`${Number(ds.__renderPanelSlot) || 1}:${band}`,
+      compositionViewKey(ds, minLevel, eff, viewportW, viewportH));
     const levels = [];
     for (let level = pyr.maxLevel; level >= minLevel; level -= 1) {
       const info = collectViewportLevel(ds, pyr, band, level, eff, viewportW, viewportH);
       if (!info) continue;
       levels.push(info);
       for (const task of info.tasks) {
+        if (composed?.sources.has(task.key)) continue;
         if (!pyr.tiles.has(task.key) && !pyr.pending.has(task.key)) {
           enqueueBandTask(ds, band, task.level, task.tx, task.ty, true);
         }
       }
     }
     return levels;
+  }
+
+  function compositionViewKey(ds, level, eff, width, height) {
+    return [ds.view.x, ds.view.y, level, eff, width, height].join(":");
   }
 
   function collectOverviewTasks(ds, band) {
@@ -676,11 +686,11 @@ export function createPyramidController(deps) {
     const dstOriginY = sampling
       ? ((Math.floor(Number(sampling.rowStart) || 0)) - winY0)
       : (-winY0);
-    const out = new Float32Array(winW * winH);
-    out.fill(Number.NaN);
-    const filled = new Uint8Array(winW * winH);
-    let filledCount = 0;
-    let bestLevel = null;
+    pyr.compositionCache.setLimit(pyr.limitBytes);
+    const plane = pyr.compositionCache.get(`${Number(ds.__renderPanelSlot) || 1}:${band}`,
+      compositionViewKey(ds, idealLevel, eff, viewportW, viewportH),
+      { w: winW, h: winH, idealLevel }, Number(ds.meta.dataType) === 1);
+    plane.begin();
     let tilesUsed = 0;
 
     for (let level = pyr.maxLevel; level >= idealLevel; level -= 1) {
@@ -703,51 +713,37 @@ export function createPyramidController(deps) {
         const ovY1 = Math.min(tileDy1, info.bounds.ly1);
         if (ovX1 <= ovX0 || ovY1 <= ovY0) continue;
 
-        bestLevel = bestLevel == null ? level : Math.min(bestLevel, level);
-        tilesUsed += 1;
-        for (let sy = ovY0; sy < ovY1; sy += 1) {
-          const dstY0 = Math.max(validY0, dstOriginY + (sy * factor));
-          const dstY1 = Math.min(validY1, dstOriginY + ((sy + 1) * factor));
-          const srcRow = (sy - tileDy0) * tile.w;
-          for (let sx = ovX0; sx < ovX1; sx += 1) {
-            const value = tile.data[srcRow + (sx - tileDx0)];
-            const dstX0 = Math.max(validX0, dstOriginX + (sx * factor));
-            const dstX1 = Math.min(validX1, dstOriginX + ((sx + 1) * factor));
-            for (let dy = dstY0; dy < dstY1; dy += 1) {
-              const rowOff = dy * winW;
-              for (let dx = dstX0; dx < dstX1; dx += 1) {
-                const idx = rowOff + dx;
-                out[idx] = value;
-                if (!filled[idx]) {
-                  filled[idx] = 1;
-                  filledCount += 1;
-                }
-              }
-            }
-          }
-        }
+        const x = Math.max(validX0, dstOriginX + ovX0 * factor);
+        const y = Math.max(validY0, dstOriginY + ovY0 * factor);
+        const right = Math.min(validX1, dstOriginX + ovX1 * factor);
+        const bottom = Math.min(validY1, dstOriginY + ovY1 * factor);
+        if (right <= x || bottom <= y) continue;
+        if (plane.apply(tile, task.key, { x, y, w: right - x, h: bottom - y }, factor,
+          dstOriginX, dstOriginY, tileDx0, tileDy0)) tilesUsed += 1;
       }
     }
 
     pyr.stats.composeCalls += 1;
     pyr.stats.tilesComposed += tilesUsed;
-    pyr.stats.composePixels += filledCount;
+    pyr.stats.composePixels += plane.changedPixels;
     pyr.stats.composeMs += perfNow() - composeStart;
-    if (!filledCount) return null;
+    if (!plane.filledCount) return null;
+    const incremental = plane.finish(requiredPixels);
     return {
       band,
-      dataF32: out,
+      ...incremental,
+      dataF32: plane.data,
       w: winW,
       h: winH,
       source: "pyramid",
-      level: bestLevel == null ? idealLevel : bestLevel,
+      level: plane.bestLevel == null ? idealLevel : plane.bestLevel,
       idealLevel,
-      step: (1 << (bestLevel == null ? idealLevel : bestLevel)),
+      step: (1 << (plane.bestLevel == null ? idealLevel : plane.bestLevel)),
       x0: ds.view.x,
       y0: ds.view.y,
-      partial: filledCount < requiredPixels,
-      coverage: filledCount / Math.max(1, requiredPixels),
-      approximate: ideal.cached < ideal.total
+      partial: plane.filledCount < requiredPixels,
+      coverage: plane.filledCount / Math.max(1, requiredPixels),
+      approximate: plane.fineCount < requiredPixels
     };
   }
 
@@ -921,7 +917,9 @@ export function createPyramidController(deps) {
     prioritizeForeground(ds);
     const visible = levels.find((info) => info.level === lvl) || null;
     const visibleCached = levels.reduce((sum, info) => sum + info.cached, 0);
-    const prefer = ds.__pyrPreferImmediate || visibleCached > 0;
+    const retained = pyr.compositionCache.peek(`${Number(ds.__renderPanelSlot) || 1}:${band}`,
+      compositionViewKey(ds, lvl, eff, width, height));
+    const prefer = ds.__pyrPreferImmediate || visibleCached > 0 || retained?.filledCount > 0;
 
     refillBackgroundTasks(ds);
     schedulePyramidWork(ds);

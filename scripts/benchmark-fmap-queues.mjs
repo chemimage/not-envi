@@ -38,7 +38,7 @@ try {
   });
   await context.route("**/src/render/pyramid-cache.js*", async (route) => {
     const response = await route.fetch();
-    let body = await response.text();
+    let body = (await response.text()).replaceAll("\r\n", "\n");
     const replacements = [
       ['function clearQueuedFocusTasks(pyr) {', 'function clearQueuedFocusTasks(pyr) { const benchStart = performance.now(); const benchCount=pyr.qHi.length+pyr.qLo.length;'],
       ['clearTaskQueue(pyr, "qLo");', 'clearTaskQueue(pyr, "qLo"); globalThis.__queueMetrics.push({kind:"clear",ms:performance.now()-benchStart,count:benchCount});'],

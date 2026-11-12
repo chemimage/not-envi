@@ -1,6 +1,48 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("fmap browser integration", () => {
+  test("dense RGB windows share bounded fills while spectra and explicit ranges remain sparse", async ({ page }) => {
+    await page.goto("/?fmap=1");
+    const result = await page.evaluate(async () => {
+      const { createFmapDataSource } = await import("/src/io/fmap/index.js");
+      const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+      const samples = 512, lines = 64, bands = 3;
+      const valueAt = (band, x, y) => (x * 11 + y * 17 + band * 63) & 255;
+      const bytes = Uint8Array.from({ length: samples * lines * bands }, (_, index) =>
+        valueAt(index % bands, Math.floor(index / bands) % samples, Math.floor(index / (samples * bands))));
+      const meta = { samples, lines, bands, interleave: "bip", dataType: 1, littleEndian: true,
+        headerOffset: 0, dataTypeInfo: { bytes: 1, ctor: Uint8Array } };
+      const source = createFmapDataSource(new File([bytes], "dense-rgb.dat"), meta,
+        { wasmBytes, pageSize: 4096, poolBytes: 65536 });
+      try {
+        let firstReads;
+        for (let band = 0; band < bands; band += 1) {
+          const out = await source.readBandWindow(meta, band, 7, 3, 128, 8, 1);
+          for (let y = 0; y < 8; y += 1) for (let x = 0; x < 128; x += 1) {
+            if (out[y * 128 + x] !== valueAt(band, x + 7, y + 3)) throw new Error("Dense RGB value mismatch.");
+          }
+          if (band === 0) firstReads = (await source.getStats()).readCalls;
+        }
+        const all = await source.getStats();
+        const spectrum = await source.readSpectrumAtPixel(meta, 500, 60);
+        const point = await source.getStats();
+        const offset = ((60 * samples + 500) * bands) + 20;
+        const range = await source.readRange(offset, 1);
+        return { firstReads, allReads: all.readCalls, spectrum: [...spectrum],
+          expected: [0, 1, 2].map((band) => valueAt(band, 500, 60)),
+          spectrumBytes: point.browserBytes - all.browserBytes,
+          rangeBytes: (await source.getStats()).browserBytes - point.browserBytes,
+          rangeValue: range[0], expectedRange: bytes[offset] };
+      } finally { source.close(); }
+    });
+    expect(result.firstReads).toBeLessThanOrEqual(4);
+    expect(result.allReads).toBe(result.firstReads);
+    expect(result.spectrum).toEqual(result.expected);
+    expect(result.spectrumBytes).toBe(3);
+    expect(result.rangeBytes).toBe(1);
+    expect(result.rangeValue).toBe(result.expectedRange);
+  });
+
   test("real WASM reads unaligned BSQ Float32 windows and spectra in both byte orders", async ({ page }) => {
     await page.goto("/?fmap=1");
 

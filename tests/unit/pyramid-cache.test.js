@@ -49,6 +49,28 @@ async function heldTileHarness(getVisibleViews) {
 }
 
 describe("pyramid-cache", () => {
+  test("unchanged views reuse composed planes and changed views discard their damage history", async () => {
+    const controller = createPyramidController({ now: () => performance.now(), requestIdle: () => 1, cancelIdle: () => {},
+      readBandWindow: async (_meta, _source, _band, _x, _y, w, h) => new Float32Array(w * h).fill(7),
+      readBandWindowBIP: async () => new Float32Array(0), getActiveDatasetId: () => 1, getIOConcurrency: () => 2,
+      onPerfUpdate: () => {}, onProgressiveRender: () => {} });
+    const ds = { id: 1, meta: { samples: 1024, lines: 1024, bands: 1, interleave: "bsq", dataType: 1 },
+      ds: {}, view: { x: 0, y: 0, scale: 0.25 } };
+    const first = await controller.tryRasterFromPyramid(ds, 0, 0.25, 128, 128);
+    const pixels = ds.pyramid.stats.composePixels;
+    const second = await controller.tryRasterFromPyramid(ds, 0, 0.25, 128, 128);
+    expect(second.dataF32).toBe(first.dataF32);
+    expect(second.revision).toBe(first.revision);
+    expect(second.dirtyRects).toEqual([]);
+    expect(ds.pyramid.stats.composePixels).toBe(pixels);
+    ds.view.x = 128;
+    const moved = await controller.tryRasterFromPyramid(ds, 0, 0.25, 128, 128);
+    expect(moved.compositionId).not.toBe(first.compositionId);
+    expect(moved.dataF32.every((value) => value === 7)).toBe(true);
+    controller.disposePyramid(ds.pyramid);
+    expect(ds.pyramid.compositionCache.bytes).toBe(0);
+  });
+
   test("a second visible panel retains useful work until that panel is removed", async () => {
     let visible = [{ view: { x: 1024, y: 1024 }, bands: [0], eff: 0.25, width: 384, height: 384 }];
     const h = await heldTileHarness(() => visible);
