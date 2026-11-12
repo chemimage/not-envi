@@ -10,6 +10,25 @@ export function requireAnalysisCurrent(cancelled) {
   }
 }
 
+export function analysisCancellation(ds, cancelled) {
+  const providers = [ds.ds, ds.ds?.rawSource, ds.ds?.rawSource?.source].filter(Boolean);
+  const generations = providers.map((provider) => provider.generation);
+  return () => !!(cancelled?.() || providers.some((provider, index) => provider.closed
+    || provider.mapping?.released || provider.generation !== generations[index]));
+}
+
+export async function retryAnalysisOperation(operation, cancelled) {
+  for (;;) {
+    requireAnalysisCurrent(cancelled);
+    try { return await operation(); } catch (error) {
+      if (error.name !== "AbortError"
+        || !/^fmap background (?:work|output) yielded to foreground work\.$/.test(error.message)
+        || cancelled()) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 16));
+    }
+  }
+}
+
 export function createAnalysisPlan(regions, step, contains = () => true) {
   if (!Number.isSafeInteger(step) || step < 1) throw new RangeError("Invalid analysis sample step.");
   for (const { bounds, outW, outH } of regions) {

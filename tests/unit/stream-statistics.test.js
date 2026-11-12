@@ -9,6 +9,30 @@ function region(x0, y0, outW, outH, tool = "rect") {
 }
 
 describe("streaming statistics", () => {
+  test("fallback window batches resume scheduler preemption without advancing progress twice", async () => {
+    const error = new Error("fmap background work yielded to foreground work.");
+    error.name = "AbortError";
+    const readWindow = vi.fn().mockRejectedValueOnce(error)
+      .mockResolvedValue({ data: new Float32Array(100).fill(3), release() {} });
+    const progress = vi.fn();
+    const result = await streamStatistics({ ds: { meta: {}, ds: { generation: 1 } }, band: 0,
+      plan: createAnalysisPlan([region(0, 0, 10, 10)], 1), readWindow, onProgress: progress });
+    expect(result.count).toBe(100);
+    expect(result.sum).toBe(300);
+    expect(readWindow).toHaveBeenCalledTimes(2);
+    expect(progress.mock.calls.map(([p]) => p.completed)).toEqual([0, 1]);
+  });
+
+  test("a source generation change between batches cancels the whole analysis", async () => {
+    const provider = { generation: 1 };
+    const readWindow = vi.fn(async (batch) => ({ data: new Float32Array(batch.outW * batch.outH), release() {} }));
+    await expect(streamStatistics({ ds: { meta: {}, ds: provider }, band: 0,
+      plan: createAnalysisPlan([region(0, 0, 200, 200)], 1), readWindow,
+      onProgress: ({ completed }) => { if (completed === 1) provider.generation++; } }))
+      .rejects.toMatchObject({ name: "AbortError" });
+    expect(readWindow).toHaveBeenCalledOnce();
+  });
+
   test.each([1, 4])("matches an independent overlapping-region reference for type %i", async (dataType) => {
     const regions = [region(0, 0, 180, 160), region(40, 20, 180, 160, "shape")];
     const contains = (_selection, x, y) => x + y < 310;

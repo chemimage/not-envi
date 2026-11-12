@@ -1,4 +1,4 @@
-import { analysisBudget, requireAnalysisCurrent } from "./analysis-batches.js";
+import { analysisBudget, analysisCancellation, requireAnalysisCurrent, retryAnalysisOperation } from "./analysis-batches.js";
 import { computeHistogram, histogramFromReduction, histogramFromUint8Counts } from "../render/display-math.js";
 
 function accumulator() {
@@ -7,7 +7,7 @@ function accumulator() {
 
 export async function streamStatistics({ ds, band, plan, readWindow, histogram = false,
   cancelled, onProgress, reserve = (bytes, abort) => analysisBudget.reserve(bytes, abort) }) {
-  const current = () => !!(cancelled?.() || ds.ds?.closed);
+  const current = analysisCancellation(ds, cancelled);
   requireAnalysisCurrent(current);
   const uint8 = Number(ds.meta.dataType) === 1;
   const small = histogram && !uint8 && plan.batchCount === 1;
@@ -35,7 +35,7 @@ export async function streamStatistics({ ds, band, plan, readWindow, histogram =
             part = await ds.ds.reduceStatisticsWindow(ds.meta, band, batch.x0, batch.y0,
               batch.outW, batch.outH, batch.step, { cancelled: current, priority: "background", mask: batch.mask, bins, min, max });
           } else {
-            window = await readWindow(batch, { cancelled: current, priority: "background" });
+            window = await retryAnalysisOperation(() => readWindow(batch, { cancelled: current, priority: "background" }), current);
             requireAnalysisCurrent(current);
             if (!window?.data || window.data.length < batch.outW * batch.outH) throw new Error("Incomplete analysis batch.");
             part = accumulator();

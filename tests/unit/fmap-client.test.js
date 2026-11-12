@@ -95,6 +95,25 @@ function createTypedSource(worker, typedMeta, options = {}) {
 }
 
 describe("fmap client", () => {
+  test.each(["cancel", "clear", "close", "read error"])("statistics do not retry %s after a scheduler interruption", async (action) => {
+    const source = createSource(new FakeFmapWorker());
+    await source.ready;
+    let cancelled = false;
+    const reduction = vi.spyOn(source, "reduceBandWindow").mockImplementationOnce(async () => {
+      if (action === "cancel") cancelled = true;
+      if (action === "clear") source.clear();
+      if (action === "close") source.close();
+      const error = new Error(action === "read error" ? "Backing read failed" : "fmap background work yielded to foreground work.");
+      error.name = action === "read error" ? "Error" : "AbortError";
+      throw error;
+    });
+    try {
+      await expect(source.reduceStatisticsWindow(meta(), 0, 0, 0, 2, 2, 1, { cancelled: () => cancelled }))
+        .rejects.toThrow();
+      expect(reduction).toHaveBeenCalledOnce();
+    } finally { source.close(); }
+  });
+
   test("binds raster metadata to an existing range worker without creating another pool", async () => {
     const worker = new FakeFmapWorker();
     const source = createFmapRangeDataSource(new Blob([new Uint8Array(32)]), {

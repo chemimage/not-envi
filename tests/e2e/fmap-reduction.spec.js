@@ -1,5 +1,39 @@
 import { test, expect } from "@playwright/test";
 
+test("background moments resume after foreground preemption without double counting", async ({ page }) => {
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const { createFmapDataSource } = await import("/src/io/fmap/index.js");
+    const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
+    const meta = { samples: 128, lines: 128, bands: 1, headerOffset: 0, interleave: "bsq",
+      dataType: 4, littleEndian: true, dataTypeInfo: { bytes: 4, ctor: Float32Array } };
+    const source = createFmapDataSource(new File([new Float32Array(16384).fill(7)], "preemption.f32"), meta, {
+      wasmBytes, pageSize: 4096, poolBytes: 8192, concurrency: 1
+    });
+    try {
+      await source.ready;
+      let attempts = 0, cancellations = 0, foreground;
+      const send = source.worker.postMessage.bind(source.worker);
+      source.worker.postMessage = (message, ...args) => {
+        if (message.type === "cancel") cancellations++;
+        if (message.type === "reduce" && ++attempts === 1) {
+          queueMicrotask(() => { foreground = source.readBandWindow(meta, 0, 0, 0, 1, 1, 1); });
+        }
+        return send(message, ...args);
+      };
+      const moments = await source.reduceStatisticsWindow(meta, 0, 0, 0, 128, 128, 1, { priority: "background" });
+      await foreground;
+      const stats = await source.getStats();
+      return { attempts, cancellations, count: moments.count, sum: moments.sum, logical: stats.logicalBytesReserved };
+    } finally { source.close(); }
+  });
+  expect(result.attempts).toBeGreaterThanOrEqual(2);
+  expect(result.cancellations).toBeGreaterThanOrEqual(1);
+  expect(result.count).toBe(16384);
+  expect(result.sum).toBe(16384 * 7);
+  expect(result.logical).toBe(0);
+});
+
 test("streamed Float32 moments and histograms use real WASM batches with compact transport", async ({ page }) => {
   await page.goto("/");
   const result = await page.evaluate(async () => {

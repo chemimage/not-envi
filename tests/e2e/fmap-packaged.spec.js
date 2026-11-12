@@ -19,6 +19,7 @@ test("single-file package reduces large uint8 histograms in its embedded fmap wo
       }
       postMessage(message, ...args) {
         if (message.type === "reduce") this.reductions.add(message.id);
+        if (message.type === "cancel") this.reductions.delete(message.id);
         return super.postMessage(message, ...args);
       }
     };
@@ -40,7 +41,7 @@ test("single-file package reduces large uint8 histograms in its embedded fmap wo
   }
   const values = await page.evaluate(() => {
     const parts = globalThis.__reductionResults;
-    if (parts.some((part) => !Array.isArray(part) || part[2] > 16384)) throw new Error("Unexpected reduction batch");
+    if (parts.some((part) => !Array.isArray(part) || part[2] > 16384)) throw new Error(`Unexpected reduction batch: ${JSON.stringify(parts)}`);
     const merged = Array(261).fill(0);
     merged[0] = Infinity; merged[1] = -Infinity;
     for (const part of parts) {

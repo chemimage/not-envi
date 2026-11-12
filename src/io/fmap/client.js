@@ -566,8 +566,25 @@ export class FmapDataSource {
 
   /** One-pass moments, optionally with caller-specified fixed histogram edges. */
   async reduceStatisticsWindow(meta, band, x0, y0, outW, outH, step, options = {}) {
-    return this.reduceBandWindow(meta, band, x0, y0, outW, outH, step,
-      { ...options, statisticsOnly: true });
+    await this.ready;
+    const generation = this.generation;
+    for (;;) {
+      try {
+        return await this.reduceBandWindow(meta, band, x0, y0, outW, outH, step,
+          { ...options, statisticsOnly: true });
+      } catch (error) {
+        // Foreground admission can retire speculative background requests.
+        // Retry only that explicit interruption, never a user/lifecycle abort
+        // or a real read/compute failure. No partial accumulator is returned.
+        if (error.name !== "AbortError"
+          || !/^fmap background (?:work|output) yielded to foreground work\.$/.test(error.message)
+          || this.closed || this.mapping.released || generation !== this.generation
+          || options.signal?.aborted || options.cancelled?.() || options.supersedeKey != null) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 16));
+        if (this.closed || this.mapping.released || generation !== this.generation
+          || options.signal?.aborted || options.cancelled?.()) throw createAbortError();
+      }
+    }
   }
 
   /** Observed-range histogram over sampled source pixels (one pass for uint8,

@@ -51,6 +51,12 @@ Line profiles retain the existing 1,024-point cap and bounded concurrency,
 report completed samples in the profile panel, and wait for all started reads
 to settle on failure/cancellation before releasing their reservation.
 
+Foreground admission may preempt a background fmap reduction. The statistics
+operation retries only that explicit scheduler-preemption error, with its
+analysis reservation held. User cancellation, close, clear, unmap, superseding
+requests and backing/compute failures remain terminal. Canceled attempts never
+advance progress or contribute partial sums.
+
 `analysisBudget` is a shared 4 MiB **transient analysis** admission ledger.
 Each window batch reserves 512 KiB before allocating its mask and reading;
 the reservation covers bounded conversion/transport, mask snapshots and compact
