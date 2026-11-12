@@ -38,8 +38,21 @@ jobs:
           fi
       - run: npm ci
       - run: npm run build
+      - name: Select authored release notes or generated fallback
+        id: notes
+        shell: bash
+        run: |
+          NOTES_PATH="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -s "$NOTES_PATH" ]; then
+            echo "path=$NOTES_PATH" >> "$GITHUB_OUTPUT"
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.generate == 'true' }}
           files: dist/index.html

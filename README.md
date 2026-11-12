@@ -40,7 +40,10 @@ The highest bump wins across an unreleased batch; feature commits do not
 each add another minor version. CI calculates the same version independently.
 
 For a release, run `npm run version:prepare` to update both package files,
-commit with `+semver: none`, and wait for CI to pass on that exact commit.
+review the release notes in `docs/releases/vX.Y.Z.md`, commit with
+`+semver: none`, and wait for CI to pass on that exact commit.
 Create and push the matching `vX.Y.Z` tag. The tag workflows verify the
 calculated version and package files, then publish the HTML and deploy Pages.
 Release titles must exactly match the version tag.
+The release workflow uses that version's authored notes when present, with
+GitHub-generated notes as a fallback so a new release has a description.
