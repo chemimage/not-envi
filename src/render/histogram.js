@@ -8,6 +8,7 @@ import {
 } from "./histogram-math.js";
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import { APP_CONFIG } from "../app/config.js";
+import { histogramFromReduction } from "./display-math.js";
 
 function isAbortError(error) {
   return error?.name === "AbortError";
@@ -68,6 +69,13 @@ export function createHistogramController(deps) {
       trueRawSamples: metadata.trueRawSamples !== false,
       samplingMode: metadata.samplingMode || "raw"
     };
+  }
+
+  // Checked uint8 workloads benefit from one-pass source-side counts. Keep
+  // generic observed-range float histograms on the current path: two source
+  // passes saved memory but regressed measured latency, especially on eviction.
+  function canReduce(ds, count) {
+    return ds.meta.dataType === 1 && count >= 262144 && typeof ds.ds?.reduceBandWindow === "function";
   }
 
   function resolveBarFillStyle(ds) {
@@ -212,6 +220,18 @@ export function createHistogramController(deps) {
 
     const targetSamples = 700_000;
     const step = Math.max(1, Math.ceil(Math.sqrt(totalArea / targetSamples)));
+    if (valid.length === 1 && valid[0].selection.tool === "rect") {
+      const { bounds, width, height } = valid[0];
+      const outW = Math.ceil(width / step), outH = Math.ceil(height / step);
+      if (canReduce(ds, outW * outH)) {
+        const reduced = await ds.ds.reduceBandWindow(ds.meta, band, bounds.x0, bounds.y0, outW, outH, step,
+          options || {});
+        return reduced.count ? decorateHistogramStats(histogramFromReduction(reduced), {
+          band, sampleStep: step, trueRawSamples: step === 1,
+          samplingMode: step === 1 ? "selection-raw" : "selection-subsampled"
+        }) : null;
+      }
+    }
     const seen = new Set();
     const estimatedSamples = Math.max(1, Math.ceil(totalArea / Math.max(1, step * step)));
     const values = {
@@ -265,10 +285,13 @@ export function createHistogramController(deps) {
     const task = (async () => {
       try {
         setStatus("histogram…", "warn");
-        const window = await readWindowF32(ds, band, 0, 0, outW, outH, step, { priority: "background" });
+        const reduce = canReduce(ds, outW * outH);
+        const window = reduce ? null
+          : await readWindowF32(ds, band, 0, 0, outW, outH, step, { priority: "background" });
         try {
           const stats = decorateHistogramStats(
-            computeHistogram(window.data, 256),
+            reduce ? histogramFromReduction(await ds.ds.reduceBandWindow(ds.meta, band, 0, 0, outW, outH, step,
+              { priority: "background" })) : computeHistogram(window.data, 256),
             {
               band,
               sampleStep: step,
@@ -283,7 +306,7 @@ export function createHistogramController(deps) {
             drawHistogram(ds);
           }
         } finally {
-          window.release();
+          window?.release();
         }
         setStatus("ready", "ok");
       } catch (e) {

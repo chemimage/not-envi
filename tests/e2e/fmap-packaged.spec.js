@@ -2,6 +2,38 @@ import { expect, test } from "@playwright/test";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 
+test("single-file package reduces large uint8 histograms in its embedded fmap worker offline", async ({ page }) => {
+  test.skip(process.env.FMAP_PACKAGED !== "1", "Run with scripts/run-fmap-packaged-test.mjs.");
+  await page.context().setOffline(true);
+  await page.addInitScript(() => {
+    const NativeWorker = globalThis.Worker;
+    globalThis.__reductionResults = [];
+    globalThis.Worker = class extends NativeWorker {
+      constructor(...args) {
+        super(...args);
+        this.reductions = new Set();
+        this.addEventListener("message", ({ data }) => {
+          if (!this.reductions.delete(data.id)) return;
+          globalThis.__reductionResults.push(data.error || Array.from(new Float64Array(data.result.buffer)));
+        });
+      }
+      postMessage(message, ...args) {
+        if (message.type === "reduce") this.reductions.add(message.id);
+        return super.postMessage(message, ...args);
+      }
+    };
+  });
+  await page.goto(pathToFileURL(path.resolve("dist/index.html")).href);
+  await page.locator("#filePicker").setInputFiles([
+    { name: "hist.hdr", mimeType: "text/plain", buffer: Buffer.from("ENVI\nsamples = 512\nlines = 512\nbands = 1\ndata type = 1\ninterleave = bsq\nbyte order = 0\n") },
+    { name: "hist.raw", mimeType: "application/octet-stream", buffer: Buffer.from(Uint8Array.from({ length: 262144 }, (_, i) => i % 256)) }
+  ]);
+  await expect.poll(() => page.evaluate(() => globalThis.__reductionResults.length)).toBeGreaterThan(0);
+  const values = await page.evaluate(() => globalThis.__reductionResults[0]);
+  expect(values.slice(0, 3)).toEqual([0, 255, 262144]);
+  expect(values.slice(5)).toEqual(Array(256).fill(1024));
+});
+
 function rgbTiffFixture() {
   const pixels = new Uint8Array([
     255, 0, 0, 0, 255, 0,

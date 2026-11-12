@@ -2,6 +2,31 @@ import { describe, expect, test, vi } from "vitest";
 import { createHistogramController } from "../../src/render/histogram.js";
 
 describe("histogram controller", () => {
+  test.each(["whole", "rect"])("large uint8 %s analysis uses compact reductions without a raster read", async (kind) => {
+    const read = vi.fn(() => { throw new Error("Unexpected full raster read"); });
+    const reduceBandWindow = vi.fn(async (_meta, _band, _x, _y, width, height, _step, options) => {
+      const count = options.mask ? options.mask.reduce((sum, v) => sum + v, 0) : width * height;
+      const bins = new Uint32Array(256); bins[0] = count;
+      return { min: 7, max: 7 + 1e-6, count, sum: count * 7, sumSq: count * 49, bins };
+    });
+    const ctrl = createHistogramController({
+      state: { activeId: "other", histMode: "whole" }, els: {},
+      setStatus() {}, readBandWindow: read, readBandWindowBIP: read,
+      computeHistogram: read, syncRangeInputsFromSettings() {}, render() {}
+    });
+    const ds = { id: "sample", activeBand: 0, bandStatsWhole: new Map(),
+      meta: { samples: 512, lines: 512, dataType: 1, interleave: "bsq" }, ds: { reduceBandWindow } };
+    if (kind === "whole") await ctrl.buildBandStatsWhole(ds, 0);
+    else await ctrl.updateSelectionHistogram(ds, [{ id: 1, tool: kind,
+      points: [{ x: 0, y: 0 }, { x: 511, y: 511 }] }]);
+    expect(reduceBandWindow).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+    const stats = kind === "whole" ? ds.bandStatsWhole.get(0) : ds.bandStatsSelection.stats;
+    expect(stats.mean).toBe(7);
+    expect(stats.trueRawSamples).toBe(true);
+    expect(stats.count).toBe(262144);
+  });
+
   test("ensureViewHistogram updates view stats only for matching lastRaster band", () => {
     const fakeCtx = {
       save: () => {},
