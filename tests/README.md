@@ -2,6 +2,13 @@
 
 Run `npm test` for unit/controller tests followed by the browser smoke workflow.
 Use `npm run test:unit -- tests/unit/<name>.test.js` for a focused unit run.
+Use `npm run test:coverage` to measure JavaScript line coverage with Vitest V8
+while running the same unit/controller suite once. It includes every
+`src/**/*.js` file, including files not imported by those tests. The measured
+summary and generated badge are in `coverage/`; browser and C/WASM coverage
+are outside that percentage. CI retains these reports and publishes their
+exact bytes with the corresponding release distribution on Pages. The badge
+therefore describes the published release, rather than the latest main commit.
 
 CI runs lint first, builds the pinned C/WASM core once, and shares that exact
 artifact with parallel unit, desktop Chromium/large-file, desktop WebKit on macOS
@@ -14,6 +21,12 @@ runs on the same ref. Packaging waits for every check: it builds one HTML file,
 tests that exact file offline, then retains `site-dist`. The stable `validate`
 check fails if any prerequisite failed, was cancelled or was skipped. These CI
 artifacts do not publish a release; release/Pages publication remains tag-based.
+Both publication workflows reuse `site-dist` from successful CI for the
+exact tagged commit, verifying its version and SHA-256 manifest. No release or
+Pages rebuild is performed; missing or expired artifacts require manually
+dispatching CI with the version tag selected, then rerunning publication. A
+successful main run or manual run on that exact tag is accepted only when the
+tagged commit is reachable from main. PR artifacts cannot be published by this route.
 
 Use `npm run benchmark:fmap` for the deterministic 8 GiB logical-source pager microbenchmark.
 Use `npm run test:fmap-large` for the opt-in sparse-file browser gate; it creates a temporary file with markers beyond 4 GiB and removes it afterward.
