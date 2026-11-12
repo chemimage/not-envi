@@ -1,46 +1,44 @@
 import { expect, test } from "@playwright/test";
 import { exportImage, loadColorFixture } from "./helpers/export-fixture.js";
 
-for (const fmap of [0, 1]) {
-  test(`RGB and BGR downloads preserve channel order, selections and explicit scalar (fmap=${fmap})`, async ({ page }) => {
-    test.setTimeout(90_000);
-    await loadColorFixture(page, fmap);
-    const rgb = new Map();
-    for (const mode of ["RGB", "BGR"]) {
-      if (mode === "BGR") await page.locator("#bandColorMode").click();
-      await expect(page.locator("#bandColorMode")).toHaveText(mode);
-      for (const selection of [false, true]) for (const [format, rendered] of [["tiff", false], ["tiff", true], ["png", true]]) {
-        const output = await exportImage(page, { format, rendered, selection });
-        expect(output.samples).toBeGreaterThanOrEqual(3);
-        expect(output.channels[0]).not.toEqual(output.channels[1]);
-        const key = `${selection}:${format}:${rendered}`;
-        if (!rendered) {
-          expect(output.photometric).toBe(2);
-          if (!selection) { expect(output.width).toBe(100); expect(output.height).toBe(80); }
-          expect(output.channels[0].every((value, i) => value + output.channels[2][i] === 255)).toBe(true);
-          expect(output.channels[1].every(value => value >= 20 && value <= 178 && value % 2 === 0)).toBe(true);
-          const red = output.channels[mode === "RGB" ? 0 : 2];
-          expect(red.every(value => value >= 10 && value <= 208 && value % 2 === 0)).toBe(true);
-          if (!selection) {
-            expect(red.every((value, i) => value === 10 + (i % 100) * 2)).toBe(true);
-            expect(output.channels[1].every((value, i) => value === 20 + Math.floor(i / 100) * 2)).toBe(true);
-          }
-        }
-        if (mode === "RGB") rgb.set(key, output);
-        else {
-          const original = rgb.get(key);
-          expect([output.width, output.height]).toEqual([original.width, original.height]);
-          expect(output.channels[0], `${key}: BGR red must match RGB blue`).toEqual(original.channels[2]);
-          expect(output.channels[1], `${key}: green must stay unchanged`).toEqual(original.channels[1]);
-          expect(output.channels[2], `${key}: BGR blue must match RGB red`).toEqual(original.channels[0]);
+test("RGB and BGR downloads preserve channel order, selections and explicit scalar", async ({ page }) => {
+  test.setTimeout(90_000);
+  await loadColorFixture(page);
+  const rgb = new Map();
+  for (const mode of ["RGB", "BGR"]) {
+    if (mode === "BGR") await page.locator("#bandColorMode").click();
+    await expect(page.locator("#bandColorMode")).toHaveText(mode);
+    for (const selection of [false, true]) for (const [format, rendered] of [["tiff", false], ["tiff", true], ["png", true]]) {
+      const output = await exportImage(page, { format, rendered, selection });
+      expect(output.samples).toBeGreaterThanOrEqual(3);
+      expect(output.channels[0]).not.toEqual(output.channels[1]);
+      const key = `${selection}:${format}:${rendered}`;
+      if (!rendered) {
+        expect(output.photometric).toBe(2);
+        if (!selection) { expect(output.width).toBe(100); expect(output.height).toBe(80); }
+        expect(output.channels[0].every((value, i) => value + output.channels[2][i] === 255)).toBe(true);
+        expect(output.channels[1].every(value => value >= 20 && value <= 178 && value % 2 === 0)).toBe(true);
+        const red = output.channels[mode === "RGB" ? 0 : 2];
+        expect(red.every(value => value >= 10 && value <= 208 && value % 2 === 0)).toBe(true);
+        if (!selection) {
+          expect(red.every((value, i) => value === 10 + (i % 100) * 2)).toBe(true);
+          expect(output.channels[1].every((value, i) => value === 20 + Math.floor(i / 100) * 2)).toBe(true);
         }
       }
+      if (mode === "RGB") rgb.set(key, output);
+      else {
+        const original = rgb.get(key);
+        expect([output.width, output.height]).toEqual([original.width, original.height]);
+        expect(output.channels[0], `${key}: BGR red must match RGB blue`).toEqual(original.channels[2]);
+        expect(output.channels[1], `${key}: green must stay unchanged`).toEqual(original.channels[1]);
+        expect(output.channels[2], `${key}: BGR blue must match RGB red`).toEqual(original.channels[0]);
+      }
     }
-    const scalar = await exportImage(page, { format: "tiff", rendered: false, selection: true, scalar: true });
-    expect(scalar.samples).toBe(1);
-    expect(scalar.photometric).toBe(1);
-  });
-}
+  }
+  const scalar = await exportImage(page, { format: "tiff", rendered: false, selection: true, scalar: true });
+  expect(scalar.samples).toBe(1);
+  expect(scalar.photometric).toBe(1);
+});
 
 test("export progress stays visible across slow work, blocks duplicates, and recovers after failures", async ({ page }, testInfo) => {
   await page.goto("/");
@@ -106,7 +104,7 @@ test("export progress stays visible across slow work, blocks duplicates, and rec
 });
 
 test("keyboard save cannot duplicate an export while PNG encoding is pending", async ({ page }) => {
-  await loadColorFixture(page, 1);
+  await loadColorFixture(page);
   await page.evaluate(() => {
     const original = HTMLCanvasElement.prototype.toBlob;
     HTMLCanvasElement.prototype.toBlob = function (...args) {

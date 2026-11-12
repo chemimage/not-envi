@@ -4,7 +4,7 @@ import { exportImage, loadColorFixture } from "./helpers/export-fixture.js";
 test("packaged HTML exports RGB through its embedded worker offline", async ({ page }) => {
   await page.context().setOffline(true);
   const url = new URL("../../dist/index.html", import.meta.url);
-  await loadColorFixture(page, 1, url.href);
+  await loadColorFixture(page, url.href);
   const output = await exportImage(page, { format: "tiff", rendered: false, selection: true });
   expect(output.samples).toBe(3);
   expect(output.photometric).toBe(2);

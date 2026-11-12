@@ -29,24 +29,19 @@ function makeDeps(state) {
 }
 
 describe("dataset runtime", () => {
-  test.each(["", "?fmap=0", "?fmap=false"])("always enables fmap for imports at URL search %j", async (search) => {
-    vi.stubGlobal("location", { search });
-    try {
-      const deps = makeDeps({ datasets: [] });
-      deps.addDatasetsFromFileListMod = vi.fn(async () => ({ datasets: [], missing: [], headersFound: false }));
-      const stopBeforeAttach = new Error("stop before attaching dataset");
-      deps.addDatasetFromFilesMod = vi.fn(async () => { throw stopBeforeAttach; });
-      const rt = createDatasetRuntime(deps);
-      const file = new File(["data"], "example.dat");
-      const header = new File(["header"], "example.hdr");
+  test("passes the built-in fmap backend to dataset importers", async () => {
+    const deps = makeDeps({ datasets: [] });
+    deps.addDatasetsFromFileListMod = vi.fn(async () => ({ datasets: [], missing: [], headersFound: false }));
+    const stopBeforeAttach = new Error("stop before attaching dataset");
+    deps.addDatasetFromFilesMod = vi.fn(async () => { throw stopBeforeAttach; });
+    const rt = createDatasetRuntime(deps);
+    const file = new File(["data"], "example.dat");
+    const header = new File(["header"], "example.hdr");
 
-      await rt.addDatasetsFromFileList([file]);
-      expect(deps.addDatasetsFromFileListMod).toHaveBeenCalledWith([file], expect.objectContaining({ fmapEnabled: true }));
-      await expect(rt.addDatasetFromFiles(header, file)).rejects.toBe(stopBeforeAttach);
-      expect(deps.addDatasetFromFilesMod).toHaveBeenCalledWith(header, file, expect.objectContaining({ fmapEnabled: true }));
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    await rt.addDatasetsFromFileList([file]);
+    expect(deps.addDatasetsFromFileListMod).toHaveBeenCalledWith([file], expect.objectContaining({ fmapEnabled: true }));
+    await expect(rt.addDatasetFromFiles(header, file)).rejects.toBe(stopBeforeAttach);
+    expect(deps.addDatasetFromFilesMod).toHaveBeenCalledWith(header, file, expect.objectContaining({ fmapEnabled: true }));
   });
 
   test("setActiveDataset updates active id and triggers fit/render", () => {

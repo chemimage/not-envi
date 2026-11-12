@@ -2,6 +2,11 @@
 
 Run `npm test` for unit/controller tests followed by the browser smoke workflow.
 Use `npm run test:unit -- tests/unit/<name>.test.js` for a focused unit run.
+Unit cases exercise a particular module or implementation contract. Browser
+export workflows are end-to-end cases, separate from unit coverage. The app
+always uses its built-in fmap backend; `?fmap=0` does not select another backend
+and must not be used to label duplicate runs as backend coverage. Direct tests
+of genuinely different readers or fallback implementations remain separate.
 Use `npm run test:coverage` to measure JavaScript line coverage with Vitest V8
 while running the same unit/controller suite once. It includes every
 `src/**/*.js` file, including files not imported by those tests. The measured

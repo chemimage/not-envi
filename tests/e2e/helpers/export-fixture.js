@@ -2,7 +2,7 @@ import { expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { fromArrayBuffer } from "geotiff";
 
-export async function loadColorFixture(page, fmap, url = `/?fmap=${fmap}`) {
+export async function loadColorFixture(page, url = "/") {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto(url);
   const pixels = 100 * 80;
