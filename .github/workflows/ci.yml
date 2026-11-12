@@ -183,8 +183,9 @@ jobs:
           retention-days: 30
 
   validate:
-    # Preserve the existing check name, and fail rather than report a skipped
-    # success when a prerequisite fails or the matrix is cancelled.
+    name: Validate
+    # Fail rather than report a skipped success when a prerequisite fails or
+    # the matrix is cancelled.
     needs: [version, fmap-core, checks, package]
     if: always()
     runs-on: ubuntu-latest
@@ -195,4 +196,16 @@ jobs:
           CORE_RESULT: ${{ needs.fmap-core.result }}
           CHECK_RESULT: ${{ needs.checks.result }}
           PACKAGE_RESULT: ${{ needs.package.result }}
-        run: test "$VERSION_RESULT" = success && test "$CORE_RESULT" = success && test "$CHECK_RESULT" = success && test "$PACKAGE_RESULT" = success
+        run: |
+          failed=0
+          printf '| Prerequisite | Result |\n| --- | --- |\n' >> "$GITHUB_STEP_SUMMARY"
+          for check in "Version=$VERSION_RESULT" "C/WASM build=$CORE_RESULT" "Tests=$CHECK_RESULT" "Package verification=$PACKAGE_RESULT"; do
+            name="${check%%=*}"
+            result="${check#*=}"
+            printf '| %s | %s |\n' "$name" "$result" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$result" != success ]; then
+              echo "::error::$name ended with '$result'; all prerequisites must succeed."
+              failed=1
+            fi
+          done
+          exit "$failed"
