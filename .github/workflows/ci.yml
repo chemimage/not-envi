@@ -60,21 +60,21 @@ jobs:
   checks:
     name: Test ${{ matrix.suite }}
     needs: fmap-core
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.suite == 'desktop-webkit' && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
       fail-fast: true
       matrix:
         suite:
           - unit
           - app-browser
-          - iphone-13-chromium-emulation
-          - pixel-7-chromium-emulation
+          - desktop-webkit
           - benchmarks
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-validation
         with:
           browser: ${{ matrix.suite != 'unit' }}
+          browser-engine: ${{ matrix.suite == 'desktop-webkit' && 'webkit' || 'chromium' }}
       - name: Unit and controller tests
         if: matrix.suite == 'unit'
         run: npm run test:unit
@@ -83,11 +83,9 @@ jobs:
         run: |
           npm run test:e2e
           npm run test:fmap-large
-      # The app suite already includes every desktop fmap spec. Run the two
-      # remaining emulation profiles separately, without repeating desktop.
-      - name: fmap browser emulation
-        if: contains(matrix.suite, 'chromium-emulation')
-        run: npx playwright test --config=playwright.fmap.config.js --project=${{ matrix.suite }}
+      - name: Desktop Safari engine coverage
+        if: matrix.suite == 'desktop-webkit'
+        run: npx playwright test --browser=webkit
       # Keep checked benchmarks sequential on their own runner: concurrent
       # browser/unit tests would contaminate the reported latency measurements.
       - name: Checked browser and queue benchmarks

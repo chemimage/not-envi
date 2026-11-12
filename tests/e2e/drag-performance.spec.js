@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-test("profile region movement while spectrum is open", async ({ page }, testInfo) => {
+test("profile region movement while spectrum is open", async ({ page, browserName }, testInfo) => {
+  test.skip(browserName !== "chromium", "CPU profiling requires Chromium CDP.");
   test.setTimeout(60000);
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.addInitScript(() => {

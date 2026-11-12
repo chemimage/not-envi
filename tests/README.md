@@ -4,10 +4,10 @@ Run `npm test` for unit/controller tests followed by the browser smoke workflow.
 Use `npm run test:unit -- tests/unit/<name>.test.js` for a focused unit run.
 
 CI runs lint first, builds the pinned C/WASM core once, and shares that exact
-artifact with parallel unit, app-browser/large-file, iPhone-emulation,
-Pixel-emulation and checked-benchmark jobs. The app suite already contains all
+artifact with parallel unit, desktop Chromium/large-file, desktop WebKit on macOS
+and checked-benchmark jobs. The app suite already contains all
 desktop fmap cases, so CI does not run that profile twice. Standalone
-`npm run test:fmap-browser` still runs all three profiles. Benchmarks stay
+`npm run test:fmap-browser` runs desktop Chromium and WebKit. Benchmarks stay
 sequential on their own runner to avoid interference from other test suites.
 The matrix stops remaining jobs on failure, and newer runs cancel superseded
 runs on the same ref. Packaging waits for every check: it builds one HTML file,
@@ -18,7 +18,7 @@ artifacts do not publish a release; release/Pages publication remains tag-based.
 Use `npm run benchmark:fmap` for the deterministic 8 GiB logical-source pager microbenchmark.
 Use `npm run test:fmap-large` for the opt-in sparse-file browser gate; it creates a temporary file with markers beyond 4 GiB and removes it afterward.
 Use `npm run test:fmap-core` for the C/WASM ABI and fixed-pool tests.
-Use `npm run test:fmap-browser` for the format/cancellation matrix on desktop and mobile Chromium emulation profiles.
+Use `npm run test:fmap-browser` for the format/cancellation matrix on desktop Chromium and WebKit.
 This includes overlapping window/range fill deduplication, retained partial-page reuse, and active clear/close tests against the real C/WASM worker. Unit tests also exercise priority promotion, shared-waiter cancellation, pinned-slot backpressure, and stale asynchronous read completion.
 Mapped-region coverage checks shared file pages, pointer lifetime across clear/unmap/address reuse, safe high virtual addresses, and required reads waiting through tiny admission budgets. The C range index also runs randomized mapping churn against an interval oracle.
 Resident-page tests cover hash collisions, pinning, eviction, reset/reinitialization, exact u64 IDs and lookup probe bounds. TIFF index tests cover compact offset columns, main/nested/linked IFDs, shared overview ancestry and page-family provenance. Browser tests check metadata-only indexing before selecting native levels, including reduced images that precede their base and independent grayscale band pyramids.
@@ -29,7 +29,7 @@ The report also includes a 12,812-pixel-wide strided viewport workload to expose
 The mapping-index section measures checked insertion, lookup, release, automatic address allocation, fragmented-gap reuse, and metadata storage at 64, 1,024, and 16,384 ranges. Visit counters check that dense occupied subtrees are skipped. It excludes file I/O and worker messaging and has no latency pass threshold.
 The resident-page index section checks 100,000 lookups at 64, 1,024 and 8,192 resident slots, recording hash probes and index storage independently of eviction selection and file I/O.
 
-The format matrix exercises all nine supported ENVI numeric types, three layouts, and both byte orders through fmap. It checks Float64/64-bit integer precision, chunked large results, and cancellation. TIFF checks cover C/WASM-backed ranges, block decoding, retained backing storage, lifecycle, and unsupported-format behavior. The performance harness compares fmap with the existing backend on identical 1024 by 1024 raw/PackBits/LZW/Deflate tiles and strips, checking warm-read I/O and decode reservations with files larger than the raw page pool. The test LZW encoder emits literals with dictionary clears; this is not a compression-ratio benchmark. Existing-backend copy counts are unavailable and reported as null. Mobile emulation checks browser behavior at mobile viewport/touch settings; physical device validation and its protocol are tracked in [issue #26](https://github.com/chemimage/Hyve/issues/26).
+The format matrix exercises all nine supported ENVI numeric types, three layouts, and both byte orders through fmap. It checks Float64/64-bit integer precision, chunked large results, and cancellation. TIFF checks cover C/WASM-backed ranges, block decoding, retained backing storage, lifecycle, and unsupported-format behavior. The performance harness compares fmap with the existing backend on identical 1024 by 1024 raw/PackBits/LZW/Deflate tiles and strips, checking warm-read I/O and decode reservations with files larger than the raw page pool. The test LZW encoder emits literals with dictionary clears; this is not a compression-ratio benchmark. Existing-backend copy counts are unavailable and reported as null. WebKit checks Safari engine compatibility; it does not certify released Safari or physical iPad hardware. Phone emulation is outside the current target scope. Run `npx playwright install chromium webkit` before browser testing. CI runs the app suite on both engines; Chromium-only CPU profiling and native multi-touch injection remain in Chromium. Popup dragging and its canvas repaint assertions run on both engines.
 
 `npm run benchmark:fmap-queues -- --output test-results/fmap-queues.json` measures queue construction/sorting, client execution and logical-output waiters, parked fpage cancellation, and pyramid admission across a view change. It runs production modules and C/WASM in Chromium with controlled provider latency (100 ms) and explicitly held pyramid reads; it is not a disk-throughput benchmark. Queue CPU timings exclude composition and reads. The report distinguishes removing unsent descriptors, cancelling admitted jobs, and draining already-started provider reads. View changes must cancel obsolete admitted/admission-waiting tiles; a real-worker bridge case checks that aborts reach fmap without accepting late tiles, starting more obsolete I/O, or leaking reservations. Unit tests also cover useful overlapping reads, band changes, and returning to a cancelled tile before its old backend settles. Timing values have no pass threshold and may fall below browser timer resolution.
 

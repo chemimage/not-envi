@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("popup header drag preserves charts and follows the pointer", async ({ page }, testInfo) => {
+test("popup header drag preserves charts and follows the pointer", async ({ page, browserName }, testInfo) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/");
   const data = new Float32Array(100 * 80 * 2);
@@ -20,9 +20,9 @@ test("popup header drag preserves charts and follows the pointer", async ({ page
   await expect(page.locator("#btnToolHistogram")).toBeEnabled();
   const panel = page.locator("#specPanel");
   const before = await panel.boundingBox();
-  const session = await page.context().newCDPSession(page);
-  await session.send("Performance.enable");
-  const metricsBefore = await session.send("Performance.getMetrics");
+  const session = browserName === "chromium" ? await page.context().newCDPSession(page) : null;
+  await session?.send("Performance.enable");
+  const metricsBefore = await session?.send("Performance.getMetrics");
   await page.evaluate(() => {
     window.popupMetrics = { boundsReads: 0, paints: {}, workerMessages: 0 };
     const bounds = Element.prototype.getBoundingClientRect;
@@ -53,9 +53,9 @@ test("popup header drag preserves charts and follows the pointer", async ({ page
   expect(after.width).toBe(before.width);
   expect(after.height).toBe(before.height);
   const measured = await page.evaluate(() => window.popupMetrics);
-  const metricsAfter = await session.send("Performance.getMetrics");
-  const delta = Object.fromEntries(metricsAfter.metrics.filter((metric) => ["LayoutCount", "RecalcStyleCount", "TaskDuration"].includes(metric.name))
-    .map((metric) => [metric.name, metric.value - metricsBefore.metrics.find((entry) => entry.name === metric.name).value]));
+  const metricsAfter = await session?.send("Performance.getMetrics");
+  const delta = session ? Object.fromEntries(metricsAfter.metrics.filter((metric) => ["LayoutCount", "RecalcStyleCount", "TaskDuration"].includes(metric.name))
+    .map((metric) => [metric.name, metric.value - metricsBefore.metrics.find((entry) => entry.name === metric.name).value])) : {};
   console.log(JSON.stringify({ ...measured, ...delta }));
   await testInfo.attach("popup-drag-metrics", { body: JSON.stringify({ ...measured, ...delta }), contentType: "application/json" });
   expect(measured.paints.specCanvas || 0).toBe(0);

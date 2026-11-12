@@ -145,7 +145,8 @@ test.describe("high DPI", () => {
   });
 });
 
-test("two-finger pinch still zooms without creating a region", async ({ page }) => {
+test("two-finger pinch still zooms without creating a region", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Native multi-touch injection requires Chromium CDP.");
   await loadImage(page);
   const session = await page.context().newCDPSession(page);
   const zoom = await page.locator("#zoomLabel").textContent();

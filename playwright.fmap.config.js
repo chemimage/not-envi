@@ -2,8 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const baseUse = {
   baseURL: "http://127.0.0.1:4173",
-  headless: true,
-  browserName: "chromium"
+  headless: true
 };
 
 export default defineConfig({
@@ -16,15 +15,11 @@ export default defineConfig({
   projects: [
     {
       name: "desktop-chromium",
-      use: { ...devices["Desktop Chrome"], ...baseUse }
+      use: { ...devices["Desktop Chrome"], ...baseUse, browserName: "chromium" }
     },
     {
-      name: "iphone-13-chromium-emulation",
-      use: { ...devices["iPhone 13"], ...baseUse }
-    },
-    {
-      name: "pixel-7-chromium-emulation",
-      use: { ...devices["Pixel 7"], ...baseUse }
+      name: "desktop-webkit",
+      use: { ...devices["Desktop Safari"], ...baseUse, browserName: "webkit" }
     }
   ],
   webServer: {
