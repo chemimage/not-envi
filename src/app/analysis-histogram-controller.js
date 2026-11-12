@@ -321,7 +321,9 @@ export function createAnalysisHistogramController(deps) {
     els.analysisHistPanel.style.top = `${top}px`;
   }
 
+  let refreshSequence = 0;
   async function refresh() {
+    const sequence = ++refreshSequence;
     if (!state.analysisHist.open || !els.analysisHistPanel) return;
     positionPanel();
     const ds = getActive();
@@ -339,6 +341,7 @@ export function createAnalysisHistogramController(deps) {
     setStatus("histogram…", "warn");
     try {
       const stats = await ensureStatsForPanel(ds);
+      if (sequence !== refreshSequence) return;
       state.analysisHist.stats = stats;
       updateSummary(stats);
       updateSamplingWarning(stats);
@@ -346,6 +349,7 @@ export function createAnalysisHistogramController(deps) {
       drawCanvas(stats);
       setStatus("ready", "ok");
     } catch (err) {
+      if (sequence !== refreshSequence) return;
       console.warn("Analysis histogram failed", err);
       state.analysisHist.stats = null;
       updateSummary(null);
@@ -354,8 +358,7 @@ export function createAnalysisHistogramController(deps) {
       drawCanvas(null);
       setStatus("ready", "ok");
     } finally {
-      positionPanel();
-      setBusy(false);
+      if (sequence === refreshSequence) { positionPanel(); setBusy(false); }
     }
   }
 
@@ -370,6 +373,7 @@ export function createAnalysisHistogramController(deps) {
   }
 
   function closePanel() {
+    refreshSequence++;
     state.analysisHist.open = false;
     state.analysisHist.hoverBin = -1;
     syncButtonState();
@@ -379,6 +383,18 @@ export function createAnalysisHistogramController(deps) {
       els.analysisHistPanel.setAttribute("aria-hidden", "true");
     }
     setBusy(false);
+  }
+
+  function invalidateSelection(ds) {
+    if (getActive()?.id !== ds.id) return;
+    refreshSequence++;
+    state.analysisHist.stats = null;
+    state.analysisHist.hoverBin = -1;
+    updateSummary(null);
+    updateSamplingWarning(null);
+    updateHoverText(null, -1);
+    setBusy(false);
+    if (state.analysisHist.open) drawCanvas(null);
   }
 
   function togglePanel() {
@@ -434,6 +450,7 @@ export function createAnalysisHistogramController(deps) {
   }
 
   return {
+    invalidateSelection,
     refresh,
     positionPanel,
     openPanel,

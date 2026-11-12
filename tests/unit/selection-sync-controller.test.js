@@ -4,6 +4,22 @@ import { createSelectionSyncController } from "../../src/app/selection-sync-cont
 afterEach(() => vi.restoreAllMocks());
 
 describe("selection-sync-controller", () => {
+  test("selection invalidates old results and prioritizes data without calculating", () => {
+    const ds = { id: "slide" }, items = [{ id: 1 }];
+    const clear = vi.fn(), invalidate = vi.fn(), prioritize = vi.fn(), calculate = vi.fn();
+    const controller = createSelectionSyncController({
+      getActive: () => ds, getHistogramSelectionItems: () => items,
+      clearSelectionHistogram: clear, invalidateAnalysis: invalidate,
+      prioritizeSelection: prioritize, shouldAnimateMarquee: () => false,
+      updateSelectionHistogram: calculate, refreshAnalysisHistogram: calculate,
+      openSpectrumForEffectiveArea: calculate
+    });
+    controller.updateSelectionHistogramForDataset(ds);
+    expect(clear).toHaveBeenCalledWith(ds);
+    expect(invalidate).toHaveBeenCalledWith(ds);
+    expect(prioritize).toHaveBeenCalledWith(ds, items);
+    expect(calculate).not.toHaveBeenCalled();
+  });
   test("starts the marquee timer only when enabled and stops it when disabled", () => {
     const ds = { id: "ds1" };
     let animate = false;

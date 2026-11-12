@@ -7,7 +7,7 @@ export function createSelectionActionsController(deps) {
     beginAreaMoveAtPointer, updateAreaMoveAtPointer, finishAreaMoveAtPointer, cancelAreaMove,
     selectAreaAtPointer, openSpectrumAt, openSpectrumForEffectiveArea,
     closeSpectrum, setAnalysisHistogramOpen, closeAnalysisHistogramPanel,
-    drawOverlays, onPointerDown, removeAreaAnnotations, annotationWork
+    drawOverlays, onPointerDown, removeAreaAnnotations, annotationWork, getDataProgress
   } = deps;
   let gesture = null;
   let spaceHeld = false;
@@ -127,6 +127,16 @@ export function createSelectionActionsController(deps) {
     const point = state.contextPoint && state.contextPoint.dsId === ds?.id && state.contextPoint.slot === slot()
       ? state.contextPoint : null;
     const running = annotationWork.list(ds, slot(), drawings, point);
+    const selected = ds ? getHistogramSelectionItems(ds) : [];
+    for (const item of selected) {
+      const fraction = getDataProgress?.(ds, [item]);
+      const work = running.find((entry) => entry.id === item.id);
+      if (work) work.dataFraction = fraction;
+      else if (fraction != null && fraction < 1) running.push({
+        key: `area:${item.id}`, id: item.id, points: item.points,
+        label: "Loading selected image detail", dataFraction: fraction, dataOnly: true
+      });
+    }
     const keep = new Set();
     const vp = viewport();
     const view = panel?.view || ds?.view;
@@ -146,7 +156,12 @@ export function createSelectionActionsController(deps) {
         bar.setAttribute("role", "progressbar");
         bar.setAttribute("aria-valuemin", "0");
         bar.setAttribute("aria-valuemax", "100");
-        bar.append(document.createElement("span"));
+        for (const name of ["data", "analysis"]) {
+          const lane = document.createElement("span");
+          lane.className = `annotation-progress-${name}`;
+          lane.setAttribute("aria-hidden", "true");
+          bar.append(lane);
+        }
         els.selectionActions.parentElement.append(bar);
         progressBars.set(work.key, bar);
       }
@@ -168,12 +183,16 @@ export function createSelectionActionsController(deps) {
       bar.style.width = `${horizontal ? Math.max(4, Math.min(work.point ? 76 : right - x, vp.x + vp.w - x)) : 4}px`;
       bar.style.height = `${horizontal ? 4 : Math.max(4, Math.min(bottom - y, vp.y + vp.h - y))}px`;
       bar.setAttribute("aria-label", work.label);
-      bar.title = work.label;
-      bar.dataset.indeterminate = String(work.fraction == null);
-      if (work.fraction == null) bar.removeAttribute("aria-valuenow");
-      else bar.setAttribute("aria-valuenow", String(Math.round(work.fraction * 100)));
-      bar.firstChild.style.transform = work.fraction == null ? "" : (horizontal
-        ? `scaleX(${work.fraction})` : `scaleY(${work.fraction})`);
+      bar.dataset.indeterminate = String(!work.dataOnly && work.fraction == null);
+      const fraction = work.dataOnly ? work.dataFraction : work.fraction;
+      if (fraction == null) bar.removeAttribute("aria-valuenow");
+      else bar.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
+      bar.setAttribute("aria-description", "Dashed lane: selected image detail at view resolution. Solid lane: requested analysis, including its data reads.");
+      for (const [lane, value] of [[bar.firstChild, work.dataFraction],
+        [bar.lastChild, work.dataOnly ? 0 : work.fraction]]) {
+        lane.style.transform = value == null ? "" : (horizontal ? `scaleX(${value})` : `scaleY(${value})`);
+        lane.hidden = lane === bar.firstChild && value == null;
+      }
     }
     for (const [key, bar] of progressBars) {
       if (!keep.has(key)) { bar.remove(); progressBars.delete(key); }

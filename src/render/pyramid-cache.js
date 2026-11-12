@@ -20,6 +20,7 @@ function createTileReadAdmission(initialLimit) {
   let active = 0;
   let closed = false;
   const foreground = [];
+  const selected = [];
   const background = [];
 
   const releaseSlot = () => {
@@ -35,7 +36,7 @@ function createTileReadAdmission(initialLimit) {
   const drain = () => {
     if (closed) return;
     while (active < limit) {
-      const waiter = foreground.shift() || background.shift();
+      const waiter = selected.shift() || foreground.shift() || background.shift();
       if (!waiter) break;
       waiter.cleanup();
       if (waiter.signal?.aborted) {
@@ -48,24 +49,29 @@ function createTileReadAdmission(initialLimit) {
   };
 
   return {
-    acquire(priority = "foreground", { signal } = {}) {
+    acquire(priority = "foreground", { signal, task } = {}) {
       if (closed || signal?.aborted) return Promise.reject(pyramidAbortError());
       return new Promise((resolve, reject) => {
-        const queue = priority === "background" ? background : foreground;
+        const queue = priority === "selected" ? selected : priority === "background" ? background : foreground;
         const onAbort = () => {
-          const index = queue.indexOf(waiter);
-          if (index < 0) return;
-          queue.splice(index, 1);
+          const owner = [selected, foreground, background].find((q) => q.includes(waiter));
+          if (!owner) return;
+          owner.splice(owner.indexOf(waiter), 1);
           waiter.cleanup();
           reject(pyramidAbortError());
           drain();
         };
-        const waiter = { resolve, reject, signal,
+        const waiter = { resolve, reject, signal, task,
           cleanup: () => signal?.removeEventListener("abort", onAbort) };
         signal?.addEventListener("abort", onAbort, { once: true });
         queue.push(waiter);
         drain();
       });
+    },
+    prioritize(predicate) {
+      const waiting = [...selected.splice(0), ...foreground.splice(0)];
+      selected.push(...waiting.filter((w) => predicate(w.task)));
+      foreground.push(...waiting.filter((w) => !predicate(w.task)));
     },
     setLimit(value) {
       limit = Math.max(1, Math.floor(Number(value) || 1));
@@ -75,13 +81,13 @@ function createTileReadAdmission(initialLimit) {
       if (closed) return;
       closed = true;
       const error = pyramidAbortError();
-      for (const waiter of [...foreground.splice(0), ...background.splice(0)]) {
+      for (const waiter of [...selected.splice(0), ...foreground.splice(0), ...background.splice(0)]) {
         waiter.cleanup();
         waiter.reject(error);
       }
     },
     get active() { return active; },
-    get waiting() { return foreground.length + background.length; }
+    get waiting() { return selected.length + foreground.length + background.length; }
   };
 }
 
@@ -621,6 +627,48 @@ export function createPyramidController(deps) {
     };
   }
 
+  function inPriorityRegion(ds, task) {
+    const r = ds.priorityRegion;
+    if (!r || !task) return false;
+    const span = ds.pyramid.tileSize * (2 ** task.level);
+    return task.tx * span < r.x1 && (task.tx + 1) * span > r.x0
+      && task.ty * span < r.y1 && (task.ty + 1) * span > r.y0;
+  }
+
+  function prioritizeRegion(ds) {
+    if (!ds?.pyramid || ds.pyramid.cancelled) return;
+    ds.pyramid.foregroundDirty = true;
+    prioritizeForeground(ds);
+    ds.pyramid.readAdmission.prioritize((task) => inPriorityRegion(ds, task));
+    schedulePyramidWork(ds);
+  }
+
+  // Readiness at the requested display resolution, not original-pixel analysis.
+  // Coarse fallback tiles never count toward this fraction.
+  function getRegionProgress(ds, region, { view, bands, eff, width, height, slot = 1 }) {
+    const pyr = ds?.pyramid;
+    if (!pyr || pyr.cancelled || !region) return null;
+    const level = pyramidLevelForEff(ds, eff);
+    const span = pyr.tileSize * (2 ** level);
+    const x0 = Math.max(0, region.x0, view.x), y0 = Math.max(0, region.y0, view.y);
+    const x1 = Math.min(ds.meta.samples, region.x1, view.x + width / eff);
+    const y1 = Math.min(ds.meta.lines, region.y1, view.y + height / eff);
+    if (x1 <= x0 || y1 <= y0) return null;
+    const viewKey = [view.x, view.y, level, eff, width, height].join(":");
+    let total = 0, loaded = 0;
+    for (const band of new Set(bands)) {
+      const composed = pyr.compositionCache.peek(`${slot}:${band}`, viewKey);
+      for (let ty = Math.floor(y0 / span); ty < Math.ceil(y1 / span); ty++) {
+        for (let tx = Math.floor(x0 / span); tx < Math.ceil(x1 / span); tx++) {
+          const key = bandTileKey(band, level, tx, ty);
+          total++;
+          if (pyr.tiles.has(key) || composed?.sources.has(key)) loaded++;
+        }
+      }
+    }
+    return total ? loaded / total : null;
+  }
+
   function prioritizeForeground(ds) {
     const pyr = ds.pyramid;
     if (!pyr.foregroundDirty || !pyr.focus) return;
@@ -637,9 +685,9 @@ export function createPyramidController(deps) {
       const dx = task.tx + 0.5 - centerX / span;
       const dy = task.ty + 0.5 - centerY / span;
       return { task, rank: isPinnedOverviewLevel(pyr, task.level) ? 0 : task.level === minLevel ? 1 : 2,
-        distance: dx * dx + dy * dy };
+        selected: inPriorityRegion(ds, task) ? 0 : 1, distance: dx * dx + dy * dy };
     });
-    ranked.sort((a, b) => a.rank - b.rank || b.task.level - a.task.level
+    ranked.sort((a, b) => a.rank - b.rank || a.selected - b.selected || b.task.level - a.task.level
       || a.distance - b.distance || a.task.ty - b.task.ty || a.task.tx - b.task.tx
       || a.task.band - b.task.band);
     pyr.qHi = ranked.map(({ task }) => task);
@@ -796,7 +844,7 @@ export function createPyramidController(deps) {
         || pyr.requests.get(key) !== request) throw pyramidAbortError();
     };
     const p = (async () => {
-      const releaseRead = await pyr.readAdmission.acquire(priority, { signal: request.controller.signal });
+      const releaseRead = await pyr.readAdmission.acquire(priority === "foreground" && inPriorityRegion(ds, request) ? "selected" : priority, { signal: request.controller.signal, task: request });
       try {
         requireCurrent();
         const readStart = perfNow();
@@ -984,6 +1032,8 @@ export function createPyramidController(deps) {
     ensurePyramid,
     disposePyramid,
     updateInflightForIO,
-    tryRasterFromPyramid
+    tryRasterFromPyramid,
+    prioritizeRegion,
+    getRegionProgress
   };
 }

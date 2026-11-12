@@ -41,7 +41,22 @@ and mode estimates still come from histogram bins.
 
 ## Progress, cancellation and reservations
 
-Area/selection progress uses the existing annotation-work tracker. Progress
+Selecting or editing a region only invalidates old results and prioritizes its
+pending foreground image tiles. It does not start statistics. Click Spatial or
+Spectrum to calculate. Existing provider reads finish normally; selection
+reorders queued work without duplicating reads or starting an extra ROI load.
+
+The existing 4 px annotation-edge strip has two 2 px lanes and no tooltip:
+- Dashed: image tiles ready at the current view resolution, across visible bands.
+- Solid: requested analysis completion, including its required input reads.
+
+These fractions overlap and must not be added. Coarse fallback imagery does not
+count as requested-resolution readiness. The data lane is shown only where the
+pyramid cache can measure readiness; direct reads without tile accounting do
+not invent a percentage. The data-only strip disappears once ready, while a
+running analysis keeps its own strip until it settles.
+
+Area/selection analysis progress uses the existing annotation-work tracker. Progress
 advances after batch reduction, not merely after loading. Area-spectrum status
 shows completed batches and bands, and Float32 histogram progress spans both
 range and counting passes. A completed batch is a scheduling unit, not a timing

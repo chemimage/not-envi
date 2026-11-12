@@ -45,10 +45,31 @@ async function heldTileHarness(getVisibleViews) {
     reads.forEach((read) => read.resolve());
     await Promise.allSettled(pending);
   };
-  return { ds, pyr, reads, view, pumpUntil, cleanup };
+  return { controller, ds, pyr, reads, view, pumpUntil, cleanup };
 }
 
 describe("pyramid-cache", () => {
+  test("selection reorders existing image work and counts only requested-resolution tiles", async () => {
+    const h = await heldTileHarness();
+    try {
+      const candidates = h.pyr.qHi.filter((t) => t.level === h.pyr.focus.minLevel);
+      const chosen = candidates.at(-1);
+      expect(chosen).toBeTruthy();
+      const span = h.pyr.tileSize * (2 ** chosen.level);
+      h.ds.priorityRegion = { x0: chosen.tx * span + 1, y0: chosen.ty * span + 1,
+        x1: (chosen.tx + 1) * span - 1, y1: (chosen.ty + 1) * span - 1 };
+      const reads = h.reads.length;
+      const keys = h.pyr.qHi.map((t) => t.key).sort();
+      h.controller.prioritizeRegion(h.ds);
+      expect(h.pyr.qHi.filter((t) => t.level === chosen.level)[0].key).toBe(chosen.key);
+      expect(h.pyr.qHi.map((t) => t.key).sort()).toEqual(keys);
+      expect(h.reads).toHaveLength(reads);
+      const options = { view: h.ds.view, bands: [chosen.band], eff: 0.25, width: 384, height: 384 };
+      expect(h.controller.getRegionProgress(h.ds, h.ds.priorityRegion, options)).toBe(0);
+      h.pyr.tiles.set(chosen.key, { bytes: 0 });
+      expect(h.controller.getRegionProgress(h.ds, h.ds.priorityRegion, options)).toBe(1);
+    } finally { await h.cleanup(); }
+  });
   test("unchanged views reuse composed planes and changed views discard their damage history", async () => {
     const controller = createPyramidController({ now: () => performance.now(), requestIdle: () => 1, cancelIdle: () => {},
       readBandWindow: async (_meta, _source, _band, _x, _y, w, h) => new Float32Array(w * h).fill(7),

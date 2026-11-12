@@ -151,6 +151,8 @@ test("running spectrum reports progress on the annotation edge and clears on rem
   await page.getByRole("button", { name: "Spectrum", exact: true }).click();
   const progress = page.getByRole("progressbar", { name: "Computing spectrum", exact: true });
   await expect(progress).toBeVisible();
+  await expect(progress).not.toHaveAttribute("title");
+  await expect(progress.locator("span")).toHaveCount(2);
   const bar = await progress.boundingBox();
   expect(bar.x).toBeCloseTo(400, 0);
   expect(bar.y).toBeCloseTo(288, 0);

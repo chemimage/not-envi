@@ -1,14 +1,10 @@
 export function createSelectionSyncController(deps) {
   const {
-    state,
     getActive,
     getHistogramSelectionItems,
     clearSelectionHistogram,
-    refreshAnalysisHistogram,
-    updateSelectionHistogram,
-    getSpectrumOpenForDatasetId,
-    openSpectrumForEffectiveArea,
-    refreshAreaSpectrumIfOpen,
+    invalidateAnalysis,
+    prioritizeSelection,
     drawOverlays,
     shouldAnimateMarquee
   } = deps;
@@ -48,20 +44,9 @@ export function createSelectionSyncController(deps) {
   function updateSelectionHistogramForDataset(ds) {
     if (!ds) return;
     const selections = getHistogramSelectionItems(ds);
-    if (!selections.length) {
-      clearSelectionHistogram(ds);
-      ensureMarqueeTicker();
-      if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
-      return;
-    }
-    updateSelectionHistogram(ds, selections).then(() => {
-      if (state.analysisHist.open && ds.id === state.activeId) refreshAnalysisHistogram().catch(() => {});
-    }).catch(() => {});
-    if (state.spectrumPickEnabled && ds.id === state.activeId && !getSpectrumOpenForDatasetId(ds.id)) {
-      openSpectrumForEffectiveArea(ds, null, false).catch(() => {});
-    } else {
-      refreshAreaSpectrumIfOpen(ds, null, false);
-    }
+    clearSelectionHistogram(ds);
+    invalidateAnalysis?.(ds);
+    prioritizeSelection?.(ds, selections);
     ensureMarqueeTicker();
   }
 

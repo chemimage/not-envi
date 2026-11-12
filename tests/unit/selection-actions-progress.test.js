@@ -12,6 +12,7 @@ describe("annotation edge progress", () => {
     const b = { id: 2, points: [{ x: 400, y: 100 }, { x: 450, y: 400 }] };
     const ds = { id: "slide", view: { x: 0, y: 0, scale: 1 }, drawings: [a, b] };
     const panel = { slot: 1, view: ds.view, annotations: { drawings: ds.drawings } };
+    let dataFraction = 1;
     let controller;
     const tracker = createAnnotationWorkTracker(() => controller?.refresh());
     controller = createSelectionActionsController({
@@ -21,8 +22,15 @@ describe("annotation edge progress", () => {
       getActive: () => ds, getActivePanel: () => panel,
       getPanelRectDevice: () => ({ x: 0, y: 0, w: 1200, h: 800 }),
       getHistogramSelectionItems: () => ds.drawings.slice(0, 1),
+      getDataProgress: () => dataFraction,
       annotationWork: tracker
     });
+    dataFraction = 0.5;
+    controller.refresh();
+    let dataBar = root.querySelector(".annotation-progress");
+    expect(dataBar.title).toBe("");
+    expect(dataBar.firstChild.style.transform).toBe("scaleX(0.5)");
+    expect(dataBar.lastChild.style.transform).toBe("scaleX(0)");
     const first = tracker.begin(ds, { items: [a], label: "Histogram" });
     const second = tracker.begin(ds, { items: [b], label: "Spectrum" });
     let bars = root.querySelectorAll("[role='progressbar']");
@@ -38,6 +46,7 @@ describe("annotation edge progress", () => {
     ds.view.x = 20;
     controller.refresh();
     expect(bars[0].style.left).toBe("80px");
+    dataFraction = 1;
     first.done();
     bars = root.querySelectorAll("[role='progressbar']");
     expect(bars).toHaveLength(1);

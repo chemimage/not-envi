@@ -153,7 +153,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     cancelIdle,
     readBandWindow,
     readBandWindowBIP,
-    onPerfUpdate: () => updatePerf(),
+    onPerfUpdate: () => { updatePerf(); selectionActions?.refresh(); },
     onProgressiveRender: () => scheduleRender(),
     getActiveDatasetId: () => state.activeId,
     getVisibleDatasetIds: () => getVisibleDatasetPanels().map((entry) => entry?.dataset?.id).filter((id) => id != null),
@@ -1086,11 +1086,17 @@ import { createFloatingWindowManager } from "./floating-windows.js";
     getActive,
     getHistogramSelectionItems,
     clearSelectionHistogram,
-    refreshAnalysisHistogram,
-    updateSelectionHistogram,
-    getSpectrumOpenForDatasetId: (dsId) => !!(spectrum && spectrum.isOpenForDatasetId(dsId)),
-    openSpectrumForEffectiveArea,
-    refreshAreaSpectrumIfOpen,
+    invalidateAnalysis: (ds) => {
+      if (ds.id !== state.activeId) return;
+      spectrumArea.cancel();
+      analysisHistogram.invalidateSelection(ds);
+      spectrum.invalidateSelection(ds);
+    },
+    prioritizeSelection: (ds, selections) => {
+      const bounds = resolveEffectiveSelectionBounds(ds, selections);
+      ds.priorityRegion = bounds ? { ...bounds } : null;
+      pyramid.prioritizeRegion(ds);
+    },
     drawOverlays: scheduleOverlayDraw,
     shouldAnimateMarquee: () => getVisibleDatasetPanels().length < 2
   });
@@ -1413,6 +1419,15 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   selectionActions = createSelectionActionsController({
     annotationWork,
+    getDataProgress: (ds, items) => {
+      const panel = getActivePanel();
+      const rect = getPanelRectDevice();
+      return pyramid.getRegionProgress(ds, resolveEffectiveSelectionBounds(ds, items), {
+        view: panel.view, slot: panel.slot,
+        bands: isThreeBandColorMode(ds) ? [0, 1, 2] : [resolveDisplayPanelBand(panel, ds)],
+        eff: panel.view.scale * (window.devicePixelRatio || 1), width: rect.w, height: rect.h
+      });
+    },
     state, els, getActive, getActivePanel, getPanelRectDevice,
     getHistogramSelectionItems, screenToImage,
     beginDrawingAtPointer, updateDrawingAtPointer, finishDrawingAtPointer, cancelDrawing,

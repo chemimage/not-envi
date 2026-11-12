@@ -964,6 +964,16 @@ export function createSpectrumController(deps) {
     if (opts.placeholderText && String(opts.placeholderText).trim()) drawSpectrumPlaceholder(String(opts.placeholderText));
   }
 
+  function invalidateSelection(ds) {
+    if (!specState.open || specState.dsId !== ds.id || specState.source.type !== "area") return;
+    specSeq++;
+    resetSpectrumData();
+    specState.source.complete = false;
+    setSpecSub("Selection changed");
+    setSpecFoot("Click Spectrum to calculate this selection.");
+    drawSpectrumPlaceholder("Click Spectrum to calculate.");
+  }
+
   function bandFromClientX(clientX) {
     if (!els.specCanvas || !specState.plot || !Number.isFinite(clientX)) return null;
     const { x0, plotW, n, bandCenters } = specState.plot;
@@ -1187,6 +1197,7 @@ export function createSpectrumController(deps) {
     openSpectrumAt,
     showPendingSpectrum,
     updateSpectrumStatus,
+    invalidateSelection,
     redrawSpectrum,
     closeSpectrum,
     exportSpectrumCSV,
