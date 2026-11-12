@@ -73,6 +73,9 @@ static uint64_t g_tick;
 static uint64_t g_hits;
 static uint64_t g_misses;
 static uint64_t g_evictions;
+/* Synchronous span result: min, max, count, sum, sumSq, then 256 bins.
+ * The worker consumes this before yielding and merges into its own job state. */
+static double g_reduction[261];
 
 static void clear_slot(fmap_slot *slot) {
     slot->page_index = 0;
@@ -546,6 +549,76 @@ EXPORT("fmap_output_f64_ptr") uint32_t fmap_output_f64_ptr(void) {
 }
 EXPORT("fmap_output_f64_capacity") uint32_t fmap_output_f64_capacity(void) {
     return g_initialized ? g_output_f64_count : 0;
+}
+
+static int32_t reduce_numeric(
+    const uint8_t *source, uint32_t valid_bytes, const fmap_slot *slot,
+    uint32_t byte_offset, uint32_t count, uint32_t stride_bytes,
+    uint32_t data_type, uint32_t little_endian, uint32_t as_f32,
+    uint32_t bins, double min, double max
+) {
+    uint32_t size = numeric_type_size(data_type);
+    if (!size) return FMAP_ERR_UNSUPPORTED_TYPE;
+    if (bins > 256 || (count > 1 && stride_bytes < size)) return FMAP_ERR_INVALID_LENGTH;
+    if (bins && (!__builtin_isfinite(min) || !__builtin_isfinite(max) || max < min)) {
+        return FMAP_ERR_INVALID_CONFIG;
+    }
+    for (uint32_t i = 0; i < 261; i++) g_reduction[i] = 0;
+    g_reduction[0] = __builtin_inf();
+    g_reduction[1] = -__builtin_inf();
+    double scale = bins ? (double)(bins - 1) / (max - min) : 0;
+    for (uint32_t i = 0; i < count; i++) {
+        uint64_t at = (uint64_t)byte_offset + (uint64_t)i * stride_bytes;
+        if (at > valid_bytes || size > (uint64_t)valid_bytes - at) return FMAP_ERR_OUT_OF_BOUNDS;
+        if (slot && !range_is_valid(slot, (uint32_t)at, size)) return FMAP_ERR_OUT_OF_BOUNDS;
+        double value = decode_numeric(source + (uint32_t)at, data_type, little_endian);
+        if (as_f32) value = (double)(float)value;
+        if (!__builtin_isfinite(value)) continue;
+        if (value < g_reduction[0]) g_reduction[0] = value;
+        if (value > g_reduction[1]) g_reduction[1] = value;
+        g_reduction[2] += 1;
+        g_reduction[3] += value;
+        g_reduction[4] += value * value;
+        if (bins) {
+            double bin = __builtin_floor((value - min) * scale);
+            /* Match JS's ignored NaN index for a constant too large for
+             * min + 1e-6 to change its double representation. */
+            if (bin != bin) continue;
+            if (bin < 0) bin = 0;
+            if (bin > bins - 1) bin = bins - 1;
+            g_reduction[5 + (uint32_t)bin] += 1;
+        }
+    }
+    return (int32_t)count;
+}
+
+EXPORT("fmap_reduction_ptr")
+uint32_t fmap_reduction_ptr(void) { return (uint32_t)(uintptr_t)g_reduction; }
+
+EXPORT("fmap_reduce_numeric")
+int32_t fmap_reduce_numeric(
+    uint32_t slot_index, uint32_t byte_offset, uint32_t count, uint32_t stride_bytes,
+    uint32_t data_type, uint32_t little_endian, uint32_t as_f32,
+    uint32_t bins, double min, double max
+) {
+    if (!slot_is_valid(slot_index) || !g_slots[slot_index].pin_count) return FMAP_ERR_INVALID_SLOT;
+    int32_t result = reduce_numeric(g_bytes + (uint64_t)slot_index * g_page_size,
+        g_slots[slot_index].valid_bytes, &g_slots[slot_index], byte_offset, count,
+        stride_bytes, data_type, little_endian, as_f32, bins, min, max);
+    if (result >= 0) touch_slot(slot_index);
+    return result;
+}
+
+EXPORT("fmap_reduce_scratch_numeric")
+int32_t fmap_reduce_scratch_numeric(
+    uint32_t byte_offset, uint32_t count, uint32_t stride_bytes,
+    uint32_t data_type, uint32_t little_endian, uint32_t as_f32,
+    uint32_t bins, double min, double max, uint32_t valid_bytes
+) {
+    if (!g_initialized) return FMAP_ERR_NOT_INITIALIZED;
+    if (valid_bytes > g_page_size) return FMAP_ERR_INVALID_LENGTH;
+    return reduce_numeric(g_scratch, valid_bytes, (const fmap_slot *)0, byte_offset,
+        count, stride_bytes, data_type, little_endian, as_f32, bins, min, max);
 }
 
 EXPORT("fmap_extract_f32")

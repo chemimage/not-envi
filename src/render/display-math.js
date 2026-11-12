@@ -68,6 +68,11 @@ function finishHistogram(out, min, max, count, sum, sumSq) {
   return { bins: out, min, max, count, p1, p99, mean, rms, stdDev, mode, modeBin, binWidth };
 }
 
+/** Finish a compact source-side reduction with the ordinary UI semantics. */
+export function histogramFromReduction({ bins, min, max, count, sum, sumSq }) {
+  return finishHistogram(bins, min, max, count, sum, sumSq);
+}
+
 /** Exact ordinary histogram from a retained uint8 frequency table, including
  * the same observed min/max and percentile-bin semantics as computeHistogram. */
 export function histogramFromUint8Counts(counts) {

@@ -5,11 +5,11 @@
   "sources": [
     {
       "path": "include/fmap.h",
-      "sha256": "adc19504e4eddf03f8bf8aef7c269382732acd3bb8631a810d74cd955b406644"
+      "sha256": "ff3734f7eacd17e4027c5e950fb8fb679cceeab14c7824f313e3978b3b1e3525"
     },
     {
       "path": "src/fmap_core.c",
-      "sha256": "531557c8d8a79cc7243fad6620869592e95b7f3e58a736f0fa7bb56a4fe6cecc"
+      "sha256": "f339116bda87c624aac8b4b97ae5d9c43a4ffe9967aace2862043bcd434474c7"
     },
     {
       "path": "src/fmap_fills.c",
@@ -36,7 +36,7 @@
       "sha256": "ec1193b4ade259ba1fbf3e0613e9bc569176c23473ba027cc5b24ce780c2347e"
     }
   ],
-  "sourceSha256": "847dbd1a24eeee33e37a3454ed0c0bd1e338131835405672bfefa084e4aa4a0d",
+  "sourceSha256": "ada604ae30cf0231cede62dea0d8afd9547894b5c02e4e7e0a59be062060dacc",
   "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
   "target": "wasm32-unknown-unknown",
   "optimization": "-O2 -flto",
@@ -71,8 +71,8 @@
     "-o",
     "wasm\\fmap\\pkg\\fmap_core.wasm"
   ],
-  "bytes": 33925,
-  "sha256": "c40f12b62891450447bca8734b2ee3cef97812a3f8fc7a83e0860eca4a9f927e",
+  "bytes": 35540,
+  "sha256": "e74135cea5f9e0bf1b7ad95ae6d714d2c027609651129a6b199565c9851ea2e8",
   "exports": [
     "fmap_acquire_page",
     "fmap_commit_page",
@@ -124,6 +124,9 @@
     "fmap_page_size",
     "fmap_pinned_bytes",
     "fmap_range_valid",
+    "fmap_reduce_numeric",
+    "fmap_reduce_scratch_numeric",
+    "fmap_reduction_ptr",
     "fmap_release_page",
     "fmap_reset",
     "fmap_resident_bytes",
