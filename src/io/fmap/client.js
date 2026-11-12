@@ -1,4 +1,5 @@
 import InlineFmapWorker from "./fmap.worker.js?worker&inline";
+import { REDUCTION_BYTES, REDUCTION_VALUES } from "./reduction.js";
 import { FmapMappings } from "./mapped-regions.js";
 import {
   FMAP_PROTOCOL_VERSION, assertFmapEnviMeta, checkedAdd, checkedResultBytes,
@@ -561,6 +562,85 @@ export class FmapDataSource {
     } finally {
       this.#releaseLogical(logicalBytes);
     }
+  }
+
+  /** Observed-range histogram over sampled source pixels (one pass for uint8,
+   * two passes for other types). Numeric
+   * decoding/reduction stays beside pinned pages; only compact sums and bins
+   * cross the worker boundary. Analysis intentionally rounds to Float32 like
+   * the existing histogram path. Optional masks are caller-owned byte flags
+   * in requested-window order; an admitted snapshot is shared by both passes. */
+  async reduceBandWindow(meta, band, x0, y0, outW, outH, step, options = {}) {
+    await this.ready;
+    const window = normalizeFmapWindow(meta, x0, y0, outW, outH, step);
+    if (!Number.isSafeInteger(band) || band < 0 || band >= meta.bands) throw new RangeError("Invalid reduction band.");
+    const count = checkedResultBytes(window.requestedW, window.requestedH, 1);
+    if (count > 0xffffffff) throw new RangeError("Histogram counts exceed Uint32 capacity.");
+    if (options.mask && (!(options.mask instanceof Uint8Array) || options.mask.length !== count)) {
+      throw new RangeError("Histogram mask does not match the requested window.");
+    }
+    const logical = this.#beginLogicalRequest({ ...options, mask: undefined,
+      maxAgeMs: options.maxAgeMs ?? Infinity });
+    if (logical.supersedeKey != null) await Promise.resolve();
+    const logicalBytes = REDUCTION_BYTES * 4 + (options.mask?.byteLength || 0);
+    const admission = this.#reserveLogical(logicalBytes, logical);
+    if (admission) await admission;
+    try {
+      this.#requireLogicalCurrent(logical);
+      const mask = options.mask?.slice();
+      // Unmasked jobs hold a fixed-size accumulator and yield between bounded
+      // page spans. Only masks need transport chunking by sample count.
+      const maxValues = mask ? Math.min(65536, Math.max(1,
+        Math.min(this.#maxChunkValues(8), this.maxResultBytes - REDUCTION_BYTES))) : Math.max(1, count);
+      const pass = async (bins, min, max) => {
+        const merged = new Float64Array(REDUCTION_VALUES);
+        merged[0] = Infinity; merged[1] = -Infinity;
+        const rows = window.outW <= maxValues ? Math.max(1, Math.floor(maxValues / Math.max(1, window.outW))) : 1;
+        for (let row = 0; row < window.outH; row += rows) {
+          const height = Math.min(rows, window.outH - row);
+          for (let col = 0; col < window.outW; col += maxValues) {
+            this.#requireLogicalCurrent(logical);
+            const width = Math.min(maxValues, window.outW - col);
+            let chunkMask;
+            if (mask) {
+              chunkMask = new Uint8Array(width * height);
+              for (let y = 0; y < height; y += 1) {
+                const start = (row + y) * window.requestedW + col;
+                chunkMask.set(mask.subarray(start, start + width), y * width);
+              }
+              if (!chunkMask.some(Boolean)) continue;
+            }
+            const result = await this.#enqueue("reduce", {
+              band, x0: window.x0 + col * window.step, y0: window.y0 + row * window.step,
+              outW: width, outH: height, requestedW: width, requestedH: height, step: window.step,
+              bins, min, max, mask: chunkMask, reductionBackend: options.reductionBackend
+            }, REDUCTION_BYTES + (chunkMask?.byteLength || 0), logical);
+            const part = new Float64Array(result.buffer);
+            merged[0] = Math.min(merged[0], part[0]); merged[1] = Math.max(merged[1], part[1]);
+            for (let i = 2; i < 5 + bins; i += 1) merged[i] += part[i];
+          }
+        }
+        return merged;
+      };
+      // The uint8 domain permits an exact one-pass frequency table; observed
+      // edges can then be applied to 256 counts without rereading the image.
+      const uint8 = Number(meta.dataType) === 1;
+      const range = await pass(uint8 ? 256 : 0, 0, 255);
+      const min = range[2] ? range[0] : 0;
+      const max = range[2] ? (range[1] === min ? min + 1e-6 : range[1]) : 1;
+      const values = range[2] && !uint8 ? await pass(256, min, max) : range;
+      let bins = Uint32Array.from(values.subarray(5));
+      if (uint8) {
+        const rebinned = new Uint32Array(256);
+        const scale = 255 / (max - min);
+        for (let value = 0; value < 256; value += 1) {
+          if (bins[value]) rebinned[Math.min(255, Math.max(0, Math.floor((value - min) * scale)))] += bins[value];
+        }
+        bins = rebinned;
+      }
+      return { min, max, count: values[2], sum: values[3], sumSq: values[4],
+        bins };
+    } finally { this.#releaseLogical(logicalBytes); }
   }
 
   async readSpectrumAtPixel(meta, x, y, options = {}, extraOptions = null) {

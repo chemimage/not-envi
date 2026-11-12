@@ -5,6 +5,7 @@ import { runInNewContext } from "node:vm";
 import { expect, test, vi } from "vitest";
 import workerSource from "../../src/io/fmap/fmap.worker.js?raw";
 import { FmapPageFillQueue } from "../../src/io/fmap/page-fill-queue.js";
+import { createReduction, REDUCTION_BYTES } from "../../src/io/fmap/reduction.js";
 
 const wasmBytes = readFileSync(resolve("wasm/fmap/pkg/fmap_core.wasm"));
 
@@ -30,9 +31,10 @@ async function workerHarness() {
     constructor(options) { super({ ...options, postTask: (callback) => tasks.push(callback) }); }
   }
   // Evaluate the worker against real WASM with a deterministic task dispatcher.
-  // Production uses Vite's bundled module worker; only its import is injected.
-  runInNewContext(workerSource.replace(/^import \{ FmapPageFillQueue \} from "\.\/page-fill-queue\.js";\r?\n/, ""), {
+  // Production uses Vite's bundled module worker; its dependencies are injected.
+  runInNewContext(workerSource.replace(/^import .*;\r?\n/gm, ""), {
     self, Blob: MemoryBlob, FmapPageFillQueue: Queue, MessageChannel: Channel,
+    createReduction, REDUCTION_BYTES,
     WebAssembly, Uint8Array, Float32Array, Float64Array, DataView,
     performance: { now: () => 0 }, setTimeout: timer
   });
@@ -109,4 +111,23 @@ test("clear cancels queued generations while pending wake-ups can service new wo
   expect(fresh.generation).toBe(2);
   expect(new Float32Array(fresh.result.buffer)[0]).toBe(0.25);
   expect(fresh.result.stats.pinnedBytes).toBe(0);
+});
+
+test("interleaved reductions own compact results and cancelled reductions release leases", async () => {
+  const h = await workerHarness();
+  const reduce = id => h.send({ id, type: "reduce", band: 0, x0: 0, y0: 0,
+    outW: 512, outH: 512, requestedW: 512, requestedH: 512, step: 1, bins: 0 });
+  await reduce(2);
+  await reduce(3);
+  await h.turn();
+  await h.turn();
+  await h.send({ id: 2, type: "cancel" });
+  await h.drain();
+  expect(h.replies.find(reply => reply.id === 2).error.name).toBe("AbortError");
+  const result = h.replies.find(reply => reply.id === 3);
+  expect(result.error).toBeUndefined();
+  const values = new Float64Array(result.result.buffer);
+  expect(values.length).toBe(261);
+  expect(Array.from(values.subarray(0, 3))).toEqual([0.25, 262143.25, 262144]);
+  expect(result.result.stats.pinnedBytes).toBe(0);
 });

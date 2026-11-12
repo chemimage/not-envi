@@ -1,4 +1,5 @@
 import { FmapPageFillQueue } from "./page-fill-queue.js";
+import { createReduction, REDUCTION_BYTES } from "./reduction.js";
 /**
  * File range bridge and cooperative ENVI processing for one source. BSQ, BIL,
  * and BIP planners feed all nine supported numeric types through bounded C
@@ -191,6 +192,26 @@ function extractScratch(byteOffset, take, stride, length, spec) {
     take === 1 ? spec.sampleBytes : stride, spec.dataType, state.meta.littleEndian ? 1 : 0, length));
 }
 
+function consumePage(slot, inPage, take, stride, spec, target, targetOffset) {
+  if (target.reduction) target.consume(slot, inPage, take, stride, spec, targetOffset);
+  else {
+    const result = extractPage(slot, inPage, take, stride, spec);
+    if (result !== take) throw new Error(`fmap extraction failed (status ${result}).`);
+    copyExtracted(target, targetOffset, take, spec);
+    state.stats.copiedBytes += take * spec.transportBytes;
+  }
+}
+
+function consumeScratch(offset, take, stride, length, spec, target, targetOffset) {
+  if (target.reduction) target.consume(null, offset, take, stride, spec, targetOffset, length);
+  else {
+    const result = extractScratch(offset, take, stride, length, spec);
+    if (result !== take) throw new Error(`fmap scratch extraction failed (status ${result}).`);
+    copyExtracted(target, targetOffset, take, spec);
+    state.stats.copiedBytes += take * spec.transportBytes;
+  }
+}
+
 // Each range yield resumes with a pinned lease. The lease and every WASM view are
 // released before the generator yields again.
 function* readValues(offset, count, stride, target, targetOffset, preferPage, message, fillBytes = 0) {
@@ -218,10 +239,7 @@ function* readValues(offset, count, stride, target, targetOffset, preferPage, me
       const demandLength = preferPage ? pageLength : (((take - 1) * stride) + spec.sampleBytes);
       const lease = yield rangeDemand(message, pageIndex, demandOffset, demandLength, fillBytes);
       try {
-        const result = extractPage(lease.slot, inPage, take, stride, spec);
-        if (result !== take) throw new Error(`fmap extraction failed (status ${result}).`);
-        copyExtracted(target, targetOffset, take, spec);
-        state.stats.copiedBytes += take * spec.transportBytes;
+        consumePage(lease.slot, inPage, take, stride, spec, target, targetOffset);
       } finally { lease.release(); }
       offset += take * stride; count -= take; targetOffset += take;
       yield checkpoint(Math.max(take * spec.sampleBytes, resident ? 0 : demandLength));
@@ -234,11 +252,8 @@ function* readValues(offset, count, stride, target, targetOffset, preferPage, me
       const length = ((take - 1) * stride) + spec.sampleBytes;
       const lease = yield rangeDemand(message, pageIndex, inPage, length, fillBytes);
       try {
-        const result = extractPage(lease.slot, inPage, take, stride, spec);
-        if (result !== take) throw new Error(`fmap sparse extraction failed (status ${result}).`);
-        copyExtracted(target, targetOffset, take, spec);
+        consumePage(lease.slot, inPage, take, stride, spec, target, targetOffset);
         state.stats.sparseReads += 1;
-        state.stats.copiedBytes += take * spec.transportBytes;
       } finally { lease.release(); }
       offset += take * stride; count -= take; targetOffset += take;
       yield checkpoint(length);
@@ -248,11 +263,9 @@ function* readValues(offset, count, stride, target, targetOffset, preferPage, me
       const bytes = new Uint8Array(spec.sampleBytes);
       yield* copyRange(offset, spec.sampleBytes, bytes, 0, message);
       new Uint8Array(state.exports.memory.buffer, call("fmap_scratch_ptr"), spec.sampleBytes).set(bytes);
-      const result = extractScratch(0, 1, spec.sampleBytes, spec.sampleBytes, spec);
-      if (result !== 1) throw new Error(`fmap split-page extraction failed (status ${result}).`);
-      copyExtracted(target, targetOffset, 1, spec);
+      consumeScratch(0, 1, spec.sampleBytes, spec.sampleBytes, spec, target, targetOffset);
       state.stats.sparseReads += 1;
-      state.stats.copiedBytes += spec.sampleBytes + spec.transportBytes;
+      state.stats.copiedBytes += spec.sampleBytes;
       offset += stride; count -= 1; targetOffset += 1;
       yield checkpoint(spec.sampleBytes);
     }
@@ -331,12 +344,11 @@ function* readWindowRows(message, values, spec, stride) {
       new Uint8Array(state.exports.memory.buffer, call("fmap_scratch_ptr"), slabLength).set(bytes);
       state.stats.requestedBytes += slabRows * usefulRowBytes;
       for (let localRow = 0; localRow < slabRows; localRow += 1) {
-        const result = extractScratch(localRow * rowSourceStride, outW, stride, slabLength, spec);
-        if (result !== outW) throw new Error(`fmap row-slab extraction failed (status ${result}).`);
-        copyExtracted(values, (row + localRow) * requestedW, outW, spec);
+        consumeScratch(localRow * rowSourceStride, outW, stride, slabLength, spec,
+          values, (row + localRow) * requestedW);
       }
       state.stats.sparseReads += 1;
-      state.stats.copiedBytes += slabLength + (slabRows * outW * spec.transportBytes);
+      state.stats.copiedBytes += slabLength;
       row += slabRows;
       yield checkpoint(slabLength);
       continue;
@@ -353,7 +365,13 @@ function* readWindow(message) {
   if (!step || band >= meta.bands || outW > requestedW || outH > requestedH
     || (outW && x0 + (outW - 1) * step >= meta.samples)
     || (outH && y0 + (outH - 1) * step >= meta.lines)) throw new RangeError("Invalid fmap window.");
-  const values = output(requestedW * requestedH);
+  const reducing = message.type === "reduce";
+  const values = reducing ? createReduction({ ...message, littleEndian: meta.littleEndian }, state.exports)
+    : output(requestedW * requestedH);
+  if (reducing) {
+    if (REDUCTION_BYTES > state.maxResultBytes) throw new RangeError("fmap reduction result exceeds its request budget.");
+    state.stats.outputBytes += REDUCTION_BYTES;
+  }
   const spec = numericSpec();
   const pixelStride = meta.interleave === "bip" ? meta.bands * spec.sampleBytes : spec.sampleBytes;
   const stride = step * pixelStride;
@@ -369,7 +387,7 @@ function* readWindow(message) {
     yield* readWindowRows(message, values, spec, stride);
   }
   state.stats.usefulValues += outW * outH;
-  return values;
+  return reducing ? values.values : values;
 }
 
 function* readSpectrum(message) {
@@ -660,10 +678,10 @@ self.onmessage = async (event) => {
     } else if (message.type === "stats") {
       requireGeneration(message.generation);
       self.postMessage({ id: message.id, result: { stats: counters() } });
-    } else if (message.type === "window" || message.type === "spectrum" || message.type === "range") {
+    } else if (message.type === "window" || message.type === "reduce" || message.type === "spectrum" || message.type === "range") {
       requireGeneration(message.generation);
       message.priority = message.priority === 1 ? 1 : 0;
-      const iterator = message.type === "window" ? readWindow(message)
+      const iterator = message.type === "window" || message.type === "reduce" ? readWindow(message)
         : (message.type === "spectrum" ? readSpectrum(message) : readRange(message));
       if (state.jobById.has(message.id)) throw new Error("Duplicate fmap request id.");
       const job = { message, iterator, order: ++state.order, demandOrder: 0, cancelled: false,

@@ -22,6 +22,7 @@
     "benchmark:fmap": "node scripts/benchmark-fmap.mjs",
     "benchmark:fmap-browser": "node scripts/benchmark-fmap-browser.mjs",
     "benchmark:fmap-queues": "node scripts/benchmark-fmap-queues.mjs",
+    "benchmark:fmap-reductions": "node scripts/benchmark-fmap-reductions.mjs",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage && node scripts/coverage-badge.mjs",
     "test:e2e": "playwright test",
