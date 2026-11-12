@@ -4,12 +4,12 @@ description: Reuse the exact successful main CI artifact for this release tag wi
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v7
       with:
         node-version: '22'
     - name: Find successful CI for the exact tagged commit on main
       id: ci
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       with:
         script: |
           const { execFileSync } = require('node:child_process');
@@ -35,7 +35,7 @@ runs:
           core.setOutput('run-id', String(run.id));
           core.info(`Reusing tested distribution from ${run.html_url}`);
     - name: Download the CI distribution
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: site-dist
         path: ${{ runner.temp }}/validated-dist

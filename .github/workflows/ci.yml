@@ -21,7 +21,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: ./.github/actions/calculate-version
@@ -31,14 +31,14 @@ jobs:
     name: Lint and build shared fmap core
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-validation
         with:
           fmap-core: 'false'
       - run: npm run lint
       - name: Cache pinned fmap C toolchain
         id: wasi
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/wasi-sdk-24.0-x86_64-linux
           key: ${{ runner.os }}-wasi-sdk-24-c6c38aab56e5de88
@@ -53,7 +53,7 @@ jobs:
         run: npm run build:fmap
         env:
           FMAP_CLANG: ${{ runner.temp }}/wasi-sdk-24.0-x86_64-linux/bin/clang
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: fmap-core
           path: wasm/fmap/pkg/
@@ -73,7 +73,7 @@ jobs:
           - desktop-webkit
           - benchmarks
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-validation
         with:
           browser: ${{ matrix.suite != 'unit' }}
@@ -83,7 +83,7 @@ jobs:
         run: npm run test:coverage
       - name: Retain measured JavaScript coverage
         if: matrix.suite == 'unit'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: js-coverage
           path: |
@@ -108,7 +108,7 @@ jobs:
           npm run benchmark:fmap-queues -- --output test-results/fmap-queues.json
       - name: Retain checked benchmark reports
         if: always() && matrix.suite == 'benchmarks'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fmap-performance
           path: |
@@ -117,7 +117,7 @@ jobs:
           if-no-files-found: warn
       - name: Retain browser failure diagnostics
         if: failure() && matrix.suite != 'unit' && matrix.suite != 'benchmarks'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.suite }}
           path: test-results/
@@ -128,7 +128,7 @@ jobs:
     needs: [version, fmap-core, checks]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-validation
         with:
           browser: 'true'
@@ -139,7 +139,7 @@ jobs:
         env:
           FMAP_PACKAGED: '1'
       - name: Reuse coverage from this run's unit tests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: js-coverage
           path: dist
@@ -159,7 +159,7 @@ jobs:
             reports: Object.fromEntries(['coverage-summary.json', 'coverage-badge.json'].map(name => [name, sha256(name)]))
           }, null, 2) + '\n');
           NODE
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: site-dist
           path: |
