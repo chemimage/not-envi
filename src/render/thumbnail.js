@@ -3,6 +3,16 @@ import { resolveThreeBandChannelOrder } from "../app/three-band-display.js";
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import { APP_CONFIG, resolvePreviewOverviewLongEdge } from "../app/config.js";
 
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
+function abortError() {
+  const error = new Error("Read cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
 export function createThumbnailController(deps) {
   const {
     els,
@@ -159,13 +169,13 @@ export function createThumbnailController(deps) {
     return true;
   }
 
-  async function readWindowF32(ds, band, x0, y0, outW, outH, step) {
+  async function readWindowF32(ds, band, x0, y0, outW, outH, step, options = null) {
     const length = Math.max(0, outW * outH);
     const scratch = floatScratchPool.acquire(length);
     try {
       const raw = ds.meta.interleave === "bip"
-        ? await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch)
-        : await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch);
+        ? await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch, options)
+        : await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch, options);
       return {
         data: raw === scratch ? scratch : toFloat32(raw, scratch),
         release() {
@@ -178,8 +188,8 @@ export function createThumbnailController(deps) {
     }
   }
 
-  async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step, opts = {}) {
-    const window = await readWindowF32(ds, band, x0, y0, outW, outH, step);
+  async function renderWindowToImageData(ds, band, x0, y0, outW, outH, step, opts = {}, readOptions = null) {
+    const window = await readWindowF32(ds, band, x0, y0, outW, outH, step, readOptions);
     try {
       const f32 = window.data;
       const settings = getBandSettings(ds, band);
@@ -212,9 +222,9 @@ export function createThumbnailController(deps) {
     }
   }
 
-  async function renderCompositeWindowToImageData(ds, x0, y0, outW, outH, step) {
+  async function renderCompositeWindowToImageData(ds, x0, y0, outW, outH, step, readOptions = null) {
     if (typeof ds?.ds?.supportsCompositeWindow === "function" && ds.ds.supportsCompositeWindow() && typeof ds?.ds?.readCompositeWindow === "function") {
-      const composite = await ds.ds.readCompositeWindow(ds.meta, x0, y0, outW, outH, step);
+      const composite = await ds.ds.readCompositeWindow(ds.meta, x0, y0, outW, outH, step, readOptions);
       if (composite?.bands?.length === 3) {
         const channelBands = resolveThreeBandChannelOrder(ds.displayMode || "rgb");
         const channelData = channelBands.map((channelBand) => composite.bands[channelBand]);
@@ -241,11 +251,17 @@ export function createThumbnailController(deps) {
         }
         return img;
       }
+      if (typeof readOptions?.cancelled === "function" && readOptions.cancelled()) throw abortError();
     }
 
     const channelBands = resolveThreeBandChannelOrder(ds.displayMode || "rgb");
-    const channelWindows = await Promise.all(channelBands.map((band) => readWindowF32(ds, band, x0, y0, outW, outH, step)));
+    const settled = await Promise.allSettled(
+      channelBands.map((band) => readWindowF32(ds, band, x0, y0, outW, outH, step, readOptions))
+    );
+    const channelWindows = settled.filter((result) => result.status === "fulfilled").map((result) => result.value);
     try {
+      const failed = settled.find((result) => result.status === "rejected");
+      if (failed) throw failed.reason;
       const channelData = channelWindows.map((window) => window.data);
       const channelParams = channelBands.map((band, idx) => {
         const f32 = channelData[idx];
@@ -291,8 +307,14 @@ export function createThumbnailController(deps) {
 
     try {
       const img = (isThreeBandColorMode && isThreeBandColorMode(ds))
-        ? await renderCompositeWindowToImageData(ds, 0, 0, outW, outH, step)
-        : await renderWindowToImageData(ds, ds.activeBand, 0, 0, outW, outH, step);
+        ? await renderCompositeWindowToImageData(ds, 0, 0, outW, outH, step, {
+          cancelled: () => ds.thumb.buildSeq !== seq,
+          priority: "background"
+        })
+        : await renderWindowToImageData(ds, ds.activeBand, 0, 0, outW, outH, step, {}, {
+          cancelled: () => ds.thumb.buildSeq !== seq,
+          priority: "background"
+        });
       if (ds.thumb.buildSeq !== seq) return;
       thumbCtx.save();
       thumbCtx.imageSmoothingEnabled = false;
@@ -327,6 +349,7 @@ export function createThumbnailController(deps) {
       ds.thumb.buildKey = buildKey;
       ds.thumb.buildPendingKey = null;
     } catch (e) {
+      if (isAbortError(e)) return;
       console.warn("thumb error", e);
       if (ds.thumb.buildSeq === seq) ds.thumb.buildPendingKey = null;
     }
@@ -354,8 +377,14 @@ export function createThumbnailController(deps) {
       const outW = Math.min(ow, Math.max(1, Math.ceil(ds.meta.samples / step)));
       const outH = Math.min(oh, Math.max(1, Math.ceil(ds.meta.lines / step)));
       const img = (isThreeBandColorMode && isThreeBandColorMode(ds))
-        ? await renderCompositeWindowToImageData(ds, 0, 0, outW, outH, step)
-        : await renderWindowToImageData(ds, ds.activeBand, 0, 0, outW, outH, step);
+        ? await renderCompositeWindowToImageData(ds, 0, 0, outW, outH, step, {
+          cancelled: () => overview.buildSeq !== seq,
+          priority: "background"
+        })
+        : await renderWindowToImageData(ds, ds.activeBand, 0, 0, outW, outH, step, {}, {
+          cancelled: () => overview.buildSeq !== seq,
+          priority: "background"
+        });
       if (overview.buildSeq !== seq) return false;
 
       const off = createCanvasSurface(outW, outH);
@@ -385,6 +414,7 @@ export function createThumbnailController(deps) {
       }
       return true;
     } catch (e) {
+      if (isAbortError(e)) return false;
       console.warn("preview overview error", e);
       if (overview.buildSeq === seq) overview.buildPendingKey = null;
       return false;

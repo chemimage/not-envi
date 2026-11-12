@@ -147,7 +147,9 @@ describe("histogram controller", () => {
       strokeStyle: "",
       font: ""
     };
-    const readBandWindow = vi.fn((_meta, _source, _band, _x0, _y0, outW, outH, _step, scratch) => new Promise((resolve) => {
+    let readOptions = null;
+    const readBandWindow = vi.fn((_meta, _source, _band, _x0, _y0, outW, outH, _step, scratch, options) => new Promise((resolve) => {
+      readOptions = options;
       releaseRead = () => {
         scratch.set(new Float32Array(outW * outH).fill(2));
         resolve(scratch);
@@ -192,6 +194,11 @@ describe("histogram controller", () => {
     expect(labels).toContain("Histogram not ready");
     expect(labels).not.toContain("Estimated");
     expect(readBandWindow).toHaveBeenCalled();
+    expect(readOptions?.priority).toBe("background");
+    expect(readOptions?.cancelled()).toBe(false);
+    ds.view.x += 1;
+    expect(readOptions?.cancelled()).toBe(true);
+    ds.view.x -= 1;
     releaseRead();
     await pending;
 
@@ -273,6 +280,7 @@ describe("histogram controller", () => {
 
   test("buildBandStatsWhole reuses a caller-owned Float32Array scratch buffer", async () => {
     let capturedOut = null;
+    let capturedOptions = null;
     const computeHistogram = vi.fn(() => ({ bins: new Uint32Array([1]), min: 0, max: 1, p1: 0, p99: 1 }));
     const ctrl = createHistogramController({
       state: { activeId: "other", histMode: "whole" },
@@ -280,6 +288,7 @@ describe("histogram controller", () => {
       setStatus: () => {},
       readBandWindow: async (...args) => {
         capturedOut = args[8];
+        capturedOptions = args[9];
         capturedOut.set([1, 2, 3, 4], 0);
         return capturedOut;
       },
@@ -303,6 +312,7 @@ describe("histogram controller", () => {
     await ctrl.buildBandStatsWhole(ds, 0);
 
     expect(capturedOut).toBeInstanceOf(Float32Array);
+    expect(capturedOptions?.priority).toBe("background");
     expect(computeHistogram).toHaveBeenCalledWith(capturedOut, 256);
     expect(ds.bandStatsWhole.has(0)).toBe(true);
   });

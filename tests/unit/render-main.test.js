@@ -53,6 +53,19 @@ function makeDeps(overrides = {}) {
 }
 
 describe("render-main", () => {
+  test.each([1, 3])("consumes cancelled %i-band raster loads without hiding backing read failures", async (bands) => {
+    const ds = { id: "cancelled-load", activeBand: 0, displayMode: bands === 3 ? "rgb" : "gray",
+      view: { x: 0, y: 0, scale: 1 }, meta: { samples: 8, lines: 4, bands, interleave: "bsq" },
+      ds: {}, bandStatsWhole: new Map() };
+    const aborted = new Error("Obsolete view.");
+    aborted.name = "AbortError";
+    const readBandWindow = vi.fn().mockRejectedValue(aborted);
+    const renderer = createRenderer(makeDeps({ getActive: () => ds, readBandWindow }));
+    await expect(renderer.render()).resolves.toBeUndefined();
+    readBandWindow.mockRejectedValue(new Error("Backing read failed."));
+    await expect(renderer.render()).rejects.toThrow("Backing read failed.");
+  });
+
   test("defers queued renders during a window interaction and renders again afterward", async () => {
     let dragging = true;
     const onDeferredRender = vi.fn();
@@ -167,6 +180,8 @@ describe("render-main", () => {
     expect(deps.cpuRenderGray.mock.calls[0][1]).toBe(200);
     expect(deps.cpuRenderGray.mock.calls[0][2]).toBe(113);
     expect(readBandWindow).toHaveBeenCalledTimes(1);
+    expect(readBandWindow.mock.calls[0][9]?.priority).toBe("foreground");
+    expect(readBandWindow.mock.calls[0][9]?.cancelled()).toBe(false);
   });
 
   test("render uses color composite path for three-band color mode", async () => {
@@ -191,6 +206,7 @@ describe("render-main", () => {
       getBandSettings: () => ({ brightness: 0, gain: 1, contrast: 1 }),
       initWebGPU: vi.fn(async () => true),
       gpuSupported: true,
+      tryRasterFromPyramid: vi.fn(async () => null),
       readBandWindow,
       clampView: () => {}
     });
@@ -203,6 +219,10 @@ describe("render-main", () => {
     expect(deps.cpuRenderGray).not.toHaveBeenCalled();
     expect(deps.gpuRender).not.toHaveBeenCalled();
     expect(readBandWindow).toHaveBeenCalledTimes(3);
+    expect(deps.tryRasterFromPyramid.mock.calls.map((call) => [call[1], call[5]]))
+      .toEqual([0, 1, 2].map((band) => [band, { bands: [0, 1, 2] }]));
+    expect(readBandWindow.mock.calls.every((call) => call[9]?.priority === "foreground")).toBe(true);
+    expect(readBandWindow.mock.calls.every((call) => call[9]?.cancelled() === false)).toBe(true);
     expect(ds.lastCompositeRaster?.channelBands).toEqual([0, 1, 2]);
   });
 
@@ -1063,6 +1083,7 @@ describe("render-main", () => {
   ])("renders $kind pyramid previews without promoting them to stable rasters", async ({ scale, partial, approximate }) => {
     const previewRaster = {
       band: 0,
+      source: "pyramid",
       w: 160,
       h: 90,
       dataF32: new Float32Array(160 * 90),
@@ -1090,12 +1111,27 @@ describe("render-main", () => {
       clampView: () => {}
     });
     const renderer = createRenderer(deps);
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    try {
+      await renderer.render();
 
-    await renderer.render();
+      expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
+      expect(ds.lastRaster).toBeNull();
+      expect(ds.lastScreenFrame).toBeTruthy();
+      expect(ds.lastRastersByPanel.size).toBe(0);
+      expect(raf).not.toHaveBeenCalled();
 
-    expect(deps.cpuRenderGray).toHaveBeenCalledTimes(1);
-    expect(ds.lastRaster).toBeNull();
-    expect(ds.lastScreenFrame).toBeTruthy();
-    expect(ds.lastRastersByPanel.size).toBe(0);
+      // A later tile-arrival render must still replace the preview and become
+      // stable. Waiting for data must not prevent subsequent refinement.
+      previewRaster.partial = false;
+      previewRaster.approximate = false;
+      previewRaster.dataF32.fill(7);
+      await renderer.render();
+      expect(deps.cpuRenderGray).toHaveBeenCalledTimes(2);
+      expect(ds.lastRaster?.dataF32[0]).toBe(7);
+      expect(raf).not.toHaveBeenCalled();
+    } finally {
+      raf.mockRestore();
+    }
   });
 });

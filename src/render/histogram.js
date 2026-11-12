@@ -9,6 +9,10 @@ import {
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import { APP_CONFIG } from "../app/config.js";
 
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
 export function createHistogramController(deps) {
   const {
     state,
@@ -170,13 +174,13 @@ export function createHistogramController(deps) {
     values.buffer = next;
   }
 
-  async function readWindowF32(ds, band, x0, y0, outW, outH, step) {
+  async function readWindowF32(ds, band, x0, y0, outW, outH, step, options = null) {
     const length = Math.max(0, outW * outH);
     const scratch = floatScratchPool.acquire(length);
     try {
       const raw = ds.meta.interleave === "bip"
-        ? await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch)
-        : await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch);
+        ? await readBandWindowBIP(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch, options)
+        : await readBandWindow(ds.meta, ds.ds, band, x0, y0, outW, outH, step, scratch, options);
       return {
         data: raw === scratch ? scratch : toFloat32(raw, scratch),
         release() {
@@ -189,7 +193,7 @@ export function createHistogramController(deps) {
     }
   }
 
-  async function computeSelectionStats(ds, band, selections) {
+  async function computeSelectionStats(ds, band, selections, options = null) {
     if (!ds || band == null || !Array.isArray(selections) || !selections.length) return null;
 
     const valid = [];
@@ -219,7 +223,7 @@ export function createHistogramController(deps) {
       const { selection, bounds, width, height } = item;
       const outW = Math.max(1, Math.ceil(width / step));
       const outH = Math.max(1, Math.ceil(height / step));
-      const window = await readWindowF32(ds, band, bounds.x0, bounds.y0, outW, outH, step);
+      const window = await readWindowF32(ds, band, bounds.x0, bounds.y0, outW, outH, step, options);
       try {
         appendSelectionValues(selection, window.data, outW, outH, bounds.x0, bounds.y0, step, ds.meta.samples, seen, values);
       } finally {
@@ -261,7 +265,7 @@ export function createHistogramController(deps) {
     const task = (async () => {
       try {
         setStatus("histogram…", "warn");
-        const window = await readWindowF32(ds, band, 0, 0, outW, outH, step);
+        const window = await readWindowF32(ds, band, 0, 0, outW, outH, step, { priority: "background" });
         try {
           const stats = decorateHistogramStats(
             computeHistogram(window.data, 256),
@@ -351,7 +355,10 @@ export function createHistogramController(deps) {
 
     const task = (async () => {
       try {
-        const window = await readWindowF32(ds, band, x0, y0, outW, outH, step);
+        const window = await readWindowF32(ds, band, x0, y0, outW, outH, step, {
+          cancelled: () => estimatedViewKey(ds, band) !== key,
+          priority: "background"
+        });
         try {
           if (estimatedViewKey(ds, band) !== key) return;
           ds.bandStatsView = decorateHistogramStats(
@@ -371,6 +378,7 @@ export function createHistogramController(deps) {
           window.release();
         }
       } catch (e) {
+        if (isAbortError(e) && estimatedViewKey(ds, band) !== key) return;
         console.warn("Estimated view histogram failed", e);
       } finally {
         ds.__viewStatsPending?.delete?.(key);
@@ -421,7 +429,10 @@ export function createHistogramController(deps) {
 
     try {
       setStatus("histogram…", "warn");
-      const stats = await computeSelectionStats(ds, band, list);
+      const stats = await computeSelectionStats(ds, band, list, {
+        cancelled: () => token !== ds.__selectionHistToken,
+        priority: "background"
+      });
       if (token !== ds.__selectionHistToken) return;
       ds.bandStatsSelection = stats ? { band, selectionKey, stats } : null;
       if (ds.id === state.activeId) {
@@ -430,6 +441,7 @@ export function createHistogramController(deps) {
       }
       setStatus("ready", "ok");
     } catch (e) {
+      if (isAbortError(e) && token !== ds.__selectionHistToken) return;
       console.warn("Selection histogram build failed", e);
       if (token !== ds.__selectionHistToken) return;
       ds.bandStatsSelection = null;
