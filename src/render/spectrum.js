@@ -133,6 +133,7 @@ export function createSpectrumController(deps) {
   function applySpectrumSource(opts = {}) {
     specState.source = {
       type: opts.sourceType === "area" ? "area" : "pixel",
+      color: opts.sourceColor || null,
       sampleCount: Number.isFinite(opts?.sourceMeta?.sampleCount) ? opts.sourceMeta.sampleCount : 0,
       selectionCount: Number.isFinite(opts?.sourceMeta?.selectionCount) ? opts.sourceMeta.selectionCount : 0,
       sampleStep: Number.isFinite(opts?.sourceMeta?.sampleStep) ? opts.sourceMeta.sampleStep : 1,
@@ -435,7 +436,8 @@ export function createSpectrumController(deps) {
       }
       if (upper.length > 1 && lower.length > 1) {
         ctx.save();
-        ctx.fillStyle = "rgba(148,163,184,0.22)";
+        ctx.fillStyle = specState.source.color || "rgba(148,163,184,0.22)";
+        if (specState.source.color) ctx.globalAlpha = 0.22;
         ctx.beginPath();
         ctx.moveTo(upper[0].x, upper[0].y);
         for (let i = 1; i < upper.length; i += 1) ctx.lineTo(upper[i].x, upper[i].y);
@@ -448,7 +450,7 @@ export function createSpectrumController(deps) {
 
     if (useBarPlot) {
       const barW = resolveUniformBarWidthPx(bandCenters, plotW);
-      ctx.fillStyle = "rgba(229,231,235,0.78)";
+      ctx.fillStyle = specState.source.color || "rgba(229,231,235,0.78)";
       ctx.strokeStyle = "rgba(148,163,184,0.95)";
       ctx.lineWidth = 1 * dpr;
       for (let i = 0; i < N; i += step) {
@@ -477,7 +479,7 @@ export function createSpectrumController(deps) {
         }
       }
     } else {
-      ctx.strokeStyle = "rgba(229,231,235,0.95)";
+      ctx.strokeStyle = specState.source.color || "rgba(229,231,235,0.95)";
       ctx.lineWidth = 1.5 * dpr;
       ctx.beginPath();
       let started = false;
@@ -511,7 +513,7 @@ export function createSpectrumController(deps) {
         ctx.setLineDash([]);
         if (Number.isFinite(yv)) {
           const py = yToPx(yv);
-          ctx.fillStyle = "rgba(209,213,219,0.95)";
+          ctx.fillStyle = specState.source.color || "rgba(209,213,219,0.95)";
           ctx.beginPath();
           ctx.arc(px, py, 3 * dpr, 0, Math.PI * 2);
           ctx.fill();

@@ -1,3 +1,4 @@
+import { resolveAnalysisColor } from "./analysis-color.js";
 import { choosePanelPlacementNearSelection } from "./panel-placement.js";
 
 export function createAnalysisHistogramController(deps) {
@@ -154,7 +155,7 @@ export function createAnalysisHistogramController(deps) {
     ctx.fillStyle = accentRegionColor;
     ctx.fillRect(stdLowX, plot.plotY0, Math.max(1, stdHighX - stdLowX), plot.plotH);
 
-    ctx.fillStyle = "rgba(156,163,175,0.45)";
+    ctx.fillStyle = state.analysisHist.sourceColor || "rgba(156,163,175,0.45)";
     for (let i = 0; i < bins.length; i += 1) {
       const bh = (bins[i] / maxBin) * plot.plotH;
       const x = plot.plotX0 + i * barW;
@@ -166,7 +167,7 @@ export function createAnalysisHistogramController(deps) {
       const bh = (bins[hoverBin] / maxBin) * plot.plotH;
       const x = plot.plotX0 + hoverBin * barW;
       const y = plot.plotY0 + (plot.plotH - bh);
-      ctx.fillStyle = "rgba(250,204,21,0.85)";
+      ctx.fillStyle = state.analysisHist.sourceColor || "rgba(250,204,21,0.85)";
       ctx.fillRect(x, y, Math.max(1, barW), bh);
       ctx.strokeStyle = "rgba(250,204,21,0.95)";
       ctx.lineWidth = 1.25 * dpr;
@@ -337,12 +338,14 @@ export function createAnalysisHistogramController(deps) {
       return;
     }
 
+    const sourceColor = resolveAnalysisColor(getHistogramSelectionItems(ds), ds.selectedAreaId);
     setBusy(true);
     setStatus("histogram…", "warn");
     try {
       const stats = await ensureStatsForPanel(ds);
       if (sequence !== refreshSequence) return;
       state.analysisHist.stats = stats;
+      state.analysisHist.sourceColor = sourceColor;
       updateSummary(stats);
       updateSamplingWarning(stats);
       updateHoverText(stats, -1);

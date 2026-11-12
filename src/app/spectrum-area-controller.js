@@ -1,3 +1,4 @@
+import { resolveAnalysisColor } from "./analysis-color.js";
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import { APP_CONFIG } from "./config.js";
 import { ANALYSIS_BATCH_VALUES, createAnalysisPlan } from "../core/analysis-batches.js";
@@ -164,6 +165,7 @@ export function createSpectrumAreaController(deps) {
             const seqAtStart = nonAreaSeq;
             const reqSelections = getHistogramSelectionItems(req.ds);
             const selectionCount = reqSelections.length;
+            const sourceColor = resolveAnalysisColor(reqSelections, req.ds.selectedAreaId);
             const shouldAbort = () => seqAtStart !== nonAreaSeq || req.reqSeq !== areaReqSeq;
             if (!selectionCount) {
               if (shouldAbort()) continue;
@@ -181,6 +183,7 @@ export function createSpectrumAreaController(deps) {
                 subLabel: `Area average (${fmtNoGroup(selectionCount)} region${selectionCount > 1 ? "s" : ""}, computing...)`,
                 footLabel: `Computing 0/${fmtNoGroup(req.ds.meta.bands)} bands`,
                 placeholderText: "Computing area average...",
+                sourceColor,
                 sourceType: "area",
                 sourceMeta: {
                   sampleCount: 0,
@@ -224,6 +227,7 @@ export function createSpectrumAreaController(deps) {
               stdVals: areaWithProgress.stdVals,
               xVals: wavelengthArrayOrNull(req.ds),
               subLabel,
+              sourceColor,
               sourceType: "area",
               sourceMeta: {
                 sampleCount: areaWithProgress.sampleCount,

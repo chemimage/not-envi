@@ -246,3 +246,31 @@ test("shape selections offer actions and a later point uses its own pixel spectr
   await expect(page.locator("#specPanel")).toBeVisible();
   await expect(page.locator("#specSub")).toHaveText("(70, 30)");
 });
+
+for (const bands of [2, 32]) {
+  test(`region color reaches histogram and ${bands === 2 ? "bar" : "line"} spectrum`, async ({ page }, testInfo) => {
+    await loadImage(page, bands);
+    await page.mouse.move(400, 290);
+    await page.mouse.down();
+    await page.mouse.move(620, 440, { steps: 8 });
+    await page.mouse.up();
+    // Changing the brush for future drawings must not recolor this region.
+    await page.locator("#drawColorPreview").click();
+    await page.getByRole("button", { name: "Green swatch", exact: true }).click();
+    await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+    await expect(page.locator("#analysisStatN")).toHaveText("368");
+    await page.getByRole("button", { name: "Spectrum", exact: true }).click();
+    await expect(page.locator("#specFoot")).toContainText("Mean");
+    for (const id of ["analysisHistCanvas", "specCanvas"]) {
+      await expect.poll(() => page.locator(`#${id}`).evaluate((canvas) => {
+        const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+        let count = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] === 255 && pixels[i + 1] === 45 && pixels[i + 2] === 45 && pixels[i + 3] > 200) count++;
+        }
+        return count;
+      })).toBeGreaterThan(20);
+    }
+    await page.screenshot({ path: testInfo.outputPath("region-colored-analysis.png") });
+  });
+}
