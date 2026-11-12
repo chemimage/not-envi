@@ -31,7 +31,6 @@ export function wireDrawToolInteractions(deps) {
     updateDrawingAtPointer,
     finishDrawingAtPointer,
     cancelDrawing,
-    eraseDrawingAtPointer,
     clearAllAnnotations,
     updateRulerHoverAtPointer,
     clearRulerHover,
@@ -163,7 +162,10 @@ export function wireDrawToolInteractions(deps) {
         if (btn && btn.setAttribute) btn.setAttribute("aria-pressed", on ? "true" : "false");
       }
     }
-    if (els.toolEraser) els.toolEraser.classList.toggle("active", active === "eraser");
+    if (els.toolEraser) {
+      els.toolEraser.classList.remove("active");
+      els.toolEraser.removeAttribute?.("aria-pressed");
+    }
     if (els.btnToolAreaMode) {
       els.btnToolAreaMode.classList.remove("active");
       els.btnToolAreaMode.setAttribute("aria-pressed", singleArea ? "true" : "false");
@@ -217,17 +219,10 @@ export function wireDrawToolInteractions(deps) {
     setSpectrumPickEnabled(!!active);
   }
 
-  function reactivateDrawTool(tool) {
-    if (!setDrawTool) return;
-    setDrawTool("none");
-    setDrawTool(tool);
-  }
-
   function clearAllAnnotationsFromEraser(ev) {
-    if (ev && ev.preventDefault) ev.preventDefault();
-    if (ev && ev.stopPropagation) ev.stopPropagation();
-    if (clearAllAnnotations) clearAllAnnotations();
-    reactivateDrawTool("eraser");
+    ev?.preventDefault?.();
+    ev?.stopPropagation?.();
+    clearAllAnnotations?.();
     syncDrawToolUI();
   }
 
@@ -289,47 +284,7 @@ export function wireDrawToolInteractions(deps) {
     }
   }
 
-  let eraserTouchLastTapAt = 0;
-  let eraserTouchResetTimer = null;
-  let eraserTouchSuppressClick = false;
-
-  function resetEraserTouchTapState() {
-    eraserTouchLastTapAt = 0;
-    if (!eraserTouchResetTimer) return;
-    clearTimeout(eraserTouchResetTimer);
-    eraserTouchResetTimer = null;
-  }
-
-  if (els.toolEraser && setDrawTool) {
-    if (els.toolEraser.addEventListener) {
-      els.toolEraser.addEventListener("pointerup", (ev) => {
-        if (ev.pointerType !== "touch") return;
-        const tapAt = Number.isFinite(ev.timeStamp) ? ev.timeStamp : Date.now();
-        const isDoubleTap = eraserTouchLastTapAt > 0 && (tapAt - eraserTouchLastTapAt) <= 360;
-        resetEraserTouchTapState();
-        if (!isDoubleTap) {
-          eraserTouchLastTapAt = tapAt;
-          eraserTouchResetTimer = setTimeout(() => {
-            eraserTouchResetTimer = null;
-            eraserTouchLastTapAt = 0;
-          }, 420);
-          return;
-        }
-        eraserTouchSuppressClick = true;
-        clearAllAnnotationsFromEraser(ev);
-      });
-    }
-    els.toolEraser.onclick = (ev) => {
-      if (eraserTouchSuppressClick) {
-        eraserTouchSuppressClick = false;
-        if (ev && ev.preventDefault) ev.preventDefault();
-        if (ev && ev.stopPropagation) ev.stopPropagation();
-        return;
-      }
-      setDrawTool("eraser");
-      syncDrawToolUI();
-    };
-  }
+  if (els.toolEraser) els.toolEraser.onclick = clearAllAnnotationsFromEraser;
   if (els.btnToolAreaMode && setAreaSelectionMode) {
     els.btnToolAreaMode.onclick = () => {
       setAreaSelectionMode();
@@ -344,9 +299,6 @@ export function wireDrawToolInteractions(deps) {
   }
   if (els.btnRemoveAnnotation && selectionActions) {
     els.btnRemoveAnnotation.onclick = () => selectionActions.removeAnnotation();
-  }
-  if (els.toolEraser) {
-    els.toolEraser.ondblclick = (ev) => clearAllAnnotationsFromEraser(ev);
   }
   if (Array.isArray(els.drawColorSwatches) && setDrawColor) {
     for (const swatch of els.drawColorSwatches) {
@@ -427,8 +379,7 @@ export function wireDrawToolInteractions(deps) {
     && getActive()
     && (getDrawTool() === "ruler" || getDrawTool() === "rect" || getDrawTool() === "shape")
   );
-  const isEraserEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "eraser");
-  const isDrawingEnabled = () => isDrawCreateEnabled() || isEraserEnabled();
+  const isDrawingEnabled = isDrawCreateEnabled;
   const isRulerEnabled = () => !!(getDrawTool && getActive() && getDrawTool() === "ruler");
   const isAreaToolEnabled = () => !!(
     getDrawTool
@@ -481,9 +432,6 @@ export function wireDrawToolInteractions(deps) {
           return;
         }
       }
-      if (getSpectrumPickEnabled && getSpectrumPickEnabled() && openSpectrumForEffectiveArea) {
-        openSpectrumForEffectiveArea(null, ev, false).catch(() => {});
-      }
       if (resolvePointerCursor) setCanvasCursor(resolvePointerCursor(ev));
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -511,7 +459,7 @@ export function wireDrawToolInteractions(deps) {
     }, true);
   }
 
-  if (els.main && (beginDrawingAtPointer || eraseDrawingAtPointer)) {
+  if (els.main && beginDrawingAtPointer) {
     els.main.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0 || selectionActions?.isPanGesture(ev)) return;
       if (!isDrawingEnabled()) return;
@@ -519,12 +467,6 @@ export function wireDrawToolInteractions(deps) {
       if (isUiTarget(ev.target)) return;
       if (els.specPanel && els.specPanel.style.display !== "none" && !els.specPanel.contains(ev.target)) {
         closeSpectrum();
-      }
-      if (isEraserEnabled()) {
-        if (eraseDrawingAtPointer) eraseDrawingAtPointer(ev);
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-        return;
       }
       const started = beginDrawingAtPointer(ev);
       if (!started) return;

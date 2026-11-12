@@ -30,6 +30,6 @@ test("ruler profile opens, switches units, refreshes bands, and reopens after ed
   await page.mouse.move(660, 420, { steps: 10 });
   await page.mouse.up();
   await expect(panel).toBeVisible();
-  await page.locator("#toolEraser").dblclick();
+  await page.locator("#toolEraser").click();
   await expect(panel).toBeHidden();
 });

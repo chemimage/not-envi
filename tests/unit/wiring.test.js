@@ -311,43 +311,13 @@ describe("app wiring", () => {
     windowAdd.mockRestore();
   });
 
-  test("touch double-tap on eraser clears all annotations and keeps eraser active", () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  test("one eraser click clears annotations without entering a tool mode", () => {
     const { els, clearAllAnnotations, getActiveTool, windowAdd } = setupEraserHarness();
-
-    const dispatchTouchPointerUp = (timeStamp) => {
-      const ev = new Event("pointerup", { bubbles: true, cancelable: true });
-      Object.defineProperty(ev, "pointerType", { value: "touch" });
-      Object.defineProperty(ev, "timeStamp", { value: timeStamp });
-      els.toolEraser.dispatchEvent(ev);
-    };
-
-    dispatchTouchPointerUp(100);
-    els.toolEraser.click();
-    expect(getActiveTool()).toBe("eraser");
-    expect(clearAllAnnotations).not.toHaveBeenCalled();
-
-    dispatchTouchPointerUp(320);
     els.toolEraser.click();
     expect(clearAllAnnotations).toHaveBeenCalledTimes(1);
-    expect(getActiveTool()).toBe("eraser");
-
-    windowAdd.mockRestore();
-  });
-
-  test("desktop double-click on eraser clears all annotations and keeps eraser active", () => {
-    const { els, clearAllAnnotations, getActiveTool, windowAdd } = setupEraserHarness();
-
-    els.toolEraser.click();
-    expect(getActiveTool()).toBe("eraser");
-
-    els.toolEraser.click();
     expect(getActiveTool()).toBe("none");
-
-    els.toolEraser.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
-    expect(clearAllAnnotations).toHaveBeenCalledTimes(1);
-    expect(getActiveTool()).toBe("eraser");
-
+    expect(els.toolEraser.classList.contains("active")).toBe(false);
+    expect(els.toolEraser.hasAttribute("aria-pressed")).toBe(false);
     windowAdd.mockRestore();
   });
 

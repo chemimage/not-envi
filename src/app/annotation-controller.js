@@ -138,7 +138,7 @@ export function createAnnotationController(deps) {
     const hadRulerHover = !!state.draw.rulerHover;
     const hadAreaMove = !!state.draw.areaMove;
     const prevTool = state.draw.tool;
-    const next = (tool === "ruler" || tool === "rect" || tool === "shape" || tool === "eraser") ? tool : "none";
+    const next = (tool === "ruler" || tool === "rect" || tool === "shape") ? tool : "none";
     if (next !== "none") {
       state.spectrumPickEnabled = false;
       state.contextPoint = null;
