@@ -55,7 +55,7 @@ try {
   });
   const page = await context.newPage();
   await page.addInitScript(() => { globalThis.__queueMetrics = []; });
-  await page.goto(`${origin}/?fmap=1`);
+  await page.goto(`${origin}/`);
   const report = await page.evaluate(async ({ providerDelayMs }) => {
     const { createFmapRangeDataSource } = await import("/src/io/fmap/index.js");
     const { FmapPageFillQueue } = await import("/src/io/fmap/page-fill-queue.js");

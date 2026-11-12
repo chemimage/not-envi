@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe("fmap browser integration", () => {
   test("dense RGB windows share bounded fills while spectra and explicit ranges remain sparse", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const result = await page.evaluate(async () => {
       const { createFmapDataSource } = await import("/src/io/fmap/index.js");
       const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
@@ -44,7 +44,7 @@ test.describe("fmap browser integration", () => {
   });
 
   test("real WASM reads unaligned BSQ Float32 windows and spectra in both byte orders", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
 
     const result = await page.evaluate(async () => {
       const { createFmapDataSource } = await import("/src/io/fmap/index.js");
@@ -164,7 +164,7 @@ test.describe("fmap browser integration", () => {
   });
 
   test("ENVI loader preserves every supported type, layout, and endian path", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
 
     const results = await page.evaluate(async () => {
       const { addDatasetFromFiles } = await import("/src/io/envi-loader.js");
@@ -269,7 +269,7 @@ test.describe("fmap browser integration", () => {
   });
 
   test("numeric windows preserve Float64 and integer precision while spectra keep Float32 semantics", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const result = await page.evaluate(async () => {
       const { createFmapDataSource } = await import("/src/io/fmap/index.js");
       const { DATA_TYPES } = await import("/src/core/envi-types.js");
@@ -312,7 +312,7 @@ test.describe("fmap browser integration", () => {
   });
 
   test("large ENVI windows are assembled from bounded requests and cancel between chunks", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const result = await page.evaluate(async () => {
       const { createFmapDataSource } = await import("/src/io/fmap/index.js");
       const { DATA_TYPES } = await import("/src/core/envi-types.js");
@@ -354,7 +354,7 @@ test.describe("fmap browser integration", () => {
   });
 
   test("TIFF loading uses its fmap block path when requested", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
 
     const result = await page.evaluate(async () => {
       const { addDatasetsFromFileList } = await import("/src/io/dataset-loader.js");
@@ -435,7 +435,7 @@ test.describe("fmap browser integration", () => {
   });
 
   test("AbortSignal and supersedeKey cancel stale browser work without poisoning the source", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
 
     const result = await page.evaluate(async () => {
       const { createFmapDataSource } = await import("/src/io/fmap/index.js");

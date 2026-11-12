@@ -8,7 +8,7 @@ test("panning cancels queued and active pyramid work through the real fmap worke
     const body = await response.text();
     await route.fulfill({ response, body: instrumentFmapProvider(body) });
   });
-  await page.goto("/?fmap=1");
+  await page.goto("/");
   const result = await page.evaluate(async () => {
     const { exercisePyramidFmapCancellation } = await import("/tests/fixtures/pyramid-cancellation.js");
     return exercisePyramidFmapCancellation();

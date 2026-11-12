@@ -15,7 +15,7 @@ import {
   panelHasLinkedPeers
 } from "./display-panels.js";
 import { remapAnnotationState } from "./linked-annotations.js";
-import { APP_CONFIG, isFmapRequested } from "./config.js";
+import { APP_CONFIG } from "./config.js";
 
 export function createDatasetRuntime(deps) {
   const {
@@ -492,7 +492,7 @@ export function createDatasetRuntime(deps) {
         ioConcurrency: getIOConcurrency(),
         chunkSize: APP_CONFIG.io.defaultChunkSizeBytes,
         cacheBytes: APP_CONFIG.io.defaultDatasetCacheBytes,
-        fmapEnabled: isFmapRequested(),
+        fmapEnabled: true,
         fmapOptions: APP_CONFIG.fmap,
         createDataset: makeDatasetFromLoadedFiles
       });
@@ -529,7 +529,7 @@ export function createDatasetRuntime(deps) {
       ioConcurrency: getIOConcurrency(),
       chunkSize: APP_CONFIG.io.defaultChunkSizeBytes,
       cacheBytes: APP_CONFIG.io.defaultDatasetCacheBytes,
-      fmapEnabled: isFmapRequested(),
+      fmapEnabled: true,
       fmapOptions: APP_CONFIG.fmap,
       createDataset: makeDatasetFromLoadedFiles
     });

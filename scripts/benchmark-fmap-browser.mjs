@@ -40,7 +40,7 @@ try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  await page.goto(`${origin}/?fmap=1`);
+  await page.goto(`${origin}/`);
   const report = await page.evaluate(async () => {
     const { createFmapDataSource } = await import("/src/io/fmap/index.js");
     const { BlobDataSource, ChunkCacheDataSource } = await import("/src/core/data-source.js");

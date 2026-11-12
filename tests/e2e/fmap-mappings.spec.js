@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("mapped pointers share file pages and survive cache clear independently of mapping release", async ({ page }) => {
-  await page.goto("/?fmap=1");
+  await page.goto("/");
   const result = await page.evaluate(async () => {
     const { createFmapRangeDataSource } = await import("/src/io/fmap/index.js");
     const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
@@ -74,7 +74,7 @@ test("mapped pointers share file pages and survive cache clear independently of 
 });
 
 test("required mapped reads wait through tiny execution budgets instead of queue rejection", async ({ page }) => {
-  await page.goto("/?fmap=1");
+  await page.goto("/");
   const result = await page.evaluate(async () => {
     const { createFmapRangeDataSource } = await import("/src/io/fmap/index.js");
     const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
@@ -110,7 +110,7 @@ test("required mapped reads wait through tiny execution budgets instead of queue
 });
 
 test("empty root mapping can be read and released without making released addresses valid", async ({ page }) => {
-  await page.goto("/?fmap=1");
+  await page.goto("/");
   const result = await page.evaluate(async () => {
     const { createFmapRangeDataSource } = await import("/src/io/fmap/index.js");
     const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();

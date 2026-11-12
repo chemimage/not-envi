@@ -167,7 +167,7 @@ function floatingPointPredictor32(values, width) {
 test.describe("fmap TIFF advanced browser coverage", () => {
   for (const layout of ["main-chain", "overview-first-main-chain", "nested-subifds", "subifd-next-chain"]) {
     test(`indexes ${layout} pyramid metadata before reading pixels and preserves linear-base overviews`, async ({ page }) => {
-      await page.goto("/?fmap=1");
+      await page.goto("/");
       const pages = [
         { width: 8, height: 4, blocks: [Array.from({ length: 32 }, (_v, i) => i + 1)] },
         { width: 4, height: 2, blocks: [[41, 42, 43, 44, 45, 46, 47, 48]], newSubfileType: 1 },
@@ -220,7 +220,7 @@ test.describe("fmap TIFF advanced browser coverage", () => {
   }
 
   test("keeps native resolution levels attached to their own grayscale page bands", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const bytes = classicTiff([
       { width: 8, height: 4, blocks: [Array.from({ length: 32 }, (_v, i) => i + 1)], next: 2, subIfd: 1 },
       { width: 4, height: 2, blocks: [[81, 82, 83, 84, 85, 86, 87, 88]], newSubfileType: 1 },
@@ -248,7 +248,7 @@ test.describe("fmap TIFF advanced browser coverage", () => {
   });
 
   test("indexes compressed page bands and keeps an unsupported overview off the linear base path", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const compressed = classicTiff([
       { width: 3, height: 2, compression: 32773, blocks: [[5, 1, 2, 3, 4, 5, 6]], next: 1 },
       { width: 3, height: 2, compression: 8, blocks: [deflateSync(Uint8Array.from([11, 12, 13, 14, 15, 16]))] }
@@ -284,7 +284,7 @@ test.describe("fmap TIFF advanced browser coverage", () => {
   });
 
   test("reads planar RGB edge tiles through the actual file loader", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const fixture = classicTiff([{
       width: 3,
       height: 2,
@@ -331,7 +331,7 @@ test.describe("fmap TIFF advanced browser coverage", () => {
   });
 
   test("exposes uniform grayscale pages as bands and selects a native SubIFD overview", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const multipage = classicTiff([
       { width: 3, height: 2, blocks: [[1, 2, 3, 4, 5, 6]], next: 1 },
       { width: 3, height: 2, blocks: [[11, 12, 13, 14, 15, 16]] }
@@ -377,7 +377,7 @@ test.describe("fmap TIFF advanced browser coverage", () => {
   });
 
   test("decodes Deflate predictor 2 integer and predictor 3 float strips", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const integerValues = [10, 20, 35, 60, 5, 15, 30, 55];
     const floatValues = [1.25, -2.5, 1000.125, 0.5, Math.PI, -0.25, 64.5, 7.75];
     const predictor2 = classicTiff([{
@@ -428,7 +428,7 @@ test.describe("fmap TIFF advanced browser coverage", () => {
   });
 
   test("rejects an oversized decoded tile before reading its compressed block", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const width = 1800;
     const height = 1800;
     const fixture = classicTiff([{

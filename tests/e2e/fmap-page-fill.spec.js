@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe("fmap page-fill queue browser integration", () => {
   test("deduplicates overlapping windows and ranges and reuses warm partial pages", async ({ page }) => {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const result = await page.evaluate(async () => {
       const { createFmapDataSource } = await import("/src/io/fmap/index.js");
       const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();
@@ -90,7 +90,7 @@ test.describe("fmap page-fill queue browser integration", () => {
 
   test("clear and close retire active fills while foreground work keeps progressing", async ({ page }) => {
     test.setTimeout(45_000);
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     const result = await page.evaluate(async () => {
       const { createFmapRangeDataSource } = await import("/src/io/fmap/index.js");
       const wasmBytes = await (await fetch("/wasm/fmap/pkg/fmap_core.wasm")).arrayBuffer();

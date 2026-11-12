@@ -64,7 +64,7 @@ test("viewer opens a multi-gigabyte single-strip RGB TIFF without overflowing fm
         }
       };
     });
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     await page.locator("#filePicker").setInputFiles(filePath);
     await page.waitForFunction(() => window.__largeTiff.draws > 0
       && [0, 1, 2].every((band) => Number.isFinite(window.__largeTiff.pixels[band])), null, { timeout: 45_000 });
@@ -229,7 +229,7 @@ test("BigTIFF decodes a strip beyond 4 GiB through the fmap source", async ({ pa
     writeSync(handle, Buffer.from(values.buffer), 0, values.byteLength, stripOffset);
   } finally { closeSync(handle); }
   try {
-    await page.goto("/?fmap=1");
+    await page.goto("/");
     await page.evaluate(() => {
       const input = document.createElement("input");
       input.type = "file";
