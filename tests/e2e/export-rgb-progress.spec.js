@@ -30,9 +30,9 @@ for (const fmap of [0, 1]) {
         else {
           const original = rgb.get(key);
           expect([output.width, output.height]).toEqual([original.width, original.height]);
-          expect(output.channels[0]).toEqual(original.channels[2]);
-          expect(output.channels[1]).toEqual(original.channels[1]);
-          expect(output.channels[2]).toEqual(original.channels[0]);
+          expect(output.channels[0], `${key}: BGR red must match RGB blue`).toEqual(original.channels[2]);
+          expect(output.channels[1], `${key}: green must stay unchanged`).toEqual(original.channels[1]);
+          expect(output.channels[2], `${key}: BGR blue must match RGB red`).toEqual(original.channels[0]);
         }
       }
     }

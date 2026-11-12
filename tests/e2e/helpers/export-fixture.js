@@ -20,6 +20,18 @@ export async function loadColorFixture(page, fmap, url = `/?fmap=${fmap}`) {
   await expect(page.locator("#bandColorMode")).toHaveText("Gray");
   await page.locator("#bandColorMode").click();
   await expect(page.locator("#bandColorMode")).toHaveText("RGB");
+  // Compare channel order at a fixed tone range. Background histogram work
+  // can otherwise auto-range channels between the RGB and BGR downloads.
+  await page.locator("#displayHeader").click();
+  await page.locator("#btnHistRangeLock").click();
+  await expect(page.locator("#btnHistRangeLock")).toHaveAttribute("aria-pressed", "true");
+  await page.locator("#numMin").fill("0");
+  await page.locator("#numMin").press("Tab");
+  await page.locator("#numMax").fill("255");
+  await page.locator("#numMax").press("Tab");
+  await expect(page.locator("#numMin")).toHaveValue("0");
+  await expect(page.locator("#numMax")).toHaveValue("255");
+  await page.locator("#displayHeader").click();
   await page.mouse.move(400, 290);
   await page.mouse.down();
   await page.mouse.move(620, 440, { steps: 8 });
