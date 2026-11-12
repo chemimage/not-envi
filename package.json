@@ -23,6 +23,7 @@
     "benchmark:fmap-browser": "node scripts/benchmark-fmap-browser.mjs",
     "benchmark:fmap-queues": "node scripts/benchmark-fmap-queues.mjs",
     "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage && node scripts/coverage-badge.mjs",
     "test:e2e": "playwright test",
     "test:fmap-large": "node scripts/run-fmap-large-test.mjs",
     "test:fmap-browser": "node scripts/run-fmap-browser-tests.mjs",
@@ -35,6 +36,7 @@
   "devDependencies": {
     "@playwright/test": "^1.54.2",
     "@tailwindcss/postcss": "^4.3.3",
+    "@vitest/coverage-v8": "4.1.12",
     "eslint": "^9.35.0",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.28",

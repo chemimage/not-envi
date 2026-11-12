@@ -77,7 +77,17 @@ jobs:
           browser-engine: ${{ matrix.suite == 'desktop-webkit' && 'webkit' || 'chromium' }}
       - name: Unit and controller tests
         if: matrix.suite == 'unit'
-        run: npm run test:unit
+        run: npm run test:coverage
+      - name: Retain measured JavaScript coverage
+        if: matrix.suite == 'unit'
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-coverage
+          path: |
+            coverage/coverage-summary.json
+            coverage/coverage-badge.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Desktop browser and large-file tests
         if: matrix.suite == 'app-browser'
         run: |
