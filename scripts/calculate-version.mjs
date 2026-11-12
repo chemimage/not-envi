@@ -1,10 +1,9 @@
-import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import process from "node:process";
+import { calculateReleaseVersion } from "./release-version.mjs";
 
-const result = JSON.parse(execFileSync("dotnet", ["tool", "run", "dotnet-gitversion", "--", "/output", "json", "/nofetch"], { encoding: "utf8" }));
-const version = result.MajorMinorPatch;
-if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error("GitVersion returned an invalid release version.");
+const result = calculateReleaseVersion();
+const version = result.version;
 
 if (process.argv.includes("--write")) {
   for (const path of ["package.json", "package-lock.json"]) {
@@ -29,5 +28,4 @@ if (process.argv.includes("--github-output")) {
   if (!process.env.GITHUB_OUTPUT) throw new Error("GITHUB_OUTPUT is required.");
   appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
 }
-console.log(JSON.stringify({ version, source: result.VersionSourceSemVer,
-  commitsSinceSource: result.CommitsSinceVersionSource, sha: result.Sha }, null, 2));
+console.log(JSON.stringify(result, null, 2));

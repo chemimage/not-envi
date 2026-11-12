@@ -1,8 +1,8 @@
 name: Calculate release version
-description: Use the same pinned GitVersion configuration locally and in CI.
+description: Calculate the same tag and commit-based release version locally and in CI using Node.
 inputs:
   check-package:
-    description: Require package files and the release tag to match GitVersion.
+    description: Require package files and the release tag to match the calculated version.
     default: 'false'
 outputs:
   version:
@@ -11,11 +11,9 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-dotnet@v4
+    - uses: actions/setup-node@v4
       with:
-        dotnet-version: '10.0.x'
-    - run: dotnet tool restore
-      shell: bash
+        node-version: '22'
     - id: calculate
       run: node scripts/calculate-version.mjs --github-output
       shell: bash
