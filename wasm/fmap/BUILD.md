@@ -7,7 +7,7 @@ compatibility/Float64 numeric output buffer. The generic ABI decodes all nine
 supported ENVI scalar types in either byte order; browser code remains
 responsible for file range I/O.
 
-`fmap_core.c` owns resident pages and numeric extraction; `fmap_page_index.c`
+`fmap_core.c` owns resident pages, numeric extraction and span reductions; `fmap_page_index.c`
 provides the pool-bounded page-ID lookup. `fmap_mappings.c` owns the sparse
 mapping tree, handle index and gap summaries. `fmap_fills.c` owns page-demand
 admission, priorities, overlap deduplication, exact missing-range planning,
@@ -165,3 +165,39 @@ complexity. Raw before/after reports are local ignored outputs under
 `test-results/fmap-{browser,queues}-{before,after}-29.json`; rerun the two
 documented benchmark commands for current measurements. The summary above
 preserves the observed comparison independently of those temporary reports.
+
+
+## Synchronous span reduction ABI
+
+`fmap_reduce_numeric(slot, offset, count, stride, type, littleEndian, asF32,
+bins, min, max)` reads a pinned resident span and checks sample validity.
+`fmap_reduce_scratch_numeric(offset, count, stride, type, littleEndian, asF32,
+bins, min, max, validBytes)` uses the bounded scratch region for assembled
+cross-page values or row slabs. Both return the requested sample count on
+success, including skipped non-finite values, or an ordinary negative status.
+The actual finite sample count is in the result. `bins=0` computes statistics
+only; `bins=1..256` additionally uses caller-provided bin edges. `asF32=1`
+rounds each decoded sample to Float32 to match the existing analysis contract.
+
+`fmap_reduction_ptr()` addresses 261 doubles: min, max, finite count, sum,
+sum-of-squares, then 256 bin counts. These 2,088 bytes are shared synchronous
+scratch, overwritten by the next reduction call; the worker merges them into
+a separate compact per-job accumulator before releasing its page lease or
+yielding. Empty spans report positive/negative infinity for min/max and zero
+count. This is not a job handle or a persistent pointer. No raw page pointer
+is retained across async I/O, memory growth, cache release or cancellation.
+
+The client uses one exact uint8 frequency-table pass, then rebins the 256
+counts to observed edges. Other types use a range pass followed by a second
+source pass. `reduceBandWindow()` returns compact bins and moments, not a
+raster, and checks generation, root mapping lifetime, cancellation and per-source
+admission through the existing request path. Optional masks use admitted byte
+snapshots and bounded transport chunks. Returned counts are Uint32 and requests
+above that count capacity are rejected. Requested windows use the existing
+origin-clamping convention; padded samples outside the source are excluded from
+the reduction (they are not measured zeros).
+
+See [the reduction study](../../docs/fmap-reductions.md) for the fptr/span
+boundary, measured default-enablement decision, reproducible benchmark and
+remaining streaming/shared-budget boundaries. This ABI does not add SIMD or
+TIFF codecs and does not establish a whole-tab memory quota.
