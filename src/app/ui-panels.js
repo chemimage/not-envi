@@ -264,17 +264,22 @@ export function createUIPanels(deps) {
     if (nextMode !== THREE_BAND_DISPLAY_MODE_GRAY && prevMode === THREE_BAND_DISPLAY_MODE_GRAY) {
       ds.displayAdjustColor = resolveThreeBandAdjustColorForBand(nextMode, ds.activeBand);
     }
-    ds.lastRaster = null;
-    ds.lastCompositeRaster = null;
+    const reorderOnly = prevMode !== THREE_BAND_DISPLAY_MODE_GRAY && nextMode !== THREE_BAND_DISPLAY_MODE_GRAY;
+    if (!reorderOnly) {
+      ds.lastRaster = null;
+      ds.lastCompositeRaster = null;
+    }
     if (ds.thumb) {
       ds.thumb.ready = false;
       ds.thumb.base = null;
       ds.thumb.buildKey = null;
       ds.thumb.buildPendingKey = null;
     }
-    for (let b = 0; b < 3; b += 1) requestWholeStatsIfNeeded(ds, b, { force: true });
+    if (!reorderOnly) {
+      for (let b = 0; b < 3; b += 1) requestWholeStatsIfNeeded(ds, b);
+    }
     updateDisplayUI(true, { skipStatsRequest: true });
-    render();
+    render({ reuseRaster: reorderOnly });
   }
 
   function formatDisplayRangeInput(v) {

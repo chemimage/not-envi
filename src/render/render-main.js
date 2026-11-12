@@ -209,24 +209,53 @@ export function createRenderer(deps) {
     else ds.__panelForcedFullRenderKeys.delete(slot);
   }
 
-  async function getOrStartPanelRead(ds, panelSlot, requestKey, loader) {
+  function panelReadKey(requestKey) {
+    // RGB and BGR read identical source bands; only presentation order differs.
+    return requestKey?.replace(/^color:(?:rgb|bgr)\|/, "color|");
+  }
+
+  function isPanelReadCurrent(ds, panelSlot, requestKey) {
+    return panelReadKey(getPanelRequestKey(ds, panelSlot)) === panelReadKey(requestKey);
+  }
+
+  function orderComposite(composite, mode) {
+    return composite ? { ...composite, mode, channelBands: resolveThreeBandChannelOrder(mode) } : null;
+  }
+
+  function reusableComposite(ds, panelSlot, width, height) {
+    const composite = ds.lastCompositeRastersByPanel?.get(panelSlot) || ds.lastCompositeRaster;
+    return isStableCompositeRaster(composite)
+      && composite.renderKey === buildViewportRenderKey(ds, panelSlot, width, height)
+      ? composite : null;
+  }
+
+  async function getOrStartPanelRead(ds, panelSlot, requestKey, loader, onPartial) {
     const slot = Number(panelSlot) || 1;
     const inflightMap = getPanelInFlightMap(ds);
     const existing = inflightMap.get(slot);
-    if (existing && existing.requestKey === requestKey && existing.promise) {
+    const readKey = panelReadKey(requestKey);
+    if (existing && existing.requestKey === readKey && existing.promise) {
+      // A new presentation owns future progress and can immediately recolor
+      // the latest partial without restarting the underlying file read.
+      existing.onPartial = onPartial;
+      if (existing.partial && onPartial) await onPartial(existing.partial);
       return existing.promise;
     }
-    let promise;
-    try {
-      promise = Promise.resolve(loader());
-    } catch (err) {
-      promise = Promise.reject(err);
-    }
     const entry = {
-      requestKey,
-      promise
+      requestKey: readKey,
+      onPartial,
+      partial: null,
+      promise: null
     };
     inflightMap.set(slot, entry);
+    try {
+      entry.promise = Promise.resolve(loader(async (partial) => {
+        entry.partial = partial;
+        await entry.onPartial?.(partial);
+      }));
+    } catch (err) {
+      entry.promise = Promise.reject(err);
+    }
     try {
       return await entry.promise;
     } finally {
@@ -547,6 +576,7 @@ export function createRenderer(deps) {
 
   async function readCompositeRaster(ds, eff, viewportW, viewportH, options = null) {
     const mode = getThreeBandDisplayMode(ds);
+    const viewportRenderKey = buildViewportRenderKey(ds, Number(ds.__renderPanelSlot) || 1, viewportW, viewportH);
     const sourceBands = [0, 1, 2];
     const channelBands = resolveThreeBandChannelOrder(mode);
     let rasters = null;
@@ -641,7 +671,7 @@ export function createRenderer(deps) {
       rasterByBand,
       partial: rasters.some((raster) => !!raster?.partial),
       approximate: rasters.some((raster) => !!raster?.approximate),
-      renderKey: rasters.find((raster) => raster?.renderKey)?.renderKey || null,
+      renderKey: viewportRenderKey,
       refineFactor: Math.max(1, ...rasters.map((raster) => Number(raster?.refineFactor) || 1))
     };
   }
@@ -770,7 +800,8 @@ export function createRenderer(deps) {
     const reuse = !!opts.reuseRaster;
     let raster = null;
     let compositeRaster = null;
-    const reuseComposite = reuse && ds.lastCompositeRaster && ds.lastCompositeRaster.mode === colorRenderMode;
+    const cachedComposite = reuse ? reusableComposite(ds, panelSlot, previewViewport.w, previewViewport.h) : null;
+    const reuseComposite = !!cachedComposite;
     const reuseGray = reuse && ds.lastRaster && ds.lastRaster.band === band;
     const needsFreshRaster = colorMode ? !reuseComposite : !reuseGray;
     if (
@@ -792,18 +823,19 @@ export function createRenderer(deps) {
     }
     if (colorMode) {
       if (reuseComposite) {
-        compositeRaster = ds.lastCompositeRaster;
+        compositeRaster = orderComposite(cachedComposite, colorRenderMode);
       } else {
-        compositeRaster = await getOrStartPanelRead(ds, panelSlot, requestKey, () => readCompositeRaster(ds, eff, els.cpuCanvas.width, els.cpuCanvas.height, {
-          cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
+        compositeRaster = await getOrStartPanelRead(ds, panelSlot, requestKey, (publish) => readCompositeRaster(ds, eff, els.cpuCanvas.width, els.cpuCanvas.height, {
+          cancelled: () => !isPanelReadCurrent(ds, panelSlot, requestKey),
           priority: "foreground",
-          onPartial: async (partialCompositeRaster) => {
-            await presentPartialComposite(ds, partialCompositeRaster, compositionJob, current, (partialCanvas) => {
-              updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, previewViewport);
-              drawCanvasToViewport(previewCtx, partialCanvas, previewViewport, false);
-            });
-          }
-        }));
+          onPartial: publish
+        }), async (partialCompositeRaster) => {
+          await presentPartialComposite(ds, orderComposite(partialCompositeRaster, colorRenderMode), compositionJob, current, (partialCanvas) => {
+            updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, previewViewport);
+            drawCanvasToViewport(previewCtx, partialCanvas, previewViewport, false);
+          });
+        });
+        compositeRaster = orderComposite(compositeRaster, colorRenderMode);
       }
       if (!compositeRaster || !isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
       raster = compositeRaster.rasterByBand.get(band) || compositeRaster.rasterByBand.get(0) || null;
@@ -961,16 +993,18 @@ export function createRenderer(deps) {
             let raster = null;
             let compositeRaster = null;
             if (colorMode) {
-              compositeRaster = await getOrStartPanelRead(ds, panelSlot, requestKey, () => readCompositeRaster(ds, eff, viewport.w, viewport.h, {
-                cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
+              const cached = opts.reuseRaster ? reusableComposite(ds, panelSlot, viewport.w, viewport.h) : null;
+              compositeRaster = cached || await getOrStartPanelRead(ds, panelSlot, requestKey, (publish) => readCompositeRaster(ds, eff, viewport.w, viewport.h, {
+                cancelled: () => !isPanelReadCurrent(ds, panelSlot, requestKey),
                 priority: "foreground",
-                onPartial: async (partialCompositeRaster) => {
-                  await presentPartialComposite(ds, partialCompositeRaster, compositionJob, current, (partialCanvas) => {
-                    updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, viewport);
-                    drawCanvasToViewport(cpuCtx, partialCanvas, viewport, false);
-                  });
-                }
-              }));
+                onPartial: publish
+              }), async (partialCompositeRaster) => {
+                await presentPartialComposite(ds, orderComposite(partialCompositeRaster, colorRenderMode), compositionJob, current, (partialCanvas) => {
+                  updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, viewport);
+                  drawCanvasToViewport(cpuCtx, partialCanvas, viewport, false);
+                });
+              });
+              compositeRaster = orderComposite(compositeRaster, colorRenderMode);
               if (!compositeRaster || !isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
               raster = compositeRaster.rasterByBand.get(band) || compositeRaster.rasterByBand.get(0) || null;
             } else {

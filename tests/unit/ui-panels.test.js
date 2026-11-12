@@ -115,15 +115,22 @@ describe("ui-panels", () => {
     expect(ds.displayMode).toBe("rgb");
     expect(deps.els.bandColorMode.textContent).toBe("RGB");
 
+    const composite = { rasterByBand: new Map() };
+    ds.lastCompositeRaster = composite;
+    const statsRequests = onNeedWholeStats.mock.calls.length;
     deps.els.bandColorMode.click();
     expect(ds.displayMode).toBe("bgr");
     expect(deps.els.bandColorMode.textContent).toBe("BGR");
+    expect(ds.lastCompositeRaster).toBe(composite);
+    expect(render).toHaveBeenLastCalledWith({ reuseRaster: true });
+    expect(onNeedWholeStats).toHaveBeenCalledTimes(statsRequests);
 
     deps.els.bandColorMode.click();
     expect(ds.displayMode).toBe("gray");
     expect(deps.els.bandColorMode.textContent).toBe("Gray");
     expect(render).toHaveBeenCalledTimes(3);
-    expect(onNeedWholeStats).toHaveBeenCalledTimes(9);
+    expect(ds.lastCompositeRaster).toBeNull();
+    expect(onNeedWholeStats).toHaveBeenCalledTimes(4);
   });
 
   test("display panel channel button cycles RGB adjustments in color mode", () => {

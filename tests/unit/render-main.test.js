@@ -53,6 +53,31 @@ function makeDeps(overrides = {}) {
 }
 
 describe("render-main", () => {
+  test.each([false, true])("reorders cached color planes but rereads after the viewport moves (pyramid=%s)", async (pyramid) => {
+    const ds = { id: "reorder", activeBand: 0, displayMode: "rgb",
+      view: { x: 0, y: 0, scale: 1 }, meta: { samples: 64, lines: 32, bands: 3, interleave: "bsq" },
+      ds: {}, bandStatsWhole: new Map() };
+    const readBandWindow = vi.fn(async (_meta, _src, band, _x, _y, w, h) => new Float32Array(w * h).fill(band + 1));
+    const tryRasterFromPyramid = vi.fn(async (_ds, band) => pyramid
+      ? { band, dataF32: new Float32Array(64 * 32).fill(band + 1), w: 64, h: 32, source: "pyramid" }
+      : null);
+    const sourceRead = pyramid ? tryRasterFromPyramid : readBandWindow;
+    const buildColorCanvas = vi.fn(() => ({ width: 64, height: 32 }));
+    const renderer = createRenderer(makeDeps({ getActive: () => ds, readBandWindow, tryRasterFromPyramid, buildColorCanvas,
+      drawCanvasToViewport: vi.fn() }));
+    await renderer.render();
+    expect(sourceRead).toHaveBeenCalledTimes(3);
+    const planes = ds.lastCompositeRaster.rasterByBand;
+    ds.displayMode = "bgr";
+    await renderer.render({ reuseRaster: true });
+    expect(sourceRead).toHaveBeenCalledTimes(3);
+    expect(ds.lastCompositeRaster.rasterByBand).toBe(planes);
+    expect(buildColorCanvas.mock.calls.at(-1)[0].map((raster) => raster.dataF32[0])).toEqual([3, 2, 1]);
+    ds.view.x = 1;
+    await renderer.render({ reuseRaster: true });
+    expect(sourceRead).toHaveBeenCalledTimes(6);
+  });
+
   test("closes an obsolete worker bitmap without presenting it after the dataset closes", async () => {
     let active = { id: "worker-view", activeBand: 0, displayMode: "rgb",
       view: { x: 0, y: 0, scale: 1 }, meta: { samples: 8, lines: 4, bands: 3, interleave: "bsq" },
@@ -909,7 +934,7 @@ describe("render-main", () => {
     expect(drawCanvasToViewport).toHaveBeenCalledTimes(2);
   });
 
-  test("render keeps progressive TIFF panel state across a same-view rerender", async () => {
+  test.each(["rgb", "bgr"])("render keeps progressive TIFF data across a same-view %s rerender", async (nextMode) => {
     let firstCancelled = null;
     let releaseFirstComposite = null;
     let compositeCalls = 0;
@@ -990,9 +1015,9 @@ describe("render-main", () => {
     expect(typeof firstCancelled).toBe("function");
     expect(dsTiff.lastScreenFrame).toBeTruthy();
 
+    dsTiff.displayMode = nextMode;
     const secondRender = renderer.render();
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(typeof releaseFirstComposite).toBe("function"));
 
     expect(firstCancelled()).toBe(false);
     expect(typeof releaseFirstComposite).toBe("function");
@@ -1001,6 +1026,13 @@ describe("render-main", () => {
     releaseFirstComposite();
     await Promise.all([firstRender, secondRender]);
     expect(dsTiff.ds.readCompositeWindow).toHaveBeenCalledTimes(1);
+    const channels = deps.buildColorCanvas.mock.calls.at(-1)[0];
+    expect(channels.map((raster) => raster.dataF32[0])).toEqual(nextMode === "bgr" ? [3, 2, 1] : [1, 2, 3]);
+
+    const calls = dsTiff.ds.readCompositeWindow.mock.calls.length;
+    dsTiff.displayMode = nextMode === "rgb" ? "bgr" : "rgb";
+    await renderer.render({ reuseRaster: true });
+    expect(dsTiff.ds.readCompositeWindow).toHaveBeenCalledTimes(calls);
   });
 
   test("render does not collapse nearby panel views into the same in-flight TIFF request", async () => {
