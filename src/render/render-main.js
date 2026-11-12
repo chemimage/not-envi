@@ -26,6 +26,7 @@ function isAbortError(error) {
 }
 
 export function createRenderer(deps) {
+  let compositionAbort = null;
   const {
     state,
     shouldDeferRender,
@@ -524,11 +525,24 @@ export function createRenderer(deps) {
     });
   }
 
-  function buildCompositeCanvas(ds, compositeRaster, opts = null) {
+  function buildCompositeCanvas(ds, compositeRaster, opts = null, job = {}) {
     if (!compositeRaster) return null;
     const channelRasters = compositeRaster.channelBands.map((channelBand) => compositeRaster.rasterByBand.get(channelBand));
     const channelParams = buildColorChannelParams(ds, compositeRaster);
-    return buildColorCanvas(channelRasters, channelParams, opts || undefined);
+    return buildColorCanvas(channelRasters, channelParams, opts || undefined, job);
+  }
+
+  async function presentPartialComposite(ds, raster, job, current, present) {
+    if (!current()) return;
+    let canvas;
+    try {
+      canvas = await buildCompositeCanvas(ds, raster, { transparentNoData: true }, job);
+      if (canvas && current()) present(canvas);
+    } catch (error) {
+      // A shared file read may outlive one render's display request. Cancelling
+      // that display must not reject the read reused by its replacement.
+      if (!isAbortError(error)) throw error;
+    } finally { canvas?.close?.(); }
   }
 
   async function readCompositeRaster(ds, eff, viewportW, viewportH, options = null) {
@@ -725,7 +739,7 @@ export function createRenderer(deps) {
   }
 
   async function renderSinglePanel(ds, panel, opts = {}) {
-    state.renderSeq += 1;
+    const seq = ++state.renderSeq;
     resizeCanvases();
     const dpr = window.devicePixelRatio || 1;
     const colorMode = isThreeBandColorMode(ds);
@@ -748,6 +762,8 @@ export function createRenderer(deps) {
     const previewCtx = els.cpuCanvas.getContext("2d", { alpha: false });
     const settings = getBandSettings(ds, band);
     const requestKey = buildPanelRequestKey(ds, panelSlot, modeKey, previewViewport.w, previewViewport.h);
+    const current = () => seq === state.renderSeq && isPanelRequestCurrent(ds, panelSlot, requestKey);
+    const compositionJob = { key: `${ds.id}:${panelSlot}`, signal: opts.compositionSignal };
     setPanelRequestKey(ds, panelSlot, requestKey);
     if (typeof ensureDatasetPreviewOverview === "function") ensureDatasetPreviewOverview(ds);
 
@@ -782,11 +798,10 @@ export function createRenderer(deps) {
           cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
           priority: "foreground",
           onPartial: async (partialCompositeRaster) => {
-            if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
-            const partialCanvas = buildCompositeCanvas(ds, partialCompositeRaster, { transparentNoData: true });
-            if (!partialCanvas) return;
-            updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, previewViewport);
-            drawCanvasToViewport(previewCtx, partialCanvas, previewViewport, false);
+            await presentPartialComposite(ds, partialCompositeRaster, compositionJob, current, (partialCanvas) => {
+              updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, previewViewport);
+              drawCanvasToViewport(previewCtx, partialCanvas, previewViewport, false);
+            });
           }
         }));
       }
@@ -823,14 +838,20 @@ export function createRenderer(deps) {
     };
     syncRangeInputsFromSettings(ds);
 
+    let renderedCanvas = null;
     try {
       const t0 = now();
       if (els.gpuCanvas?.style) els.gpuCanvas.style.display = useGPU ? "block" : "none";
       if (els.cpuCanvas?.style) els.cpuCanvas.style.display = useGPU ? "none" : "block";
-      let renderedCanvas = null;
       if (colorMode) {
-        const channelRasters = compositeRaster.channelBands.map((channelBand) => compositeRaster.rasterByBand.get(channelBand));
-        renderedCanvas = cpuRenderColor(channelRasters, buildColorChannelParams(ds, compositeRaster));
+        if (buildColorCanvas) {
+          renderedCanvas = await buildCompositeCanvas(ds, compositeRaster, null, compositionJob);
+          if (!current()) return;
+          drawCanvasToViewport(previewCtx, renderedCanvas, previewViewport, true);
+        } else {
+          const channelRasters = compositeRaster.channelBands.map((channelBand) => compositeRaster.rasterByBand.get(channelBand));
+          renderedCanvas = cpuRenderColor(channelRasters, buildColorChannelParams(ds, compositeRaster));
+        }
       } else if (useGPU) {
         gpuRender(raster.dataF32, raster.w, raster.h, params);
         renderedCanvas = els.gpuCanvas;
@@ -870,6 +891,7 @@ export function createRenderer(deps) {
       if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
       setStatus("render error", "err");
     } finally {
+      renderedCanvas?.close?.();
       ds.__renderPanelSlot = null;
     }
   }
@@ -923,6 +945,7 @@ export function createRenderer(deps) {
         await withPanelView(ds, panel, async () => {
           const panelSlot = Number(panel.slot) || 1;
           ds.__renderPanelSlot = panelSlot;
+          let renderedCanvas = null;
           try {
             if (typeof ensureDatasetPreviewOverview === "function") ensureDatasetPreviewOverview(ds);
             clampView(panel.slot, ds);
@@ -931,6 +954,8 @@ export function createRenderer(deps) {
             const colorRenderMode = colorMode ? getThreeBandDisplayMode(ds) : null;
             const modeKey = renderModeKey(ds, band, colorMode, colorRenderMode);
             const requestKey = buildPanelRequestKey(ds, panelSlot, modeKey, viewport.w, viewport.h);
+            const current = () => seq === state.renderSeq && isPanelRequestCurrent(ds, panelSlot, requestKey);
+            const compositionJob = { key: `${ds.id}:${panelSlot}`, signal: opts.compositionSignal };
             setPanelRequestKey(ds, panelSlot, requestKey);
 
             let raster = null;
@@ -940,11 +965,10 @@ export function createRenderer(deps) {
                 cancelled: () => !isPanelRequestCurrent(ds, panelSlot, requestKey),
                 priority: "foreground",
                 onPartial: async (partialCompositeRaster) => {
-                  if (!isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
-                  const partialCanvas = buildCompositeCanvas(ds, partialCompositeRaster, { transparentNoData: true });
-                  if (!partialCanvas) return;
-                  updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, viewport);
-                  drawCanvasToViewport(cpuCtx, partialCanvas, viewport, false);
+                  await presentPartialComposite(ds, partialCompositeRaster, compositionJob, current, (partialCanvas) => {
+                    updateScreenPreviewCache(ds, panelSlot, modeKey, eff, partialCanvas, viewport);
+                    drawCanvasToViewport(cpuCtx, partialCanvas, viewport, false);
+                  });
                 }
               }));
               if (!compositeRaster || !isPanelRequestCurrent(ds, panelSlot, requestKey)) return;
@@ -970,9 +994,9 @@ export function createRenderer(deps) {
               contrast: clamp(settings.contrast ?? 1, 0.1, 3.0)
             };
 
-            let renderedCanvas = null;
             if (colorMode) {
-              renderedCanvas = buildCompositeCanvas(ds, compositeRaster);
+              renderedCanvas = await buildCompositeCanvas(ds, compositeRaster, null, compositionJob);
+              if (!current()) return;
             } else {
               renderedCanvas = buildGrayCanvas(raster.dataF32, raster.w, raster.h, params);
             }
@@ -998,6 +1022,7 @@ export function createRenderer(deps) {
               needsRefineAny = true;
             }
           } finally {
+            renderedCanvas?.close?.();
             ds.__renderPanelSlot = null;
           }
         });
@@ -1179,8 +1204,12 @@ export function createRenderer(deps) {
 
   async function renderView(opts = {}) {
     if (shouldDeferRender?.()) { onDeferredRender?.(); return; }
+    compositionAbort?.abort();
+    compositionAbort = new AbortController();
+    opts = { ...opts, compositionSignal: compositionAbort.signal };
     const visible = listVisiblePanels();
     if (!visible.length) {
+      state.renderSeq += 1;
       clearColorComposition?.();
       resizeCanvases();
       clearBaseCanvases(els, { clearOverlay: true });
