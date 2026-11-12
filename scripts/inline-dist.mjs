@@ -7,6 +7,14 @@ let html = readFileSync(htmlPath, "utf8");
 
 const fileText = (rel) => readFileSync(path.join(distDir, rel), "utf8");
 
+// HTML favicons are emitted as files even with assetsInlineLimit enabled.
+// Embed them before removing the generated asset directory.
+html = html.replace(/<link\s+[^>]*rel=["']icon["'][^>]*href=["']([^"']+)["'][^>]*>/g, (tag, href) => {
+  if (/^(?:https?:|data:)/.test(href)) return tag;
+  const bytes = readFileSync(path.join(distDir, href.replace(/^\//, "")));
+  return tag.replace(href, `data:image/x-icon;base64,${bytes.toString("base64")}`);
+});
+
 html = html.replace(/<link\s+[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/g, (_m, href) => {
   const rel = href.replace(/^\//, "");
   if (rel.startsWith("http://") || rel.startsWith("https://")) return _m;
