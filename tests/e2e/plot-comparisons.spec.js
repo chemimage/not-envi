@@ -1,12 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-async function loadImage(page) {
+async function loadImage(page, bands = 4) {
   await page.setViewportSize({ width: 1280, height: 850 });
   await page.goto("/");
-  const data = Buffer.alloc(100 * 80 * 4 * 4);
-  for (let i = 0; i < 32000; i++) data.writeFloatLE(i % 100 + Math.floor(i % 8000 / 100) + Math.floor(i / 8000) * 100, i * 4);
+  const data = Buffer.alloc(100 * 80 * bands * 4);
+  for (let i = 0; i < 8000 * bands; i++) data.writeFloatLE(i % 100 + Math.floor(i % 8000 / 100) + Math.floor(i / 8000) * 100, i * 4);
   await page.locator("#filePicker").setInputFiles([
-    { name: "comparison.hdr", mimeType: "text/plain", buffer: Buffer.from("ENVI\nsamples = 100\nlines = 80\nbands = 4\ndata type = 4\ninterleave = bsq\nbyte order = 0\npixel size = {2, 3}\nunits = um\n") },
+    { name: "comparison.hdr", mimeType: "text/plain", buffer: Buffer.from(`ENVI\nsamples = 100\nlines = 80\nbands = ${bands}\ndata type = 4\ninterleave = bsq\nbyte order = 0\npixel size = {2, 3}\nunits = um\n`) },
     { name: "comparison.raw", mimeType: "application/octet-stream", buffer: data }
   ]);
   await expect(page.locator("#displayDock")).toBeVisible();
@@ -84,9 +84,9 @@ test("color-owned line windows update in place and toggle all stacked / all spli
   expect(errors).toEqual([]);
 });
 
-for (const kind of ["spectrum", "histogram"]) {
-  test(`${kind} follows selection in one stable panel and emphasizes the selected stacked result`, async ({ page }, testInfo) => {
-    await loadImage(page);
+for (const [kind, bands] of [["spectrum", 4], ["spectrum", 24], ["histogram", 4]]) {
+  test(`${bands}-band ${kind} follows selection in one stable panel and emphasizes the selected stacked result`, async ({ page }, testInfo) => {
+    await loadImage(page, bands);
     const original = page.locator(kind === "spectrum" ? "#specPanel" : "#analysisHistPanel");
     for (let i = 0; i < 2; i++) {
       if (i) {
@@ -114,8 +114,10 @@ for (const kind of ["spectrum", "histogram"]) {
       await expect(together.locator('.plot-legend-entry[data-selected="true"] svg rect')).toHaveAttribute("fill-opacity", "1");
       await together.getByRole("combobox", { name: "Histogram scale" }).selectOption("percentage");
     }
-    const selectedMark = kind === "histogram" ? "rect" : "line";
-    const opacityAttr = kind === "histogram" ? "fill-opacity" : "stroke-opacity";
+    const bars = kind === "histogram" || bands <= 20;
+    const selectedMark = bars ? "rect" : "line";
+    const opacityAttr = bars ? "fill-opacity" : "stroke-opacity";
+    await expect(together.locator(`.plot-legend-entry svg ${selectedMark}`)).toHaveCount(2);
     // Changing image selection reuses calculated arrays and the same panel.
     await page.mouse.click(330, 280);
     await expect(together.locator('.plot-legend-entry[data-selected="true"]')).toContainText("Region 1");

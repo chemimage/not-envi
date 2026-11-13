@@ -160,8 +160,9 @@ export function createPlotComparisons({ container, floatingWindows }) {
         row.dataset.selected = String(active);
         const swatch = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         swatch.setAttribute("viewBox", "0 0 28 8"); swatch.setAttribute("aria-hidden", "true");
-        const mark = document.createElementNS("http://www.w3.org/2000/svg", kind === "histogram" ? "rect" : "line");
-        const attrs = kind === "histogram"
+        const bars = kind === "histogram" || entry.plotStyle === "bar";
+        const mark = document.createElementNS("http://www.w3.org/2000/svg", bars ? "rect" : "line");
+        const attrs = bars
           ? { x: 0, y: 1, width: 28, height: 6, fill: entry.color, "fill-opacity": opacity }
           : { x1: 0, y1: 4, x2: 28, y2: 4, stroke: entry.color, "stroke-width": 2,
             "stroke-opacity": opacity };

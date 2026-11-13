@@ -22,7 +22,7 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
       });
       points.push([data.min + data.values.length * width, 0]);
     } else {
-      const step = Math.max(1, Math.ceil(data.values.length / 2000));
+      const step = entry.plotStyle === "bar" ? 1 : Math.max(1, Math.ceil(data.values.length / 2000));
       for (let i = 0; i < data.values.length; i += step) {
         let x = data.x?.[i] ?? i;
         if (kind === "line") {
@@ -54,9 +54,21 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
       ? "Source changed. Recalculate its plot to update this chart." : "No finite values in these plots.", rect.width / 2, rect.height / 2);
     return;
   }
+  const barSpectra = entries.filter(entry => entry.kind === "spectrum" && entry.plotStyle === "bar" && entry.status === "ready");
+  const discreteAxis = entries.every(entry => entry.kind === "spectrum" && entry.plotStyle === "bar");
+  let bandGap = 1, bandCenters = [];
+  if (barSpectra.length) {
+    const centers = [...new Set(series.filter(trace => barSpectra.includes(trace.entry))
+      .flatMap(trace => trace.points.map(point => point[0])).filter(Number.isFinite))].sort((a, b) => a - b);
+    const gaps = centers.slice(1).map((x, i) => x - centers[i]).filter(gap => gap > 0);
+    bandCenters = centers;
+    bandGap = gaps.length ? Math.min(...gaps) : 1;
+    xmin -= bandGap / 2; xmax += bandGap / 2;
+    ymin = Math.min(0, ymin); ymax = Math.max(0, ymax);
+  }
   if (xmin === xmax) { xmin -= 0.5; xmax += 0.5; }
   const ypad = (ymax - ymin) * 0.06 || 1;
-  ymin = entries[0].kind === "histogram" ? 0 : ymin - ypad;
+  ymin = entries[0].kind === "histogram" || (barSpectra.length && ymin === 0) ? 0 : ymin - ypad;
   ymax += ypad;
   const left = 62, top = 12, width = Math.max(1, rect.width - 80), height = Math.max(1, rect.height - 60);
   const px = (x) => left + (x - xmin) / (xmax - xmin) * width;
@@ -66,14 +78,27 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
     const f = i / 4;
     ctx.strokeStyle = "rgba(148,163,184,0.18)";
     ctx.beginPath();
-    ctx.moveTo(left + f * width, top); ctx.lineTo(left + f * width, top + height);
+    if (!discreteAxis) { ctx.moveTo(left + f * width, top); ctx.lineTo(left + f * width, top + height); }
     ctx.moveTo(left, top + f * height); ctx.lineTo(left + width, top + f * height);
     ctx.stroke();
     ctx.fillStyle = "#e5e7eb";
     ctx.textAlign = "center";
-    ctx.fillText(number(xmin + f * (xmax - xmin)), left + f * width, top + height + 18);
+    if (!discreteAxis) ctx.fillText(number(xmin + f * (xmax - xmin)), left + f * width, top + height + 18);
     ctx.textAlign = "right";
     ctx.fillText(number(ymax - f * (ymax - ymin)), left - 7, top + f * height + 4);
+  }
+  if (discreteAxis) {
+    ctx.beginPath(); ctx.strokeStyle = "rgba(148,163,184,0.18)";
+    ctx.textAlign = "center";
+    let labelRight = -Infinity;
+    for (const x of bandCenters) {
+      ctx.moveTo(px(x), top); ctx.lineTo(px(x), top + height);
+      const label = number(x), halfWidth = label.length * 3.5;
+      if (px(x) - halfWidth > labelRight + 8) {
+        ctx.fillText(label, px(x), top + height + 18); labelRight = px(x) + halfWidth;
+      }
+    }
+    ctx.stroke();
   }
   const first = entries[0];
   const axis = first.kind === "line" ? (distance === "relative" ? "Line length (%)" : `Distance (${distance === "um" ? "µm" : "px"})`)
@@ -84,6 +109,20 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
   ctx.beginPath(); ctx.rect(left, top, width, height); ctx.clip();
   for (const { entry, points } of series) {
     const alpha = selectedId !== undefined ? (entry.id === selectedId ? 1 : 0.4) : (entry.kind === "histogram" && entries.length > 1 ? 0.4 : 1);
+    if (entry.kind === "spectrum" && entry.plotStyle === "bar") {
+      if (entry.status !== "ready") continue;
+      const groupWidth = (px(xmin + bandGap) - px(xmin)) * 0.78;
+      const slotWidth = groupWidth / barSpectra.length;
+      const slot = barSpectra.indexOf(entry); // Stable catalog order, not paint order.
+      ctx.save(); ctx.fillStyle = entry.color; ctx.globalAlpha = alpha;
+      for (const [x, y] of points) {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        ctx.fillRect(px(x) - groupWidth / 2 + slot * slotWidth + slotWidth * 0.05,
+          py(Math.max(0, y)), slotWidth * 0.9, Math.abs(py(y) - py(0)));
+      }
+      ctx.restore();
+      continue;
+    }
     if (entry.kind === "histogram") {
       const data = entry.data;
       const binWidth = data.binWidth || (data.max - data.min) / Math.max(1, data.values.length) || 1;

@@ -50,3 +50,22 @@ test("selected histogram and spectrum marks are opaque and drawn after faded res
       ? [["blue", 0.4], ["blue", 0.4], ["red", 1], ["red", 1]] : [["blue", 0.4], ["red", 1]]);
   }
 });
+
+test("discrete spectra use adjacent bars with stable slots, zero baseline and selected opacity", () => {
+  const { bars, canvas, ctx } = fixture();
+  const entries = ["red", "blue"].map((color, i) => ({ id: color, kind: "spectrum", plotStyle: "bar", color, status: "ready",
+    xLabel: "Band", data: { values: [2 + i, -1 - i], x: [0, 1] } }));
+  drawComparisonPlot(canvas, entries, { selectedId: "red" });
+  const red = bars.filter(b => b.color === "red"), blue = bars.filter(b => b.color === "blue");
+  expect(red).toHaveLength(2); expect(blue).toHaveLength(2);
+  expect(red[0].x + red[0].w).toBeLessThan(blue[0].x);
+  expect(red[1].x + red[1].w).toBeLessThan(blue[1].x);
+  expect(red[0].y + red[0].h).toBeCloseTo(red[1].y); // Positive/negative bars meet at zero.
+  expect(red.every(b => b.alpha === 1)).toBe(true);
+  expect(blue.every(b => b.alpha === 0.4)).toBe(true);
+  expect(ctx.stroke).toHaveBeenCalledTimes(6); // Horizontal grid plus band-centered grid.
+  const slots = bars.map(b => [b.color, b.x]).sort();
+  bars.length = 0;
+  drawComparisonPlot(canvas, entries, { selectedId: "blue" });
+  expect(bars.map(b => [b.color, b.x]).sort()).toEqual(slots);
+});

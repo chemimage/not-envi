@@ -15,6 +15,8 @@ bars. In stacked histogram/spectrum views, unselected results are translucent
 and the selected result is opaque, labeled selected, and drawn last. The single
 result's title uses its source color; combined titles are plain. The legend
 retains source labels and its trash action deletes that source.
+Discrete spectra retain bar mode in both views: stacked results use grouped,
+side-by-side bars at each band. Continuous spectra retain their line rendering.
 
 The first result opens in its detailed native panel. Once retained comparisons
 are needed, the shared panel inherits that location and keeps one window

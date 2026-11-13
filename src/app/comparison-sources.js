@@ -61,11 +61,11 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
     });
   }
 
-  function spectrum({ ds, ix, iy, xVals, yVals, opts, source: metadata }) {
+  function spectrum({ ds, ix, iy, xVals, yVals, opts, plotStyle = "line", source: metadata }) {
     const unit = xVals ? resolveSpectralUnit(ds) || "spectral coordinate" : "band index";
     publish("spectrum", ds, opts.plotSlot || 1, opts.plotItems || [],
       metadata.type === "area" ? null : { x: ix, y: iy }, {
-        compatibility: `spectrum:${unit}`, color: metadata.color, approximate: metadata.sampleStep > 1,
+        compatibility: `spectrum:${unit}`, color: metadata.color, approximate: metadata.sampleStep > 1, plotStyle,
         xLabel: xVals ? `Spectral coordinate (${unit})` : "Band index",
         data: { values: Float64Array.from(yVals), x: xVals ? Float64Array.from(xVals) : null }
       });

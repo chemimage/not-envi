@@ -52,7 +52,8 @@ export function createPlotGroups({ maxEntries = 48, maxGroups = 12, maxTraces = 
   // stack changes. Incompatible spectral units follow the selected source.
   function present(kind, selectedId, stacked) {
     const id = `plot-${kind}`, previous = groups.get(id);
-    const plots = [...entries.values()].filter(entry => entry.kind === kind);
+    const plots = [...entries.values()].filter(entry => entry.kind === kind)
+      .sort((a, b) => creationOrder.get(a.id) - creationOrder.get(b.id));
     const anchor = entries.get(selectedId) || entries.get(previous?.anchorId) || plots.at(-1);
     if (!anchor) { groups.delete(id); return; }
     if (!previous && groups.size >= maxGroups) throw new Error("Close a chart before opening another.");

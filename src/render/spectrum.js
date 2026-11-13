@@ -291,6 +291,12 @@ export function createSpectrumController(deps) {
     }
   }
 
+  function useBars(ds, xVals, bandCount) {
+    return shouldUseBarSpectrumPlot(xVals, resolveSpectralUnit(ds), {
+      bandCount, discreteBandCountThreshold: discreteBarMaxBands
+    });
+  }
+
   function drawSpectrumPlot(ds, xVals, yVals, stdVals = null, sampleCount = 0) {
     resizeSpecCanvas();
     const c = els.specCanvas;
@@ -320,10 +326,7 @@ export function createSpectrumController(deps) {
     const ciScale = (Number.isFinite(sampleCount) && sampleCount > 1) ? (1.96 / Math.sqrt(sampleCount)) : 0;
     const useCI = !!(stdVals && stdVals.length && ciScale > 0);
     const unit = resolveSpectralUnit(ds);
-    const useBarPlot = shouldUseBarSpectrumPlot(xVals, unit, {
-      bandCount: yVals.length,
-      discreteBandCountThreshold: discreteBarMaxBands
-    });
+    const useBarPlot = useBars(ds, xVals, yVals.length);
     for (let i = 0; i < yVals.length; i++) {
       const xv = xVals ? xVals[i] : i;
       const yv = yVals[i];
@@ -920,7 +923,8 @@ export function createSpectrumController(deps) {
       specState.xVals = xVals;
       specState.yVals = yVals;
       specState.stdVals = stdVals;
-      onResult?.({ ds, ix, iy, xVals, yVals, opts, source: { ...specState.source } });
+      onResult?.({ ds, ix, iy, xVals, yVals, opts,
+        plotStyle: useBars(ds, xVals, yVals.length) ? "bar" : "line", source: { ...specState.source } });
       const stats = summarizeSpectrum(yVals);
       if (!stats) {
         setSpecFoot("No finite values.");

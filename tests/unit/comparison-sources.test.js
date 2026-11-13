@@ -53,8 +53,9 @@ describe("comparison result provenance", () => {
     const sources = createComparisonSources({ comparisons: { publish }, getDataset: () => ds,
       getPanel: () => null, deleteSources: remove });
     sources.spectrum({ ds, ix: 3, iy: 4, yVals: [1, 2], xVals: null,
-      opts: { plotSlot: 1 }, source: { type: "pixel" } });
+      opts: { plotSlot: 1 }, plotStyle: "bar", source: { type: "pixel" } });
     const entry = publish.mock.calls[0][0];
+    expect(entry.plotStyle).toBe("bar");
     expect(entry.check()).toBe("ready");
     sources.clearPoints(ds.id);
     expect(entry.check()).toBe("deleted");
