@@ -49,7 +49,8 @@ test("color-owned line windows update in place and toggle all stacked / all spli
   await expect(group).toHaveAttribute("data-trace-count", "3");
   await expect(page.locator('.line-profile-panel:visible')).toHaveCount(0);
   expect(await group.locator(".plot-legend-entry svg line").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("stroke-dasharray")))).toEqual([null, null, null]);
-  await expect(group.locator(".plot-title-trace")).toHaveCount(3);
+  await expect(group.locator(".analysis-hist-title")).toHaveText("Line profile comparison");
+  expect(await group.locator(".analysis-hist-title").evaluate((node) => node.style.color)).toBe("");
   await expect(group.locator('.plot-picker')).toHaveCount(0);
   await expect(group.getByRole("button", { name: /separately$/ })).toHaveCount(0);
   await group.getByRole("combobox", { name: "Distance axis" }).selectOption("relative");

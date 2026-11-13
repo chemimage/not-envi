@@ -126,18 +126,8 @@ export function createPlotComparisons({ container, floatingWindows }) {
       const view = views.get(group.id) || createView(group);
       const entries = group.ids.map((id) => model.entries.get(id)), kind = entries[0].kind;
       const title = `${TITLES[kind]}${entries.length > 1 ? " comparison" : ""}`;
-      view.title.replaceChildren();
-      if (entries.length === 1) {
-        view.title.textContent = title;
-        view.title.style.color = entries[0].color;
-      } else {
-        view.title.style.color = "";
-        view.title.append(document.createTextNode(`${TITLES[kind]} · `));
-        entries.forEach((entry, i) => {
-          const name = element("span", "plot-title-trace", `${i ? " / " : ""}${entry.label.split(" · ")[0]}`);
-          name.style.color = entry.color; view.title.append(name);
-        });
-      }
+      view.title.textContent = title;
+      view.title.style.color = entries.length === 1 ? entries[0].color : "";
       view.panel.setAttribute("aria-label", title); view.panel.dataset.traceCount = entries.length;
       updateToggle(view.control, kind); view.legend.replaceChildren();
       for (const entry of entries) {
