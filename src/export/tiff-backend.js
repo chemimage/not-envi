@@ -1,11 +1,13 @@
 import { encodeTIFF_MultiPage_GrayRaw, encodeTIFF_RGBA8, tiffSampleFormatForEnviType } from "../core/tiff-encoder.js";
 import { encodeEnviBandBytes } from "./envi-backend.js";
+import { encodePyramidalTiff, shouldPyramidTiff } from "./tiff-pyramid.js";
 
 // One RGB image, three planar strips. Preserve numeric samples and bit depth.
 export function encodeRawRgbTiff({ meta, width, height, pages }) {
   if (pages?.length !== 3 || pages.some((page) => page.length !== width * height)) {
     throw new Error("RGB TIFF export requires three equally sized channel planes.");
   }
+  if (shouldPyramidTiff(width, height)) return encodePyramidalTiff({ meta, width, height, pages, composite: true });
   const count = 11;
   const extra = 8 + 2 + count * 12 + 4;
   const pixelOffset = extra + 36;
@@ -40,6 +42,7 @@ export function encodeRawRgbTiff({ meta, width, height, pages }) {
 }
 
 export function encodeRenderedTiff({ imageData }) {
+  if (shouldPyramidTiff(imageData.width, imageData.height)) return encodePyramidalTiff({ width: imageData.width, height: imageData.height, pages: [imageData], rendered: true });
   return encodeTIFF_RGBA8(imageData);
 }
 
@@ -56,6 +59,7 @@ export function encodeRenderedMultipageTiff({ pages }) {
     }
     return new Uint8Array(page.data.buffer, page.data.byteOffset, page.data.byteLength);
   });
+  if (shouldPyramidTiff(width, height)) return encodePyramidalTiff({ width, height, pages, rendered: true });
 
   if (pixelPages.length === 1) {
     return encodeRenderedTiff({ imageData: pages[0] });
@@ -126,6 +130,8 @@ export function encodeRawMultipageTiff({ meta, width, height, pages }) {
   if (!pages || !pages.length) {
     throw new Error("No pages provided for raw TIFF export.");
   }
+
+  if (shouldPyramidTiff(width, height)) return encodePyramidalTiff({ meta, width, height, pages });
 
   return encodeTIFF_MultiPage_GrayRaw(meta, width, height, pages);
 }
