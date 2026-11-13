@@ -12,6 +12,49 @@ async function loadImage(page, bands = 2) {
   await expect(page.locator("#displayDock")).toBeVisible();
 }
 
+test("point crosshairs belong to colors and survive switching, new selections, and plot close", async ({ page }) => {
+  await loadImage(page);
+  const toolbar = page.locator("#selectionActions");
+  const choose = async name => {
+    await page.locator("#drawColorPreview").click();
+    await page.getByRole("button", { name: `${name} swatch`, exact: true }).click();
+  };
+  const redPixels = () => page.locator("#overlayCanvas").evaluate(canvas => {
+    const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    const positions = [];
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] > 100 && pixels[i] > pixels[i + 1] * 3 && pixels[i] > pixels[i + 2] * 3 && pixels[i + 3] > 100) positions.push(i / 4);
+    }
+    return positions;
+  });
+  await page.mouse.click(550, 340);
+  await expect(toolbar).toBeVisible();
+  const originalPosition = await toolbar.boundingBox();
+  await expect.poll(async () => (await redPixels()).length).toBeGreaterThan(5);
+  const originalPixels = await redPixels();
+  await page.getByRole("button", { name: "Spectrum", exact: true }).click();
+  await expect(page.locator("#specFoot")).toContainText("Mean");
+  await page.locator("#btnSpecClose").click();
+  expect(await redPixels()).toEqual(originalPixels);
+  await choose("Green");
+  await expect(toolbar).toBeHidden();
+  expect(await redPixels()).toEqual(originalPixels);
+  await page.mouse.click(700, 420);
+  await expect(toolbar).toBeVisible();
+  expect(await redPixels()).toEqual(originalPixels);
+  await page.getByRole("button", { name: "Spectrum", exact: true }).click();
+  await choose("Red");
+  await expect(toolbar).toBeVisible();
+  const restoredPosition = await toolbar.boundingBox();
+  expect(restoredPosition.x).toBe(originalPosition.x);
+  expect(restoredPosition.y).toBe(originalPosition.y);
+  expect(await redPixels()).toEqual(originalPixels);
+  await page.getByRole("button", { name: "Remove annotation", exact: true }).click();
+  await expect.poll(async () => (await redPixels()).length).toBe(0);
+  await choose("Green");
+  await expect(toolbar).toBeVisible();
+});
+
 test("point selection places its action in quadrant IV and preserves the target", async ({ page }, testInfo) => {
   await loadImage(page);
   const errors = [];

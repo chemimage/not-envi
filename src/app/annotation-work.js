@@ -29,11 +29,14 @@ export function createAnnotationWorkTracker(onChange = () => {}) {
     for (const job of jobs) {
       if (job.dsId !== ds.id || job.slot !== slot) continue;
       const targets = job.point
-        ? (point && point.x === job.point.x && point.y === job.point.y ? [{ point: job.point }] : [])
+        ? (job.point.id != null
+          ? (drawings.some(item => item.tool === "point" && item.id === job.point.id
+            && item.points[0]?.x === job.point.x && item.points[0]?.y === job.point.y) ? [{ point: job.point }] : [])
+          : (point && point.x === job.point.x && point.y === job.point.y ? [{ point: job.point }] : []))
         : job.items.filter((item) => drawings.some((current) => current.id === item.id
           && JSON.stringify(current.points) === JSON.stringify(item.points)));
       for (const target of targets) {
-        const key = target.point ? `point:${target.point.x},${target.point.y}` : `area:${target.id}`;
+        const key = target.point ? `point:${target.point.id ?? `${target.point.x},${target.point.y}`}` : `area:${target.id}`;
         if (!groups.has(key)) groups.set(key, { key, ...target, jobs: [] });
         groups.get(key).jobs.push(job);
       }

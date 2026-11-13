@@ -1,3 +1,4 @@
+import { savePointAnnotation, removePointAnnotation } from "./point-annotations.js";
 // Contextual analysis actions share the existing annotation and analysis controllers.
 export function createSelectionActionsController(deps) {
   const {
@@ -288,7 +289,7 @@ export function createSelectionActionsController(deps) {
       else {
         const point = imagePoint(ev);
         if (validPoint(point, ds)) {
-          state.contextPoint = { dsId: ds.id, slot: slot(), x: Math.floor(point.x), y: Math.floor(point.y) };
+          state.contextPoint = savePointAnnotation(state, ds, getActivePanel(), point);
         }
       }
       drawOverlays();
@@ -324,7 +325,8 @@ export function createSelectionActionsController(deps) {
     state.spectrumPickEnabled = true;
     const box = els.selectionActions.getBoundingClientRect();
     const anchor = { clientX: box.right, clientY: box.top, pointerType: "mouse" };
-    if (current.point) await openSpectrumAt(current.ds, current.point.x, current.point.y, { ...anchor, forcePoint: true });
+    if (current.point) await openSpectrumAt(current.ds, current.point.x, current.point.y,
+      { ...anchor, forcePoint: true, sourceColor: current.point.color, plotPoint: { ...current.point } });
     else await openSpectrumForEffectiveArea(current.ds, anchor, false);
     refresh();
   }
@@ -339,7 +341,10 @@ export function createSelectionActionsController(deps) {
     const current = target();
     if (!current) return;
     clearAnalysis();
-    if (current.point) state.contextPoint = null;
+    if (current.point) {
+      removePointAnnotation(getActivePanel()?.annotations?.drawings || current.ds.drawings, current.point);
+      state.contextPoint = null;
+    }
     else removeAreaAnnotations(current.items.map((item) => item.id));
     drawOverlays();
     refresh();

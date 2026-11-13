@@ -61,6 +61,24 @@ function makeBase() {
 }
 
 describe("annotation-controller", () => {
+  test("switching colors selects that color's saved point without moving or recoloring other points", () => {
+    const { state, ds, deps } = makeBase();
+    const red = { id: 8, tool: "point", color: "#ff2d2d", points: [{ x: 3, y: 4 }] };
+    ds.drawings.push(red);
+    state.contextPoint = { dsId: 1, slot: 1, id: 8, color: red.color, x: 3, y: 4 };
+    state.draw.color = red.color;
+    const ann = createAnnotationController(deps);
+    ann.setDrawColor("#22c55e");
+    expect(state.contextPoint).toBeNull();
+    expect(ds.drawings.at(-1)).toEqual(red);
+    ann.setDrawColor("#ff2d2d");
+    expect(state.contextPoint).toMatchObject({ id: 8, x: 3, y: 4, color: "#ff2d2d" });
+    expect(ann.getDrawData(ds).spectrumPoint.color).toBe(red.color);
+    ann.setDrawTool("rect");
+    expect(ds.drawings.at(-1)).toEqual(red);
+    ann.clearAllAnnotations();
+    expect(ds.drawings).toEqual([]);
+  });
   test("removing targeted areas preserves other areas and rulers", () => {
     const { ds, deps } = makeBase();
     ds.drawings.push({ id: 3, tool: "ruler", points: [{ x: 0, y: 0 }, { x: 9, y: 9 }] });

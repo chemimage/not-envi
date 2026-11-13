@@ -5,6 +5,12 @@ import {
 } from "../../src/app/linked-annotations.js";
 
 describe("linked annotations", () => {
+  test("saved points preserve identity and color while mapping to the linked image", () => {
+    const source = { drawings: [{ id: 8, tool: "point", color: "#ff2d2d", points: [{ x: 63, y: 31 }] }] };
+    const target = remapAnnotationState(source, { samples: 64, lines: 32 }, { samples: 96, lines: 48 });
+    expect(target.drawings[0]).toEqual({ id: 8, tool: "point", color: "#ff2d2d", points: [{ x: 95, y: 47 }] });
+    expect(source.drawings[0].points).toEqual([{ x: 63, y: 31 }]);
+  });
   test("remaps an annotation state and preserves selection ids", () => {
     const state = remapAnnotationState(
       {

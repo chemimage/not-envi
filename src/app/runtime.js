@@ -139,7 +139,9 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
       if (!ds || panel?.datasetId !== dsId) return;
       setActivePanel(slot);
       if (point) {
-        if (state.contextPoint?.dsId === dsId && state.contextPoint.x === point.x && state.contextPoint.y === point.y) {
+        const index = panel.annotations.drawings.findIndex(item => item.tool === "point" && item.id === point.id);
+        if (index >= 0) panel.annotations.drawings.splice(index, 1);
+        if (state.contextPoint?.dsId === dsId && state.contextPoint.slot === slot && state.contextPoint.id === point.id) {
           state.contextPoint = null;
           closeSpectrum();
         }

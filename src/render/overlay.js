@@ -353,6 +353,7 @@ export function createOverlayRenderer(deps) {
     }
     else if (item.tool === "rect") drawRect(ds, item, eff, dpr, viewport, isSelection, marqueeOffset);
     else if (item.tool === "shape") drawShape(ds, item, eff, dpr, viewport, isSelection, marqueeOffset);
+    else if (item.tool === "point") drawSpectrumPointCrosshair(ds, viewport, { ...item.points[0], color: item.color }, dpr);
   }
 
   function drawSpectrumPointCrosshair(ds, viewport, spectrumPoint, dpr) {
@@ -415,7 +416,9 @@ export function createOverlayRenderer(deps) {
       drawOneAnnotation(ds, items[i], eff, dpr, viewport, i, rulerProfileHover, selectionIds, marqueeOffset, opts);
     }
     if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, viewport, -1, null, null, 0, opts);
-    if (opts.active !== false) drawSpectrumPointCrosshair(ds, viewport, drawData.spectrumPoint || null, dpr);
+    if (opts.active !== false && !items.some(item => item.tool === "point" && item.id === drawData.spectrumPoint?.id)) {
+      drawSpectrumPointCrosshair(ds, viewport, drawData.spectrumPoint || null, dpr);
+    }
   }
 
   function snapToDecimal125Step(value) {

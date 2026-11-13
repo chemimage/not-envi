@@ -1,4 +1,5 @@
 import { distanceToDrawing, pointDistanceToSegment, pointInPolygon } from "./draw-geometry.js";
+import { pointTarget } from "./point-annotations.js";
 
 export function createAnnotationController(deps) {
   const {
@@ -180,7 +181,15 @@ export function createAnnotationController(deps) {
 
   function setDrawColor(color) {
     if (!color || typeof color !== "string") return;
+    if (state.draw.color?.toLowerCase() === color.toLowerCase()) return;
     state.draw.color = color;
+    const ds = getActive();
+    if (ds) {
+      const annotations = resolveAnnotationState(ds);
+      const item = annotations.drawings.find(item => item.tool === "point" && item.color?.toLowerCase() === color.toLowerCase());
+      state.contextPoint = pointTarget(ds, Number(getActivePanel?.()?.slot || 1), item);
+    }
+    state.spectrumPoint = null;
   }
 
   function getAreaSelectionMode() {
@@ -677,7 +686,7 @@ export function createAnnotationController(deps) {
     const selectedPoint = contextPoint || ((state.spectrumPickEnabled
       && state.spectrumPoint?.dsId === ds.id && selectionIds.length === 0) ? state.spectrumPoint : null);
     const spectrumPoint = selectedPoint
-      ? { ...selectedPoint, color: state.draw?.color || "#ff2d2d" }
+      ? { ...selectedPoint, color: selectedPoint.color || "#ff2d2d" }
       : null;
     return { items, draft, rulerHover, rulerProfileHover, selectionIds, marqueeOffset, spectrumPoint };
   }

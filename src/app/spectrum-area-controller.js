@@ -137,7 +137,7 @@ export function createSpectrumAreaController(deps) {
     const useArea = !opts.forcePoint && !!(opts.forceArea || selections.length);
     if (!useArea) {
       nonAreaSeq += 1;
-      const work = deps.beginAnnotationWork?.(ds, { point: { x: ix, y: iy }, label: "Computing spectrum" });
+      const work = deps.beginAnnotationWork?.(ds, { point: opts.plotPoint || { x: ix, y: iy }, label: "Computing spectrum" });
       try {
         await spectrum.openSpectrumAt(ds, ix, iy, opts);
       } finally {

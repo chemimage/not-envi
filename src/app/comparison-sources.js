@@ -14,16 +14,23 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
       isSelected: () => {
         const selection = getSelection?.();
         if (!selection || selection.dsId !== ds.id || selection.slot !== slot) return false;
-        if (point) return !!selection.point && selection.point.x === point.x && selection.point.y === point.y;
+        if (point) return !!selection.point && selection.point.id === point.id && selection.point.x === point.x && selection.point.y === point.y;
         if (selection.point) return false;
         const ids = (selection.items || []).map(item => item.id);
         return ids.length === geometry.length && geometry.every(item => ids.includes(item.id));
       },
-      key: `${ds.id}:${slot}:${point ? `point:${point.x},${point.y}` : geometry.map((item) => item.id).sort((a, b) => a - b).join(",") || "whole"}`,
+      key: `${ds.id}:${slot}:${point ? `point:${point.id ?? `${point.x},${point.y}`}` : geometry.map((item) => item.id).sort((a, b) => a - b).join(",") || "whole"}`,
       label: point ? `Point (${point.x}, ${point.y})` : geometry.length ? `Region ${geometry.map((item) => item.id).join(" + ")}` : "Whole image",
       check: () => {
         if (removed || getDataset(ds.id) !== ds || ds.ds?.closed) return "deleted";
-        if (point) return (pointEpoch.get(ds.id) || 0) === epoch ? "ready" : "deleted";
+        if (point) {
+          if ((pointEpoch.get(ds.id) || 0) !== epoch) return "deleted";
+          if (point.id == null) return "ready";
+          const panel = getPanel(slot);
+          const item = panel?.datasetId === ds.id && panel.annotations?.drawings?.find(item => item.tool === "point" && item.id === point.id);
+          if (!item) return "deleted";
+          return item.points[0]?.x === point.x && item.points[0]?.y === point.y ? "ready" : "changed";
+        }
         const panel = getPanel(slot);
         if (panel?.datasetId !== ds.id) return "deleted";
         const current = geometry.map((item) => panel.annotations?.drawings?.find((drawing) => drawing.id === item.id));
@@ -64,7 +71,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
   function spectrum({ ds, ix, iy, xVals, yVals, opts, plotStyle = "line", source: metadata }) {
     const unit = xVals ? resolveSpectralUnit(ds) || "spectral coordinate" : "band index";
     publish("spectrum", ds, opts.plotSlot || 1, opts.plotItems || [],
-      metadata.type === "area" ? null : { x: ix, y: iy }, {
+      metadata.type === "area" ? null : opts.plotPoint || { x: ix, y: iy }, {
         compatibility: `spectrum:${unit}`, color: metadata.color, approximate: metadata.sampleStep > 1, plotStyle,
         xLabel: xVals ? `Spectral coordinate (${unit})` : "Band index",
         data: { values: Float64Array.from(yVals), x: xVals ? Float64Array.from(xVals) : null }
