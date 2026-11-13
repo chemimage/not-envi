@@ -1,0 +1,39 @@
+{
+  "module": "rgb",
+  "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
+  "command": [
+    "$FMAP_CLANG",
+    "--target=wasm32-unknown-unknown",
+    "-std=c11",
+    "-O3",
+    "-msimd128",
+    "-ffp-contract=off",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-nostdlib",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "wasm/rgb/src/rgb.c",
+    "-Wl,--no-entry",
+    "-Wl,--export-memory",
+    "-Wl,--initial-memory=393216",
+    "-Wl,--max-memory=393216",
+    "-Wl,--strip-all",
+    "-o",
+    "wasm/rgb/pkg/rgb.wasm"
+  ],
+  "sourceSha256": "4b4e8878f57fa2cb9fc072ce0d2638e730cbba243a273cb4efcf47dcdf4a3cb3",
+  "sha256": "da33084cce7e187bf20668b63b65c57ac1de4d046dc24b4f0f55bfd14cde4eed",
+  "bytes": 2243,
+  "exports": [
+    "memory",
+    "rgb_capacity",
+    "rgb_color",
+    "rgb_input",
+    "rgb_output",
+    "rgb_tones"
+  ],
+  "scratchPixels": 16384,
+  "allocatedBytes": 393216
+}

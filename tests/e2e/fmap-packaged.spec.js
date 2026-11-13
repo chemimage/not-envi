@@ -164,7 +164,8 @@ test("single-file package reads and composes ENVI and TIFF through workers witho
           }
           if (type === "rgb-composition" && data.bitmap instanceof ImageBitmap) {
             globalThis.__fmapWorkerTrace.rgbFrames.push({
-              width: data.bitmap.width, height: data.bitmap.height, pixelsColored: data.pixelsColored
+              width: data.bitmap.width, height: data.bitmap.height, pixelsColored: data.pixelsColored,
+              backend: data.kernel?.backend, kernelBytes: data.kernel?.allocatedBytes
             });
           }
         });
@@ -217,7 +218,8 @@ test("single-file package reads and composes ENVI and TIFF through workers witho
   await expect(page.locator("#datasetList")).toContainText("offline-rgb");
   await expect(page.locator("#datasetList")).toContainText("bands:3");
   await expect.poll(() => page.evaluate(() => (
-    globalThis.__fmapWorkerTrace.rgbFrames.some((frame) => frame.width > 0 && frame.height > 0 && frame.pixelsColored > 0)
+    globalThis.__fmapWorkerTrace.rgbFrames.some((frame) => frame.width > 0 && frame.height > 0
+      && frame.pixelsColored > 0 && frame.backend === "simd" && frame.kernelBytes === 384 * 1024)
   ))).toBe(true);
   await page.locator("#filePicker").setInputFiles([
     { name: "offline-packbits.tiff", mimeType: "image/tiff", buffer: packBitsTiffFixture() }

@@ -16,6 +16,7 @@
     "build:inline": "node scripts/inline-dist.mjs",
     "build:assert": "node scripts/assert-single-file.mjs",
     "build:fmap": "node scripts/build-fmap-wasm.mjs",
+    "build:rgb": "node scripts/build-rgb-wasm.mjs",
     "test:fmap-core": "node scripts/test-fmap-core.mjs",
     "build": "npm run build:bundle && npm run build:inline && npm run build:assert",
     "benchmark:fmap": "node scripts/benchmark-fmap.mjs",

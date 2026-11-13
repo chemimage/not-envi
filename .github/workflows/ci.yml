@@ -50,13 +50,21 @@ jobs:
           printf '%s  %s\n' c6c38aab56e5de88adf6c1ebc9c3ae8da72f88ec2b656fb024eda8d4167a0bc5 "$RUNNER_TEMP/wasi-sdk.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/wasi-sdk.tar.gz" -C "$RUNNER_TEMP"
       - name: Build and test the C/WASM ABI
-        run: npm run build:fmap
+        run: |
+          npm run build:fmap
+          npm run build:rgb
         env:
           FMAP_CLANG: ${{ runner.temp }}/wasi-sdk-24.0-x86_64-linux/bin/clang
       - uses: actions/upload-artifact@v7
         with:
           name: fmap-core
           path: wasm/fmap/pkg/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rgb-kernel
+          path: wasm/rgb/pkg/
           if-no-files-found: error
           retention-days: 1
 

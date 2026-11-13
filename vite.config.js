@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import { verifyFmapArtifact, FMAP_SOURCE_SCOPES } from "./scripts/fmap-sources.mjs";
 import { verifyLibtiffArtifact } from "./scripts/verify-libtiff-wasm.mjs";
+import { verifyRgbArtifact } from "./scripts/rgb-artifact.mjs";
 
 const packageJson = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8")
@@ -18,6 +19,7 @@ function verifiedFmapWasm() {
 
 verifiedFmapWasm();
 verifyLibtiffArtifact();
+verifyRgbArtifact();
 
 export default defineConfig({
   define: {

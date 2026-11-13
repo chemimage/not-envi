@@ -4,7 +4,7 @@ import { mergeDirtyRects } from "./incremental-composition.js";
  * skipped revisions, changed tone parameters, or untracked/direct rasters force
  * a complete recolor. Canvas presentation can still scale/blit the full image.
  * Factories keep the pixel algorithm testable and usable by a future worker. */
-export function createRgbCompositor({ createCanvas, createImageData, tone01, maxBytes = 64 * 1024 * 1024 }) {
+export function createRgbCompositor({ createCanvas, createImageData, tone01, colorize, maxBytes = 64 * 1024 * 1024 }) {
   const entries = new Map();
   const stats = { pixelsColored: 0, fullUpdates: 0, patchUpdates: 0, bytes: 0 };
   const clear = () => { entries.clear(); stats.bytes = 0; };
@@ -33,17 +33,20 @@ export function createRgbCompositor({ createCanvas, createImageData, tone01, max
     const rectangles = full ? [{ x: 0, y: 0, w, h }] : mergeDirtyRects(damage);
     const dst = entry.image.data;
     for (const rect of rectangles) {
-      for (let y = rect.y; y < rect.y + rect.h; y += 1) for (let x = rect.x; x < rect.x + rect.w; x += 1) {
-        const index = y * w + x, pixel = index * 4;
-        if (transparentNoData && rasters.some((raster) => !Number.isFinite(raster.dataF32[index]))) {
-          dst.fill(0, pixel, pixel + 4); continue;
+      if (colorize) colorize(rasters, params, dst, w, rect, transparentNoData);
+      else {
+        for (let y = rect.y; y < rect.y + rect.h; y += 1) for (let x = rect.x; x < rect.x + rect.w; x += 1) {
+          const index = y * w + x, pixel = index * 4;
+          if (transparentNoData && rasters.some((raster) => !Number.isFinite(raster.dataF32[index]))) {
+            dst.fill(0, pixel, pixel + 4); continue;
+          }
+          for (let channel = 0; channel < 3; channel += 1) {
+            const p = params[channel];
+            dst[pixel + channel] = Math.round(tone01(rasters[channel].dataF32[index], p.minVal, p.maxVal,
+              p.brightness, p.gain, p.contrast) * 255);
+          }
+          dst[pixel + 3] = 255;
         }
-        for (let channel = 0; channel < 3; channel += 1) {
-          const p = params[channel];
-          dst[pixel + channel] = Math.round(tone01(rasters[channel].dataF32[index], p.minVal, p.maxVal,
-            p.brightness, p.gain, p.contrast) * 255);
-        }
-        dst[pixel + 3] = 255;
       }
       entry.ctx.putImageData(entry.image, 0, 0, rect.x, rect.y, rect.w, rect.h);
       stats.pixelsColored += rect.w * rect.h;

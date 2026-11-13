@@ -1,13 +1,21 @@
 import { createRgbCompositor } from "../rgb-composition.js";
 import { tone01 } from "../display-math.js";
+import { loadRgbSimdKernel } from "../rgb-simd-loader.js";
 
 const planes = new Map();
 let bytes = 0;
-const compositor = createRgbCompositor({ createCanvas: () => new OffscreenCanvas(1, 1),
-  createImageData: (w, h) => new ImageData(w, h), tone01 });
+let compositor, kernel;
+// Register the message handler synchronously; messages received during WASM
+// startup wait inside the handler instead of being lost to a top-level await.
+const ready = loadRgbSimdKernel().then(value => {
+  kernel = value;
+  compositor = createRgbCompositor({ createCanvas: () => new OffscreenCanvas(1, 1),
+    createImageData: (w, h) => new ImageData(w, h), tone01, colorize: kernel?.colorize });
+});
 
 self.onmessage = async ({ data: message }) => {
   try {
+    await ready;
     const rasters = message.planes.map((input) => {
       let plane = planes.get(input.id);
       if (!input.full && (!plane || plane.w !== input.w || plane.h !== input.h
@@ -34,9 +42,10 @@ self.onmessage = async ({ data: message }) => {
       bytes -= planes.get(id).dataF32.byteLength; planes.delete(id);
     }
     self.postMessage({ id: message.id, bitmap, pixelsColored: compositor.stats.pixelsColored,
+      kernel: kernel ? { ...kernel.stats } : { backend: "js", allocatedBytes: 0 },
       planes: [...planes].map(([id, plane]) => ({ id, w: plane.w, h: plane.h, revision: plane.revision })) }, [bitmap]);
   } catch (error) {
-    planes.clear(); bytes = 0; compositor.clear();
+    planes.clear(); bytes = 0; compositor?.clear();
     self.postMessage({ id: message.id, error: error?.message || String(error) });
   }
 };

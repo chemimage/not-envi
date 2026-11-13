@@ -1,9 +1,9 @@
 name: Set up Hyve validation
-description: Install locked Node dependencies and reuse the shared fmap core, optionally with a browser.
+description: Install locked Node dependencies and reuse shared WASM kernels, optionally with a browser.
 
 inputs:
   fmap-core:
-    description: Download the core built by this workflow run.
+    description: Download the fmap and RGB kernels built by this workflow run.
     default: 'true'
   browser:
     description: Install a browser and its system dependencies.
@@ -27,6 +27,12 @@ runs:
       with:
         name: fmap-core
         path: wasm/fmap/pkg
+    - name: Download shared RGB kernel
+      if: inputs.fmap-core == 'true'
+      uses: actions/download-artifact@v8
+      with:
+        name: rgb-kernel
+        path: wasm/rgb/pkg
     - name: Cache browser
       if: inputs.browser == 'true'
       uses: actions/cache@v6
