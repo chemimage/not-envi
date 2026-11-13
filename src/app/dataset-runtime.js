@@ -407,6 +407,7 @@ export function createDatasetRuntime(deps) {
     const ds = {
       id: `ds${nextDatasetId++}`,
       name: guessDatasetName(hdrFile, dataFile),
+      dataFile,
       meta,
       ds: cached,
       baseDs: base,

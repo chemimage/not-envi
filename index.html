@@ -19,6 +19,11 @@
       <span>Left-click to inspect</span><span aria-hidden="true">·</span>
       <span>Scroll to zoom</span>
     </div>
+    <div id="sourceAccessWarning" data-ui-surface role="status" aria-live="polite" hidden>
+      <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+      <span id="sourceAccessWarningText"></span>
+      <button id="btnDismissSourceAccessWarning" type="button" aria-label="Dismiss slow file access warning" title="Dismiss">×</button>
+    </div>
     <div id="leftToolRail">
       <div id="brandBadge">
         <img id="brandLogo" src="./images/Illinois_logo_fullcolor_rgb.png" alt="Illinois logo" />
@@ -167,6 +172,7 @@
           <div class="k">Endian</div><div class="v" id="metaEndian">—</div>
           <div class="k">Wavelength units</div><div class="v" id="metaWlUnits">—</div>
           <div class="k">Scale</div><div class="v" id="metaScale">—</div>
+          <div class="k">File access</div><div class="v" id="metaSourceAccess">—</div>
         </div>
         <div class="kv" id="metaExpKv" style="display:none;"></div>
         <div class="hint" id="metaExtra">—</div>

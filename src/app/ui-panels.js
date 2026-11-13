@@ -25,6 +25,7 @@ import {
 } from "./three-band-display.js";
 import { APP_CONFIG } from "./config.js";
 import { createAnchoredFloatingPositioner } from "./floating-windows.js";
+import { formatSourceAccessDiagnostics } from "./source-access-warning.js";
 
 export function createUIPanels(deps) {
   const {
@@ -698,6 +699,7 @@ export function createUIPanels(deps) {
   }
 
   function renderMetaForDataset(ds) {
+    updateSourceAccessMeta(ds);
     if (!ds) {
       els.metaSamples.textContent = "—";
       els.metaLines.textContent = "—";
@@ -805,10 +807,12 @@ export function createUIPanels(deps) {
 
   function buildPerfDetail(ds, chunkCap, pyramidCap, ioStats, rasterStats, pyramidStats, renderStats) {
     const hardware = detectBrowserHardware();
+    const accessDetail = `File access: ${formatSourceAccessDiagnostics(ds.ds)} (drive type unavailable)`;
     const lines = [
       `Browser: ${hardware.cores ? fmtNoGroup(hardware.cores) : "n/a"} cores, ${hardware.deviceMemoryGiB ? `${fmtNoGroup(hardware.deviceMemoryGiB)} GiB deviceMemory` : "deviceMemory n/a"}`,
       `Budgets: ${cacheBudget?.totalBytes ? humanBytes(cacheBudget.totalBytes) : "n/a"} total from ${cacheBudget?.detectedBudgetBasisBytes ? humanBytes(cacheBudget.detectedBudgetBasisBytes) : "n/a"} basis, dataset ${humanBytes(chunkCap)} chunk + ${humanBytes(pyramidCap)} pyramid`,
       `Source: ${humanBytes(ioStats.bytesRead || 0)} in ${fmtNoGroup(ioStats.readCalls || 0)} read / ${fmtNoGroup(ioStats.readIntoCalls || 0)} readInto`,
+      accessDetail,
       `Chunk cache: ${fmtNoGroup(ioStats.cacheHits || 0)} hits / ${fmtNoGroup(ioStats.cacheMisses || 0)} misses / ${fmtNoGroup(ioStats.cacheEvictions || 0)} evictions`,
       `Raster decode: ${fmtNoGroup(rasterStats.windowCalls || 0)} windows, ${fmtNoGroup(rasterStats.slabWindowCalls || 0)} slab, ${fmtNoGroup(rasterStats.rowWindowCalls || 0)} row, ${(Number(rasterStats.windowReadMs) || 0).toFixed(1)} ms`,
       `Pyramid: ${fmtNoGroup(pyramidStats.tileReads || 0)} tile reads, ${fmtNoGroup(pyramidStats.tilesComposed || 0)} tiles composed, ${(Number(pyramidStats.composeMs) || 0).toFixed(1)} ms`,
@@ -820,7 +824,16 @@ export function createUIPanels(deps) {
     return lines.join("\n");
   }
 
+  function updateSourceAccessMeta(ds) {
+    if (els.metaSourceAccess) {
+      els.metaSourceAccess.textContent = ds ? formatSourceAccessDiagnostics(ds.ds) : "—";
+      els.metaSourceAccess.title = "Observed browser reads, not a disk-type or physical-speed measurement";
+    }
+  }
+
   function updatePerf() {
+    const metadataId = metaPinnedDatasetId || metaHoverDatasetId;
+    updateSourceAccessMeta(state.datasets.find((ds) => ds.id === metadataId) || getActive());
     if (!els.perfBarCacheText || !els.perfBarCacheFill) return;
     const ds = getActive();
     if (!ds) {

@@ -70,6 +70,7 @@ import { pointInPolygon } from "./draw-geometry.js";
 import { createPlotComparisons } from "./plot-comparisons.js";
 import { createComparisonSources } from "./comparison-sources.js";
 import { createFloatingWindowManager } from "./floating-windows.js";
+import { createSourceAccessWarning } from "./source-access-warning.js";
 
 (() => {
   'use strict';
@@ -478,6 +479,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   let datasetRuntime = null;
   let lineProfile = null;
+  const sourceAccessWarning = createSourceAccessWarning({ els, getActive });
   let selectionActions = null;
   const annotationWork = createAnnotationWorkTracker(() => selectionActions?.refresh());
   const beginAnnotationWork = (ds, options) => annotationWork.begin(ds, {
@@ -603,7 +605,7 @@ import { createFloatingWindowManager } from "./floating-windows.js";
 
   function rebuildDatasetList(){ uiPanels.rebuildDatasetList(); }
   function updateMetaUI(){ uiPanels.updateMetaUI(); }
-  function updatePerf(){ uiPanels.updatePerf(); }
+  function updatePerf(){ uiPanels.updatePerf(); sourceAccessWarning.refresh(); }
   function getBandSettings(ds, band){ return uiPanels.getBandSettings(ds, band); }
   function resolveDisplayControlBand(ds){ return uiPanels.resolveDisplayControlBand(ds); }
   function resolveStats(ds){ return uiPanels.resolveStats(ds); }

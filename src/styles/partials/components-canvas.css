@@ -60,6 +60,40 @@
     white-space: nowrap;
   }
 
+  #sourceAccessWarning {
+    position: absolute;
+    z-index: 32;
+    top: 52px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: max-content;
+    max-width: min(500px, calc(100% - 24px));
+    padding: 7px 8px 7px 12px;
+    border: 1px solid #b9a36d;
+    border-radius: 5px;
+    background: rgb(17 24 39 / 0.96);
+    color: #f3f4f6;
+    font-size: 12px;
+    line-height: 1.5;
+    box-shadow: 0 3px 12px rgb(0 0 0 / 0.35);
+  }
+  #sourceAccessWarning[hidden] { display: none; }
+  #sourceAccessWarningText { min-width: 0; overflow-wrap: anywhere; }
+  #btnDismissSourceAccessWarning {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 3px;
+    font-size: 20px;
+    cursor: pointer;
+  }
+  #btnDismissSourceAccessWarning:hover { background: #374151; }
+  #btnDismissSourceAccessWarning:focus-visible { outline: 2px solid white; }
+  @media (max-width: 640px) { #sourceAccessWarning { top: 90px; } }
+
   #app[data-empty="true"] #navigationHint {
     display: none;
   }

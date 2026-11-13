@@ -165,6 +165,10 @@ Exact hardware identification would require an explicitly installed native
 helper/desktop integration with OS-level access. No warning or hardware
 detector has been added to the viewer by this measurement.
 
+The subsequent [source-access warning implementation](source-access-warning.md)
+uses these results as a provisional starting point and reports observed slow
+access without classifying the device.
+
 ## Reproduce
 
 Create an ignored JSON manifest such as `test-results/local-access-manifest.json`
