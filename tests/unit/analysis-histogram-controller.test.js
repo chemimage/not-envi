@@ -8,6 +8,47 @@ function makeButton() {
 }
 
 describe("analysis-histogram-controller", () => {
+  test.each(["single", "group"])("computes color groups in %s mode and publishes all results before comparison handoff", async (mode) => {
+    const red = { id: 1, color: "#ff2d2d", points: [{ x: 0, y: 0 }] };
+    const red2 = { ...red, id: 2 };
+    const blue = { ...red, id: 3, color: "#0ea5e9" };
+    const ds = { id: 1, activeBand: 0, selectedAreaId: 3 };
+    const state = { areaSelectionMode: mode, analysisHist: { open: true } };
+    const stats = { bins: [2, 3], count: 5 };
+    const computeSelectionStats = vi.fn(async () => stats), results = [];
+    const panel = document.createElement("div");
+    const ctrl = createAnalysisHistogramController({ state, els: { analysisHistPanel: panel },
+      getActive: () => ds, getHistogramSelectionItems: () => mode === "single" ? [blue] : [red, red2, blue],
+      listHistogramSelectionItems: () => [red, red2, blue],
+      arrangeAnalysisPanels: () => true, computeSelectionStats, setStatus: vi.fn(),
+      onResult: result => { results.push(result); ctrl.closePanel(); }
+    });
+    await ctrl.refresh();
+    const redIds = mode === "single" ? [2] : [1, 2];
+    expect(computeSelectionStats.mock.calls.map(call => call[2].map(item => item.id))).toEqual([redIds, [3]]);
+    expect(results.map(result => ({ color: result.color, ids: result.items.map(item => item.id) })))
+      .toEqual([{ color: red.color, ids: redIds }, { color: blue.color, ids: [3] }]);
+    expect(state.analysisHist.sourceColor).toBe(blue.color);
+  });
+
+  test("selection changes discard an unfinished color batch", async () => {
+    let finish;
+    const computeSelectionStats = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+    const ds = { id: 1, activeBand: 0 }, onResult = vi.fn();
+    const ctrl = createAnalysisHistogramController({ state: { analysisHist: { open: true } },
+      els: { analysisHistPanel: document.createElement("div") }, getActive: () => ds,
+      getHistogramSelectionItems: () => [{ id: 1, color: "red" }, { id: 2, color: "blue" }],
+      arrangeAnalysisPanels: () => true, computeSelectionStats, onResult, setStatus: vi.fn()
+    });
+    const pending = ctrl.refresh();
+    ctrl.invalidateSelection(ds);
+    expect(computeSelectionStats.mock.calls[0][3].cancelled()).toBe(true);
+    finish({ bins: [1], count: 1 });
+    await pending;
+    expect(onResult).not.toHaveBeenCalled();
+    expect(computeSelectionStats).toHaveBeenCalledTimes(1);
+  });
+
   test("setOpen toggles panel visibility and button pressed state", async () => {
     const panel = document.createElement("div");
     panel.style.display = "none";

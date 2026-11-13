@@ -561,6 +561,7 @@ export function createHistogramController(deps) {
   }
 
   return {
+    computeSelectionStats,
     buildBandStatsWhole,
     buildEstimatedViewHistogram,
     ensureViewHistogram,

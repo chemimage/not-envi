@@ -131,7 +131,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
       const ds = getActive(), panel = getActivePanel();
       if (!ds || !panel) return null;
       const point = state.contextPoint?.dsId === ds.id && state.contextPoint.slot === panel.slot ? state.contextPoint : null;
-      return { dsId: ds.id, slot: panel.slot, items: getHistogramSelectionItems(ds), point, band: resolveDisplayControlBand(ds) };
+      return { dsId: ds.id, slot: panel.slot, items: getHistogramSelectionItems(ds), selectedAreaId: ds.selectedAreaId, point, band: resolveDisplayControlBand(ds) };
     },
     deleteSources: ({ dsId, slot, items, point }) => {
       const ds = state.datasets.find((dataset) => dataset.id === dsId);
@@ -704,6 +704,13 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
   function applyHistogramDrag(ds, kind, clientX){ histogram.applyHistogramDrag(ds, kind, clientX); }
 
   const analysisHistogram = createAnalysisHistogramController({
+    computeSelectionStats: async (ds, band, items, options) => {
+      const work = beginAnnotationWork(ds, { items, label: "Computing histogram" });
+      try {
+        return await histogram.computeSelectionStats(ds, band, items, { ...options,
+          priority: "background", onProgress: ({ completed, total }) => work?.update(completed, total) });
+      } finally { work?.done(); }
+    },
     onResult: comparisonSources.histogram,
     onPanelOpen: () => plotComparisons.concealSource("histogram"),
     getPanelSlot: () => getActivePanel()?.slot || 1,

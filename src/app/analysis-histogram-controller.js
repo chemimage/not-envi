@@ -348,15 +348,39 @@ export function createAnalysisHistogramController(deps) {
     setBusy(true);
     setStatus("histogram…", "warn");
     try {
-      const stats = await ensureStatsForPanel(ds);
+      const groups = new Map();
+      const allItems = listHistogramSelectionItems?.(ds) || items;
+      for (const source of allItems.length ? allItems : items) {
+        const item = { ...source, points: source.points?.map(point => ({ ...point })) };
+        const key = item.color?.toLowerCase() || "";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+      }
+      const results = [];
+      if (groups.size > 1) {
+        for (const group of groups.values()) {
+          const selections = state.areaSelectionMode === "single"
+            ? [group.find(item => item.id === ds.selectedAreaId) || group.at(-1)] : group;
+          const stats = await deps.computeSelectionStats(ds, band, selections, { cancelled: () => sequence !== refreshSequence });
+          if (sequence !== refreshSequence) return;
+          if (stats) results.push({ items: selections, stats, color: resolveAnalysisColor(selections, ds.selectedAreaId) });
+        }
+      } else {
+        const stats = await ensureStatsForPanel(ds);
+        if (stats) results.push({ items, stats, color: sourceColor });
+      }
       if (sequence !== refreshSequence) return;
+      const current = results.find(result => result.items.some(item => item.id === ds.selectedAreaId)) || results.at(-1);
+      const stats = current?.stats || null;
       state.analysisHist.stats = stats;
-      state.analysisHist.sourceColor = sourceColor;
-      if (stats) onResult?.({ ds, slot, items, stats, band, color: sourceColor });
+      state.analysisHist.sourceColor = current?.color || sourceColor;
       updateSummary(stats);
       updateSamplingWarning(stats);
       updateHoverText(stats, -1);
       drawCanvas(stats);
+      // Publishing can close the native panel once comparison windows take
+      // over, so finish every calculation before handing off the results.
+      for (const result of results) onResult?.({ ds, slot, band, ...result });
       setStatus("ready", "ok");
     } catch (err) {
       if (sequence !== refreshSequence) return;

@@ -2,6 +2,24 @@ import { describe, expect, test, vi } from "vitest";
 import { createComparisonSources } from "../../src/app/comparison-sources.js";
 
 describe("comparison result provenance", () => {
+  test("histogram recalculation replaces the same color's result and keeps selection scoped to its region", () => {
+    const publish = vi.fn(), ds = { id: 1, meta: {}, ds: {} };
+    const red = { id: 1, color: "#ff2d2d", points: [{ x: 0, y: 0 }] };
+    const blue = { ...red, id: 2, color: "#0ea5e9" }, red2 = { ...red, id: 3 };
+    const selection = { dsId: 1, slot: 1, items: [red, blue, red2], selectedAreaId: 2, band: 0 };
+    const sources = createComparisonSources({ comparisons: { publish }, getDataset: () => ds,
+      getPanel: () => ({ datasetId: 1, annotations: { drawings: selection.items } }), getSelection: () => selection });
+    const stats = { bins: [1, 2], min: 0, max: 2, count: 3 };
+    sources.histogram({ ds, slot: 1, items: [red], stats, band: 0, color: red.color });
+    sources.histogram({ ds, slot: 1, items: [red, red2], stats, band: 0, color: red.color });
+    const original = publish.mock.calls[0][0], updated = publish.mock.calls[1][0];
+    expect(updated.id).toBe(original.id);
+    expect(updated.isSelected()).toBe(false);
+    selection.selectedAreaId = 3;
+    expect(updated.isSelected()).toBe(true);
+    sources.histogram({ ds, slot: 1, items: [blue], stats, band: 0, color: blue.color });
+    expect(publish.mock.calls[2][0].id).not.toBe(original.id);
+  });
   test("selected source follows current regions, histogram band and point coordinates", () => {
     const publish = vi.fn(), ds = { id: 1, meta: {}, ds: {} };
     const item = { id: 7, points: [{ x: 0, y: 0 }, { x: 5, y: 5 }] };

@@ -5,7 +5,7 @@ import { resolveSpectralUnit } from "../render/spectrum-units.js";
 export function createComparisonSources({ comparisons, getPanel, getDataset, deleteSources, getSelection }) {
   const pointEpoch = new Map();
 
-  function source(ds, slot, items = [], point = null) {
+  function source(ds, slot, items = [], point = null, selectedRegion = false) {
     const geometry = items.map((item) => ({ id: item.id, points: JSON.stringify(item.points) }));
     const epoch = pointEpoch.get(ds.id) || 0;
     let removed = false;
@@ -17,6 +17,8 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
         if (point) return !!selection.point && selection.point.id === point.id && selection.point.x === point.x && selection.point.y === point.y;
         if (selection.point) return false;
         const ids = (selection.items || []).map(item => item.id);
+        if (selectedRegion && selection.selectedAreaId != null) return geometry.some(item => item.id === selection.selectedAreaId)
+          && geometry.every(item => ids.includes(item.id));
         return ids.length === geometry.length && geometry.every(item => ids.includes(item.id));
       },
       key: `${ds.id}:${slot}:${point ? `point:${point.id ?? `${point.x},${point.y}`}` : geometry.map((item) => item.id).sort((a, b) => a - b).join(",") || "whole"}`,
@@ -45,7 +47,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
   }
 
   function publish(kind, ds, slot, items, point, detail) {
-    const origin = source(ds, slot, items, point);
+    const origin = source(ds, slot, items, point, kind === "histogram");
     const scale = JSON.stringify(ds.meta.scale);
     comparisons.publish({ ...origin, ...detail, kind,
       isSelected: () => origin.isSelected() && (kind !== "histogram" || getSelection?.()?.band === detail.band),
@@ -53,7 +55,9 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
         const status = origin.check();
         return kind === "line" && status === "ready" && JSON.stringify(ds.meta.scale) !== scale ? "changed" : status;
       },
-      id: kind === "line" ? `${kind}:${origin.key}` : `${kind}:${origin.key}:${detail.band ?? "all"}`,
+      id: kind === "line" ? `${kind}:${origin.key}`
+        : kind === "histogram" && detail.color && items.length ? `${kind}:${ds.id}:${slot}:color:${detail.color.toLowerCase()}:${detail.band}`
+        : `${kind}:${origin.key}:${detail.band ?? "all"}`,
       label: `${detail.label || origin.label} · ${ds.name || "Image"}`,
       color: detail.color || items.at(-1)?.color || "#e5e7eb" });
   }
