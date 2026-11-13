@@ -8,8 +8,8 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, rect.width, rect.height);
-  const series = entries.map((entry, index) => {
-    if (entry.status !== "ready") return { entry, index, points: [] };
+  const series = entries.map((entry) => {
+    if (entry.status !== "ready") return { entry, points: [] };
     const { data, kind } = entry;
     const points = [];
     if (kind === "histogram") {
@@ -37,7 +37,7 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
         points.push([kind === "line" ? length : data.x?.[i] ?? i, data.values[i]]);
       }
     }
-    return { entry, index, points };
+    return { entry, points };
   });
   let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
   for (const trace of series) for (const [x, y] of trace.points) {
@@ -81,7 +81,22 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
   ctx.fillText(axis, left + width / 2, rect.height - 5);
   ctx.save();
   ctx.beginPath(); ctx.rect(left, top, width, height); ctx.clip();
-  for (const { entry, index, points } of series) {
+  for (const { entry, points } of series) {
+    if (entry.kind === "histogram") {
+      const data = entry.data;
+      const binWidth = data.binWidth || (data.max - data.min) / Math.max(1, data.values.length) || 1;
+      ctx.save();
+      ctx.fillStyle = entry.color;
+      ctx.globalAlpha = entries.length > 1 ? 0.4 : 1;
+      if (entry.status === "ready") data.values.forEach((value, i) => {
+        const y = percentage ? 100 * value / Math.max(1, data.count) : value;
+        if (!Number.isFinite(y) || y <= 0) return;
+        const x0 = px(data.min + i * binWidth), x1 = px(data.min + (i + 1) * binWidth);
+        ctx.fillRect(x0, py(y), x1 - x0, py(0) - py(y));
+      });
+      ctx.restore();
+      continue;
+    }
     ctx.strokeStyle = entry.color;
     ctx.lineWidth = 1.75;
     ctx.setLineDash([]);

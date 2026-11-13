@@ -44,7 +44,7 @@ test("color-owned line windows update in place and toggle all stacked / all spli
   await expect(profiles).toHaveCount(3);
   const orange = page.locator('.line-profile-panel[data-color="#ff9500"]');
   await expect(orange.locator(".line-profile-status")).toContainText("Hover");
-  await orange.getByRole("button", { name: "Stack all line profile plots", exact: true }).click();
+  await orange.getByRole("button", { name: "Stack line profile plots", exact: true }).click();
   const group = page.getByRole("dialog", { name: "Line profile comparison", exact: true });
   await expect(group).toHaveAttribute("data-trace-count", "3");
   await expect(page.locator('.line-profile-panel:visible')).toHaveCount(0);
@@ -60,13 +60,13 @@ test("color-owned line windows update in place and toggle all stacked / all spli
   await expect(group).toHaveAttribute("data-trace-count", "3");
   await expect(group.locator(".plot-legend-name").filter({ hasText: /^Line 1 / })).not.toContainText("changed");
   await page.screenshot({ path: testInfo.outputPath("stacked-solid-lines.png") });
-  await group.getByRole("button", { name: "Split all line profile plots", exact: true }).click();
+  await group.getByRole("button", { name: "Split line profile plots", exact: true }).click();
   await expect(page.locator(".plot-comparison-panel")).toHaveCount(0);
   await expect(page.locator('.line-profile-panel:visible')).toHaveCount(3);
   await page.screenshot({ path: testInfo.outputPath("split-color-profiles.png") });
   await blue.getByRole("button", { name: "Delete line", exact: true }).click();
   await expect(profiles).toHaveCount(2);
-  await orange.getByRole("button", { name: "Stack all line profile plots", exact: true }).click();
+  await orange.getByRole("button", { name: "Stack line profile plots", exact: true }).click();
   await expect(group).toHaveAttribute("data-trace-count", "2");
   await group.getByRole("button", { name: "Close comparison chart", exact: true }).click();
   await expect(page.locator('.line-profile-panel:visible')).toHaveCount(0);
@@ -76,7 +76,7 @@ test("color-owned line windows update in place and toggle all stacked / all spli
   await expect(page.locator('.plot-comparison-panel')).toHaveCount(0);
   await drag(page, 780, 300, 800, 320);
   await expect(red).toBeVisible();
-  await red.getByRole("button", { name: "Stack all line profile plots", exact: true }).click();
+  await red.getByRole("button", { name: "Stack line profile plots", exact: true }).click();
   await expect(group).toHaveAttribute("data-trace-count", "2");
   await page.locator("#toolEraser").click();
   await expect(page.locator(".plot-comparison-panel")).toHaveCount(0);
@@ -90,7 +90,7 @@ for (const kind of ["spectrum", "histogram"]) {
     const original = page.locator(kind === "spectrum" ? "#specPanel" : "#analysisHistPanel");
     for (let i = 0; i < 2; i++) {
       if (i) {
-        await original.getByRole("button", { name: kind === "spectrum" ? "Close spectrum" : "Close histogram", exact: true }).click();
+        if (kind === "spectrum") await original.getByRole("button", { name: "Close spectrum", exact: true }).click();
         await color(page, "Blue");
       }
       await drag(page, 300, 250 + i * 190, 500, 340 + i * 190);
@@ -99,17 +99,24 @@ for (const kind of ["spectrum", "histogram"]) {
       else await expect(page.locator("#analysisStatN")).not.toHaveText("—");
     }
     const name = kind === "spectrum" ? "spectrum" : "spatial histogram";
-    await original.getByRole("button", { name: `Stack all ${name} plots`, exact: true }).click();
+    const initial = kind === "histogram" ? page.locator('.plot-comparison-panel[data-trace-count="1"]').last() : original;
+    if (kind === "histogram") await expect(page.locator('.plot-comparison-panel[data-trace-count="1"]')).toHaveCount(2);
+    await expect(initial.getByRole("button", { name: `Stack ${name} plots`, exact: true })).toHaveText("Stack");
+    await initial.getByRole("button", { name: `Stack ${name} plots`, exact: true }).click();
     const together = page.locator('.plot-comparison-panel[data-trace-count="2"]');
     await expect(together).toBeVisible();
-    if (kind === "histogram") await together.getByRole("combobox", { name: "Histogram scale" }).selectOption("percentage");
+    if (kind === "histogram") {
+      await expect(together.locator(".plot-legend-entry svg rect")).toHaveCount(2);
+      await expect(together.locator(".plot-legend-entry svg rect").first()).toHaveAttribute("fill-opacity", "0.4");
+      await together.getByRole("combobox", { name: "Histogram scale" }).selectOption("percentage");
+    }
     await page.screenshot({ path: testInfo.outputPath(`${kind}-stacked.png`) });
-    await together.getByRole("button", { name: `Split all ${name} plots`, exact: true }).click();
+    await together.getByRole("button", { name: `Split ${name} plots`, exact: true }).click();
     await expect(page.locator('.plot-comparison-panel[data-trace-count="1"]')).toHaveCount(2);
     await expect(page.locator('.plot-picker')).toHaveCount(0);
     const singles = page.locator('.plot-comparison-panel[data-trace-count="1"]');
     await expect(singles.first().locator(".analysis-hist-title")).toHaveCSS("color", "rgb(255, 45, 45)");
-    await singles.last().getByRole("button", { name: `Stack all ${name} plots`, exact: true }).click();
+    await singles.last().getByRole("button", { name: `Stack ${name} plots`, exact: true }).click();
     await expect(together).toBeVisible();
     await page.getByRole("button", { name: "Close dataset", exact: true }).click();
     await expect(page.locator(".plot-comparison-panel")).toHaveCount(0);

@@ -1,14 +1,19 @@
 # Comparing plots
 
-Use **Stack all** in a chart's title bar to put all calculated plots of that
-kind together. Use **Split all** to give each trace its own window. There is
+Use **Stack** in a chart's title bar to put all calculated plots of that
+kind together. Use **Split** to give each trace its own window. There is
 no picker or individual split operation. Spectra with incompatible coordinate
 units stay in separate compatible stacks. Grouping does not merge source
 regions, average values, or reread already calculated results.
 
-Every trace is solid and keeps its source annotation color. Separate windows'
-titles use that same color; stacked titles identify each source in its color.
+Line traces are solid and keep their source annotation color. Histograms use
+bars, with translucent fills when combined so overlapping distributions remain
+visible. Separate windows' titles use the source color; combined titles are plain.
 The legend retains source labels and its trash action deletes that source.
+
+The first histogram opens in the detailed histogram panel. Calculating another
+histogram automatically gives each result its own window; no initial
+Stack/Split cycle is needed. Recalculating the same source updates its result.
 
 ## Line profiles
 
@@ -18,7 +23,7 @@ keep their lines and independent profile windows. Band and calibration changes
 refresh visible profiles and stacked traces. Each window has its own distance
 units, hover inspection, delete action, and close control.
 
-**Split all** restores the independent windows. Closing a window hides it and
+**Split** restores the independent windows. Closing a window hides it and
 keeps its annotation; deleting a line removes only that color's annotation and
 profile. Closing a stacked line chart hides the profiles without deleting the
 lines or reopening itself on subsequent band changes. Editing a line opens its

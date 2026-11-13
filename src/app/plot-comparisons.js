@@ -24,11 +24,11 @@ export function createPlotComparisons({ container, floatingWindows }) {
 
   function updateToggle(control, kind) {
     const stacked = modes.get(kind) === true;
-    const label = `${stacked ? "Split" : "Stack"} all ${TITLES[kind].toLowerCase()} plots`;
+    const label = `${stacked ? "Split" : "Stack"} ${TITLES[kind].toLowerCase()} plots`;
     control.title = label;
     control.setAttribute("aria-label", label);
     control.setAttribute("aria-pressed", String(stacked));
-    control.textContent = stacked ? "Split all" : "Stack all";
+    control.textContent = stacked ? "Split" : "Stack";
     control.disabled = ![...model.entries.values()].some((entry) => entry.kind === kind);
   }
 
@@ -134,9 +134,12 @@ export function createPlotComparisons({ container, floatingWindows }) {
         const row = element("div", "plot-legend-entry"); row.dataset.plotId = entry.id;
         const swatch = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         swatch.setAttribute("viewBox", "0 0 28 8"); swatch.setAttribute("aria-hidden", "true");
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        for (const [key, value] of Object.entries({ x1: 0, y1: 4, x2: 28, y2: 4, stroke: entry.color, "stroke-width": 2 })) line.setAttribute(key, value);
-        swatch.append(line);
+        const mark = document.createElementNS("http://www.w3.org/2000/svg", kind === "histogram" ? "rect" : "line");
+        const attrs = kind === "histogram"
+          ? { x: 0, y: 1, width: 28, height: 6, fill: entry.color, "fill-opacity": entries.length > 1 ? 0.4 : 1 }
+          : { x1: 0, y1: 4, x2: 28, y2: 4, stroke: entry.color, "stroke-width": 2 };
+        for (const [key, value] of Object.entries(attrs)) mark.setAttribute(key, value);
+        swatch.append(mark);
         const name = element("span", "plot-legend-name", entry.label + (entry.approximate ? " · sampled" : "") + (entry.status === "changed" ? " · changed; recalculate" : ""));
         name.title = name.textContent;
         const trash = button("", `Delete source annotation for ${entry.label}`, () => { entry.deleteSource(); sync(); });
@@ -164,6 +167,10 @@ export function createPlotComparisons({ container, floatingWindows }) {
   function publish(entry) {
     entry.status = entry.check();
     if (entry.status !== "ready" || !model.upsert(entry)) return;
+    // The native histogram panel can show one result. As soon as another is
+    // calculated, retain both in separate windows without a Stack/Split cycle.
+    if (entry.kind === "histogram" && !modes.has(entry.kind)
+      && [...model.entries.values()].filter(item => item.kind === entry.kind).length > 1) modes.set(entry.kind, false);
     if (modes.has(entry.kind)) layout(entry.kind);
     refreshViews();
   }
