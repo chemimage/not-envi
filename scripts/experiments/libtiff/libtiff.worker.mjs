@@ -68,7 +68,7 @@ function stats() { return { ...io.stats, ioCacheBytes: io.bytes || 0, ...metadat
 
 async function handle(message) {
   if (message.type === "jsCodec") {
-    const { decodeBoundedTiffBlockDirect } = await import('/src/io/fmap/tiff-codecs-core.js');
+    const { decodeBoundedTiffBlockDirect } = await import('/probe/baseline-codecs.mjs');
     const times = []; let output;
     for (let batch=0; batch<12; batch++) {
       const start=performance.now();

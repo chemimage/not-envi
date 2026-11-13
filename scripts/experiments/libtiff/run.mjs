@@ -6,6 +6,11 @@ import { gzipSync } from 'node:zlib';
 import path from 'node:path';
 const repo=process.cwd(), outputAt=process.argv.indexOf('--output'), root=outputAt>=0?path.resolve(process.argv[outputAt+1]):path.dirname(fileURLToPath(import.meta.url));
 const require=createRequire(path.join(repo,'package.json'));
+// Keep the historical JS codec comparison reproducible after its production
+// replacement. The baseline exists only in the isolated output directory.
+const baseline=execFileSync('git',['show','386acd5:src/io/fmap/tiff-codecs-core.js'],{cwd:repo,encoding:'utf8'})
+  .replace('from "pako"','from "/node_modules/pako/dist/pako.esm.mjs"');
+await writeFile(path.join(root,'baseline-codecs.mjs'),baseline);
 const {chromium}=require('@playwright/test');
 const {createServer}=await import(pathToFileURL(path.join(repo,'node_modules/vite/dist/node/index.js')));
 const server=await createServer({root:repo,server:{host:'127.0.0.1',port:4182,strictPort:true,fs:{allow:[repo,root]}},plugins:[{name:'probe',configureServer(s){s.middlewares.use('/probe',async(req,res,next)=>{

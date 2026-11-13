@@ -4,6 +4,9 @@ Measured on 2026-11-13 for [#34](https://github.com/chemimage/not-envi/issues/34
 The experiment ran outside the checkout in
 `C:\Users\ytliu2\.codex\tmp\hyve-libtiff-prototype-20261113`.
 It does not change the production reader or ship another WASM module.
+This describes the isolated experiment at the time it ran. The subsequent
+[production reader](libtiff-reader.md) uses asynchronous client I/O and preserves
+bounded raw ranges rather than adopting the prototype's scanline path.
 
 **Recommendation:** migrate TIFF format parsing and compressed decoding toward
 libtiff, with application-owned bounded I/O. The codec measurements support this

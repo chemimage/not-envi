@@ -1,0 +1,965 @@
+{
+  "date": "2026-11-13T18:29:07.857Z",
+  "baselineViewer": "87b64427cd284ff2c9a1e2fccbdea32d7195f68b",
+  "context": "Measured the uncommitted migration atop baseline; finalized as the libtiff migration commits.",
+  "chromium": "145.0.7632.6",
+  "artifact": {
+    "libtiff": "d01a94be176f5f6a87f7ee1c0b32e65416aa2b4d",
+    "emscripten": "4.0.22",
+    "codecs": [
+      "raw",
+      "PackBits",
+      "LZW",
+      "Deflate"
+    ],
+    "wasmBytes": 346833,
+    "files": {
+      "wasm/libtiff/hyve_tiff.c": "37c08e49b446e390b33e1099a16282b8926502e9f850e40d7c75ea149443aa99",
+      "scripts/build-libtiff-wasm.py": "ee7e93c8c3c64e1e07c27a9cbc2576fa28d090f353b860e6dc0753b31f65cac3",
+      "wasm/libtiff/pkg/libtiff.mjs": "b36c0448495a85708af5e25f92c47d56067244f2d52efca222de3e61fa666904",
+      "wasm/libtiff/pkg/libtiff-bytes.js": "f1424436156782b9aaa68088fbaa73f97ebcd58256dd3b661d91ebe22ea1ba3e"
+    }
+  },
+  "caveats": [
+    "Fixed implementation order; Windows file cache uncontrolled.",
+    "Fixture phases are medians over three 128x128 ROIs and one sampled overview; timings include workers, caching and extraction.",
+    "Historical kernel speedups are from the isolated prototype, not this production end-to-end measurement."
+  ],
+  "fixtures": [
+    {
+      "config": {
+        "name": "raw-gray",
+        "codec": 1
+      },
+      "fileBytes": 1049118,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 47.79999998211861,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                4,
+                2.300000011920929,
+                2.199999988079071,
+                90.2000000178814
+              ],
+              "medianMs": 4
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                0.9000000059604645,
+                0.7999999821186066,
+                44.19999998807907
+              ],
+              "medianMs": 0.9000000059604645
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                2.300000011920929,
+                1.800000011920929,
+                1.800000011920929,
+                97.2999999821186
+              ],
+              "medianMs": 2.300000011920929
+            }
+          ],
+          "stats": {
+            "browserBytes": 2555160,
+            "decodeCalls": 0,
+            "decodeMs": 0,
+            "peakReservationBytes": 262144,
+            "retainedBackingBytes": 196608,
+            "decodedCacheHits": 12
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "packbits-gray",
+        "codec": 32773
+      },
+      "fileBytes": 1057438,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 15.199999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                20.400000005960464,
+                20.80000001192093,
+                17,
+                221.59999999403954
+              ],
+              "medianMs": 20.80000001192093
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                1,
+                0.9000000059604645,
+                3.800000011920929
+              ],
+              "medianMs": 1
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                17.19999998807907,
+                17.799999982118607,
+                16.900000005960464,
+                212.90000000596046
+              ],
+              "medianMs": 17.799999982118607
+            }
+          ],
+          "stats": {
+            "browserBytes": 2114206,
+            "decodeCalls": 128,
+            "decodeMs": 2568.399999946356,
+            "peakReservationBytes": 30820096,
+            "retainedBackingBytes": 1048576,
+            "decodedCacheHits": 100
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "lzw-gray",
+        "codec": 5
+      },
+      "fileBytes": 272958,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 15.699999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                19.30000001192093,
+                17.19999998807907,
+                19,
+                201.59999999403954
+              ],
+              "medianMs": 19.30000001192093
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                0.8999999761581421,
+                0.7999999821186066,
+                3.7999999821186066
+              ],
+              "medianMs": 1
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                19.30000001192093,
+                19.200000017881393,
+                16.80000001192093,
+                211.30000001192093
+              ],
+              "medianMs": 19.30000001192093
+            }
+          ],
+          "stats": {
+            "browserBytes": 545246,
+            "decodeCalls": 128,
+            "decodeMs": 2407.30000013113,
+            "peakReservationBytes": 30648510,
+            "retainedBackingBytes": 1048576,
+            "decodedCacheHits": 100
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "lzw-noise",
+        "codec": 5,
+        "noise": true
+      },
+      "fileBytes": 1430280,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 15.199999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                19.80000001192093,
+                30.30000001192093,
+                17.69999998807907,
+                210.5
+              ],
+              "medianMs": 30.30000001192093
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                0.800000011920929,
+                0.800000011920929,
+                3.699999988079071
+              ],
+              "medianMs": 0.9000000059604645
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                17.400000005960464,
+                16.900000005960464,
+                18.400000005960464,
+                211.90000000596046
+              ],
+              "medianMs": 18.400000005960464
+            }
+          ],
+          "stats": {
+            "browserBytes": 2859890,
+            "decodeCalls": 128,
+            "decodeMs": 2486.7999999821186,
+            "peakReservationBytes": 30901708,
+            "retainedBackingBytes": 1048576,
+            "decodedCacheHits": 100
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "deflate-gray",
+        "codec": 8
+      },
+      "fileBytes": 114142,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 45.29999998211861,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                18.700000017881393,
+                18.299999982118607,
+                15.799999982118607,
+                196.39999997615814
+              ],
+              "medianMs": 18.700000017881393
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                1,
+                0.9000000059604645,
+                3.800000011920929
+              ],
+              "medianMs": 1
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                16.599999994039536,
+                16.5,
+                27.5,
+                196.90000000596046
+              ],
+              "medianMs": 27.5
+            }
+          ],
+          "stats": {
+            "browserBytes": 227614,
+            "decodeCalls": 128,
+            "decodeMs": 2345.600000113249,
+            "peakReservationBytes": 30613780,
+            "retainedBackingBytes": 1048576,
+            "decodedCacheHits": 100
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "deflate-noise",
+        "codec": 8,
+        "noise": true
+      },
+      "fileBytes": 1049952,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 14.599999994039536,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                18.900000005960464,
+                16.80000001192093,
+                16.599999994039536,
+                218.7999999821186
+              ],
+              "medianMs": 18.900000005960464
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                1,
+                0.9000000059604645,
+                3.699999988079071
+              ],
+              "medianMs": 1
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                16.799999982118607,
+                17,
+                22.099999994039536,
+                209.59999999403954
+              ],
+              "medianMs": 22.099999994039536
+            }
+          ],
+          "stats": {
+            "browserBytes": 2099234,
+            "decodeCalls": 128,
+            "decodeMs": 2491.3000000417233,
+            "peakReservationBytes": 30818458,
+            "retainedBackingBytes": 1048576,
+            "decodedCacheHits": 100
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "lzw-predictor2-rgb",
+        "codec": 5,
+        "predictor": 2,
+        "channels": 3
+      },
+      "fileBytes": 100940,
+      "allFourVariantsOracleValuesChecked": 4128768,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 15.299999982118607,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                23.700000017881393,
+                18.80000001192093,
+                18.400000005960464,
+                220.5
+              ],
+              "medianMs": 23.700000017881393
+            },
+            {
+              "phase": "warm",
+              "times": [
+                2.5999999940395355,
+                2.699999988079071,
+                2.800000011920929,
+                10.799999982118607
+              ],
+              "medianMs": 2.800000011920929
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                18.30000001192093,
+                18,
+                18.5,
+                209.09999999403954
+              ],
+              "medianMs": 18.5
+            }
+          ],
+          "stats": {
+            "browserBytes": 201186,
+            "decodeCalls": 128,
+            "decodeMs": 2406.7000001370907,
+            "peakReservationBytes": 33068410,
+            "retainedBackingBytes": 3145728,
+            "decodedCacheHits": 300
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "deflate-predictor2-rgb",
+        "codec": 8,
+        "predictor": 2,
+        "channels": 3
+      },
+      "fileBytes": 71998,
+      "allFourVariantsOracleValuesChecked": 4128768,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 15.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                20.700000017881393,
+                18.099999994039536,
+                19.099999994039536,
+                209.30000001192093
+              ],
+              "medianMs": 20.700000017881393
+            },
+            {
+              "phase": "warm",
+              "times": [
+                2.5999999940395355,
+                2.5999999940395355,
+                2.7000000178813934,
+                10.699999988079071
+              ],
+              "medianMs": 2.7000000178813934
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                20.30000001192093,
+                21.19999998807907,
+                18.900000005960464,
+                215.59999999403954
+              ],
+              "medianMs": 21.19999998807907
+            }
+          ],
+          "stats": {
+            "browserBytes": 143302,
+            "decodeCalls": 128,
+            "decodeMs": 2382.899999946356,
+            "peakReservationBytes": 33062178,
+            "retainedBackingBytes": 3145728,
+            "decodedCacheHits": 300
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "deflate-float32",
+        "codec": 8,
+        "float": true
+      },
+      "fileBytes": 68730,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 15,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                18.400000005960464,
+                21.5,
+                16.80000001192093,
+                200.90000000596046
+              ],
+              "medianMs": 21.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "medianMs": 1
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                17.200000017881393,
+                16.900000005960464,
+                17.19999998807907,
+                201.59999999403954
+              ],
+              "medianMs": 17.200000017881393
+            }
+          ],
+          "stats": {
+            "browserBytes": 136790,
+            "decodeCalls": 128,
+            "decodeMs": 2360.100000232458,
+            "peakReservationBytes": 34290054,
+            "retainedBackingBytes": 4194304,
+            "decodedCacheHits": 100
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "deflate-predictor3-float32",
+        "codec": 8,
+        "float": true,
+        "predictor": 3
+      },
+      "fileBytes": 88054,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 14.800000011920929,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                21.099999994039536,
+                16.900000005960464,
+                16.5,
+                199.80000001192093
+              ],
+              "medianMs": 21.099999994039536
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                1,
+                0.9000000059604645,
+                4
+              ],
+              "medianMs": 1
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                18.19999998807907,
+                16.5,
+                16.299999982118607,
+                202
+              ],
+              "medianMs": 18.19999998807907
+            }
+          ],
+          "stats": {
+            "browserBytes": 175426,
+            "decodeCalls": 128,
+            "decodeMs": 2342.4999998509884,
+            "peakReservationBytes": 34294386,
+            "retainedBackingBytes": 4194304,
+            "decodedCacheHits": 100
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "lzw-strips",
+        "codec": 5,
+        "tiled": false
+      },
+      "fileBytes": 273554,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 15.099999994039536,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                38,
+                33.79999998211861,
+                26,
+                153.7000000178814
+              ],
+              "medianMs": 38
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                0.8999999761581421,
+                0.9000000059604645,
+                3.5999999940395355
+              ],
+              "medianMs": 0.9000000059604645
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                37,
+                36.900000005960464,
+                25.099999994039536,
+                160.90000000596046
+              ],
+              "medianMs": 37
+            }
+          ],
+          "stats": {
+            "browserBytes": 546450,
+            "decodeCalls": 128,
+            "decodeMs": 2486.600000023842,
+            "peakReservationBytes": 30452092,
+            "retainedBackingBytes": 1048576,
+            "decodedCacheHits": 145
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "deflate-strips",
+        "codec": 8,
+        "tiled": false
+      },
+      "fileBytes": 92620,
+      "allFourVariantsOracleValuesChecked": 1376256,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 42.599999994039536,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                40.900000005960464,
+                33.5,
+                22.099999994039536,
+                165
+              ],
+              "medianMs": 40.900000005960464
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                0.7999999821186066,
+                1,
+                3.5999999940395355
+              ],
+              "medianMs": 1
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                36.400000005960464,
+                38.099999994039536,
+                21.799999982118607,
+                153.90000000596046
+              ],
+              "medianMs": 38.099999994039536
+            }
+          ],
+          "stats": {
+            "browserBytes": 184582,
+            "decodeCalls": 128,
+            "decodeMs": 2480.499999701977,
+            "peakReservationBytes": 30413004,
+            "retainedBackingBytes": 1048576,
+            "decodedCacheHits": 145
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "lzw-main-ifds",
+        "codec": 5,
+        "pyramid": 1
+      },
+      "fileBytes": 369806,
+      "allFourVariantsOracleValuesChecked": 1392640,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 19.700000017881393,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                20.899999976158142,
+                20.19999998807907,
+                18.400000005960464,
+                46
+              ],
+              "medianMs": 20.899999976158142
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.7999999821186066,
+                0.800000011920929,
+                0.800000011920929,
+                4.4000000059604645
+              ],
+              "medianMs": 0.800000011920929
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                19.099999994039536,
+                17.19999998807907,
+                17.799999982118607,
+                44.900000005960464
+              ],
+              "medianMs": 19.099999994039536
+            }
+          ],
+          "stats": {
+            "browserBytes": 146806,
+            "decodeCalls": 32,
+            "decodeMs": 451.5000000298023,
+            "peakReservationBytes": 17138932,
+            "retainedBackingBytes": 262144,
+            "decodedCacheHits": 16
+          }
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "lzw-subifds",
+        "codec": 5,
+        "pyramid": 2
+      },
+      "fileBytes": 369826,
+      "allFourVariantsOracleValuesChecked": 1392640,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 24.19999998807907,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                17.5,
+                18.099999994039536,
+                17.599999994039536,
+                47.099999994039536
+              ],
+              "medianMs": 18.099999994039536
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.7999999821186066,
+                0.9000000059604645,
+                0.9000000059604645,
+                3.7000000178813934
+              ],
+              "medianMs": 0.9000000059604645
+            },
+            {
+              "phase": "worker-ready-cache-cleared",
+              "times": [
+                17.099999994039536,
+                16.899999976158142,
+                16.599999994039536,
+                44.19999998807907
+              ],
+              "medianMs": 17.099999994039536
+            }
+          ],
+          "stats": {
+            "browserBytes": 146826,
+            "decodeCalls": 32,
+            "decodeMs": 429.49999994039536,
+            "peakReservationBytes": 17138932,
+            "retainedBackingBytes": 262144,
+            "decodedCacheHits": 16
+          }
+        }
+      ]
+    }
+  ],
+  "real": [
+    {
+      "device": "SSD",
+      "file": {
+        "name": "full_slide_with_auto_level_and_per_wn_vs_VS_071526.tif",
+        "size": 2966414944,
+        "lastModified": 1794239531535
+      },
+      "windows": [
+        {
+          "x": 1280,
+          "y": 3400,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 21800,
+          "y": 14000,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 31000,
+          "y": 21000,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 509,
+          "h": 365,
+          "step": 73
+        }
+      ],
+      "crossImplementationValuesChecked": 14583255,
+      "sourceMetadataUnchanged": true,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 52.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                224.40000000596046,
+                218.2999999821186,
+                220.80000001192093,
+                611.2999999821186
+              ]
+            },
+            {
+              "phase": "warm",
+              "times": [
+                227.69999998807907,
+                233.09999999403954,
+                226.09999999403954,
+                583.6999999880791
+              ]
+            }
+          ],
+          "stats": {
+            "browserBytes": 98292811,
+            "peakReservationBytes": 600,
+            "retainedBackingBytes": 0
+          }
+        }
+      ]
+    },
+    {
+      "device": "HDD",
+      "file": {
+        "name": "full_slide_with_auto_level_and_per_wn_vs_VS_071526.tif",
+        "size": 2966414944,
+        "lastModified": 1794239531535
+      },
+      "windows": [
+        {
+          "x": 1280,
+          "y": 3400,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 21800,
+          "y": 14000,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 31000,
+          "y": 21000,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 509,
+          "h": 365,
+          "step": 73
+        }
+      ],
+      "crossImplementationValuesChecked": 14583255,
+      "sourceMetadataUnchanged": true,
+      "production": [
+        {
+          "kind": "hyve",
+          "openMs": 36.39999997615814,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                225.30000001192093,
+                215.19999998807907,
+                206.30000001192093,
+                578.6999999880791
+              ]
+            },
+            {
+              "phase": "warm",
+              "times": [
+                220.40000000596046,
+                229.5,
+                221.59999999403954,
+                564.9000000059605
+              ]
+            }
+          ],
+          "stats": {
+            "browserBytes": 98290435,
+            "peakReservationBytes": 600,
+            "retainedBackingBytes": 0
+          }
+        }
+      ]
+    }
+  ],
+  "package": {
+    "baselineBytes": 1130138,
+    "productionBytes": 1596487,
+    "deltaBytes": 466349,
+    "baselineGzipBytes": 362843,
+    "productionGzipBytes": 537413,
+    "gzipDeltaBytes": 174570
+  },
+  "validation": {
+    "unitTests": 622,
+    "chromium": 58,
+    "largeFile": 4,
+    "offlinePackage": 3,
+    "checkedBrowserBenchmark": "pass",
+    "checkedQueueBenchmark": "pass",
+    "windowsWebkit": {
+      "passed": 52,
+      "skipped": 6,
+      "failed": 4,
+      "baselineFailuresReproduced": true,
+      "failures": [
+        "composition-worker.spec.js:3",
+        "composition-worker.spec.js:17",
+        "composition-worker.spec.js:43",
+        "fmap-page-fill.spec.js:91"
+      ]
+    }
+  }
+}

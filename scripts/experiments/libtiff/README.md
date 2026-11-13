@@ -36,3 +36,7 @@ and reruns the size/offline/malformed-input checks.
 `probe.c` implements the bounded C client-I/O/ROI wrapper and standard-writer
 fixture generator. `libtiff.worker.mjs` supplies browser file I/O and serialized
 RPC; `run.mjs` contains all timing and pixel-comparison logic.
+
+Codec-only JS comparisons explicitly load the historical `386acd5` codec from
+Git into the external output directory. Full Hyve ROI timings use the current
+checkout; consult `viewerCommit` in each report before comparing runs.

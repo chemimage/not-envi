@@ -20,6 +20,8 @@ Requires Node.js 22 and Git.
 
 The C/WASM fmap backend is built in and always enabled. TIFF formats outside
 its supported paths continue to use the compatible decoder automatically.
+TIFF parsing and bounded compressed decoding use a pinned libtiff WASM build;
+see [reader architecture and rebuild instructions](docs/libtiff-reader.md).
 
 ### Tests
 
