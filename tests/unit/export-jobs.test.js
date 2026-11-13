@@ -1,3 +1,4 @@
+import { loadLibtiffCompiled } from "../../src/io/tiff/libtiff/compiled.js";
 import { describe, test, expect, vi } from "vitest";
 import { fromArrayBuffer } from "geotiff";
 import { createExportService } from "../../src/export/export-service.js";
@@ -57,7 +58,7 @@ describe("export job correctness and lifecycle", () => {
 
   test("raw RGB preserves 16-bit samples", async () => {
     const pages = [new Uint16Array([1, 65535]), new Uint16Array([258, 4096]), new Uint16Array([3000, 4000])];
-    const blob = encodeRawRgbTiff({ meta: { dataType: 12, dataTypeInfo: { bytes: 2 } }, width: 2, height: 1, pages });
+    const blob = await encodeRawRgbTiff({ compiled: await loadLibtiffCompiled(), meta: { dataType: 12, dataTypeInfo: { bytes: 2 } }, width: 2, height: 1, pages });
     const image = await (await fromArrayBuffer(await readBlob(blob))).getImage();
     expect(Array.from(image.fileDirectory.BitsPerSample)).toEqual([16, 16, 16]);
     const rasters = await image.readRasters();

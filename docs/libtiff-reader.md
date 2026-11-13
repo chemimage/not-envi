@@ -1,6 +1,6 @@
 # TIFF reader architecture
 
-Hyve uses **libtiff 4.7.2** for TIFF/BigTIFF parsing and bounded PackBits,
+not-envi uses **libtiff 4.7.2** for TIFF/BigTIFF parsing and bounded PackBits,
 LZW, and Deflate decoding. Raw pixels retain the existing fmap range path.
 The custom JS TIFF parser, LZW/PackBits/predictor implementations, and direct
 pako dependency have been removed. GeoTIFF remains a standard-library pixel
@@ -21,12 +21,20 @@ Raw full-resolution samples keep their original numeric representation. Overview
 pixels average valid 2 × 2 source samples, rounding integer results. Floating
 overviews ignore non-finite samples and remain NaN when none are finite. RGB
 channel order is preserved, and rendered RGBA previews account for alpha.
-These are uncompressed classic TIFFs; the existing 4 GiB address limit still
-applies. Pyramid levels add file data and encoding work. The export estimate
-includes overview pixels and tile-edge padding, excluding small directory costs.
+All TIFF exports use libtiff's standard writing APIs. Pyramidal tiles use
+lossless Deflate; small flat exports use bounded uncompressed strips. BigTIFF
+is selected before encoding when the conservative uncompressed storage bound
+approaches the classic TIFF offset limit. Pyramid levels add encoding work.
+The export estimate includes uncompressed overview pixels and tile-edge padding,
+excluding directory costs; compressed downloads can be substantially smaller.
 
 The encoder runs through the existing disposable export worker, and the
-single-file build embeds it. Validation reads full-resolution and reduced data
+single-file build embeds it. The main thread shares its compiled libtiff module
+with the worker rather than embedding another copy. Random output writes patch
+JS-owned 256 KiB chunks; only one pixel block is copied into WASM at a time.
+TIFF headers, tags, compression, IFD links and SubIFD offsets belong to libtiff.
+These are standard pyramidal TIFFs without Aperio/SVS metadata or OME-XML.
+Validation reads full-resolution and reduced data
 with GeoTIFF.js, discovers the independent pyramids with the app's libtiff
 backend, and downloads and reopens a large multiband file in the browser.
 

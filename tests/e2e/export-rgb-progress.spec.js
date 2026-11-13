@@ -45,6 +45,8 @@ test("export progress stays visible across slow work, blocks duplicates, and rec
   await page.evaluate(async () => {
     const { createExportService } = await import("/src/export/export-service.js");
     const { encodeExportJob } = await import("/src/export/encode-job.js");
+    const { loadLibtiffCompiled } = await import("/src/io/tiff/libtiff/compiled.js");
+    const compiled = await loadLibtiffCompiled();
     const button = document.createElement("button");
     document.body.append(button);
     const state = { selection: { imgRect: null } };
@@ -65,7 +67,7 @@ test("export progress stays visible across slow work, blocks duplicates, and rec
         harness.encodes++;
         await new Promise(resolve => { harness.releaseEncode = resolve; });
         if (harness.failure === "encode") throw new Error("Injected encode failure");
-        return encodeExportJob(job);
+        return encodeExportJob({ ...job, compiled });
       },
       downloadBlob() { harness.downloads++; }
     });

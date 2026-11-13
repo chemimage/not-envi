@@ -1,5 +1,6 @@
 import { layoutExportBars } from "./export-bar-layout.js";
 import { encodeExportJob } from "./encode-job.js";
+import { loadLibtiffCompiled } from "../io/tiff/libtiff/compiled.js";
 import { createExportProgress, yieldExportUi } from "./export-progress.js";
 import { isThreeBandColorMode, resolveThreeBandChannelOrder } from "../app/three-band-display.js";
 import { buildEnviHeaderText } from "./envi-backend.js";
@@ -17,7 +18,8 @@ export function createExportService(deps) {
   async function encode(kind, args) {
     await stage("Encoding…");
     const meta = args.meta ? { ...args.meta, dataTypeInfo: { ...args.meta.dataTypeInfo, ctor: undefined } } : undefined;
-    const result = await (deps.encodeExport || encodeExportJob)({ kind, ...args, meta });
+    const compiled = !deps.encodeExport && kind !== "envi" ? await loadLibtiffCompiled() : undefined;
+    const result = await (deps.encodeExport || encodeExportJob)({ kind, ...args, meta, compiled });
     await stage("Preparing downloads…");
     return result;
   }

@@ -1,4 +1,4 @@
-import { tiffSampleFormatForEnviType } from "../core/tiff-encoder.js";
+import { LibtiffWriter } from "../io/tiff/libtiff/writer.js";
 
 export const TIFF_PYRAMID_MIN_PIXELS = 4 * 1024 * 1024;
 export const TIFF_PYRAMID_TILE_SIZE = 512;
@@ -10,8 +10,8 @@ export function shouldPyramidTiff(width, height) {
 
 const constructors = { 1: Uint8Array, 2: Int16Array, 3: Int32Array, 4: Float32Array,
   5: Float64Array, 12: Uint16Array, 13: Uint32Array, 14: BigInt64Array, 15: BigUint64Array };
+const sampleFormat = type => [4, 5].includes(type) ? 3 : [2, 3, 14].includes(type) ? 2 : 1;
 const littleEndianHost = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
-const align4 = value => Math.ceil(value / 4) * 4;
 const tileExtent = (size, limit) => Math.min(limit, Math.ceil(size / 16) * 16);
 
 export function tiffStoragePixels(width, height) {
@@ -87,12 +87,19 @@ function tileBytes(source, width, height, x, y, tileWidth, tileHeight, channels,
 
 // Overview directories are SubIFDs, not pages in the full-resolution band
 // chain. Each full-resolution plane retains its own independent pyramid.
-export function encodePyramidalTiff({ width, height, pages, meta, rendered = false, composite = false,
+export function encodePyramidalTiff(options) {
+  return encodeTiff({ ...options, pyramid: true });
+}
+
+export async function encodeTiff({ width, height, pages, meta, rendered = false, composite = false,
+  compiled, pyramid = shouldPyramidTiff(width, height), bigTiff,
   tileSize = TIFF_PYRAMID_TILE_SIZE, overviewMaxEdge = TIFF_PYRAMID_TILE_SIZE }) {
   const Ctor = rendered ? Uint8Array : constructors[meta?.dataType];
   if (!Ctor || !Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1
-    || !pages?.length || !Number.isInteger(tileSize) || tileSize < 16 || tileSize % 16 || overviewMaxEdge < 1) {
-    throw new Error("Invalid image data for pyramidal TIFF export.");
+    || width > 0xffffffff || height > 0xffffffff || !pages?.length
+    || !Number.isInteger(tileSize) || tileSize < 16 || tileSize > 512 || tileSize % 16
+    || !Number.isInteger(overviewMaxEdge) || overviewMaxEdge < 1) {
+    throw new Error("Invalid image data for TIFF export.");
   }
   const samples = rendered ? 4 : composite ? 3 : 1;
   const planar = composite ? 2 : 1, channels = planar === 2 ? 1 : samples;
@@ -100,82 +107,43 @@ export function encodePyramidalTiff({ width, height, pages, meta, rendered = fal
   if (composite && pages.length !== 3) throw new Error("RGB TIFF export requires three channel planes.");
   for (const image of planes) for (const plane of image) {
     if (!ArrayBuffer.isView(plane) || plane.length !== width * height * channels) throw new Error("TIFF planes must share dimensions.");
+    if (!(plane instanceof Ctor) && !(rendered && plane instanceof Uint8ClampedArray)) throw new Error("TIFF plane type does not match its sample metadata.");
   }
-  const bases = [], nodes = [];
-  for (const image of planes) {
-    const base = { w: width, h: height, planes: image, children: [] };
-    bases.push(base); nodes.push(base);
-    let w = width, h = height;
-    while (Math.max(w, h) > overviewMaxEdge) {
-      w = Math.ceil(w / 2); h = Math.ceil(h / 2);
-      const child = { w, h, reduced: true, children: [] };
-      base.children.push(child); nodes.push(child);
-    }
+  const levels = [{ w: width, h: height }];
+  while (pyramid && Math.max(levels.at(-1).w, levels.at(-1).h) > overviewMaxEdge) {
+    const { w, h } = levels.at(-1);
+    levels.push({ w: Math.ceil(w / 2), h: Math.ceil(h / 2) });
   }
-  let cursor = 8;
-  for (const node of nodes) {
-    node.tileWidth = tileExtent(node.w, tileSize);
-    node.tileHeight = tileExtent(node.h, tileSize);
-    node.tileByteCount = node.tileWidth * node.tileHeight * channels * Ctor.BYTES_PER_ELEMENT;
-    const tileCount = Math.ceil(node.w / node.tileWidth) * Math.ceil(node.h / node.tileHeight) * (planar === 2 ? samples : 1);
-    node.offsets = new Array(tileCount);
-    node.tags = [
-      [254, 4, [node.reduced ? 1 : 0]], [256, 4, [node.w]], [257, 4, [node.h]],
-      [258, 3, Array(samples).fill(Ctor.BYTES_PER_ELEMENT * 8)], [259, 3, [1]],
-      [262, 3, [samples === 1 ? 1 : 2]], [277, 3, [samples]], [284, 3, [planar]],
-      [322, 4, [node.tileWidth]], [323, 4, [node.tileHeight]], [324, 4, node.offsets],
-      [325, 4, Array(tileCount).fill(node.tileByteCount)],
-      [339, 3, Array(samples).fill(rendered ? 1 : tiffSampleFormatForEnviType(Number(meta.dataType)))]
-    ];
-    if (rendered) node.tags.push([338, 3, [2]]);
-    if (node.children.length) node.tags.push([330, 4, node.children.map(() => 0)]);
-    node.tags.sort((a, b) => a[0] - b[0]);
-    node.ifd = cursor;
-    cursor += 2 + node.tags.length * 12 + 4;
-  }
-  for (const node of nodes) {
-    if (node.children.length) node.tags.find(tag => tag[0] === 330)[2] = node.children.map(child => child.ifd);
-    for (const tag of node.tags) {
-      if (tag[2].length * (tag[1] === 3 ? 2 : 4) > 4) {
-        cursor = align4(cursor); tag[3] = cursor;
-        cursor += tag[2].length * (tag[1] === 3 ? 2 : 4);
+  // Allow for padded tiles, codec expansion and directory arrays. Choose the
+  // offset format before encoding; compression must never decide correctness.
+  const storage = levels.reduce((total, { w, h }) => total + (pyramid
+    ? Math.ceil(w / tileExtent(w, tileSize)) * tileExtent(w, tileSize)
+      * Math.ceil(h / tileExtent(h, tileSize)) * tileExtent(h, tileSize) : w * h), 0);
+  const upperBytes = storage * samples * planes.length * Ctor.BYTES_PER_ELEMENT * 1.02 + planes.length * levels.length * 65536;
+  const writer = await LibtiffWriter.open(compiled, bigTiff ?? upperBytes >= 0xf0000000);
+  const sx = Number(meta?.scale?.umPerPixelX), sy = Number(meta?.scale?.umPerPixelY);
+  const calibrated = Number.isFinite(sx) && sx > 0 && Number.isFinite(sy) && sy > 0;
+  try {
+    for (const base of planes) {
+      let image = base;
+      for (let level = 0; level < levels.length; level++) {
+        const { w, h } = levels[level];
+        if (level) image = overview(image, levels[level - 1].w, levels[level - 1].h, channels, rendered);
+        const blockW = pyramid ? tileExtent(w, tileSize) : w;
+        const blockH = pyramid ? tileExtent(h, tileSize) : Math.min(h, Math.max(1, Math.floor(1024 * 1024 / (w * channels * Ctor.BYTES_PER_ELEMENT))));
+        await writer.call("ne_tiff_write_image", [w, h, Ctor.BYTES_PER_ELEMENT * 8, samples,
+          rendered ? 1 : sampleFormat(Number(meta.dataType)), planar, rendered ? 1 : 0,
+          pyramid ? blockW : 0, pyramid ? blockH : 0, blockH, pyramid ? 8 : 1, level ? 1 : 0,
+          level ? 0 : levels.length - 1,
+          calibrated ? 10000 / sx * w / width : 0, calibrated ? 10000 / sy * h / height : 0]);
+        let index = 0;
+        for (const plane of image) for (let y = 0; y < h; y += blockH) for (let x = 0; x < w; x += blockW) {
+          const rows = pyramid ? blockH : Math.min(blockH, h - y);
+          await writer.block(index++, tileBytes(plane, w, h, x, y, blockW, rows, channels, Ctor));
+        }
+        await writer.call("ne_tiff_write_directory");
       }
     }
-  }
-  const headerSize = Math.ceil(cursor / 8) * 8;
-  cursor = headerSize;
-  for (const node of nodes) for (let i = 0; i < node.offsets.length; i++) {
-    node.offsets[i] = cursor; cursor += node.tileByteCount;
-  }
-  if (!Number.isSafeInteger(cursor) || cursor > 0xffffffff) {
-    throw new Error("Pyramidal export exceeds the classic TIFF size limit. Select a smaller region.");
-  }
-  const header = new ArrayBuffer(headerSize), view = new DataView(header);
-  view.setUint16(0, 0x4949, true); view.setUint16(2, 42, true); view.setUint32(4, bases[0].ifd, true);
-  for (const node of nodes) {
-    view.setUint16(node.ifd, node.tags.length, true);
-    node.tags.forEach(([tag, type, values, external], i) => {
-      const at = node.ifd + 2 + i * 12;
-      view.setUint16(at, tag, true); view.setUint16(at + 2, type, true); view.setUint32(at + 4, values.length, true);
-      if (external != null) view.setUint32(at + 8, external, true);
-      values.forEach((value, j) => {
-        const pos = (external ?? at + 8) + j * (type === 3 ? 2 : 4);
-        if (type === 3) view.setUint16(pos, value, true); else view.setUint32(pos, value, true);
-      });
-    });
-    const index = bases.indexOf(node);
-    view.setUint32(node.ifd + 2 + node.tags.length * 12, index >= 0 && index + 1 < bases.length ? bases[index + 1].ifd : 0, true);
-  }
-  const parts = [header];
-  for (const base of bases) {
-    let image = base.planes, previous = base;
-    for (const node of [base, ...base.children]) {
-      if (node !== base) image = overview(image, previous.w, previous.h, channels, rendered);
-      for (const plane of image) for (let y = 0; y < node.h; y += node.tileHeight) for (let x = 0; x < node.w; x += node.tileWidth) {
-        parts.push(tileBytes(plane, node.w, node.h, x, y, node.tileWidth, node.tileHeight, channels, Ctor));
-      }
-      previous = node;
-    }
-  }
-  return new Blob(parts, { type: "image/tiff" });
+    return await writer.finish();
+  } finally { writer.close(); }
 }

@@ -14,7 +14,9 @@ colors; each brush color owns one line and its profile window. See
 
 TIFF exports of 4 megapixels or more automatically include tiled image pyramids
 for zooming. Pyramids preserve the chosen export's full-resolution samples and
-band/page layout; smaller TIFFs remain flat. Estimates include overview data.
+band/page layout; smaller TIFFs remain flat. TIFF encoding uses libtiff, with
+lossless Deflate for pyramids and automatic BigTIFF when needed. Estimates
+include uncompressed overview data, so compressed downloads may be smaller.
 
 ## Development
 

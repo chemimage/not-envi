@@ -1,3 +1,4 @@
+import { loadLibtiffCompiled } from "../../src/io/tiff/libtiff/compiled.js";
 import { describe, expect, test } from "vitest";
 import { fromArrayBuffer } from "geotiff";
 import { encodeRawMultipageTiff, encodeRenderedMultipageTiff, encodeRenderedTiff } from "../../src/export/tiff-backend.js";
@@ -25,7 +26,7 @@ describe("tiff backend", () => {
       height: 1,
       data: Uint8ClampedArray.from([255, 0, 0, 255, 0, 255, 0, 255])
     };
-    const blob = encodeRenderedTiff({ imageData });
+    const blob = await encodeRenderedTiff({ compiled: await loadLibtiffCompiled(), imageData });
     const ab = await blobToArrayBuffer(blob);
     const u8 = new Uint8Array(ab);
     expect(Array.from(u8.subarray(0, 4))).toEqual([0x49, 0x49, 42, 0]);
@@ -41,7 +42,7 @@ describe("tiff backend", () => {
   test("encodeRawMultipageTiff preserves multipage raw stack fallback", async () => {
     const meta = { dataType: 4, dataTypeInfo: { bytes: 4 } };
     const pages = [new Float32Array([1, 2, 3, 4]), new Float32Array([5, 6, 7, 8])];
-    const blob = encodeRawMultipageTiff({ meta, width: 2, height: 2, pages });
+    const blob = await encodeRawMultipageTiff({ compiled: await loadLibtiffCompiled(), meta, width: 2, height: 2, pages });
     const ab = await blobToArrayBuffer(blob);
     const tiff = await fromArrayBuffer(ab);
     expect(Array.from(new Uint8Array(ab, 0, 4))).toEqual([0x49, 0x49, 42, 0]);
@@ -67,7 +68,7 @@ describe("tiff backend", () => {
         data: Uint8ClampedArray.from([0, 0, 255, 255, 255, 255, 0, 255])
       }
     ];
-    const blob = encodeRenderedMultipageTiff({ pages });
+    const blob = await encodeRenderedMultipageTiff({ compiled: await loadLibtiffCompiled(), pages });
     const ab = await blobToArrayBuffer(blob);
     const tiff = await fromArrayBuffer(ab);
     expect(await tiff.getImageCount()).toBe(2);
@@ -76,7 +77,7 @@ describe("tiff backend", () => {
   test("encodeRawMultipageTiff writes float sample format for single-page Float32", async () => {
     const meta = { dataType: 4, dataTypeInfo: { bytes: 4 } };
     const pages = [new Float32Array([1.5, 2.5, 3.5, 4.5])];
-    const blob = encodeRawMultipageTiff({ meta, width: 2, height: 2, pages });
+    const blob = await encodeRawMultipageTiff({ compiled: await loadLibtiffCompiled(), meta, width: 2, height: 2, pages });
     const ab = await blobToArrayBuffer(blob);
     const tiff = await fromArrayBuffer(ab);
     const img = await tiff.getImage(0);
@@ -94,7 +95,7 @@ describe("tiff backend", () => {
   test("encodeRawMultipageTiff writes full byte payload for single-page UInt16", async () => {
     const meta = { dataType: 12, dataTypeInfo: { bytes: 2 } };
     const pages = [new Uint16Array([1, 258, 4096, 65535])];
-    const blob = encodeRawMultipageTiff({ meta, width: 2, height: 2, pages });
+    const blob = await encodeRawMultipageTiff({ compiled: await loadLibtiffCompiled(), meta, width: 2, height: 2, pages });
     const ab = await blobToArrayBuffer(blob);
     const tiff = await fromArrayBuffer(ab);
     const img = await tiff.getImage(0);

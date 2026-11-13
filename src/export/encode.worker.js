@@ -1,6 +1,6 @@
 import { encodeExportJob } from "./encode-job.js";
 
-self.onmessage = ({ data }) => {
-  try { self.postMessage({ result: encodeExportJob(data) }); }
+self.onmessage = async ({ data }) => {
+  try { self.postMessage({ result: await encodeExportJob(data) }); }
   catch (error) { self.postMessage({ error: error.message || String(error) }); }
 };

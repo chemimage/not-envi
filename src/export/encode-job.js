@@ -1,15 +1,15 @@
 import { encodeRawMultipageTiff, encodeRawRgbTiff, encodeRenderedMultipageTiff } from "./tiff-backend.js";
 import { encodeEnviBandBytes } from "./envi-backend.js";
 
-export function encodeExportJob({ kind, meta, width, height, pages, composite, ranges }) {
+export function encodeExportJob({ kind, meta, width, height, pages, composite, ranges, compiled }) {
   if (kind === "envi") return encodeEnviBandBytes(meta, pages[0], true);
-  if (kind === "rendered") return encodeRenderedMultipageTiff({ pages });
+  if (kind === "rendered") return encodeRenderedMultipageTiff({ pages, meta, compiled });
   if (kind === "scaled8") {
     pages = pages.map((page, i) => scalePageToUint8(page, ranges[i]));
   }
   return composite
-    ? encodeRawRgbTiff({ meta, width, height, pages })
-    : encodeRawMultipageTiff({ meta, width, height, pages });
+    ? encodeRawRgbTiff({ meta, width, height, pages, compiled })
+    : encodeRawMultipageTiff({ meta, width, height, pages, compiled });
 }
 
 function scalePageToUint8(values, range) {
