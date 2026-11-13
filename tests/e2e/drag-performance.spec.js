@@ -94,5 +94,9 @@ test("profile region movement while spectrum is open", async ({ page, browserNam
   console.log(JSON.stringify(result));
   await testInfo.attach("drag-profile", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
   expect(metrics.messages).toBe(0);
-  await expect(page.locator("#specPanel")).toBeVisible();
+  // Recalculation may move the native presentation into a comparison window.
+  // Assert that one current spectrum remains visible, independent of its shell.
+  const spectrum = page.locator('#specPanel:visible, .plot-comparison-panel[data-plot-kind="spectrum"]:visible');
+  await expect(spectrum).toHaveCount(1);
+  await expect(spectrum).not.toContainText("changed; recalculate");
 });
