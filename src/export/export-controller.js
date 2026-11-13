@@ -1,4 +1,5 @@
 import { isThreeBandColorMode } from "../app/three-band-display.js";
+import { shouldPyramidTiff, tiffStoragePixels } from "./tiff-pyramid.js";
 export { createExportService } from "./export-service.js";
 
 export function createExportDialogController(deps) {
@@ -251,12 +252,18 @@ export function createExportDialogController(deps) {
     let estBytes = 0;
     let warnByPixels = false;
     let note = "—";
+    let pyramidal = false;
+    const exportPixels = (w, h) => {
+      if (kind !== "tiff" || !shouldPyramidTiff(w, h)) return w * h;
+      pyramidal = true;
+      return tiffStoragePixels(w, h);
+    };
 
     if (scope === "sel" && hasSelection) {
       const plan = resolveSelectionPlan(ds, selections);
       if (mode === "raw") {
         const bpp = scaled8 ? 1 : (Number(ds.meta?.dataTypeInfo?.bytes) || 0);
-        estBytes = plan.jobs.reduce((sum, job) => sum + (job.w * job.h * bandCount * bpp), 0);
+        estBytes = plan.jobs.reduce((sum, job) => sum + (exportPixels(job.w, job.h) * bandCount * bpp), 0);
         warnByPixels = plan.jobs.some((job) => (job.w * job.h > 20_000_000));
         if (scaled8) {
           note = bandCount > 1
@@ -272,7 +279,7 @@ export function createExportDialogController(deps) {
             : `Raw TIFF export from selection: <b>${plan.jobs[0]?.w || 0}×${plan.jobs[0]?.h || 0}</b> for the current band (${ds.meta.dataTypeInfo.name}).`;
         }
       } else {
-        estBytes = plan.jobs.reduce((sum, job) => sum + (job.w * job.h * 4 * bandCount), 0);
+        estBytes = plan.jobs.reduce((sum, job) => sum + (exportPixels(job.w, job.h) * 4 * bandCount), 0);
         warnByPixels = plan.jobs.some((job) => (job.w * job.h > 20_000_000));
         if (kind === "png") {
           note = `Rendered PNG from selection: <b>${plan.jobs[0]?.w || 0}×${plan.jobs[0]?.h || 0}</b> from the current band.`;
@@ -286,7 +293,7 @@ export function createExportDialogController(deps) {
       const rect = resolveExportRect(ds, "view");
       if (mode === "raw") {
         const bpp = scaled8 ? 1 : (Number(ds.meta?.dataTypeInfo?.bytes) || 0);
-        estBytes = rect.w * rect.h * bandCount * bpp;
+        estBytes = exportPixels(rect.w, rect.h) * bandCount * bpp;
         warnByPixels = (rect.w * rect.h > 20_000_000);
         if (scaled8) {
           note = bandCount > 1
@@ -305,7 +312,7 @@ export function createExportDialogController(deps) {
         const target = (typeof resolveRenderedExportTarget === "function")
           ? resolveRenderedExportTarget(ds, "view")
           : { outputW: rect.w, outputH: rect.h, mode: "window" };
-        estBytes = target.outputW * target.outputH * 4 * bandCount;
+        estBytes = exportPixels(target.outputW, target.outputH) * 4 * bandCount;
         warnByPixels = ((target.outputW * target.outputH) > 20_000_000);
         if (kind === "png") {
           note = `Rendered PNG from the whole view: <b>${target.outputW}×${target.outputH}</b> from the current band.`;
@@ -333,6 +340,7 @@ export function createExportDialogController(deps) {
       if (hasExportColorRange()) note += " Uses the export color range for tone mapping.";
     }
 
+    if (pyramidal) note += " Includes an image pyramid for faster zooming.";
     els.expEstimate.textContent = `Estimated output: ${humanBytes(estBytes)}`;
     els.expNote.innerHTML = note;
     const warn = estBytes > (512 * 1024 * 1024) || warnByPixels;

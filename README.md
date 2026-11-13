@@ -12,6 +12,10 @@ spectra, histograms, or line profiles. Lines are solid and retain their source
 colors; each brush color owns one line and its profile window. See
 [plot comparisons](docs/plot-comparisons.md).
 
+TIFF exports of 4 megapixels or more automatically include tiled image pyramids
+for zooming. Pyramids preserve the chosen export's full-resolution samples and
+band/page layout; smaller TIFFs remain flat. Estimates include overview data.
+
 ## Development
 
 Requires Node.js 22 and Git.

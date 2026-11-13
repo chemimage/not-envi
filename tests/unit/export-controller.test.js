@@ -31,6 +31,22 @@ function makeEls() {
 }
 
 describe("export dialog controller", () => {
+  test("large TIFF estimates include pyramid data while ENVI stays flat", () => {
+    const els = makeEls();
+    els.expModeRaw.checked = true;
+    els.expScopeView.checked = true;
+    const ds = { name: "large", activeBand: 0, meta: { bands: 1, dataTypeInfo: { bytes: 1, name: "uint8" } } };
+    const controller = createExportDialogController({ state: {}, els, getActive: () => ds,
+      bandLabel: () => "b0", humanBytes: String, resolveExportRect: () => ({ w: 2048, h: 2048 }), alertFn() {} });
+    controller.updateExportDialogUI();
+    expect(els.expEstimate.textContent).toContain("5505024");
+    expect(els.expNote.innerHTML).toContain("Includes an image pyramid");
+    els.expFormatEnvi.checked = true;
+    controller.updateExportDialogUI();
+    expect(els.expEstimate.textContent).toContain("4194304");
+    expect(els.expNote.innerHTML).not.toContain("Includes an image pyramid");
+  });
+
   test("alerts when no active dataset", () => {
     const alertFn = vi.fn();
     const ctrl = createExportDialogController({

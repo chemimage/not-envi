@@ -7,6 +7,29 @@ pako dependency have been removed. GeoTIFF remains a standard-library pixel
 fallback for existing formats such as palettes and JPEG; it is not retried
 as a second parser when libtiff rejects a file.
 
+## Exported pyramids
+
+Raw, scaled 8-bit, RGB/BGR composite, and rendered TIFF exports automatically
+use tiled pyramids at 4,194,304 spatial pixels or more. Levels halve each
+dimension, rounding odd edges up, until the longest edge is at most 512 pixels.
+Each full-resolution band plane owns its overview SubIFDs; reduced levels use
+`NewSubfileType=1` and do not enter the main page chain. This keeps the original
+band count when the file is reopened. Tiles are at most 512 × 512 pixels, with
+smaller dimensions rounded to multiples of 16.
+
+Raw full-resolution samples keep their original numeric representation. Overview
+pixels average valid 2 × 2 source samples, rounding integer results. Floating
+overviews ignore non-finite samples and remain NaN when none are finite. RGB
+channel order is preserved, and rendered RGBA previews account for alpha.
+These are uncompressed classic TIFFs; the existing 4 GiB address limit still
+applies. Pyramid levels add file data and encoding work. The export estimate
+includes overview pixels and tile-edge padding, excluding small directory costs.
+
+The encoder runs through the existing disposable export worker, and the
+single-file build embeds it. Validation reads full-resolution and reduced data
+with GeoTIFF.js, discovers the independent pyramids with the app's libtiff
+backend, and downloads and reopens a large multiband file in the browser.
+
 ## Ownership and I/O
 
 - `wasm/libtiff/hyve_tiff.c` is a public-API adapter. It does not parse TIFF
