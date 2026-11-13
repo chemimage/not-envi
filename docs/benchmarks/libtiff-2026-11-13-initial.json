@@ -1,0 +1,5904 @@
+{
+  "date": "2026-11-13T18:02:55.932Z",
+  "sourceCommit": "d01a94be176f5f6a87f7ee1c0b32e65416aa2b4d",
+  "emscripten": "4.0.22",
+  "chromium": "145.0.7632.6",
+  "fixtures": [
+    {
+      "config": {
+        "name": "raw-gray",
+        "codec": 1
+      },
+      "fileBytes": 1049118,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 3.4000000059604645,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.4000000059604645,
+                1.5,
+                0.10000002384185791,
+                1.800000011920929
+              ],
+              "medianMs": 1.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0,
+                0,
+                0.4000000059604645
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 1049118,
+            "fileReads": 5,
+            "browserBytes": 1049118,
+            "copyBytes": 2098236,
+            "cacheHits": 69,
+            "readMs": 3.0999999940395355,
+            "ioCacheBytes": 1049118,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 1,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 3,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.4000000059604645,
+                1.0999999940395355,
+                0.10000002384185791,
+                1.5
+              ],
+              "medianMs": 1.0999999940395355
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0,
+                0.09999999403953552,
+                0.09999999403953552,
+                0.29999998211860657
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 1049118,
+            "fileReads": 5,
+            "browserBytes": 1049118,
+            "copyBytes": 2098236,
+            "cacheHits": 69,
+            "readMs": 2.199999988079071,
+            "ioCacheBytes": 1049118,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 1,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 26.399999976158142,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                5,
+                2.800000011920929,
+                2.300000011920929,
+                99.09999999403954
+              ],
+              "medianMs": 5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                1,
+                1,
+                42
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 709160,
+            "bytesRead": 709160,
+            "readCalls": 4113,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 709160,
+            "decodedReservedBytes": 197160,
+            "scratchReservedBytes": 0,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 196608,
+            "peakReservationBytes": 262144,
+            "peakRetainedBackingBytes": 196608,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 1277851,
+            "copiedBytes": 1987011,
+            "cacheHits": 4396,
+            "cacheMisses": 17,
+            "cacheEvictions": 0,
+            "residentBytes": 1310720,
+            "pinnedBytes": 0,
+            "batches": 4113,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 276,
+            "pageFillDeduplications": 95,
+            "pageFillCacheHits": 3835,
+            "pageFillCacheMisses": 278,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 4,
+            "pageFillCopiedBytes": 1277851,
+            "peakFillActiveReads": 4,
+            "peakFillActiveBytes": 262144,
+            "peakFillQueueRequests": 5,
+            "peakFillQueueBytes": 65536,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 12,
+            "sourceReadQualifiedSamples": 6,
+            "sourceReadWindowSamples": 6,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 60.79999989271164,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 13280,
+            "pageIndexProbes": 13280,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 256,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 4384,
+            "rawCacheMisses": 5,
+            "decodedCacheHits": 12,
+            "decodedCacheMisses": 12,
+            "decodeCalls": 0,
+            "decodeMs": 0,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 153.2999999821186,
+            "rawCacheBytes": 1310720,
+            "decodedCacheBytes": 196608,
+            "cacheBytes": 1507328,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 154
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 21,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                2.4000000059604645,
+                2.0999999940395355,
+                2.4000000059604645,
+                104.2999999821186
+              ],
+              "medianMs": 2.4000000059604645
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.8999999761581421,
+                0.9000000059604645,
+                1,
+                60.900000005960464
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 709160,
+            "bytesRead": 709160,
+            "readCalls": 4113,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 709160,
+            "decodedReservedBytes": 197160,
+            "scratchReservedBytes": 0,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 196608,
+            "peakReservationBytes": 262144,
+            "peakRetainedBackingBytes": 196608,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 1277851,
+            "copiedBytes": 1987011,
+            "cacheHits": 4398,
+            "cacheMisses": 17,
+            "cacheEvictions": 0,
+            "residentBytes": 1310720,
+            "pinnedBytes": 0,
+            "batches": 4113,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 278,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 3839,
+            "pageFillCacheMisses": 274,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 4,
+            "pageFillCopiedBytes": 1277851,
+            "peakFillActiveReads": 2,
+            "peakFillActiveBytes": 262269,
+            "peakFillQueueRequests": 2,
+            "peakFillQueueBytes": 16384,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 4,
+            "sourceReadWindowSamples": 4,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 54.19999983906746,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 13169,
+            "pageIndexProbes": 13169,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 256,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 4386,
+            "rawCacheMisses": 5,
+            "decodedCacheHits": 12,
+            "decodedCacheMisses": 12,
+            "decodeCalls": 0,
+            "decodeMs": 0,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 174.59999999403954,
+            "rawCacheBytes": 1310720,
+            "decodedCacheBytes": 196608,
+            "cacheBytes": 1507328,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 174.89999997615814
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.00019531248835846782,
+        "jsMs": 0.008593750011641532,
+        "libtiffTimes": [
+          0.0007812500116415322,
+          0.00039062503492459655,
+          0.00019531248835846782,
+          0.00019531248835846782,
+          0.00019531248835846782,
+          0.00019531248835846782,
+          0.00019531254656612873,
+          0,
+          0.00019531248835846782,
+          0.00039062497671693563,
+          0,
+          0.00039062503492459655
+        ],
+        "jsTimes": [
+          0.007031249988358468,
+          0.005664062511641532,
+          0.005273437476716936,
+          0.010351562523283064,
+          0.009179687476716936,
+          0.008593750011641532,
+          0.009960937488358468,
+          0.0068359375,
+          0.005859375,
+          0.005664062511641532,
+          0.012500000011641532,
+          0.009765625
+        ],
+        "encodedBytes": 16384,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      }
+    },
+    {
+      "config": {
+        "name": "packbits-gray",
+        "codec": 32773
+      },
+      "fileBytes": 1057438,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 1.5999999940395355,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.20000001788139343,
+                1,
+                0.09999999403953552,
+                1.199999988079071
+              ],
+              "medianMs": 1
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.09999999403953552,
+                0,
+                0.30000001192092896
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 1057438,
+            "fileReads": 5,
+            "browserBytes": 1057438,
+            "copyBytes": 2114876,
+            "cacheHits": 69,
+            "readMs": 2.899999976158142,
+            "ioCacheBytes": 1057438,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 32773,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.699999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.30000001192092896,
+                1.100000023841858,
+                0.09999999403953552,
+                1.4000000059604645
+              ],
+              "medianMs": 1.100000023841858
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.19999998807907104,
+                0.09999999403953552,
+                0.09999999403953552,
+                0.5999999940395355
+              ],
+              "medianMs": 0.19999998807907104
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 1057438,
+            "fileReads": 5,
+            "browserBytes": 1057438,
+            "copyBytes": 2114876,
+            "cacheHits": 69,
+            "readMs": 2.0999999940395355,
+            "ioCacheBytes": 1057438,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 32773,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 14.200000017881393,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                25.299999982118607,
+                21.69999998807907,
+                19.30000001192093,
+                267.30000001192093
+              ],
+              "medianMs": 25.299999982118607
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                0.8999999761581421,
+                0.7999999821186066,
+                3.7999999821186066
+              ],
+              "medianMs": 0.9000000059604645
+            }
+          ],
+          "stats": {
+            "requestedBytes": 1057448,
+            "bytesRead": 1057448,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 1057448,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 0,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1164544,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 1057438,
+            "copiedBytes": 2114886,
+            "cacheHits": 227,
+            "cacheMisses": 69,
+            "cacheEvictions": 0,
+            "residentBytes": 1310720,
+            "pinnedBytes": 0,
+            "batches": 73,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 71,
+            "pageFillDeduplications": 42,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 73,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 1057438,
+            "peakFillActiveReads": 3,
+            "peakFillActiveBytes": 49536,
+            "peakFillQueueRequests": 5,
+            "peakFillQueueBytes": 82560,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 2,
+            "sourceReadWindowSamples": 2,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 25.700000017881393,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 494,
+            "pageIndexProbes": 494,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 256,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 139,
+            "rawCacheMisses": 5,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 2090.500000178814,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 339.49999991059303,
+            "rawCacheBytes": 1310720,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 2359296,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 339.99999994039536
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 18.799999982118607,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                21,
+                25,
+                22.900000005960464,
+                238.40000000596046
+              ],
+              "medianMs": 25
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1.0999999940395355,
+                0.8999999761581421,
+                0.7999999821186066,
+                3.7999999821186066
+              ],
+              "medianMs": 1.0999999940395355
+            }
+          ],
+          "stats": {
+            "requestedBytes": 1057448,
+            "bytesRead": 1057448,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 1057448,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 0,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1164544,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 1057438,
+            "copiedBytes": 2114886,
+            "cacheHits": 229,
+            "cacheMisses": 69,
+            "cacheEvictions": 0,
+            "residentBytes": 1310720,
+            "pinnedBytes": 0,
+            "batches": 73,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 73,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 73,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 1057438,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 16512,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 16512,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 10,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 22.60000005364418,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 438,
+            "pageIndexProbes": 438,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 256,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 141,
+            "rawCacheMisses": 5,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1909.3999999761581,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 313.5999999642372,
+            "rawCacheBytes": 1310720,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 2359296,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 313.8999999463558
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.0007812500116415322,
+        "jsMs": 0.010546875011641532,
+        "libtiffTimes": [
+          0.002148437488358468,
+          0.0013671874767169356,
+          0.0007812499534338713,
+          0.0007812500116415322,
+          0.0007812500116415322,
+          0.0005859375232830644,
+          0.0007812499534338713,
+          0.0007812500116415322,
+          0.0009765625,
+          0.0007812500116415322,
+          0.0007812500116415322,
+          0.0007812500116415322
+        ],
+        "jsTimes": [
+          0.0146484375,
+          0.010351562465075403,
+          0.0107421875,
+          0.013085937534924597,
+          0.0126953125,
+          0.009960937488358468,
+          0.010546875011641532,
+          0.009960937488358468,
+          0.010156249976716936,
+          0.012500000011641532,
+          0.009570312511641532,
+          0.009960937488358468
+        ],
+        "encodedBytes": 16512,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      }
+    },
+    {
+      "config": {
+        "name": "lzw-gray",
+        "codec": 5
+      },
+      "fileBytes": 272958,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 1.2999999821186066,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.5,
+                0.4000000059604645,
+                0.30000001192092896,
+                2.300000011920929
+              ],
+              "medianMs": 0.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0,
+                0.09999999403953552,
+                0.4000000059604645
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 272958,
+            "fileReads": 2,
+            "browserBytes": 272958,
+            "copyBytes": 545916,
+            "cacheHits": 69,
+            "readMs": 1.0999999940395355,
+            "ioCacheBytes": 272958,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 1,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.5,
+                0.20000001788139343,
+                0.30000001192092896,
+                1.5
+              ],
+              "medianMs": 0.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0,
+                0,
+                0.09999999403953552,
+                0.30000001192092896
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 272958,
+            "fileReads": 2,
+            "browserBytes": 272958,
+            "copyBytes": 545916,
+            "cacheHits": 69,
+            "readMs": 0.9000000059604645,
+            "ioCacheBytes": 272958,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 13.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                26.700000017881393,
+                29,
+                22.69999998807907,
+                245.80000001192093
+              ],
+              "medianMs": 29
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.8999999761581421,
+                0.9000000059604645,
+                1,
+                3.800000011920929
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 272968,
+            "bytesRead": 272968,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 272968,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1205809,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 272958,
+            "copiedBytes": 545926,
+            "cacheHits": 214,
+            "cacheMisses": 66,
+            "cacheEvictions": 0,
+            "residentBytes": 524288,
+            "pinnedBytes": 0,
+            "batches": 70,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 58,
+            "pageFillDeduplications": 53,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 70,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 272958,
+            "peakFillActiveReads": 2,
+            "peakFillActiveBytes": 8528,
+            "peakFillQueueRequests": 9,
+            "peakFillQueueBytes": 38300,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 23.899999976158142,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 661,
+            "pageIndexProbes": 703,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 64,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 126,
+            "rawCacheMisses": 2,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 2002.2000000178814,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 330.5000000298023,
+            "rawCacheBytes": 524288,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1572864,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 330.7000000178814
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 27.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                21.30000001192093,
+                22.700000017881393,
+                21.599999994039536,
+                246.80000001192093
+              ],
+              "medianMs": 22.700000017881393
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1.2000000178813934,
+                1,
+                1,
+                4
+              ],
+              "medianMs": 1.2000000178813934
+            }
+          ],
+          "stats": {
+            "requestedBytes": 272968,
+            "bytesRead": 272968,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 272968,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1205809,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 272958,
+            "copiedBytes": 545926,
+            "cacheHits": 226,
+            "cacheMisses": 66,
+            "cacheEvictions": 0,
+            "residentBytes": 524288,
+            "pinnedBytes": 0,
+            "batches": 70,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 70,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 70,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 272958,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 4264,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 4264,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 10,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 20.799999952316284,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 420,
+            "pageIndexProbes": 462,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 64,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 138,
+            "rawCacheMisses": 2,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1917.5999999940395,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 318.80000004172325,
+            "rawCacheBytes": 524288,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1572864,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 319.6000000536442
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.014062499976716936,
+        "jsMs": 0.2191406250349246,
+        "libtiffTimes": [
+          0.014453125011641532,
+          0.014062500034924597,
+          0.013867187488358468,
+          0.013671875,
+          0.013867187488358468,
+          0.014062499976716936,
+          0.014062500034924597,
+          0.014257812465075403,
+          0.013867187546566129,
+          0.014062499976716936,
+          0.014062499976716936,
+          0.013867187546566129
+        ],
+        "jsTimes": [
+          0.23007812502328306,
+          0.21699218748835847,
+          0.23046875,
+          0.21308593748835847,
+          0.2216796875,
+          0.2103515625349246,
+          0.20253906247671694,
+          0.20527343748835847,
+          0.22148437501164153,
+          0.22285156248835847,
+          0.2191406250349246,
+          0.21757812495343387
+        ],
+        "encodedBytes": 4264,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      }
+    },
+    {
+      "config": {
+        "name": "lzw-noise",
+        "codec": 5,
+        "noise": true
+      },
+      "fileBytes": 1430280,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 2.199999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.29999998211860657,
+                1.300000011920929,
+                1.2999999821186066,
+                4.5
+              ],
+              "medianMs": 1.300000011920929
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.19999998807907104,
+                0.10000002384185791,
+                0.30000001192092896
+              ],
+              "medianMs": 0.19999998807907104
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 1430280,
+            "fileReads": 6,
+            "browserBytes": 1430280,
+            "copyBytes": 2860560,
+            "cacheHits": 69,
+            "readMs": 4.199999988079071,
+            "ioCacheBytes": 1430280,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.9000000059604645,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.4000000059604645,
+                1.300000011920929,
+                0.800000011920929,
+                4.600000023841858
+              ],
+              "medianMs": 1.300000011920929
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0,
+                0,
+                0.19999998807907104
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 1430280,
+            "fileReads": 6,
+            "browserBytes": 1430280,
+            "copyBytes": 2860560,
+            "cacheHits": 69,
+            "readMs": 2.699999988079071,
+            "ioCacheBytes": 1430280,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 15,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                19.5,
+                21.900000005960464,
+                21.099999994039536,
+                215.2999999821186
+              ],
+              "medianMs": 21.900000005960464
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                1,
+                0.9000000059604645,
+                3.7999999821186066
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 1430290,
+            "bytesRead": 1430290,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 1430290,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1386620,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 1430280,
+            "copiedBytes": 2860570,
+            "cacheHits": 226,
+            "cacheMisses": 70,
+            "cacheEvictions": 0,
+            "residentBytes": 1572864,
+            "pinnedBytes": 0,
+            "batches": 74,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 70,
+            "pageFillDeduplications": 33,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 74,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 1430280,
+            "peakFillActiveReads": 3,
+            "peakFillActiveBytes": 89324,
+            "peakFillQueueRequests": 5,
+            "peakFillQueueBytes": 111661,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 3,
+            "sourceReadWindowSamples": 3,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 19.699999898672104,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 481,
+            "pageIndexProbes": 568,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 256,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 138,
+            "rawCacheMisses": 6,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1692.200000077486,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 284.0999999642372,
+            "rawCacheBytes": 1572864,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 2621440,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 284.4999999701977
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 15,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                21.799999982118607,
+                21.5,
+                22.099999994039536,
+                212.5
+              ],
+              "medianMs": 22.099999994039536
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1.7999999821186066,
+                0.9000000059604645,
+                1,
+                3.7000000178813934
+              ],
+              "medianMs": 1.7999999821186066
+            }
+          ],
+          "stats": {
+            "requestedBytes": 1430290,
+            "bytesRead": 1430290,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 1430290,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1386620,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 1430280,
+            "copiedBytes": 2860570,
+            "cacheHits": 230,
+            "cacheMisses": 70,
+            "cacheEvictions": 0,
+            "residentBytes": 1572864,
+            "pinnedBytes": 0,
+            "batches": 74,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 74,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 74,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 1430280,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 22382,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 22382,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 10,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 18.400000035762787,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 444,
+            "pageIndexProbes": 522,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 256,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 142,
+            "rawCacheMisses": 6,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1674.7999999821186,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 285.09999999403954,
+            "rawCacheBytes": 1572864,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 2621440,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 285.2999999821186
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.06640625,
+        "jsMs": 0.5822265624883585,
+        "libtiffTimes": [
+          0.06406250002328306,
+          0.061914062476716936,
+          0.0609375000349246,
+          0.07207031245343387,
+          0.06699218752328306,
+          0.06640625,
+          0.06562499998835847,
+          0.0625,
+          0.06718750001164153,
+          0.0732421875,
+          0.07539062498835847,
+          0.06328125001164153
+        ],
+        "jsTimes": [
+          0.5824218749767169,
+          0.5863281249767169,
+          0.5964843750116415,
+          0.5673828125,
+          0.5646484374883585,
+          0.5964843750116415,
+          0.5787109375232831,
+          0.5841796874883585,
+          0.5796875000232831,
+          0.57421875,
+          0.5792968749883585,
+          0.5822265624883585
+        ],
+        "encodedBytes": 22316,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      }
+    },
+    {
+      "config": {
+        "name": "deflate-gray",
+        "codec": 8
+      },
+      "fileBytes": 114142,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 0.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.7999999821186066,
+                0.19999998807907104,
+                0.09999999403953552,
+                1.7000000178813934
+              ],
+              "medianMs": 0.7999999821186066
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.09999999403953552,
+                0.09999999403953552,
+                0.29999998211860657
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 114142,
+            "fileReads": 1,
+            "browserBytes": 114142,
+            "copyBytes": 228284,
+            "cacheHits": 69,
+            "readMs": 0.3999999761581421,
+            "ioCacheBytes": 114142,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.800000011920929,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.8999999761581421,
+                0.19999998807907104,
+                0.19999998807907104,
+                1.800000011920929
+              ],
+              "medianMs": 0.8999999761581421
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0,
+                0.09999999403953552,
+                0.10000002384185791,
+                0.4000000059604645
+              ],
+              "medianMs": 0.10000002384185791
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 114142,
+            "fileReads": 1,
+            "browserBytes": 114142,
+            "copyBytes": 228284,
+            "cacheHits": 69,
+            "readMs": 0.5999999940395355,
+            "ioCacheBytes": 114142,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 15,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                19,
+                20.899999976158142,
+                18.299999982118607,
+                218.7999999821186
+              ],
+              "medianMs": 20.899999976158142
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                0.9000000059604645,
+                0.800000011920929,
+                3.7000000178813934
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 114152,
+            "bytesRead": 114152,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 114152,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 2164035,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 114142,
+            "copiedBytes": 228294,
+            "cacheHits": 213,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 69,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 57,
+            "pageFillDeduplications": 55,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 69,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 114142,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 3547,
+            "peakFillQueueRequests": 8,
+            "peakFillQueueBytes": 14185,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 16.300000101327896,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 634,
+            "pageIndexProbes": 634,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 125,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1771.4000000953674,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 283.19999998807907,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1310720,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 283.39999997615814
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 13.800000011920929,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                25.69999998807907,
+                20.400000005960464,
+                20.700000017881393,
+                214.80000001192093
+              ],
+              "medianMs": 25.69999998807907
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                0.9000000059604645,
+                1,
+                3.800000011920929
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 114152,
+            "bytesRead": 114152,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 114152,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 2164035,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 114142,
+            "copiedBytes": 228294,
+            "cacheHits": 225,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 69,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 69,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 69,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 114142,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 1788,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 1788,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 15.299999982118607,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 414,
+            "pageIndexProbes": 414,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 137,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1733.6000000536442,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 287.7000000178814,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1310720,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 288.2000000476837
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.0126953125,
+        "jsMs": 0.05351562501164153,
+        "libtiffTimes": [
+          0.012890624988358468,
+          0.0126953125,
+          0.0126953125,
+          0.0126953125,
+          0.012304687523283064,
+          0.012500000011641532,
+          0.013281249965075403,
+          0.012304687523283064,
+          0.014257812523283064,
+          0.012499999953433871,
+          0.012109375034924597,
+          0.017187499965075403
+        ],
+        "jsTimes": [
+          0.0796874999650754,
+          0.0654296875,
+          0.05292968754656613,
+          0.05292968748835847,
+          0.05078125,
+          0.052734375,
+          0.068359375,
+          0.05449218751164153,
+          0.053124999976716936,
+          0.05253906251164153,
+          0.061914062476716936,
+          0.05351562501164153
+        ],
+        "encodedBytes": 1786,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      }
+    },
+    {
+      "config": {
+        "name": "deflate-noise",
+        "codec": 8,
+        "noise": true
+      },
+      "fileBytes": 1049952,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 1.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.20000001788139343,
+                0.9000000059604645,
+                0.10000002384185791,
+                1.300000011920929
+              ],
+              "medianMs": 0.9000000059604645
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.10000002384185791,
+                0,
+                0.30000001192092896
+              ],
+              "medianMs": 0.10000002384185791
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 1049952,
+            "fileReads": 5,
+            "browserBytes": 1049952,
+            "copyBytes": 2099904,
+            "cacheHits": 69,
+            "readMs": 2.600000023841858,
+            "ioCacheBytes": 1049952,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.800000011920929,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.09999999403953552,
+                1.0999999940395355,
+                0.19999998807907104,
+                1.5
+              ],
+              "medianMs": 1.0999999940395355
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.10000002384185791,
+                0.09999999403953552,
+                0.4000000059604645
+              ],
+              "medianMs": 0.10000002384185791
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 1049952,
+            "fileReads": 5,
+            "browserBytes": 1049952,
+            "copyBytes": 2099904,
+            "cacheHits": 69,
+            "readMs": 2.100000023841858,
+            "ioCacheBytes": 1049952,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 14.200000017881393,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                20.299999982118607,
+                21.69999998807907,
+                18.700000017881393,
+                212.40000000596046
+              ],
+              "medianMs": 21.69999998807907
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                0.9000000059604645,
+                0.8999999761581421,
+                3.699999988079071
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 1049962,
+            "bytesRead": 1049962,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 1049962,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 2310254,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 1049952,
+            "copiedBytes": 2099914,
+            "cacheHits": 227,
+            "cacheMisses": 69,
+            "cacheEvictions": 0,
+            "residentBytes": 1310720,
+            "pinnedBytes": 0,
+            "batches": 73,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 71,
+            "pageFillDeduplications": 42,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 73,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 1049952,
+            "peakFillActiveReads": 3,
+            "peakFillActiveBytes": 49185,
+            "peakFillQueueRequests": 5,
+            "peakFillQueueBytes": 81975,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 2,
+            "sourceReadWindowSamples": 2,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 20.30000004172325,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 492,
+            "pageIndexProbes": 492,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 256,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 139,
+            "rawCacheMisses": 5,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1703.2999999821186,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 279.19999998807907,
+            "rawCacheBytes": 1310720,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 2359296,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 279.4999999701977
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 16.400000005960464,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                21.19999998807907,
+                20.600000023841858,
+                20.599999994039536,
+                220.5
+              ],
+              "medianMs": 21.19999998807907
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.8999999761581421,
+                0.9000000059604645,
+                0.9000000059604645,
+                3.699999988079071
+              ],
+              "medianMs": 0.9000000059604645
+            }
+          ],
+          "stats": {
+            "requestedBytes": 1049962,
+            "bytesRead": 1049962,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 1049962,
+            "decodedReservedBytes": 1049256,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 2310254,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 1049952,
+            "copiedBytes": 2099914,
+            "cacheHits": 229,
+            "cacheMisses": 69,
+            "cacheEvictions": 0,
+            "residentBytes": 1310720,
+            "pinnedBytes": 0,
+            "batches": 73,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 73,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 73,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 1049952,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 16397,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 16397,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 19.90000009536743,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 438,
+            "pageIndexProbes": 438,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 256,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 141,
+            "rawCacheMisses": 5,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1755.800000011921,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 288.9999999701977,
+            "rawCacheBytes": 1310720,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 2359296,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 289.2999999821186
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.003710937511641532,
+        "jsMs": 0.03535156248835847,
+        "libtiffTimes": [
+          0.00390625,
+          0.003710937511641532,
+          0.00390625,
+          0.003710937511641532,
+          0.00390625,
+          0.003710937511641532,
+          0.00390625,
+          0.003710937511641532,
+          0.0037109374534338713,
+          0.003710937511641532,
+          0.00390625,
+          0.003710937511641532
+        ],
+        "jsTimes": [
+          0.0283203125,
+          0.026171875011641532,
+          0.03535156248835847,
+          0.029101562511641532,
+          0.04902343748835847,
+          0.055273437523283064,
+          0.0400390625,
+          0.040429687476716936,
+          0.03046875004656613,
+          0.0390625,
+          0.0337890624650754,
+          0.032812500023283064
+        ],
+        "encodedBytes": 16395,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      }
+    },
+    {
+      "config": {
+        "name": "lzw-predictor2-rgb",
+        "codec": 5,
+        "predictor": 2,
+        "channels": 3
+      },
+      "fileBytes": 100940,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 0.699999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.5,
+                0.30000001192092896,
+                0.4000000059604645,
+                2.9000000059604645
+              ],
+              "medianMs": 0.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0,
+                0,
+                0.09999999403953552,
+                0.20000001788139343
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 72,
+            "requestedBytes": 100940,
+            "fileReads": 1,
+            "browserBytes": 100940,
+            "copyBytes": 201880,
+            "cacheHits": 71,
+            "readMs": 0.5,
+            "ioCacheBytes": 100940,
+            "width": 1024,
+            "height": 1024,
+            "samples": 3,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 3145728,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.7000000178813934,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.4000000059604645,
+                0.19999998807907104,
+                0.5,
+                3.800000011920929
+              ],
+              "medianMs": 0.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.19999998807907104,
+                0.09999999403953552,
+                0.19999998807907104,
+                0.4000000059604645
+              ],
+              "medianMs": 0.19999998807907104
+            }
+          ],
+          "stats": {
+            "readRequests": 72,
+            "requestedBytes": 100940,
+            "fileReads": 1,
+            "browserBytes": 100940,
+            "copyBytes": 201880,
+            "cacheHits": 71,
+            "readMs": 0.5,
+            "ioCacheBytes": 100940,
+            "width": 1024,
+            "height": 1024,
+            "samples": 3,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 3145728,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 15.899999976158142,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                33.70000001788139,
+                29,
+                24.899999976158142,
+                266.2000000178814
+              ],
+              "medianMs": 33.70000001788139
+            },
+            {
+              "phase": "warm",
+              "times": [
+                2.699999988079071,
+                2.699999988079071,
+                2.7000000178813934,
+                11.400000005960464
+              ],
+              "medianMs": 2.7000000178813934
+            }
+          ],
+          "stats": {
+            "requestedBytes": 100950,
+            "bytesRead": 100950,
+            "readCalls": 71,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 100950,
+            "decodedReservedBytes": 3146432,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 3145728,
+            "peakReservationBytes": 3199603,
+            "peakRetainedBackingBytes": 3145728,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 100940,
+            "copiedBytes": 201890,
+            "cacheHits": 390,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 71,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 56,
+            "pageFillDeduplications": 55,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 71,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 100940,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 3137,
+            "peakFillQueueRequests": 9,
+            "peakFillQueueBytes": 14066,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 17.999999970197678,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 646,
+            "pageIndexProbes": 646,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 126,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 264,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 2188.2999998927116,
+            "blockComposeCalls": 24,
+            "blockComposeMs": 1117.2999999821186,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 3145728,
+            "cacheBytes": 3407872,
+            "raster": {
+              "windowCalls": 24,
+              "bipWindowCalls": 24,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 24,
+              "decodedPixels": 688128,
+              "windowReadMs": 1118.5
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 15.599999994039536,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                25.099999994039536,
+                24.30000001192093,
+                24,
+                273.5
+              ],
+              "medianMs": 25.099999994039536
+            },
+            {
+              "phase": "warm",
+              "times": [
+                2.7000000178813934,
+                2.5999999940395355,
+                2.699999988079071,
+                11.300000011920929
+              ],
+              "medianMs": 2.7000000178813934
+            }
+          ],
+          "stats": {
+            "requestedBytes": 100950,
+            "bytesRead": 100950,
+            "readCalls": 71,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 100950,
+            "decodedReservedBytes": 3146432,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 3145728,
+            "peakReservationBytes": 3199603,
+            "peakRetainedBackingBytes": 3145728,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 100940,
+            "copiedBytes": 201890,
+            "cacheHits": 405,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 71,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 71,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 71,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 100940,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 1600,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 1600,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 19.700000166893005,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 426,
+            "pageIndexProbes": 426,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 141,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 264,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 2115.9999998509884,
+            "blockComposeCalls": 24,
+            "blockComposeMs": 1096.3999999463558,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 3145728,
+            "cacheBytes": 3407872,
+            "raster": {
+              "windowCalls": 24,
+              "bipWindowCalls": 24,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 24,
+              "decodedPixels": 688128,
+              "windowReadMs": 1097.5999999940395
+            }
+          }
+        }
+      ],
+      "verified": 2752512,
+      "codec": {
+        "libtiffMs": 0.03515625,
+        "jsMs": 0.5007812499534339,
+        "libtiffTimes": [
+          0.03535156254656613,
+          0.03437499998835847,
+          0.0341796875,
+          0.03593750001164153,
+          0.03496093745343387,
+          0.037109375,
+          0.03437500004656613,
+          0.0341796875,
+          0.03691406245343387,
+          0.03515625,
+          0.034765625023283064,
+          0.03515625
+        ],
+        "jsTimes": [
+          0.5357421875232831,
+          0.49492187501164153,
+          0.4996093749650754,
+          0.5070312500465661,
+          0.5255859374883585,
+          0.49882812501164153,
+          0.5007812499534339,
+          0.48945312504656613,
+          0.5029296875,
+          0.4986328124650754,
+          0.5031249999883585,
+          0.4990234375
+        ],
+        "encodedBytes": 1539,
+        "decodedBytes": 49152,
+        "verifiedBytes": 49152
+      }
+    },
+    {
+      "config": {
+        "name": "deflate-predictor2-rgb",
+        "codec": 8,
+        "predictor": 2,
+        "channels": 3
+      },
+      "fileBytes": 71998,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 0.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.30000001192092896,
+                0.29999998211860657,
+                0.20000001788139343,
+                2.300000011920929
+              ],
+              "medianMs": 0.30000001192092896
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0,
+                0.09999999403953552,
+                0.30000001192092896
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 72,
+            "requestedBytes": 71998,
+            "fileReads": 1,
+            "browserBytes": 71998,
+            "copyBytes": 143996,
+            "cacheHits": 71,
+            "readMs": 0.5,
+            "ioCacheBytes": 71998,
+            "width": 1024,
+            "height": 1024,
+            "samples": 3,
+            "bits": 8,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 3145728,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.19999998807907104,
+                0.20000001788139343,
+                0.29999998211860657,
+                2.2000000178813934
+              ],
+              "medianMs": 0.29999998211860657
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.19999998807907104,
+                0.09999999403953552,
+                0,
+                0.30000001192092896
+              ],
+              "medianMs": 0.19999998807907104
+            }
+          ],
+          "stats": {
+            "readRequests": 72,
+            "requestedBytes": 71998,
+            "fileReads": 1,
+            "browserBytes": 71998,
+            "copyBytes": 143996,
+            "cacheHits": 71,
+            "readMs": 0.3999999761581421,
+            "ioCacheBytes": 71998,
+            "width": 1024,
+            "height": 1024,
+            "samples": 3,
+            "bits": 8,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 3145728,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 15.300000011920929,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                29.599999994039536,
+                25.299999982118607,
+                23.700000017881393,
+                306.09999999403954
+              ],
+              "medianMs": 29.599999994039536
+            },
+            {
+              "phase": "warm",
+              "times": [
+                2.7000000178813934,
+                2.699999988079071,
+                2.5999999940395355,
+                10.800000011920929
+              ],
+              "medianMs": 2.7000000178813934
+            }
+          ],
+          "stats": {
+            "requestedBytes": 72008,
+            "bytesRead": 72008,
+            "readCalls": 71,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 72008,
+            "decodedReservedBytes": 3146432,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 3145728,
+            "peakReservationBytes": 4156321,
+            "peakRetainedBackingBytes": 3145728,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 71998,
+            "copiedBytes": 144006,
+            "cacheHits": 391,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 71,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 57,
+            "pageFillDeduplications": 55,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 71,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 71998,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 2244,
+            "peakFillQueueRequests": 8,
+            "peakFillQueueBytes": 8889,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 25.099999964237213,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 645,
+            "pageIndexProbes": 645,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 127,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 264,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 2524.699999988079,
+            "blockComposeCalls": 24,
+            "blockComposeMs": 1207.7000000178814,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 3145728,
+            "cacheBytes": 3407872,
+            "raster": {
+              "windowCalls": 24,
+              "bipWindowCalls": 24,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 24,
+              "decodedPixels": 688128,
+              "windowReadMs": 1208.7000000178814
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 15.200000017881393,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                25.599999994039536,
+                24.69999998807907,
+                26.099999994039536,
+                250.80000001192093
+              ],
+              "medianMs": 26.099999994039536
+            },
+            {
+              "phase": "warm",
+              "times": [
+                2.699999988079071,
+                2.9000000059604645,
+                2.7000000178813934,
+                11.100000023841858
+              ],
+              "medianMs": 2.9000000059604645
+            }
+          ],
+          "stats": {
+            "requestedBytes": 72008,
+            "bytesRead": 72008,
+            "readCalls": 71,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 72008,
+            "decodedReservedBytes": 3146432,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 3145728,
+            "peakReservationBytes": 4156321,
+            "peakRetainedBackingBytes": 3145728,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 71998,
+            "copiedBytes": 144006,
+            "cacheHits": 405,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 71,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 71,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 71,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 71998,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 1135,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 1135,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 17.69999998807907,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 426,
+            "pageIndexProbes": 426,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 141,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 264,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1980.4999999701977,
+            "blockComposeCalls": 24,
+            "blockComposeMs": 1037.9000000059605,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 3145728,
+            "cacheBytes": 3407872,
+            "raster": {
+              "windowCalls": 24,
+              "bipWindowCalls": 24,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 24,
+              "decodedPixels": 688128,
+              "windowReadMs": 1038.9000000059605
+            }
+          }
+        }
+      ],
+      "verified": 2752512,
+      "codec": {
+        "libtiffMs": 0.03300781251164153,
+        "jsMs": 0.19804687495343387,
+        "libtiffTimes": [
+          0.03203124995343387,
+          0.031835937523283064,
+          0.03984375001164153,
+          0.041406249976716936,
+          0.0355468750349246,
+          0.032617187476716936,
+          0.03300781251164153,
+          0.03300781251164153,
+          0.03203125001164153,
+          0.031640624976716936,
+          0.03242187498835847,
+          0.03398437501164153
+        ],
+        "jsTimes": [
+          0.20722656248835847,
+          0.19003906252328306,
+          0.19921875,
+          0.2001953125,
+          0.19804687495343387,
+          0.2041015625,
+          0.189453125,
+          0.1957031250349246,
+          0.1919921874650754,
+          0.21699218754656613,
+          0.19648437498835847,
+          0.1943359375
+        ],
+        "encodedBytes": 1109,
+        "decodedBytes": 49152,
+        "verifiedBytes": 49152
+      }
+    },
+    {
+      "config": {
+        "name": "deflate-float32",
+        "codec": 8,
+        "float": true
+      },
+      "fileBytes": 68730,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 0.5,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.19999998807907104,
+                0.19999998807907104,
+                0.29999998211860657,
+                2.199999988079071
+              ],
+              "medianMs": 0.29999998211860657
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.09999999403953552,
+                0,
+                0.4000000059604645
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 68730,
+            "fileReads": 1,
+            "browserBytes": 68730,
+            "copyBytes": 137460,
+            "cacheHits": 69,
+            "readMs": 0.4000000059604645,
+            "ioCacheBytes": 68730,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 32,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 3,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 4194304,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.5999999940395355,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.20000001788139343,
+                0.19999998807907104,
+                0.19999998807907104,
+                2.199999988079071
+              ],
+              "medianMs": 0.20000001788139343
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.10000002384185791,
+                0.09999999403953552,
+                0,
+                0.5
+              ],
+              "medianMs": 0.10000002384185791
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 68730,
+            "fileReads": 1,
+            "browserBytes": 68730,
+            "copyBytes": 137460,
+            "cacheHits": 69,
+            "readMs": 0.5,
+            "ioCacheBytes": 68730,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 32,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 3,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 4194304,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 14.599999994039536,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                25.5,
+                22.299999982118607,
+                25,
+                235.5
+              ],
+              "medianMs": 25.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                1.0999999940395355,
+                0.9000000059604645,
+                4
+              ],
+              "medianMs": 1.0999999940395355
+            }
+          ],
+          "stats": {
+            "requestedBytes": 68740,
+            "bytesRead": 68740,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 68740,
+            "decodedReservedBytes": 4194984,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 4194304,
+            "peakReservationBytes": 5155079,
+            "peakRetainedBackingBytes": 4194304,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 68730,
+            "copiedBytes": 137470,
+            "cacheHits": 212,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 69,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 56,
+            "pageFillDeduplications": 55,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 69,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 68730,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 2332,
+            "peakFillQueueRequests": 9,
+            "peakFillQueueBytes": 9428,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 20.400000005960464,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 629,
+            "pageIndexProbes": 629,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 124,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1904.7999999523163,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 314.69999998807907,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 4194304,
+            "cacheBytes": 4456448,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 315.09999999403954
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 14.400000005960464,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                23,
+                21.5,
+                24.30000001192093,
+                230.90000000596046
+              ],
+              "medianMs": 24.30000001192093
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.8999999761581421,
+                0.9000000059604645,
+                0.9000000059604645,
+                3.9000000059604645
+              ],
+              "medianMs": 0.9000000059604645
+            }
+          ],
+          "stats": {
+            "requestedBytes": 68740,
+            "bytesRead": 68740,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 68740,
+            "decodedReservedBytes": 4194984,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 4194304,
+            "peakReservationBytes": 5155079,
+            "peakRetainedBackingBytes": 4194304,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 68730,
+            "copiedBytes": 137470,
+            "cacheHits": 225,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 69,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 69,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 69,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 68730,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 1214,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 1222,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 20.00000011920929,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 414,
+            "pageIndexProbes": 414,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 137,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1805.5000001192093,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 305.89999997615814,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 4194304,
+            "cacheBytes": 4456448,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 306.30000001192093
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.030859375023283064,
+        "jsMs": 0.15839843748835847,
+        "libtiffTimes": [
+          0.03046875004656613,
+          0.03007812495343387,
+          0.030859375023283064,
+          0.030859375023283064,
+          0.03007812495343387,
+          0.0355468750349246,
+          0.040429687476716936,
+          0.034765625023283064,
+          0.042382812476716936,
+          0.030664062534924597,
+          0.03125,
+          0.030859374965075403
+        ],
+        "jsTimes": [
+          0.16035156248835847,
+          0.15156249998835847,
+          0.16816406248835847,
+          0.1605468750349246,
+          0.15839843748835847,
+          0.15371093747671694,
+          0.1513671875,
+          0.15605468751164153,
+          0.1615234375349246,
+          0.15605468745343387,
+          0.1595703125349246,
+          0.1474609375
+        ],
+        "encodedBytes": 1222,
+        "decodedBytes": 65536,
+        "verifiedBytes": 65536
+      }
+    },
+    {
+      "config": {
+        "name": "deflate-predictor3-float32",
+        "codec": 8,
+        "float": true,
+        "predictor": 3
+      },
+      "fileBytes": 88054,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 0.4000000059604645,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.800000011920929,
+                0.5,
+                0.5,
+                5.0999999940395355
+              ],
+              "medianMs": 0.800000011920929
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0,
+                0.09999999403953552,
+                0.09999999403953552,
+                0.7999999821186066
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 88054,
+            "fileReads": 1,
+            "browserBytes": 88054,
+            "copyBytes": 176108,
+            "cacheHits": 69,
+            "readMs": 0.4000000059604645,
+            "ioCacheBytes": 88054,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 32,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 3,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 4194304,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.699999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.800000011920929,
+                0.5999999940395355,
+                0.5,
+                5.199999988079071
+              ],
+              "medianMs": 0.800000011920929
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.09999999403953552,
+                0.09999999403953552,
+                0.4000000059604645
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 88054,
+            "fileReads": 1,
+            "browserBytes": 88054,
+            "copyBytes": 176108,
+            "cacheHits": 69,
+            "readMs": 0.5999999940395355,
+            "ioCacheBytes": 88054,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 32,
+            "compression": 8,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 3,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 4194304,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 14.900000005960464,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                22.30000001192093,
+                25.799999982118607,
+                22.599999994039536,
+                266.69999998807907
+              ],
+              "medianMs": 25.799999982118607
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1.699999988079071,
+                1.0999999940395355,
+                1.100000023841858,
+                5
+              ],
+              "medianMs": 1.699999988079071
+            }
+          ],
+          "stats": {
+            "requestedBytes": 88064,
+            "bytesRead": 88064,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 88064,
+            "decodedReservedBytes": 4194996,
+            "scratchReservedBytes": 7372800,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 4194304,
+            "peakReservationBytes": 5162968,
+            "peakRetainedBackingBytes": 4194304,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 88054,
+            "copiedBytes": 176118,
+            "cacheHits": 213,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 69,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 57,
+            "pageFillDeduplications": 55,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 69,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 88054,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 3313,
+            "peakFillQueueRequests": 8,
+            "peakFillQueueBytes": 10840,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 21.999999940395355,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 642,
+            "pageIndexProbes": 642,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 125,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 2106.2000000476837,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 345.39999997615814,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 4194304,
+            "cacheBytes": 4456448,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 346.0999999642372
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 17,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                33.900000005960464,
+                24.69999998807907,
+                33.70000001788139,
+                265.7000000178814
+              ],
+              "medianMs": 33.900000005960464
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1.0999999940395355,
+                0.9000000059604645,
+                0.8999999761581421,
+                4
+              ],
+              "medianMs": 1.0999999940395355
+            }
+          ],
+          "stats": {
+            "requestedBytes": 88064,
+            "bytesRead": 88064,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 88064,
+            "decodedReservedBytes": 4194996,
+            "scratchReservedBytes": 7372800,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 4194304,
+            "peakReservationBytes": 5162968,
+            "peakRetainedBackingBytes": 4194304,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 88054,
+            "copiedBytes": 176118,
+            "cacheHits": 225,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 69,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 69,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 69,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 88054,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 1706,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 1714,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 19.19999995827675,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 414,
+            "pageIndexProbes": 414,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 137,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 2171.8999999165535,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 364.5000000298023,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 4194304,
+            "cacheBytes": 4456448,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 364.90000000596046
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.10664062498835847,
+        "jsMs": 0.38144531252328306,
+        "libtiffTimes": [
+          0.10039062495343387,
+          0.10078125004656613,
+          0.1128906249650754,
+          0.10625000001164153,
+          0.109375,
+          0.10234375001164153,
+          0.11210937501164153,
+          0.10664062498835847,
+          0.11269531247671694,
+          0.10410156252328306,
+          0.1099609374650754,
+          0.1025390625
+        ],
+        "jsTimes": [
+          0.37949218752328306,
+          0.3541015624650754,
+          0.365234375,
+          0.3837890625,
+          0.37578125001164153,
+          0.37519531248835847,
+          0.38828125002328306,
+          0.39042968751164153,
+          0.39199218747671694,
+          0.38671875,
+          0.38144531252328306,
+          0.3580078124650754
+        ],
+        "encodedBytes": 1714,
+        "decodedBytes": 65536,
+        "verifiedBytes": 65536
+      }
+    },
+    {
+      "config": {
+        "name": "lzw-strips",
+        "codec": 5,
+        "tiled": false
+      },
+      "fileBytes": 273554,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 1.199999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.5,
+                0.4000000059604645,
+                0.30000001192092896,
+                1.699999988079071
+              ],
+              "medianMs": 0.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0,
+                0,
+                0,
+                0.4000000059604645
+              ],
+              "medianMs": 0
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 273554,
+            "fileReads": 2,
+            "browserBytes": 273554,
+            "copyBytes": 547108,
+            "cacheHits": 69,
+            "readMs": 1.0999999940395355,
+            "ioCacheBytes": 273554,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 0,
+            "blockWidth": 1024,
+            "blockHeight": 16,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 1,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.4000000059604645,
+                0.30000001192092896,
+                0.20000001788139343,
+                1.5999999940395355
+              ],
+              "medianMs": 0.4000000059604645
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0,
+                0.09999999403953552,
+                0,
+                0.29999998211860657
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 273554,
+            "fileReads": 2,
+            "browserBytes": 273554,
+            "copyBytes": 547108,
+            "cacheHits": 69,
+            "readMs": 0.800000011920929,
+            "ioCacheBytes": 273554,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 0,
+            "blockWidth": 1024,
+            "blockHeight": 16,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 14.599999994039536,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                31.5,
+                34.19999998807907,
+                24.799999982118607,
+                159.19999998807907
+              ],
+              "medianMs": 34.19999998807907
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                1,
+                0.9000000059604645,
+                3.5999999940395355
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 273564,
+            "bytesRead": 273564,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 273564,
+            "decodedReservedBytes": 1049244,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1123362,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 273554,
+            "copiedBytes": 547118,
+            "cacheHits": 230,
+            "cacheMisses": 66,
+            "cacheEvictions": 0,
+            "residentBytes": 524288,
+            "pinnedBytes": 0,
+            "batches": 70,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 44,
+            "pageFillDeduplications": 54,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 70,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 273554,
+            "peakFillActiveReads": 2,
+            "peakFillActiveBytes": 25602,
+            "peakFillQueueRequests": 7,
+            "peakFillQueueBytes": 29859,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 13.699999988079071,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 529,
+            "pageIndexProbes": 572,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 64,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 112,
+            "rawCacheMisses": 2,
+            "decodedCacheHits": 118,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1559.3999999761581,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 255.89999994635582,
+            "rawCacheBytes": 524288,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1572864,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 256.19999995827675
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 13.699999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                36.70000001788139,
+                35,
+                25.700000017881393,
+                219
+              ],
+              "medianMs": 36.70000001788139
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                0.9000000059604645,
+                0.8999999761581421,
+                3.5999999940395355
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 273564,
+            "bytesRead": 273564,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 273564,
+            "decodedReservedBytes": 1049244,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1123362,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 273554,
+            "copiedBytes": 547118,
+            "cacheHits": 256,
+            "cacheMisses": 66,
+            "cacheEvictions": 0,
+            "residentBytes": 524288,
+            "pinnedBytes": 0,
+            "batches": 70,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 70,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 70,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 273554,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 4299,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 4299,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 19.499999970197678,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 420,
+            "pageIndexProbes": 462,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 64,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 138,
+            "rawCacheMisses": 2,
+            "decodedCacheHits": 118,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1784.3999999761581,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 322.5000000298023,
+            "rawCacheBytes": 524288,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1572864,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 322.80000001192093
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.014062499976716936,
+        "jsMs": 0.22246093751164153,
+        "libtiffTimes": [
+          0.014257812465075403,
+          0.013867187488358468,
+          0.013476562511641532,
+          0.014062500034924597,
+          0.014062499976716936,
+          0.014453125011641532,
+          0.013867187488358468,
+          0.014062499976716936,
+          0.014257812523283064,
+          0.014257812523283064,
+          0.014062499976716936,
+          0.013867187488358468
+        ],
+        "jsTimes": [
+          0.22675781248835847,
+          0.22148437501164153,
+          0.21796874998835847,
+          0.21953125001164153,
+          0.22187499998835847,
+          0.23691406252328306,
+          0.232421875,
+          0.22246093751164153,
+          0.22285156248835847,
+          0.23964843747671694,
+          0.22148437501164153,
+          0.22109374997671694
+        ],
+        "encodedBytes": 4239,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      }
+    },
+    {
+      "config": {
+        "name": "deflate-strips",
+        "codec": 8,
+        "tiled": false
+      },
+      "fileBytes": 92620,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 0.4000000059604645,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.30000001192092896,
+                0.30000001192092896,
+                0.20000001788139343,
+                0.800000011920929
+              ],
+              "medianMs": 0.30000001192092896
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0,
+                0,
+                0.29999998211860657
+              ],
+              "medianMs": 0.09999999403953552
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 92620,
+            "fileReads": 1,
+            "browserBytes": 92620,
+            "copyBytes": 185240,
+            "cacheHits": 69,
+            "readMs": 0.4000000059604645,
+            "ioCacheBytes": 92620,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 8,
+            "tiled": 0,
+            "blockWidth": 1024,
+            "blockHeight": 16,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 0.4000000059604645,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.30000001192092896,
+                0.30000001192092896,
+                0.19999998807907104,
+                1
+              ],
+              "medianMs": 0.30000001192092896
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.10000002384185791,
+                0,
+                0.09999999403953552,
+                0.4000000059604645
+              ],
+              "medianMs": 0.10000002384185791
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 92620,
+            "fileReads": 1,
+            "browserBytes": 92620,
+            "copyBytes": 185240,
+            "cacheHits": 69,
+            "readMs": 0.4000000059604645,
+            "ioCacheBytes": 92620,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 8,
+            "tiled": 0,
+            "blockWidth": 1024,
+            "blockHeight": 16,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 14.599999994039536,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                35.099999994039536,
+                33.900000005960464,
+                26.099999994039536,
+                162.09999999403954
+              ],
+              "medianMs": 35.099999994039536
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                0.9000000059604645,
+                0.9000000059604645,
+                3.699999988079071
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 92630,
+            "bytesRead": 92630,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 92630,
+            "decodedReservedBytes": 1049244,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1964164,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 92620,
+            "copiedBytes": 185250,
+            "cacheHits": 225,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 69,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 39,
+            "pageFillDeduplications": 55,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 69,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 92620,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 8759,
+            "peakFillQueueRequests": 8,
+            "peakFillQueueBytes": 11715,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 11.600000083446503,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 500,
+            "pageIndexProbes": 500,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 107,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 118,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1580.5999998748302,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 263.40000000596046,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1310720,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 263.69999998807907
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 15.199999988079071,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                35.80000001192093,
+                35,
+                25.599999994039536,
+                212
+              ],
+              "medianMs": 35.80000001192093
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                0.8999999761581421,
+                0.9000000059604645,
+                3.9000000059604645
+              ],
+              "medianMs": 0.9000000059604645
+            }
+          ],
+          "stats": {
+            "requestedBytes": 92630,
+            "bytesRead": 92630,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 92630,
+            "decodedReservedBytes": 1049244,
+            "scratchReservedBytes": 7340032,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1964164,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 92620,
+            "copiedBytes": 185250,
+            "cacheHits": 255,
+            "cacheMisses": 65,
+            "cacheEvictions": 0,
+            "residentBytes": 262144,
+            "pinnedBytes": 0,
+            "batches": 69,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 69,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 69,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 92620,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 1710,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 1710,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 17.000000089406967,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 414,
+            "pageIndexProbes": 414,
+            "pageIndexPeakProbes": 1,
+            "pageIndexBytes": 32,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 137,
+            "rawCacheMisses": 1,
+            "decodedCacheHits": 118,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1894.1000000536442,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 314.80000001192093,
+            "rawCacheBytes": 262144,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1310720,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 314.90000000596046
+            }
+          }
+        }
+      ],
+      "verified": 917504,
+      "codec": {
+        "libtiffMs": 0.01171875,
+        "jsMs": 0.05781250004656613,
+        "libtiffTimes": [
+          0.013281249965075403,
+          0.01171875,
+          0.011914062546566129,
+          0.01171875,
+          0.011914062488358468,
+          0.012304687465075403,
+          0.01171875,
+          0.011523437511641532,
+          0.012109375034924597,
+          0.011523437453433871,
+          0.01171875,
+          0.01171875
+        ],
+        "jsTimes": [
+          0.0634765625,
+          0.048828125,
+          0.057031249976716936,
+          0.05683593748835847,
+          0.053320312523283064,
+          0.06230468751164153,
+          0.0582031249650754,
+          0.0615234375,
+          0.05781250004656613,
+          0.05488281248835847,
+          0.0562499999650754,
+          0.0609375000349246
+        ],
+        "encodedBytes": 1268,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      }
+    },
+    {
+      "config": {
+        "name": "lzw-main-ifds",
+        "codec": 5,
+        "pyramid": 1
+      },
+      "fileBytes": 369806,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 2.0999999940395355,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.09999999403953552,
+                0.19999998807907104,
+                0.4000000059604645,
+                1.300000011920929
+              ],
+              "medianMs": 0.4000000059604645
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.10000002384185791,
+                0.10000002384185791,
+                0,
+                0.30000001192092896
+              ],
+              "medianMs": 0.10000002384185791
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 272958,
+            "fileReads": 2,
+            "browserBytes": 369806,
+            "copyBytes": 545916,
+            "cacheHits": 69,
+            "readMs": 1.9000000059604645,
+            "ioCacheBytes": 369806,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 1,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.19999998807907104,
+                0.19999998807907104,
+                0.09999999403953552,
+                1.199999988079071
+              ],
+              "medianMs": 0.19999998807907104
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.10000002384185791,
+                0.19999998807907104,
+                0.30000001192092896
+              ],
+              "medianMs": 0.19999998807907104
+            }
+          ],
+          "stats": {
+            "readRequests": 70,
+            "requestedBytes": 272958,
+            "fileReads": 2,
+            "browserBytes": 369806,
+            "copyBytes": 545916,
+            "cacheHits": 69,
+            "readMs": 0.9000000059604645,
+            "ioCacheBytes": 369806,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 16.400000005960464,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                19.19999998807907,
+                18.5,
+                19.5,
+                49.5
+              ],
+              "medianMs": 19.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.8999999761581421,
+                0.9000000059604645,
+                0.9000000059604645,
+                4.399999976158142
+              ],
+              "medianMs": 0.9000000059604645
+            }
+          ],
+          "stats": {
+            "requestedBytes": 73994,
+            "bytesRead": 73994,
+            "readCalls": 29,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 73994,
+            "decodedReservedBytes": 263312,
+            "scratchReservedBytes": 262144,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 262144,
+            "peakReservationBytes": 283971,
+            "peakRetainedBackingBytes": 262144,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 73980,
+            "copiedBytes": 147974,
+            "cacheHits": 69,
+            "cacheMisses": 18,
+            "cacheEvictions": 0,
+            "residentBytes": 524288,
+            "pinnedBytes": 0,
+            "batches": 29,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 26,
+            "pageFillDeduplications": 9,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 29,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 73980,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 8509,
+            "peakFillQueueRequests": 4,
+            "peakFillQueueBytes": 17018,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 4,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 6.89999994635582,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 187,
+            "pageIndexProbes": 283,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 64,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 53,
+            "rawCacheMisses": 2,
+            "decodedCacheHits": 16,
+            "decodedCacheMisses": 16,
+            "decodeCalls": 16,
+            "decodeMs": 228.4000000357628,
+            "blockComposeCalls": 6,
+            "blockComposeMs": 59.69999995827675,
+            "rawCacheBytes": 524288,
+            "decodedCacheBytes": 262144,
+            "cacheBytes": 786432,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 113.79999995231628
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 16.599999994039536,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                18.80000001192093,
+                21.5,
+                20.80000001192093,
+                51.099999994039536
+              ],
+              "medianMs": 21.5
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.9000000059604645,
+                0.7999999821186066,
+                0.800000011920929,
+                3.800000011920929
+              ],
+              "medianMs": 0.9000000059604645
+            }
+          ],
+          "stats": {
+            "requestedBytes": 73994,
+            "bytesRead": 73994,
+            "readCalls": 29,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 73994,
+            "decodedReservedBytes": 263312,
+            "scratchReservedBytes": 262144,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 262144,
+            "peakReservationBytes": 283971,
+            "peakRetainedBackingBytes": 262144,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 73980,
+            "copiedBytes": 147974,
+            "cacheHits": 72,
+            "cacheMisses": 18,
+            "cacheEvictions": 0,
+            "residentBytes": 524288,
+            "pinnedBytes": 0,
+            "batches": 29,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 29,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 29,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 73980,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 5443,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 5443,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 4,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 6.400000035762787,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 174,
+            "pageIndexProbes": 270,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 64,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 56,
+            "rawCacheMisses": 2,
+            "decodedCacheHits": 16,
+            "decodedCacheMisses": 16,
+            "decodeCalls": 16,
+            "decodeMs": 237.5999999642372,
+            "blockComposeCalls": 6,
+            "blockComposeMs": 63.50000002980232,
+            "rawCacheBytes": 524288,
+            "decodedCacheBytes": 262144,
+            "cacheBytes": 786432,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 118.50000002980232
+            }
+          }
+        }
+      ],
+      "verified": 933888,
+      "codec": {
+        "libtiffMs": 0.014257812523283064,
+        "jsMs": 0.22519531252328306,
+        "libtiffTimes": [
+          0.014257812523283064,
+          0.013867187488358468,
+          0.013867187488358468,
+          0.013671875,
+          0.014257812523283064,
+          0.014843749988358468,
+          0.014843749988358468,
+          0.015429687511641532,
+          0.013867187488358468,
+          0.018164062523283064,
+          0.015625,
+          0.014257812523283064
+        ],
+        "jsTimes": [
+          0.224609375,
+          0.22421875002328306,
+          0.21621093747671694,
+          0.228515625,
+          0.23261718748835847,
+          0.22519531252328306,
+          0.22499999997671694,
+          0.23515625001164153,
+          0.23007812502328306,
+          0.22499999997671694,
+          0.22519531252328306,
+          0.23261718748835847
+        ],
+        "encodedBytes": 4264,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      },
+      "directories": [
+        {
+          "level": 0,
+          "width": 1024,
+          "height": 1024,
+          "samples": 1,
+          "bits": 8,
+          "compression": 5,
+          "tiled": 1,
+          "blockWidth": 128,
+          "blockHeight": 128,
+          "sampleFormat": 1,
+          "heapCapacity": 16777216,
+          "decodedCacheBytes": 0,
+          "decodeCalls": 0,
+          "subIfds": 0,
+          "selectMs": 0.7999999821186066
+        },
+        {
+          "level": 1,
+          "width": 512,
+          "height": 512,
+          "samples": 1,
+          "bits": 8,
+          "compression": 5,
+          "tiled": 1,
+          "blockWidth": 128,
+          "blockHeight": 128,
+          "sampleFormat": 1,
+          "heapCapacity": 16777216,
+          "decodedCacheBytes": 16384,
+          "decodeCalls": 1,
+          "subIfds": 0,
+          "selectMs": 0.20000001788139343
+        },
+        {
+          "level": 2,
+          "width": 256,
+          "height": 256,
+          "samples": 1,
+          "bits": 8,
+          "compression": 5,
+          "tiled": 1,
+          "blockWidth": 128,
+          "blockHeight": 128,
+          "sampleFormat": 1,
+          "heapCapacity": 16777216,
+          "decodedCacheBytes": 32768,
+          "decodeCalls": 2,
+          "subIfds": 0,
+          "selectMs": 0
+        },
+        {
+          "level": 0,
+          "width": 1024,
+          "height": 1024,
+          "samples": 1,
+          "bits": 8,
+          "compression": 5,
+          "tiled": 1,
+          "blockWidth": 128,
+          "blockHeight": 128,
+          "sampleFormat": 1,
+          "heapCapacity": 16777216,
+          "decodedCacheBytes": 49152,
+          "decodeCalls": 3,
+          "subIfds": 0,
+          "selectMs": 0.09999999403953552
+        }
+      ]
+    },
+    {
+      "config": {
+        "name": "lzw-subifds",
+        "codec": 5,
+        "pyramid": 2
+      },
+      "fileBytes": 369826,
+      "variants": [
+        {
+          "kind": "libtiff",
+          "openMs": 1.300000011920929,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.19999998807907104,
+                0.09999999403953552,
+                0.20000001788139343,
+                1.300000011920929
+              ],
+              "medianMs": 0.20000001788139343
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.09999999403953552,
+                0.19999998807907104,
+                0,
+                0.30000001192092896
+              ],
+              "medianMs": 0.19999998807907104
+            }
+          ],
+          "stats": {
+            "readRequests": 71,
+            "requestedBytes": 272978,
+            "fileReads": 2,
+            "browserBytes": 369826,
+            "copyBytes": 545956,
+            "cacheHits": 70,
+            "readMs": 1.199999988079071,
+            "ioCacheBytes": 369826,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 2
+          }
+        },
+        {
+          "kind": "libtiff-Oz",
+          "openMs": 1,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                0.19999998807907104,
+                0.09999999403953552,
+                0.20000001788139343,
+                1.300000011920929
+              ],
+              "medianMs": 0.20000001788139343
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0,
+                0.09999999403953552,
+                0.10000002384185791,
+                0.30000001192092896
+              ],
+              "medianMs": 0.10000002384185791
+            }
+          ],
+          "stats": {
+            "readRequests": 71,
+            "requestedBytes": 272978,
+            "fileReads": 2,
+            "browserBytes": 369826,
+            "copyBytes": 545956,
+            "cacheHits": 70,
+            "readMs": 0.8999999761581421,
+            "ioCacheBytes": 369826,
+            "width": 1024,
+            "height": 1024,
+            "samples": 1,
+            "bits": 8,
+            "compression": 5,
+            "tiled": 1,
+            "blockWidth": 128,
+            "blockHeight": 128,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 1048576,
+            "decodeCalls": 64,
+            "subIfds": 2
+          }
+        },
+        {
+          "kind": "hyve",
+          "openMs": 14,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                22.599999994039536,
+                22.599999994039536,
+                18.899999976158142,
+                226.59999999403954
+              ],
+              "medianMs": 22.599999994039536
+            },
+            {
+              "phase": "warm",
+              "times": [
+                0.8999999761581421,
+                1,
+                0.9000000059604645,
+                3.699999988079071
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 272980,
+            "bytesRead": 272980,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 272980,
+            "decodedReservedBytes": 1049268,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1205809,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 272970,
+            "copiedBytes": 545950,
+            "cacheHits": 214,
+            "cacheMisses": 66,
+            "cacheEvictions": 0,
+            "residentBytes": 524288,
+            "pinnedBytes": 0,
+            "batches": 70,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 58,
+            "pageFillDeduplications": 53,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 70,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 272970,
+            "peakFillActiveReads": 2,
+            "peakFillActiveBytes": 8528,
+            "peakFillQueueRequests": 9,
+            "peakFillQueueBytes": 38300,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 19.500000089406967,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 669,
+            "pageIndexProbes": 711,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 64,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 126,
+            "rawCacheMisses": 2,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1850.4999999701977,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 296.4999999701977,
+            "rawCacheBytes": 524288,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1572864,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 297.1999999284744
+            }
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 17,
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                18.700000017881393,
+                18.30000001192093,
+                18.80000001192093,
+                230
+              ],
+              "medianMs": 18.80000001192093
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1,
+                0.9000000059604645,
+                0.8999999761581421,
+                3.800000011920929
+              ],
+              "medianMs": 1
+            }
+          ],
+          "stats": {
+            "requestedBytes": 272980,
+            "bytesRead": 272980,
+            "readCalls": 69,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 272980,
+            "decodedReservedBytes": 1049268,
+            "scratchReservedBytes": 1048576,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 1048576,
+            "peakReservationBytes": 1205809,
+            "peakRetainedBackingBytes": 1048576,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 0,
+            "browserBytes": 272970,
+            "copiedBytes": 545950,
+            "cacheHits": 226,
+            "cacheMisses": 66,
+            "cacheEvictions": 0,
+            "residentBytes": 524288,
+            "pinnedBytes": 0,
+            "batches": 70,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 70,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 0,
+            "pageFillCacheMisses": 70,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 272970,
+            "peakFillActiveReads": 1,
+            "peakFillActiveBytes": 4264,
+            "peakFillQueueRequests": 1,
+            "peakFillQueueBytes": 4264,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 11,
+            "sourceReadQualifiedSamples": 0,
+            "sourceReadWindowSamples": 0,
+            "sourceReadMedianMs": 0,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 19.39999994635582,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 420,
+            "pageIndexProbes": 462,
+            "pageIndexPeakProbes": 2,
+            "pageIndexBytes": 64,
+            "sourceReadWarning": 0,
+            "isFmap": true,
+            "rawCacheHits": 138,
+            "rawCacheMisses": 2,
+            "decodedCacheHits": 88,
+            "decodedCacheMisses": 64,
+            "decodeCalls": 64,
+            "decodeMs": 1756.900000154972,
+            "blockComposeCalls": 8,
+            "blockComposeMs": 292.10000002384186,
+            "rawCacheBytes": 524288,
+            "decodedCacheBytes": 1048576,
+            "cacheBytes": 1572864,
+            "raster": {
+              "windowCalls": 8,
+              "bipWindowCalls": 8,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 8,
+              "decodedPixels": 229376,
+              "windowReadMs": 292.4000000357628
+            }
+          }
+        }
+      ],
+      "verified": 933888,
+      "codec": {
+        "libtiffMs": 0.014257812523283064,
+        "jsMs": 0.2349609374650754,
+        "libtiffTimes": [
+          0.014062499976716936,
+          0.013867187488358468,
+          0.013867187546566129,
+          0.013867187488358468,
+          0.014843749988358468,
+          0.014257812523283064,
+          0.014257812465075403,
+          0.0146484375,
+          0.014843749988358468,
+          0.014257812523283064,
+          0.013867187488358468,
+          0.0146484375
+        ],
+        "jsTimes": [
+          0.2349609374650754,
+          0.2298828125349246,
+          0.23652343748835847,
+          0.251953125,
+          0.22871093748835847,
+          0.23261718748835847,
+          0.23359374998835847,
+          0.22910156252328306,
+          0.25429687497671694,
+          0.22773437504656613,
+          0.23515624995343387,
+          0.23710937501164153
+        ],
+        "encodedBytes": 4264,
+        "decodedBytes": 16384,
+        "verifiedBytes": 16384
+      },
+      "directories": [
+        {
+          "level": 0,
+          "width": 1024,
+          "height": 1024,
+          "samples": 1,
+          "bits": 8,
+          "compression": 5,
+          "tiled": 1,
+          "blockWidth": 128,
+          "blockHeight": 128,
+          "sampleFormat": 1,
+          "heapCapacity": 16777216,
+          "decodedCacheBytes": 0,
+          "decodeCalls": 0,
+          "subIfds": 2,
+          "selectMs": 0.30000001192092896
+        },
+        {
+          "level": 1,
+          "width": 512,
+          "height": 512,
+          "samples": 1,
+          "bits": 8,
+          "compression": 5,
+          "tiled": 1,
+          "blockWidth": 128,
+          "blockHeight": 128,
+          "sampleFormat": 1,
+          "heapCapacity": 16777216,
+          "decodedCacheBytes": 16384,
+          "decodeCalls": 1,
+          "subIfds": 2,
+          "selectMs": 0.4000000059604645
+        },
+        {
+          "level": 2,
+          "width": 256,
+          "height": 256,
+          "samples": 1,
+          "bits": 8,
+          "compression": 5,
+          "tiled": 1,
+          "blockWidth": 128,
+          "blockHeight": 128,
+          "sampleFormat": 1,
+          "heapCapacity": 16777216,
+          "decodedCacheBytes": 32768,
+          "decodeCalls": 2,
+          "subIfds": 2,
+          "selectMs": 0.09999999403953552
+        },
+        {
+          "level": 0,
+          "width": 1024,
+          "height": 1024,
+          "samples": 1,
+          "bits": 8,
+          "compression": 5,
+          "tiled": 1,
+          "blockWidth": 128,
+          "blockHeight": 128,
+          "sampleFormat": 1,
+          "heapCapacity": 16777216,
+          "decodedCacheBytes": 49152,
+          "decodeCalls": 3,
+          "subIfds": 2,
+          "selectMs": 0.10000002384185791
+        }
+      ]
+    }
+  ],
+  "real": [
+    {
+      "device": "SSD",
+      "file": {
+        "name": "full_slide_with_auto_level_and_per_wn_vs_VS_071526.tif",
+        "size": 2966414944,
+        "lastModified": 1794239531535
+      },
+      "windows": [
+        {
+          "x": 1280,
+          "y": 3400,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 21800,
+          "y": 14000,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 31000,
+          "y": 21000,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 509,
+          "h": 365,
+          "step": 73
+        }
+      ],
+      "rows": [
+        {
+          "kind": "hyve",
+          "openMs": 41.599999994039536,
+          "metadata": {
+            "meta": {
+              "samples": 37136,
+              "lines": 26626,
+              "bands": 3,
+              "interleave": "bip",
+              "littleEndian": true,
+              "headerOffset": 65536,
+              "dataType": 1,
+              "dataTypeInfo": {
+                "name": "uint8",
+                "bytes": 1,
+                "dv": "getUint8"
+              },
+              "bandNames": [
+                "Red",
+                "Green",
+                "Blue"
+              ],
+              "defaultBands": [
+                0,
+                1,
+                2
+              ],
+              "defaultDisplayMode": "rgb",
+              "defaultAdjustColor": "red",
+              "description": "full_slide_with_auto_level_and_per_wn_vs_VS_071526.tif",
+              "sourceFormat": "tiff",
+              "wlUnits": null,
+              "wavelengths": null,
+              "scale": null
+            }
+          },
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                378.19999998807907,
+                322.2000000178814,
+                260.2999999821186,
+                707.3000000119209
+              ]
+            },
+            {
+              "phase": "warm",
+              "times": [
+                230.5,
+                259.19999998807907,
+                262.90000000596046,
+                634.1999999880791
+              ]
+            }
+          ],
+          "stats": {
+            "requestedBytes": 409,
+            "bytesRead": 409,
+            "readCalls": 4,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 409,
+            "decodedReservedBytes": 409,
+            "scratchReservedBytes": 0,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 0,
+            "peakReservationBytes": 632,
+            "peakRetainedBackingBytes": 0,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 4,
+            "browserBytes": 98292799,
+            "copiedBytes": 144959624,
+            "cacheHits": 18705,
+            "cacheMisses": 2359,
+            "cacheEvictions": 2103,
+            "residentBytes": 67108864,
+            "pinnedBytes": 0,
+            "batches": 14498,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 6563,
+            "pageFillDeduplications": 10314,
+            "pageFillCacheHits": 3,
+            "pageFillCacheMisses": 14498,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 98292799,
+            "peakFillActiveReads": 3,
+            "peakFillActiveBytes": 65484,
+            "peakFillQueueRequests": 3,
+            "peakFillQueueBytes": 268059,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 3,
+            "sourceReadQualifiedSamples": 1338,
+            "sourceReadWindowSamples": 18,
+            "sourceReadMedianMs": 0.4000000059604645,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 2828.9000003039837,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 91364,
+            "pageIndexProbes": 208076,
+            "pageIndexPeakProbes": 21,
+            "pageIndexBytes": 8192,
+            "sourceReadWarning": 0,
+            "raster": {
+              "windowCalls": 24,
+              "bipWindowCalls": 24,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 24,
+              "decodedPixels": 5833302,
+              "windowReadMs": 9155.200000047684
+            },
+            "isFmap": true
+          }
+        },
+        {
+          "kind": "libtiff",
+          "openMs": 2.2000000178813934,
+          "metadata": {
+            "width": 37136,
+            "height": 26626,
+            "samples": 3,
+            "bits": 8,
+            "compression": 1,
+            "tiled": 0,
+            "blockWidth": 37136,
+            "blockHeight": 1,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 0,
+            "decodeCalls": 0,
+            "subIfds": 0,
+            "openMs": 2.2000000178813934,
+            "stats": {
+              "readRequests": 7,
+              "requestedBytes": 413,
+              "fileReads": 1,
+              "browserBytes": 262144,
+              "copyBytes": 826,
+              "cacheHits": 6,
+              "readMs": 1.7000000178813934,
+              "ioCacheBytes": 262144,
+              "width": 37136,
+              "height": 26626,
+              "samples": 3,
+              "bits": 8,
+              "compression": 1,
+              "tiled": 0,
+              "blockWidth": 37136,
+              "blockHeight": 1,
+              "sampleFormat": 1,
+              "heapCapacity": 16777216,
+              "decodedCacheBytes": 0,
+              "decodeCalls": 0,
+              "subIfds": 0
+            }
+          },
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                339.69999998807907,
+                285.5,
+                277.39999997615814,
+                603.2999999821186
+              ]
+            },
+            {
+              "phase": "warm",
+              "times": [
+                163.2999999821186,
+                158.30000001192093,
+                170.7000000178814,
+                378.09999999403954
+              ]
+            }
+          ],
+          "stats": {
+            "readRequests": 3809,
+            "requestedBytes": 423573629,
+            "fileReads": 2361,
+            "browserBytes": 618921984,
+            "copyBytes": 847147258,
+            "cacheHits": 3072,
+            "readMs": 2158.4999994933605,
+            "ioCacheBytes": 67108864,
+            "width": 37136,
+            "height": 26626,
+            "samples": 3,
+            "bits": 8,
+            "compression": 1,
+            "tiled": 0,
+            "blockWidth": 37136,
+            "blockHeight": 1,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 0,
+            "decodeCalls": 0,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 35.900000005960464,
+          "metadata": {
+            "meta": {
+              "samples": 37136,
+              "lines": 26626,
+              "bands": 3,
+              "interleave": "bip",
+              "littleEndian": true,
+              "headerOffset": 65536,
+              "dataType": 1,
+              "dataTypeInfo": {
+                "name": "uint8",
+                "bytes": 1,
+                "dv": "getUint8"
+              },
+              "bandNames": [
+                "Red",
+                "Green",
+                "Blue"
+              ],
+              "defaultBands": [
+                0,
+                1,
+                2
+              ],
+              "defaultDisplayMode": "rgb",
+              "defaultAdjustColor": "red",
+              "description": "full_slide_with_auto_level_and_per_wn_vs_VS_071526.tif",
+              "sourceFormat": "tiff",
+              "wlUnits": null,
+              "wavelengths": null,
+              "scale": null
+            }
+          },
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                256.09999999403954,
+                301.80000001192093,
+                248.60000002384186,
+                1290.2999999821186
+              ]
+            },
+            {
+              "phase": "warm",
+              "times": [
+                254.39999997615814,
+                314.10000002384186,
+                319.39999997615814,
+                1391.300000011921
+              ]
+            }
+          ],
+          "stats": {
+            "requestedBytes": 409,
+            "bytesRead": 409,
+            "readCalls": 4,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 409,
+            "decodedReservedBytes": 409,
+            "scratchReservedBytes": 0,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 0,
+            "peakReservationBytes": 632,
+            "peakRetainedBackingBytes": 0,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 4,
+            "browserBytes": 98292583,
+            "copiedBytes": 144959408,
+            "cacheHits": 20373,
+            "cacheMisses": 2359,
+            "cacheEvictions": 2103,
+            "residentBytes": 67108864,
+            "pinnedBytes": 0,
+            "batches": 8232,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 8226,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 6286,
+            "pageFillCacheMisses": 8220,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 98292583,
+            "peakFillActiveReads": 2,
+            "peakFillActiveBytes": 65482,
+            "peakFillQueueRequests": 2,
+            "peakFillQueueBytes": 111254,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 3,
+            "sourceReadQualifiedSamples": 1338,
+            "sourceReadWindowSamples": 18,
+            "sourceReadMedianMs": 0.5,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 3840.5999994277954,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 82698,
+            "pageIndexProbes": 189292,
+            "pageIndexPeakProbes": 21,
+            "pageIndexBytes": 8192,
+            "sourceReadWarning": 0,
+            "raster": {
+              "windowCalls": 24,
+              "bipWindowCalls": 24,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 24,
+              "decodedPixels": 5833302,
+              "windowReadMs": 13118.300000041723
+            },
+            "isFmap": true
+          }
+        }
+      ],
+      "checked": 14583255,
+      "sourceMetadataUnchanged": true
+    },
+    {
+      "device": "HDD",
+      "file": {
+        "name": "full_slide_with_auto_level_and_per_wn_vs_VS_071526.tif",
+        "size": 2966414944,
+        "lastModified": 1794239531535
+      },
+      "windows": [
+        {
+          "x": 1280,
+          "y": 3400,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 21800,
+          "y": 14000,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 31000,
+          "y": 21000,
+          "w": 512,
+          "h": 512
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 509,
+          "h": 365,
+          "step": 73
+        }
+      ],
+      "rows": [
+        {
+          "kind": "hyve",
+          "openMs": 42.5,
+          "metadata": {
+            "meta": {
+              "samples": 37136,
+              "lines": 26626,
+              "bands": 3,
+              "interleave": "bip",
+              "littleEndian": true,
+              "headerOffset": 65536,
+              "dataType": 1,
+              "dataTypeInfo": {
+                "name": "uint8",
+                "bytes": 1,
+                "dv": "getUint8"
+              },
+              "bandNames": [
+                "Red",
+                "Green",
+                "Blue"
+              ],
+              "defaultBands": [
+                0,
+                1,
+                2
+              ],
+              "defaultDisplayMode": "rgb",
+              "defaultAdjustColor": "red",
+              "description": "full_slide_with_auto_level_and_per_wn_vs_VS_071526.tif",
+              "sourceFormat": "tiff",
+              "wlUnits": null,
+              "wavelengths": null,
+              "scale": null
+            }
+          },
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                1825.699999988079,
+                1886.800000011921,
+                2793.5,
+                986.4000000059605
+              ]
+            },
+            {
+              "phase": "warm",
+              "times": [
+                285.40000000596046,
+                249.19999998807907,
+                250.40000000596046,
+                847.5
+              ]
+            }
+          ],
+          "stats": {
+            "requestedBytes": 409,
+            "bytesRead": 409,
+            "readCalls": 4,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 409,
+            "decodedReservedBytes": 409,
+            "scratchReservedBytes": 0,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 0,
+            "peakReservationBytes": 632,
+            "peakRetainedBackingBytes": 0,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 4,
+            "browserBytes": 98298847,
+            "copiedBytes": 144965672,
+            "cacheHits": 18659,
+            "cacheMisses": 2359,
+            "cacheEvictions": 2103,
+            "residentBytes": 67108864,
+            "pinnedBytes": 0,
+            "batches": 14460,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 6556,
+            "pageFillDeduplications": 10256,
+            "pageFillCacheHits": 2,
+            "pageFillCacheMisses": 14460,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 98298847,
+            "peakFillActiveReads": 3,
+            "peakFillActiveBytes": 65484,
+            "peakFillQueueRequests": 3,
+            "peakFillQueueBytes": 268059,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 3,
+            "sourceReadQualifiedSamples": 1338,
+            "sourceReadWindowSamples": 18,
+            "sourceReadMedianMs": 0.5,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 8881.400001645088,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 91005,
+            "pageIndexProbes": 207596,
+            "pageIndexPeakProbes": 21,
+            "pageIndexBytes": 8192,
+            "sourceReadWarning": 0,
+            "raster": {
+              "windowCalls": 24,
+              "bipWindowCalls": 24,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 24,
+              "decodedPixels": 5833302,
+              "windowReadMs": 27365.600000023842
+            },
+            "isFmap": true
+          }
+        },
+        {
+          "kind": "libtiff",
+          "openMs": 8,
+          "metadata": {
+            "width": 37136,
+            "height": 26626,
+            "samples": 3,
+            "bits": 8,
+            "compression": 1,
+            "tiled": 0,
+            "blockWidth": 37136,
+            "blockHeight": 1,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 0,
+            "decodeCalls": 0,
+            "subIfds": 0,
+            "openMs": 8,
+            "stats": {
+              "readRequests": 7,
+              "requestedBytes": 413,
+              "fileReads": 1,
+              "browserBytes": 262144,
+              "copyBytes": 826,
+              "cacheHits": 6,
+              "readMs": 7.699999988079071,
+              "ioCacheBytes": 262144,
+              "width": 37136,
+              "height": 26626,
+              "samples": 3,
+              "bits": 8,
+              "compression": 1,
+              "tiled": 0,
+              "blockWidth": 37136,
+              "blockHeight": 1,
+              "sampleFormat": 1,
+              "heapCapacity": 16777216,
+              "decodedCacheBytes": 0,
+              "decodeCalls": 0,
+              "subIfds": 0
+            }
+          },
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                375.2000000178814,
+                798.5999999940395,
+                1891,
+                6107.199999988079
+              ]
+            },
+            {
+              "phase": "warm",
+              "times": [
+                214.7000000178814,
+                262.30000001192093,
+                184.5,
+                530.8999999761581
+              ]
+            }
+          ],
+          "stats": {
+            "readRequests": 3809,
+            "requestedBytes": 423573629,
+            "fileReads": 2361,
+            "browserBytes": 618921984,
+            "copyBytes": 847147258,
+            "cacheHits": 3072,
+            "readMs": 10141.20000013709,
+            "ioCacheBytes": 67108864,
+            "width": 37136,
+            "height": 26626,
+            "samples": 3,
+            "bits": 8,
+            "compression": 1,
+            "tiled": 0,
+            "blockWidth": 37136,
+            "blockHeight": 1,
+            "sampleFormat": 1,
+            "heapCapacity": 16777216,
+            "decodedCacheBytes": 0,
+            "decodeCalls": 0,
+            "subIfds": 0
+          }
+        },
+        {
+          "kind": "hyve-sync-control",
+          "openMs": 38.80000001192093,
+          "metadata": {
+            "meta": {
+              "samples": 37136,
+              "lines": 26626,
+              "bands": 3,
+              "interleave": "bip",
+              "littleEndian": true,
+              "headerOffset": 65536,
+              "dataType": 1,
+              "dataTypeInfo": {
+                "name": "uint8",
+                "bytes": 1,
+                "dv": "getUint8"
+              },
+              "bandNames": [
+                "Red",
+                "Green",
+                "Blue"
+              ],
+              "defaultBands": [
+                0,
+                1,
+                2
+              ],
+              "defaultDisplayMode": "rgb",
+              "defaultAdjustColor": "red",
+              "description": "full_slide_with_auto_level_and_per_wn_vs_VS_071526.tif",
+              "sourceFormat": "tiff",
+              "wlUnits": null,
+              "wavelengths": null,
+              "scale": null
+            }
+          },
+          "phases": [
+            {
+              "phase": "first",
+              "times": [
+                333.59999999403954,
+                389.09999999403954,
+                310.19999998807907,
+                4405.399999976158
+              ]
+            },
+            {
+              "phase": "warm",
+              "times": [
+                1834.800000011921,
+                297.7000000178814,
+                325.90000000596046,
+                1419.300000011921
+              ]
+            }
+          ],
+          "stats": {
+            "requestedBytes": 409,
+            "bytesRead": 409,
+            "readCalls": 4,
+            "readIntoCalls": 0,
+            "visitPagesCalls": 0,
+            "encodedBytes": 409,
+            "decodedReservedBytes": 409,
+            "scratchReservedBytes": 0,
+            "activeReservationBytes": 0,
+            "retainedBackingBytes": 0,
+            "peakReservationBytes": 632,
+            "peakRetainedBackingBytes": 0,
+            "queuedReservations": 0,
+            "queuedReservationBytes": 0,
+            "rejectedReservations": 0,
+            "cancelledReservations": 0,
+            "blockReads": 4,
+            "browserBytes": 98292583,
+            "copiedBytes": 144959408,
+            "cacheHits": 20373,
+            "cacheMisses": 2359,
+            "cacheEvictions": 2103,
+            "residentBytes": 67108864,
+            "pinnedBytes": 0,
+            "batches": 8232,
+            "workerCancelledRequests": 0,
+            "pageFillReads": 8226,
+            "pageFillDeduplications": 0,
+            "pageFillCacheHits": 6286,
+            "pageFillCacheMisses": 8220,
+            "pageFillFailures": 0,
+            "pageFillCancelledWaiters": 0,
+            "pageFillFragmentFallbacks": 0,
+            "pageFillCopiedBytes": 98292583,
+            "peakFillActiveReads": 2,
+            "peakFillActiveBytes": 65482,
+            "peakFillQueueRequests": 2,
+            "peakFillQueueBytes": 111254,
+            "fillActiveReads": 0,
+            "fillActiveBytes": 0,
+            "fillQueueRequests": 0,
+            "fillQueueBytes": 0,
+            "peakFillParkedRequests": 0,
+            "peakFillLiveDemands": 3,
+            "sourceReadQualifiedSamples": 1338,
+            "sourceReadWindowSamples": 18,
+            "sourceReadMedianMs": 0.5,
+            "sourceReadSlowWindows": 0,
+            "sourceReadWaitMs": 8712.800001502037,
+            "sourceReadWarningMedianMs": 0,
+            "sourceReadWarningWaitMs": 0,
+            "sourceReadWarningRequestId": 0,
+            "sourceReadWarningEpoch": 0,
+            "pageIndexLookups": 82698,
+            "pageIndexProbes": 189292,
+            "pageIndexPeakProbes": 21,
+            "pageIndexBytes": 8192,
+            "sourceReadWarning": 0,
+            "raster": {
+              "windowCalls": 24,
+              "bipWindowCalls": 24,
+              "slabWindowCalls": 0,
+              "rowWindowCalls": 24,
+              "decodedPixels": 5833302,
+              "windowReadMs": 27928.599999964237
+            },
+            "isFmap": true
+          }
+        }
+      ],
+      "checked": 14583255,
+      "sourceMetadataUnchanged": true
+    }
+  ],
+  "size": {
+    "reader": {
+      "wasm": 247797,
+      "glue": 11717,
+      "wasmGzip": 100793,
+      "glueGzip": 4063,
+      "base64WasmPlusGlue": 342113
+    },
+    "small": {
+      "wasm": 236112,
+      "glue": 11317,
+      "wasmGzip": 95048,
+      "glueGzip": 3901,
+      "base64WasmPlusGlue": 326133
+    }
+  },
+  "viewerCommit": "386acd5eaca3ddc08a9becf1cef3f8b207ff5c32"
+}
