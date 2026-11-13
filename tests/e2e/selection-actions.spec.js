@@ -18,7 +18,7 @@ test("same-colored regions keep distinct bold indices inside their top-left corn
     window.__regionLabels = {};
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...args) {
       if (this.canvas.id === "overlayCanvas" && /^\d+$/.test(text)) {
-        window.__regionLabels[text] = { x, y, font: this.font, color: this.fillStyle, baseline: this.textBaseline };
+        window.__regionLabels[`${this.fillStyle}:${text}`] = { x, y, font: this.font, color: this.fillStyle, baseline: this.textBaseline };
       }
       return fillText.call(this, text, x, y, ...args);
     };
@@ -32,12 +32,12 @@ test("same-colored regions keep distinct bold indices inside their top-left corn
   await page.getByRole("button", { name: "Blue swatch", exact: true }).click();
   await page.mouse.move(800, 260); await page.mouse.down();
   await page.mouse.move(1000, 400, { steps: 8 }); await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => Object.keys(window.__regionLabels).sort())).toEqual(["1", "2", "3"]);
+  await expect.poll(() => page.evaluate(() => Object.keys(window.__regionLabels).sort())).toEqual(["#0ea5e9:1", "#ff2d2d:1", "#ff2d2d:2"]);
   const labels = await page.evaluate(() => window.__regionLabels);
-  expect(labels["1"].color).toBe("#ff2d2d");
-  expect(labels["2"].color).toBe("#ff2d2d");
-  expect(labels["3"].color).toBe("#0ea5e9");
-  for (const [index, x, y] of [["1", 400, 290], ["2", 600, 500], ["3", 800, 260]]) {
+  expect(labels["#ff2d2d:1"].color).toBe("#ff2d2d");
+  expect(labels["#ff2d2d:2"].color).toBe("#ff2d2d");
+  expect(labels["#0ea5e9:1"].color).toBe("#0ea5e9");
+  for (const [index, x, y] of [["#ff2d2d:1", 400, 290], ["#ff2d2d:2", 600, 500], ["#0ea5e9:1", 800, 260]]) {
     expect(labels[index].font).toMatch(/^(700|bold) /);
     expect(labels[index].baseline).toBe("top");
     expect(labels[index].x).toBeGreaterThan(x);
@@ -46,6 +46,17 @@ test("same-colored regions keep distinct bold indices inside their top-left corn
     expect(labels[index].y).toBeLessThan(y + 10);
   }
   await page.screenshot({ path: testInfo.outputPath("indexed-regions.png") });
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  const panels = page.locator('.plot-comparison-panel[data-plot-kind="histogram"]');
+  await expect(panels).toHaveCount(2);
+  await expect(panels.nth(0).locator(".plot-legend-name")).toContainText("Region 2");
+  await expect(panels.nth(1).locator(".plot-legend-name")).toContainText("Region 1");
+  for (const panel of (await panels.all()).reverse()) await panel.getByRole("button", { name: "Close comparison chart", exact: true }).click();
+  await expect(panels).toHaveCount(0);
+  await page.locator("#btnToolAreaMode").click();
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(panels.nth(0).locator(".plot-legend-name")).toContainText("Region 1 + 2");
+  await expect(panels.nth(1).locator(".plot-legend-name")).toContainText("Region 1");
 });
 
 test("point crosshairs belong to colors and survive switching, new selections, and plot close", async ({ page }) => {

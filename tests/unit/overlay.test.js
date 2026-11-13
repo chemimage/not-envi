@@ -47,9 +47,9 @@ describe("overlay renderer", () => {
       overlay.drawOverlaysForPanel({ view: { x: 0, y: 0, scale: 1 }, meta: { samples: 400, lines: 200 } },
         { x: 0, y: 0, w: 400 * dpr, h: 200 * dpr }, { showImageBounds: false });
       expect(labels).toHaveLength(3);
-      expect(labels[0]).toEqual({ text: "7", x: 26 * dpr, y: 36 * dpr, font: `700 ${16 * dpr}px Arial`, color: "#ff2d2d", baseline: "top" });
-      expect(labels[1]).toMatchObject({ text: "8", color: "#ff2d2d", x: 146 * dpr, y: 36 * dpr });
-      expect(labels[2]).toMatchObject({ text: "9", color: "#0ea5e9" });
+      expect(labels[0]).toEqual({ text: "1", x: 26 * dpr, y: 36 * dpr, font: `700 ${16 * dpr}px Arial`, color: "#ff2d2d", baseline: "top" });
+      expect(labels[1]).toMatchObject({ text: "2", color: "#ff2d2d", x: 146 * dpr, y: 36 * dpr });
+      expect(labels[2]).toMatchObject({ text: "1", color: "#0ea5e9" });
       expect(labels[2].x).toBeGreaterThan(260 * dpr);
       expect(labels[2].y).toBeGreaterThan(20 * dpr);
       expect(labels[2].x + 12 * dpr).toBeLessThan(340 * dpr);

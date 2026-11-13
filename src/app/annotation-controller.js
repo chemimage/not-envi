@@ -1,5 +1,6 @@
 import { distanceToDrawing, pointDistanceToSegment, pointInPolygon } from "./draw-geometry.js";
 import { pointTarget } from "./point-annotations.js";
+import { nextRegionIndex } from "./region-labels.js";
 
 export function createAnnotationController(deps) {
   const {
@@ -1444,6 +1445,7 @@ export function createAnnotationController(deps) {
         color: draft.color,
         points: points.slice()
       };
+      if (draft.tool === "rect" || draft.tool === "shape") newItem.regionIndex = nextRegionIndex(ds.drawings, draft.color);
       if (previousLine) ds.drawings[ds.drawings.indexOf(previousLine)] = newItem;
       else ds.drawings.push(newItem);
       if (draft.tool === "ruler") onLineProfileRequested?.(ds, newItem);

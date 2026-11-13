@@ -1,6 +1,7 @@
 import { fmtNoGroup } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
 import { pointInPolygon } from "../app/draw-geometry.js";
+import { regionIndices } from "../app/region-labels.js";
 
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
@@ -44,7 +45,7 @@ export function createOverlayRenderer(deps) {
   } = deps;
   let regionLabelStyle;
 
-  function drawRegionIndex(ds, item, eff, dpr, viewport) {
+  function drawRegionIndex(ds, item, index, eff, dpr, viewport) {
     if (!Number.isFinite(item.id) || !item.points?.length) return;
     if (!regionLabelStyle) {
       const style = window.getComputedStyle(document.body);
@@ -56,7 +57,7 @@ export function createOverlayRenderer(deps) {
     const inset = 6 * dpr, fontPx = regionLabelStyle.size * dpr;
     overlayCtx.save();
     overlayCtx.font = `700 ${fontPx}px ${regionLabelStyle.family}`;
-    const text = String(item.id), width = overlayCtx.measureText(text).width;
+    const text = String(index), width = overlayCtx.measureText(text).width;
     let position = right - left >= width + inset * 2 && bottom - top >= fontPx + inset * 2
       ? { x: left + inset, y: top + inset } : null;
     if (position && item.tool === "shape") {
@@ -468,7 +469,8 @@ export function createOverlayRenderer(deps) {
       drawOneAnnotation(ds, items[i], eff, dpr, viewport, i, rulerProfileHover, selectionIds, marqueeOffset, opts);
     }
     if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, viewport, -1, null, null, 0, opts);
-    for (const item of items) if (item.tool === "rect" || item.tool === "shape") drawRegionIndex(ds, item, eff, dpr, viewport);
+    const indices = regionIndices(items);
+    for (const item of items) if (item.tool === "rect" || item.tool === "shape") drawRegionIndex(ds, item, indices.get(item.id), eff, dpr, viewport);
     if (opts.active !== false && !items.some(item => item.tool === "point" && item.id === drawData.spectrumPoint?.id)) {
       drawSpectrumPointCrosshair(ds, viewport, drawData.spectrumPoint || null, dpr);
     }

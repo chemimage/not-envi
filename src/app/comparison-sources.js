@@ -1,4 +1,5 @@
 import { resolveSpectralUnit } from "../render/spectrum-units.js";
+import { regionSourceLabel } from "./region-labels.js";
 
 // The catalog owns small, completed plot arrays. Source geometry is retained
 // only to detect edits/deletion; viewing or regrouping never reads image data.
@@ -22,7 +23,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
         return ids.length === geometry.length && geometry.every(item => ids.includes(item.id));
       },
       key: `${ds.id}:${slot}:${point ? `point:${point.id ?? `${point.x},${point.y}`}` : geometry.map((item) => item.id).sort((a, b) => a - b).join(",") || "whole"}`,
-      label: point ? `Point (${point.x}, ${point.y})` : geometry.length ? `Region ${geometry.map((item) => item.id).join(" + ")}` : "Whole image",
+      label: point ? `Point (${point.x}, ${point.y})` : regionSourceLabel(items, getPanel(slot)?.annotations?.drawings || items),
       check: () => {
         if (removed || getDataset(ds.id) !== ds || ds.ds?.closed) return "deleted";
         if (point) {
@@ -66,7 +67,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
     if (!stats?.bins?.length) return;
     publish("histogram", ds, slot, items, null, {
       compatibility: "histogram:value", band, color, approximate: stats.trueRawSamples === false,
-      label: `${items.length ? `Region ${items.map((item) => item.id).join(" + ")}` : "Whole image"} · Band ${band + 1}`,
+      label: `${regionSourceLabel(items, getPanel(slot)?.annotations?.drawings || items)} · Band ${band + 1}`,
       data: { values: Float64Array.from(stats.bins), min: stats.min, max: stats.max,
         binWidth: stats.binWidth, count: stats.count }
     });
