@@ -1,6 +1,16 @@
 # Comparing plots
 
-Histograms and spectra use one panel per type. Normally only the selected
+Spatial histograms open separate windows for each brush color by default.
+Clicking Histogram calculates every region color on the active image panel.
+In selected-area mode, each color uses its selected region, or its newest region
+when another color is selected. In grouped-area mode, regions of the same color
+contribute to one distribution. Different colors remain separate. Recalculating
+a color updates its existing result for that band.
+**Stack** overlays retained histograms; new results join that stack while it is
+open. **Split** restores independent histogram windows. Closing the stack and
+reopening Histogram returns to separate windows.
+
+Spectra use one panel. Normally only the selected
 source's calculated result is shown. **Stack** overlays the compatible retained
 results in that same panel; **Split** returns to showing only the selected
 result. Changing the image selection updates the panel without recalculating
@@ -19,9 +29,9 @@ Discrete spectra retain bar mode in both views: stacked results use grouped,
 side-by-side bars at each band. Continuous spectra retain their line rendering.
 
 The first result opens in its detailed native panel. Once retained comparisons
-are needed, the shared panel inherits that location and keeps one window
-identity across selections and stack changes. Recalculating a source updates
-its existing result.
+are needed, comparison windows inherit that location. The spectrum panel keeps
+one window identity across selections and stack changes. Recalculating a source
+updates its existing result.
 
 ## Point spectra
 

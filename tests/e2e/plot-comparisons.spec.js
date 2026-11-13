@@ -84,7 +84,73 @@ test("color-owned line windows update in place and toggle all stacked / all spli
   expect(errors).toEqual([]);
 });
 
-for (const [kind, bands] of [["spectrum", 4], ["spectrum", 24], ["histogram", 4]]) {
+test("histograms open one window per brush color and automatically join an existing stack", async ({ page }, testInfo) => {
+  await loadImage(page);
+  await drag(page, 300, 250, 500, 340);
+  await color(page, "Blue");
+  await drag(page, 300, 440, 500, 530);
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  const panels = page.locator('.plot-comparison-panel[data-plot-kind="histogram"]');
+  await expect(panels).toHaveCount(2);
+  for (const panel of await panels.all()) {
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveAttribute("data-trace-count", "1");
+    await expect(panel.locator(".plot-legend-name")).not.toContainText(" + ");
+  }
+  await expect(panels.nth(0).locator(".analysis-hist-title")).toHaveCSS("color", "rgb(255, 45, 45)");
+  await expect(panels.nth(1).locator(".analysis-hist-title")).toHaveCSS("color", "rgb(14, 165, 233)");
+  const first = await panels.nth(0).boundingBox(), second = await panels.nth(1).boundingBox();
+  expect(first.x !== second.x || first.y !== second.y).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("histogram-split-colors.png") });
+
+  await panels.last().getByRole("button", { name: "Stack spatial histogram plots", exact: true }).click();
+  await expect(panels).toHaveCount(1);
+  await expect(panels).toHaveAttribute("data-trace-count", "2");
+  await expect(panels.locator('.plot-legend-entry[data-selected="true"]')).toContainText("Region 2");
+  await panels.getByRole("combobox", { name: "Histogram scale" }).selectOption("percentage");
+  await color(page, "Orange");
+  await drag(page, 850, 630, 980, 710);
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(panels).toHaveCount(1);
+  await expect(panels).toHaveAttribute("data-trace-count", "3");
+  await expect(panels.locator('.plot-legend-entry[data-selected="true"]')).toContainText("Region 3");
+  await page.screenshot({ path: testInfo.outputPath("histogram-stacked-colors.png") });
+
+  await panels.getByRole("button", { name: "Split spatial histogram plots", exact: true }).click();
+  await expect(panels).toHaveCount(3);
+  await expect(page.locator('.plot-comparison-panel[data-trace-count="1"]')).toHaveCount(3);
+  await panels.last().getByRole("button", { name: "Stack spatial histogram plots", exact: true }).click();
+  await expect(panels).toHaveCount(1);
+  await panels.getByRole("button", { name: "Close comparison chart", exact: true }).click();
+  await expect(panels).toHaveCount(0);
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(panels).toHaveCount(3);
+  await page.getByRole("button", { name: "Close dataset", exact: true }).click();
+  await expect(panels).toHaveCount(0);
+});
+
+test("a single histogram in stack mode accepts new colors and replaces recalculated colors", async ({ page }) => {
+  await loadImage(page);
+  await drag(page, 300, 250, 500, 340);
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(page.locator("#analysisStatN")).not.toHaveText("—");
+  await page.locator("#analysisHistPanel").getByRole("button", { name: "Stack spatial histogram plots", exact: true }).click();
+  const panels = page.locator('.plot-comparison-panel[data-plot-kind="histogram"]');
+  await expect(panels).toHaveAttribute("data-trace-count", "1");
+  await color(page, "Blue");
+  await drag(page, 300, 440, 500, 530);
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(panels).toHaveCount(1);
+  await expect(panels).toHaveAttribute("data-trace-count", "2");
+  await color(page, "Red");
+  await drag(page, 850, 630, 980, 710);
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(panels).toHaveAttribute("data-trace-count", "2");
+  await expect(panels.locator('.plot-legend-entry[data-selected="true"]')).toContainText("Region 3");
+  await expect(panels.locator(".plot-legend-name").filter({ hasText: "Region 1" })).toHaveCount(0);
+});
+
+for (const [kind, bands] of [["spectrum", 4], ["spectrum", 24]]) {
   test(`${bands}-band ${kind} follows selection in one stable panel and emphasizes the selected stacked result`, async ({ page }, testInfo) => {
     await loadImage(page, bands);
     const original = page.locator(kind === "spectrum" ? "#specPanel" : "#analysisHistPanel");

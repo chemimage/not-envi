@@ -98,6 +98,7 @@ export function createPlotComparisons({ container, floatingWindows }) {
     actions.append(control, button("×", "Close comparison chart", () => {
       model.close(group.id);
       if (first.kind === "line") { modes.delete("line"); linePresentation.close(); }
+      if (first.kind === "histogram" && ![...model.groups.values()].some(item => model.entries.get(item.ids[0])?.kind === "histogram")) modes.delete("histogram");
       refreshViews();
     }));
     header.append(title, actions);
@@ -123,7 +124,17 @@ export function createPlotComparisons({ container, floatingWindows }) {
     const view = { panel, title, canvas, legend, status, select, control };
     view.window = floatingWindows.register({ id: group.id, element: panel,
       dragHandle: ".floating-window-header", minWidth: 320, minHeight: 300, onResize: () => drawView(group.id) });
-    view.window.place(placements.get(first.kind) || { x: 120 + views.size * 28, y: 70 + views.size * 28, width: 450, height: 370 });
+    const placement = { ...(placements.get(first.kind) || { x: 120 + views.size * 28, y: 70 + views.size * 28, width: 450, height: 370 }) };
+    if (first.kind === "histogram" && !group.stacked) {
+      const siblings = [...views.values()].filter(item => item.panel.dataset.plotKind === first.kind);
+      if (siblings.length) {
+        const parent = container.getBoundingClientRect(), previous = siblings.at(-1).panel.getBoundingClientRect();
+        const right = previous.right - parent.left + 12;
+        placement.x = right + placement.width <= parent.width ? right : Math.max(8, previous.left - parent.left - placement.width - 12);
+        if (Math.abs(placement.x - (previous.left - parent.left)) < 12) placement.y += 36 * siblings.length;
+      }
+    }
+    view.window.place(placement);
     view.window.bringToFront(); views.set(group.id, view);
     select.addEventListener("change", () => drawView(group.id));
     return view;

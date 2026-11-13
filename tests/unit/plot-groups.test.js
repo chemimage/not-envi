@@ -3,6 +3,23 @@ import { createPlotGroups } from "../../src/app/plot-groups.js";
 const entry = (id, kind = "line", compatibility = `${kind}:distance`) => ({ id, kind, compatibility, status: "ready" });
 
 describe("all split / all stacked plot layout", () => {
+  test("histograms split every retained source and new results join an existing stack", () => {
+    const plots = createPlotGroups();
+    plots.upsert(entry("red", "histogram", "histogram:value"));
+    plots.upsert(entry("blue", "histogram", "histogram:value"));
+    plots.present("histogram", "blue", false);
+    expect([...plots.groups.values()].map(group => group.ids)).toEqual([["red"], ["blue"]]);
+    plots.present("histogram", "red", true);
+    expect([...plots.groups.values()]).toMatchObject([{ ids: ["red", "blue"], selectedId: "red", stacked: true }]);
+    plots.upsert(entry("orange", "histogram", "histogram:value"));
+    plots.present("histogram", "orange", true);
+    expect([...plots.groups.values()]).toMatchObject([{ ids: ["red", "blue", "orange"], selectedId: "orange" }]);
+    plots.present("histogram", "orange", false);
+    expect([...plots.groups.values()].map(group => group.ids)).toEqual([["red"], ["blue"], ["orange"]]);
+    plots.remove("blue");
+    plots.present("histogram", "red", false);
+    expect([...plots.groups.values()].map(group => group.ids)).toEqual([["red"], ["orange"]]);
+  });
   test("focused plots keep one panel identity while selection, stacking and spectral units change", () => {
     const plots = createPlotGroups();
     plots.upsert(entry("a", "spectrum", "nm")); plots.upsert(entry("b", "spectrum", "nm"));

@@ -51,6 +51,26 @@ export function createPlotGroups({ maxEntries = 48, maxGroups = 12, maxTraces = 
   // Histograms/spectra retain one presentation identity across selection and
   // stack changes. Incompatible spectral units follow the selected source.
   function present(kind, selectedId, stacked) {
+    if (kind === "histogram") {
+      const plots = [...entries.values()].filter(entry => entry.kind === kind)
+        .sort((a, b) => creationOrder.get(a.id) - creationOrder.get(b.id));
+      const owned = [...groups.values()].filter(group => entries.get(group.ids[0])?.kind === kind);
+      const buckets = new Map();
+      for (const entry of plots) {
+        const key = stacked ? entry.compatibility : entry.id;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(entry.id);
+      }
+      if ([...buckets.values()].some(ids => ids.length > maxTraces)) throw new Error(`Compare up to ${maxTraces} traces in one chart.`);
+      if (groups.size - owned.length + buckets.size > maxGroups) throw new Error("Close a chart before opening another.");
+      for (const group of owned) groups.delete(group.id);
+      let index = 0;
+      for (const [key, ids] of buckets) {
+        const id = index++ === 0 ? "plot-histogram" : `plot-histogram:${key}`;
+        groups.set(id, { id, ids, selectedId: ids.includes(selectedId) ? selectedId : null, stacked, focused: stacked });
+      }
+      return;
+    }
     const id = `plot-${kind}`, previous = groups.get(id);
     const plots = [...entries.values()].filter(entry => entry.kind === kind)
       .sort((a, b) => creationOrder.get(a.id) - creationOrder.get(b.id));
