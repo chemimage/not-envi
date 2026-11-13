@@ -398,7 +398,7 @@ describe("annotation-controller", () => {
     ann.finishDrawingAtPointer({ pointerId: 32, pointerType: "mouse", clientX: 0, clientY: 40 });
   });
 
-  test("new profile line preserves existing lines, including the same color", () => {
+  test("a new profile replaces only its same-color line and retains its identity", () => {
     const { ds, deps } = makeBase();
     ds.drawings = [
       { id: 30, tool: "ruler", color: "#ff2d2d", points: [{ x: 3, y: 3 }, { x: 9, y: 9 }] },
@@ -412,8 +412,9 @@ describe("annotation-controller", () => {
     ann.finishDrawingAtPointer({ pointerId: 41, pointerType: "mouse", clientX: 70, clientY: 70 });
 
     const rulers = ds.drawings.filter((d) => d.tool === "ruler");
-    expect(rulers).toHaveLength(3);
+    expect(rulers).toHaveLength(2);
     expect(rulers.map((item) => item.id)).toContain(30);
+    expect(rulers.find((item) => item.id === 30).points).toEqual([{ x: 60, y: 60 }, { x: 70, y: 70 }]);
     expect(rulers.some((r) => r.color.toLowerCase() === "#22c55e")).toBe(true);
     expect(rulers.some((r) => r.color.toLowerCase() === "#ff2d2d")).toBe(true);
   });

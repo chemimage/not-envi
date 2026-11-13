@@ -11,105 +11,106 @@ async function loadImage(page) {
   ]);
   await expect(page.locator("#displayDock")).toBeVisible();
 }
-
 async function drag(page, x, y, x1, y1) {
   await page.mouse.move(x, y); await page.mouse.down();
   await page.mouse.move(x1, y1, { steps: 8 }); await page.mouse.up();
 }
-
-async function chooseAll(host) {
-  for (const input of await host.locator('.plot-picker input:not(:disabled)').all()) await input.check();
-  await host.getByRole("button", { name: "Combine selected plots", exact: true }).click();
+async function color(page, name) {
+  await page.locator("#drawColorPreview").click();
+  await page.getByRole("button", { name: `${name} swatch`, exact: true }).click();
 }
 
-test("three same-color lines combine, split one trace, recombine, and delete one source", async ({ page }, testInfo) => {
+test("color-owned line windows update in place and toggle all stacked / all split with solid traces", async ({ page }, testInfo) => {
   await loadImage(page);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  const order = await page.locator("#drawTools").evaluate((node) => [...node.children].map((item) => item.id || item.className));
+  expect(order).toEqual(["draw-color-anchor", "draw-tools-separator", "toolRuler", "region-tool-anchor draw-tools-group-gap", "btnToolAreaMode", "toolEraser", "draw-tools-separator", "btnToolExport"]);
   await page.getByRole("button", { name: "Line profile", exact: true }).click();
-  for (let i = 0; i < 3; i++) {
-    await drag(page, 300, 250 + i * 120, 550, 280 + i * 120);
-    await expect(page.locator("#lineProfileStatus")).toContainText("Hover");
-    if (i < 2) await page.getByRole("button", { name: "Close line profile", exact: true }).click();
-  }
-  const original = page.locator("#lineProfilePanel");
-  await original.getByRole("button", { name: "Combine line profile plots", exact: true }).click();
-  await expect(original.locator('.plot-picker input')).toHaveCount(3);
-  await chooseAll(original);
-  let group = page.getByRole("dialog", { name: "Line profile comparison", exact: true });
+  await drag(page, 300, 250, 550, 280);
+  const profiles = page.locator('.line-profile-panel[data-line-profile]');
+  const red = page.locator('.line-profile-panel[data-color="#ff2d2d"]');
+  await expect(red.locator(".line-profile-status")).toContainText("Hover");
+  const before = await red.locator(".line-profile-coordinates").textContent();
+  await drag(page, 300, 370, 550, 400);
+  await expect(profiles).toHaveCount(1);
+  await expect(red.locator(".line-profile-coordinates")).not.toHaveText(before);
+  await expect(red.locator(".analysis-hist-title")).toHaveCSS("color", "rgb(255, 45, 45)");
+  await color(page, "Blue"); await drag(page, 300, 490, 550, 520);
+  const blue = page.locator('.line-profile-panel[data-color="#0ea5e9"]');
+  await expect(blue.locator(".line-profile-status")).toContainText("Hover");
+  await expect(blue.locator(".analysis-hist-title")).toHaveCSS("color", "rgb(14, 165, 233)");
+  await color(page, "Orange"); await drag(page, 300, 610, 550, 640);
+  await expect(profiles).toHaveCount(3);
+  const orange = page.locator('.line-profile-panel[data-color="#ff9500"]');
+  await expect(orange.locator(".line-profile-status")).toContainText("Hover");
+  await orange.getByRole("button", { name: "Stack all line profile plots", exact: true }).click();
+  const group = page.getByRole("dialog", { name: "Line profile comparison", exact: true });
   await expect(group).toHaveAttribute("data-trace-count", "3");
-  await expect(original).toBeHidden();
+  await expect(page.locator('.line-profile-panel:visible')).toHaveCount(0);
+  expect(await group.locator(".plot-legend-entry svg line").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("stroke-dasharray")))).toEqual([null, null, null]);
+  await expect(group.locator(".plot-title-trace")).toHaveCount(3);
+  await expect(group.locator('.plot-picker')).toHaveCount(0);
+  await expect(group.getByRole("button", { name: /separately$/ })).toHaveCount(0);
   await group.getByRole("combobox", { name: "Distance axis" }).selectOption("relative");
-  const swatches = group.locator(".plot-legend-entry svg line");
-  await expect(swatches.nth(1)).toHaveAttribute("stroke-dasharray", "7 4");
-  await group.getByRole("button", { name: /^Open Line 1 .* separately$/ }).click();
-  await expect(group).toHaveAttribute("data-trace-count", "2");
-  const single = page.locator('.plot-comparison-panel[data-trace-count="1"]');
-  await expect(single).toBeVisible();
-  await expect(single.getByRole("button", { name: /separately$/ })).toHaveCount(0);
-  await single.getByRole("button", { name: "Combine more plots", exact: true }).click();
-  await chooseAll(single);
-  group = page.locator(".plot-comparison-panel");
-  await expect(page.locator(".plot-comparison-panel")).toHaveCount(1);
+  // Replacement while stacked retains three sources and the same chart.
+  await color(page, "Red"); await drag(page, 650, 250, 780, 300);
+  await expect(red.locator(".line-profile-status")).toContainText("Hover");
   await expect(group).toHaveAttribute("data-trace-count", "3");
-  await page.screenshot({ path: testInfo.outputPath("line-comparison.png") });
-  await page.setViewportSize({ width: 390, height: 640 });
-  await expect(group.getByRole("button", { name: /^Open Line 1 .* separately$/ })).toBeVisible();
-  const small = await group.boundingBox();
-  expect(small.x).toBeGreaterThanOrEqual(0);
-  expect(small.x + small.width).toBeLessThanOrEqual(390);
-  await page.screenshot({ path: testInfo.outputPath("line-comparison-small.png") });
-  await page.setViewportSize({ width: 1280, height: 850 });
-  await group.getByRole("button", { name: /^Delete source annotation for Line 1 / }).click();
+  await expect(group.locator(".plot-legend-name").filter({ hasText: /^Line 1 / })).not.toContainText("changed");
+  await page.screenshot({ path: testInfo.outputPath("stacked-solid-lines.png") });
+  await group.getByRole("button", { name: "Split all line profile plots", exact: true }).click();
+  await expect(page.locator(".plot-comparison-panel")).toHaveCount(0);
+  await expect(page.locator('.line-profile-panel:visible')).toHaveCount(3);
+  await page.screenshot({ path: testInfo.outputPath("split-color-profiles.png") });
+  await blue.getByRole("button", { name: "Delete line", exact: true }).click();
+  await expect(profiles).toHaveCount(2);
+  await orange.getByRole("button", { name: "Stack all line profile plots", exact: true }).click();
   await expect(group).toHaveAttribute("data-trace-count", "2");
-  await group.getByRole("button", { name: /^Remove Line 2 .* from chart$/ }).click();
-  await expect(group).toHaveAttribute("data-trace-count", "1");
-  await group.getByRole("button", { name: "Combine more plots", exact: true }).click();
-  await expect(group.locator('.plot-picker input')).toHaveCount(2); // Removed line retained; deleted line gone.
-  await group.getByRole("button", { name: "Cancel combining plots" }).click();
+  await group.getByRole("button", { name: "Close comparison chart", exact: true }).click();
+  await expect(page.locator('.line-profile-panel:visible')).toHaveCount(0);
+  await expect(page.locator('.plot-comparison-panel')).toHaveCount(0);
+  await page.locator("#bandSelector").focus();
+  await page.locator("#bandSelector").press("ArrowRight");
+  await expect(page.locator('.plot-comparison-panel')).toHaveCount(0);
+  await drag(page, 780, 300, 800, 320);
+  await expect(red).toBeVisible();
+  await red.getByRole("button", { name: "Stack all line profile plots", exact: true }).click();
+  await expect(group).toHaveAttribute("data-trace-count", "2");
   await page.locator("#toolEraser").click();
   await expect(page.locator(".plot-comparison-panel")).toHaveCount(0);
+  await expect(profiles).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
 for (const kind of ["spectrum", "histogram"]) {
-  test(`${kind} results retain regions, combine, split individually and close without deleting`, async ({ page }, testInfo) => {
+  test(`${kind} plots toggle all together or all separate without a picker`, async ({ page }, testInfo) => {
     await loadImage(page);
     const original = page.locator(kind === "spectrum" ? "#specPanel" : "#analysisHistPanel");
     for (let i = 0; i < 2; i++) {
       if (i) {
         await original.getByRole("button", { name: kind === "spectrum" ? "Close spectrum" : "Close histogram", exact: true }).click();
-        await page.locator("#drawColorPreview").click();
-        await page.getByRole("button", { name: "Blue swatch", exact: true }).click();
+        await color(page, "Blue");
       }
       await drag(page, 300, 250 + i * 190, 500, 340 + i * 190);
       await page.getByRole("button", { name: kind === "spectrum" ? "Spectrum" : "Spatial histogram", exact: true }).click();
       if (kind === "spectrum") await expect(page.locator("#specFoot")).toContainText("Mean");
       else await expect(page.locator("#analysisStatN")).not.toHaveText("—");
     }
-    await original.getByRole("button", { name: kind === "spectrum" ? "Combine spectrum plots" : "Combine spatial histogram plots", exact: true }).click();
-    await expect(original.locator('.plot-picker input')).toHaveCount(2);
-    await chooseAll(original);
+    const name = kind === "spectrum" ? "spectrum" : "spatial histogram";
+    await original.getByRole("button", { name: `Stack all ${name} plots`, exact: true }).click();
     const together = page.locator('.plot-comparison-panel[data-trace-count="2"]');
     await expect(together).toBeVisible();
     if (kind === "histogram") await together.getByRole("combobox", { name: "Histogram scale" }).selectOption("percentage");
-    await page.screenshot({ path: testInfo.outputPath(`${kind}-comparison.png`) });
-    await together.getByRole("button", { name: /^Open Region 1 .* separately$/ }).click();
+    await page.screenshot({ path: testInfo.outputPath(`${kind}-stacked.png`) });
+    await together.getByRole("button", { name: `Split all ${name} plots`, exact: true }).click();
     await expect(page.locator('.plot-comparison-panel[data-trace-count="1"]')).toHaveCount(2);
-    const closes = page.getByRole("button", { name: "Close comparison chart", exact: true });
-    while (await closes.count()) await closes.first().click();
+    await expect(page.locator('.plot-picker')).toHaveCount(0);
+    const singles = page.locator('.plot-comparison-panel[data-trace-count="1"]');
+    await expect(singles.first().locator(".analysis-hist-title")).toHaveCSS("color", "rgb(255, 45, 45)");
+    await singles.last().getByRole("button", { name: `Stack all ${name} plots`, exact: true }).click();
+    await expect(together).toBeVisible();
+    await page.getByRole("button", { name: "Close dataset", exact: true }).click();
     await expect(page.locator(".plot-comparison-panel")).toHaveCount(0);
-    // Region 1 can still be selected and analysed after both charts close.
-    await page.mouse.click(350, 290);
-    await page.getByRole("button", { name: kind === "spectrum" ? "Spectrum" : "Spatial histogram", exact: true }).click();
-    await expect(original).toBeVisible();
-    if (kind === "spectrum") {
-      await expect(page.locator("#specFoot")).toContainText("Mean");
-      await original.getByRole("button", { name: "Combine spectrum plots", exact: true }).click();
-      await chooseAll(original);
-      await expect(page.locator(".plot-comparison-panel")).toHaveCount(1);
-      await page.getByRole("button", { name: "Close dataset", exact: true }).click();
-      await expect(page.locator(".plot-comparison-panel")).toHaveCount(0);
-    }
   });
 }

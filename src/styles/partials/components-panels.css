@@ -480,7 +480,7 @@
   #app[data-empty="true"] #bandDock,
   #app[data-empty="true"] #displayDock,
   #app[data-empty="true"] #analysisHistPanel,
-  #app[data-empty="true"] #lineProfilePanel,
+  #app[data-empty="true"] .line-profile-panel,
   #app[data-empty="true"] #specPanel {
     display: none;
   }

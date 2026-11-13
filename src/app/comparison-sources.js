@@ -37,7 +37,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
         const status = origin.check();
         return kind === "line" && status === "ready" && JSON.stringify(ds.meta.scale) !== scale ? "changed" : status;
       },
-      id: `${kind}:${origin.key}:${detail.band ?? "all"}`,
+      id: kind === "line" ? `${kind}:${origin.key}` : `${kind}:${origin.key}:${detail.band ?? "all"}`,
       label: `${detail.label || origin.label} · ${ds.name || "Image"}`,
       color: detail.color || items.at(-1)?.color || "#e5e7eb" });
   }

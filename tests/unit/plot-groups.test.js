@@ -1,56 +1,52 @@
 import { describe, expect, test } from "vitest";
 import { createPlotGroups } from "../../src/app/plot-groups.js";
+const entry = (id, kind = "line", compatibility = `${kind}:distance`) => ({ id, kind, compatibility, status: "ready" });
 
-const entry = (id, compatibility = "line:distance") => ({ id, compatibility, status: "ready" });
-
-describe("plot membership", () => {
-  test("splits one of three traces, then recombines without duplication", () => {
+describe("all split / all stacked plot layout", () => {
+  test("toggles every trace together and preserves stable chart identity on updates", () => {
     const plots = createPlotGroups();
     ["a", "b", "c"].forEach((id) => plots.upsert(entry(id)));
-    const together = plots.combine(["a", "b", "c"]);
-    const apart = plots.split(together, "b");
-    expect(plots.groups.get(together).ids).toEqual(["a", "c"]);
-    expect(plots.groups.get(apart).ids).toEqual(["b"]);
-    plots.combine(["b", "a", "c", "b"], apart);
+    plots.arrange("line", true);
+    const together = [...plots.groups.keys()][0];
+    expect(plots.groups.get(together).ids).toEqual(["a", "b", "c"]);
+    plots.upsert({ ...entry("b"), data: { values: [42] } });
+    plots.arrange("line", true);
+    expect([...plots.groups.keys()]).toEqual([together]);
+    plots.arrange("line", false);
+    expect([...plots.groups.values()].map((group) => group.ids)).toEqual([["a"], ["b"], ["c"]]);
+    plots.arrange("line", true);
     expect(plots.groups.size).toBe(1);
-    expect(plots.groups.get(apart).ids).toEqual(["b", "a", "c"]);
     expect(plots.entries.size).toBe(3);
   });
 
-  test("chart removal preserves the source while source deletion updates every chart", () => {
+  test("native line windows own split mode and source deletion removes the trace", () => {
     const plots = createPlotGroups();
-    ["a", "b"].forEach((id) => plots.upsert(entry(id)));
-    const group = plots.combine(["a", "b"]);
-    plots.detach(group, "a");
-    expect(plots.entries.has("a")).toBe(true);
-    expect(plots.groups.get(group).ids).toEqual(["b"]);
-    plots.remove("b");
+    plots.upsert(entry("a")); plots.upsert(entry("b"));
+    plots.arrange("line", true); plots.remove("b");
+    expect([...plots.groups.values()][0].ids).toEqual(["a"]);
+    plots.arrange("line", false, true);
     expect(plots.groups.size).toBe(0);
-    const single = plots.combine(["a"]);
-    plots.close(single);
     expect(plots.entries.has("a")).toBe(true);
   });
 
-  test("incompatible and stale plots are rejected without changing existing charts", () => {
+  test("keeps incompatible axes apart and retains stale trace membership", () => {
     const plots = createPlotGroups();
-    plots.upsert(entry("a")); plots.upsert(entry("b", "spectrum:nm"));
-    plots.upsert({ ...entry("c"), status: "changed" });
-    const group = plots.combine(["a"]);
-    expect(() => plots.combine(["a", "b"])).toThrow("matching axis units");
-    expect(() => plots.combine(["a", "c"])).toThrow("Calculate");
-    expect(plots.groups.get(group).ids).toEqual(["a"]);
+    plots.upsert(entry("a", "spectrum", "spectrum:nm"));
+    plots.upsert(entry("b", "spectrum", "spectrum:cm-1"));
+    plots.upsert({ ...entry("c", "spectrum", "spectrum:nm"), status: "changed" });
+    plots.arrange("spectrum", true);
+    expect([...plots.groups.values()].map((group) => group.ids)).toEqual([["a", "c"], ["b"]]);
   });
 
-  test("limits are atomic and retained comparison data cannot be evicted", () => {
+  test("layout limits are atomic and visible data cannot be evicted", () => {
     const plots = createPlotGroups({ maxEntries: 3, maxGroups: 1 });
     ["a", "b", "c"].forEach((id) => plots.upsert(entry(id)));
-    const group = plots.combine(["a", "b"]);
-    expect(() => plots.split(group, "a")).toThrow("Close a chart");
-    expect(plots.groups.get(group).ids).toEqual(["a", "b"]);
-    plots.upsert(entry("d"));
-    expect([...plots.entries.keys()]).toEqual(["a", "b", "d"]);
-    plots.combine(["a", "b", "d"], group);
-    expect(plots.upsert(entry("e"))).toBe(false);
+    plots.arrange("line", true);
+    expect(() => plots.arrange("line", false)).toThrow("Close a chart");
+    expect([...plots.groups.values()][0].ids).toEqual(["a", "b", "c"]);
+    expect(plots.upsert(entry("d"))).toBe(false);
+    plots.close([...plots.groups.keys()][0]);
     expect(plots.entries.size).toBe(3);
+    expect(plots.upsert(entry("d"))).toBe(true);
   });
 });

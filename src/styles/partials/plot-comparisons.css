@@ -35,21 +35,8 @@
     padding: 2px 5px;
     font-size: 12px;
   }
-  .plot-picker {
-    flex: 0 1 auto;
-    min-height: 120px;
-    overflow: auto;
-    padding: 8px;
-    border-bottom: 1px solid #6b7280;
-    background: #172033;
-  }
-  .plot-picker-choices { max-height: 130px; overflow: auto; margin: 5px 0; }
-  .plot-picker-choice { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 12px; }
-  .plot-picker-choice input { width: 16px; height: 16px; flex-shrink: 0; }
-  .plot-picker-actions { display: flex; gap: 6px; margin-top: 6px; }
-  .plot-picker-status { color: #d4dce8; }
+  .plot-comparison-panel .analysis-hist-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @media (pointer: coarse) {
     .plot-action { min-height: 36px; min-width: 36px; }
-    .plot-picker-choice { min-height: 36px; }
   }
 }

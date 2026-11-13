@@ -1426,14 +1426,17 @@ export function createAnnotationController(deps) {
       keep = points.length >= 3;
     }
     if (keep) {
+      const previousLine = draft.tool === "ruler" ? ds.drawings.find((item) =>
+        ["ruler", "line"].includes(item.tool) && item.color?.toLowerCase() === draft.color?.toLowerCase()) : null;
       const newItem = {
-        id: state.draw.nextItemId++,
+        id: previousLine?.id ?? state.draw.nextItemId++,
         tool: draft.tool,
         shapeMode: draft.tool === "rect" ? normalizeShapeMode(draft.shapeMode) : undefined,
         color: draft.color,
         points: points.slice()
       };
-      ds.drawings.push(newItem);
+      if (previousLine) ds.drawings[ds.drawings.indexOf(previousLine)] = newItem;
+      else ds.drawings.push(newItem);
       if (draft.tool === "ruler") onLineProfileRequested?.(ds, newItem);
       if (draft.tool === "rect" || draft.tool === "shape") {
         const annotationState = resolveAnnotationState(ds);

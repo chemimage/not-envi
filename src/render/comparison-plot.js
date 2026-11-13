@@ -1,5 +1,3 @@
-export const TRACE_DASHES = [[], [7, 4], [2, 3], [9, 3, 2, 3], [12, 5], [4, 3], [9, 3, 2, 3, 2, 3], [1, 3]];
-
 const number = (value) => Number.isFinite(value) ? Number(value.toPrecision(4)).toString() : "—";
 
 export function drawComparisonPlot(canvas, entries, { distance = "px", percentage = false } = {}) {
@@ -86,7 +84,7 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
   for (const { entry, index, points } of series) {
     ctx.strokeStyle = entry.color;
     ctx.lineWidth = 1.75;
-    ctx.setLineDash(TRACE_DASHES[index % TRACE_DASHES.length]);
+    ctx.setLineDash([]);
     ctx.beginPath();
     let connected = false;
     for (const [x, y] of points) {

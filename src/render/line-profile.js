@@ -2,7 +2,7 @@ import { fmtUm } from "../core/utils.js";
 import { readLineProfile } from "./line-profile-data.js";
 
 export function createLineProfileController({
-  els, getTarget, bandLabel, onShow = () => {}, onDelete = () => {}, onResult,
+  els, getTarget, bandLabel, onShow = () => {}, onDelete = () => {}, onResult, onHide = () => {},
   readProfile = readLineProfile, maxSamples = 1024, concurrency = 3
 }) {
   const canvas = els.lineProfileCanvas;
@@ -29,6 +29,8 @@ export function createLineProfileController({
 
   function syncMetadata() {
     if (!target) return;
+    const title = els.lineProfilePanel.querySelector(".analysis-hist-title");
+    if (title) title.style.color = target.item.color || "#e5e7eb";
     const a = target.item.points[0];
     const b = target.item.points.at(-1);
     els.lineProfileCoordinates.textContent = `(${fmtUm(a.x)}, ${fmtUm(a.y)}) → (${fmtUm(b.x)}, ${fmtUm(b.y)})`;
@@ -130,6 +132,25 @@ export function createLineProfileController({
     els.lineProfilePanel.setAttribute("aria-hidden", "true");
   }
 
+  function hide() {
+    sequence += 1;
+    clearTimeout(timer);
+    timer = null;
+    if (!result) requestKey = "";
+    els.lineProfilePanel.style.display = "none";
+    els.lineProfilePanel.setAttribute("aria-hidden", "true");
+    onHide();
+  }
+
+  function show() {
+    if (!anchor) return;
+    els.lineProfilePanel.style.display = "flex";
+    els.lineProfilePanel.setAttribute("aria-hidden", "false");
+    onShow();
+    redraw();
+    return refresh();
+  }
+
   function refresh(immediate = false) {
     if (!anchor) return;
     const next = getTarget(anchor);
@@ -185,7 +206,7 @@ export function createLineProfileController({
     close(); // Retire an in-flight read before removing its source annotation.
     onDelete(deleted);
   });
-  els.btnLineProfileClose.addEventListener("click", close);
+  els.btnLineProfileClose.addEventListener("click", hide);
   for (const [button, value] of [[els.btnLineProfileUm, "um"], [els.btnLineProfilePx, "px"]]) {
     button.addEventListener("click", () => { unit = value; redraw(); });
   }
@@ -197,5 +218,6 @@ export function createLineProfileController({
   });
   canvas.addEventListener("pointerleave", () => { hover = null; redraw(); });
   window.addEventListener("resize", redraw);
-  return { open, refresh, redraw, close };
+  return { open, refresh, redraw, close, hide, show,
+    destroy() { close(); window.removeEventListener("resize", redraw); } };
 }

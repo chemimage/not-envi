@@ -47,7 +47,7 @@ import { createRgbCompositor } from "../render/rgb-composition.js";
 import { createCompositionWorkerClient } from "../render/composition-worker-client.js";
 import { createRenderer } from "../render/render-main.js";
 import { createSpectrumController } from "../render/spectrum.js";
-import { createLineProfileController } from "../render/line-profile.js";
+import { createLineProfileWindows } from "./line-profile-windows.js";
 import { readSpectrumAtPixel as readSpectrumAtPixelCore, wavelengthArrayOrNull as wavelengthArrayOrNullCore } from "../render/spectrum-data.js";
 import { createThumbnailController } from "../render/thumbnail.js";
 import { clamp, fmt, fmtNoGroup, humanBytes } from "../core/utils.js";
@@ -1266,7 +1266,9 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
   });
 
-  lineProfile = createLineProfileController({
+  lineProfile = createLineProfileWindows({
+    floatingWindows,
+    comparisons: plotComparisons,
     onResult: comparisonSources.line,
     els,
     bandLabel,
@@ -1283,23 +1285,9 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
       const item = panel.annotations?.drawings?.find((drawing) => drawing.id === itemId);
       if (!item || !["ruler", "line"].includes(item.tool)) return null;
       return { ds, item, band: resolveDisplayPanelBand(panel, ds) };
-    },
-    onShow: () => {
-      const profileWindow = floatingWindows.get("line-profile");
-      if (profileWindow) {
-        profileWindow.place(profileWindow.getGeometry());
-        profileWindow.bringToFront();
-      }
     }
   });
-  floatingWindows.register({
-    id: "line-profile",
-    element: els.lineProfilePanel,
-    dragHandle: ".floating-window-header",
-    minWidth: 300,
-    minHeight: 290,
-    onResize: () => lineProfile.redraw()
-  });
+  plotComparisons.setLinePresentation({ setStacked: lineProfile.setStacked, close: lineProfile.hideAll });
 
   floatingWindows.register({
     id: "analysis-histogram",
@@ -1320,7 +1308,6 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
   });
 
   analysisPanelLayout = createAnalysisPanelLayout({ els, getWindow: (id) => floatingWindows.get(id) });
-  plotComparisons.attach("line", els.lineProfilePanel, () => lineProfile.close());
   plotComparisons.attach("histogram", els.analysisHistPanel, () => analysisHistogram.closePanel());
   plotComparisons.attach("spectrum", els.specPanel, () => closeSpectrum());
 

@@ -30,16 +30,19 @@ test("line profile opens, switches units, refreshes bands, and deletes only its 
   await page.mouse.move(660, 420, { steps: 10 });
   await page.mouse.up();
   await expect(panel).toBeVisible();
-  // A second line replaces the chart target, not the first annotation.
+  // Another color owns a separate line and an independent profile window.
   await page.locator("#btnLineProfileClose").click();
+  await page.locator("#drawColorPreview").click();
+  await page.getByRole("button", { name: "Blue swatch", exact: true }).click();
   await page.mouse.move(350, 500);
   await page.mouse.down();
   await page.mouse.move(600, 550, { steps: 10 });
   await page.mouse.up();
-  await expect(panel).toBeVisible();
+  const blue = page.locator('.line-profile-panel[data-color="#0ea5e9"]');
+  await expect(blue).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("line-profile-delete.png") });
-  await page.getByRole("button", { name: "Delete line", exact: true }).click();
-  await expect(panel).toBeHidden();
+  await blue.getByRole("button", { name: "Delete line", exact: true }).click();
+  await expect(blue).toHaveCount(0);
   // The first line is still editable and can reopen its chart.
   await page.mouse.move(660, 420);
   await page.mouse.down();
