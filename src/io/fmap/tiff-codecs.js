@@ -1,8 +1,9 @@
 import InlineTiffCodecWorker from "./tiff-codecs.worker.js?worker&inline";
+import { loadLibtiffCompiled } from "../tiff/libtiff/compiled.js";
 import {
-  decodeBoundedTiffBlockDirect,
+  decodeLibtiffBlock,
   estimateBoundedTiffScratchBytes
-} from "./tiff-codecs-core.js";
+} from "../tiff/libtiff/codec.js";
 
 function abortError() {
   const error = new Error("TIFF block decode aborted.");
@@ -33,21 +34,23 @@ function codecDirectory(fileDirectory) {
     BitsPerSample: fileDirectory?.BitsPerSample ?? fileDirectory?.bitsPerSample,
     SamplesPerPixel: fileDirectory?.SamplesPerPixel ?? fileDirectory?.samplesPerPixel,
     PlanarConfiguration: fileDirectory?.PlanarConfiguration ?? fileDirectory?.planarConfiguration,
+    SampleFormat: fileDirectory?.SampleFormat ?? fileDirectory?.sampleFormat,
+    FillOrder: fileDirectory?.FillOrder ?? fileDirectory?.fillOrder,
     TileWidth: fileDirectory?.TileWidth ?? fileDirectory?.tileWidth,
     ImageWidth: fileDirectory?.ImageWidth ?? fileDirectory?.imageWidth
   };
 }
 
-/** Decode in a disposable inline worker; Node/unit environments use the same bounded core directly. */
+/** A disposable worker makes even synchronous C decompression interruptible. */
 export function decodeBoundedTiffBlock(fileDirectory, buffer, expectedBytes, options = {}) {
   const signals = abortSignals(options);
   if (signals.some((signal) => signal.aborted) || options.cancelled?.()) return Promise.reject(abortError());
   if (typeof Worker === "undefined") {
-    return Promise.resolve().then(() => decodeBoundedTiffBlockDirect(
+    return loadLibtiffCompiled().then((wasmModule) => decodeLibtiffBlock(
       fileDirectory,
       buffer,
       expectedBytes,
-      options
+      { ...options, wasmModule }
     ));
   }
 
@@ -97,18 +100,18 @@ export function decodeBoundedTiffBlock(fileDirectory, buffer, expectedBytes, opt
       onAbort();
       return;
     }
-    try {
+    loadLibtiffCompiled().then((wasmModule) => {
+      if (settled) return;
       worker.postMessage({
         id: 1,
+        wasmModule,
         fileDirectory: codecDirectory(fileDirectory),
         buffer: input,
         expectedBytes,
         littleEndian: options.littleEndian
       }, [input]);
-    } catch (error) {
-      finish(error);
-    }
+    }).catch((error) => finish(error));
   });
 }
 
-export { decodeBoundedTiffBlockDirect, estimateBoundedTiffScratchBytes };
+export { estimateBoundedTiffScratchBytes };

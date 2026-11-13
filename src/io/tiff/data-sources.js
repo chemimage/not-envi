@@ -1165,7 +1165,7 @@ export class TiffBlockIndexedDataSource {
       };
       const scratchBytes = compression === 1
         ? 0
-        : estimateBoundedTiffScratchBytes(codecDirectory, decodedBytes);
+        : estimateBoundedTiffScratchBytes(codecDirectory, decodedBytes, block.byteCount);
       this.#ensureFmapCacheCapacity(decodedBytes, `TIFF compression ${compression} block`);
       const leased = await this.#loadRawBlock(spec, block, {
         decodedBytes,

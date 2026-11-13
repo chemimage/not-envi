@@ -15,7 +15,7 @@ function imageMeta(width, height, bands = 1, dataType = 1) {
 function rangeSource(bytes) {
   return new FmapTiffDataSource({ size: bytes.length, ready: Promise.resolve(), ownerId: "compact-tiff-test",
     stats: {}, readRange: async (offset, length) => bytes.slice(offset, offset + length),
-    cacheBytes: () => 0, clear() {}, close() {} }, { maxWorkingSetBytes: 256 * 1024 });
+    cacheBytes: () => 0, clear() {}, close() {} }, { maxWorkingSetBytes: 8 * 1024 * 1024 });
 }
 
 function sourceFor(bytes, meta, bandSpecs, options = {}) {

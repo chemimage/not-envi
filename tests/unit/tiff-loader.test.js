@@ -24,13 +24,9 @@ function encodeFloat32Page(values) {
   return new Uint8Array(ab);
 }
 
-async function importLoaderWithMockedFromBlob(fromBlobImpl) {
+async function importLoaderWithMockedBackend(fromBlobImpl) {
   vi.resetModules();
-  const actual = await vi.importActual("geotiff");
-  vi.doMock("geotiff", () => ({
-    ...actual,
-    fromBlob: fromBlobImpl
-  }));
+  vi.doMock("../../src/io/tiff/backend/index.js", () => ({ openTiffBackend: fromBlobImpl }));
   return import("../../src/io/tiff-loader.js");
 }
 
@@ -116,7 +112,7 @@ describe("tiff loader", () => {
       ]))
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -142,7 +138,7 @@ describe("tiff loader", () => {
       expect(Array.from(blue)).toEqual([0, 0, 255]);
       expect(fakeImage.readRGB).toHaveBeenCalled();
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -167,7 +163,7 @@ describe("tiff loader", () => {
       })
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -191,7 +187,7 @@ describe("tiff loader", () => {
       expect(Array.from(blue)).toEqual([0, 0]);
       expect(fakeImage.readRGB).toHaveBeenCalledTimes(1);
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -213,7 +209,7 @@ describe("tiff loader", () => {
       readRGB: vi.fn(async () => new Uint8Array([255, 0, 0, 0, 255, 0]))
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -233,7 +229,7 @@ describe("tiff loader", () => {
       expect(Array.from(composite.bands[2])).toEqual([0, 0]);
       expect(fakeImage.readRGB).toHaveBeenCalledTimes(1);
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -279,7 +275,7 @@ describe("tiff loader", () => {
       ]))
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return baseImage;
@@ -312,7 +308,7 @@ describe("tiff loader", () => {
       expect(overviewImage.readRGB).toHaveBeenCalledTimes(1);
       expect(baseImage.readRGB).not.toHaveBeenCalled();
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -339,7 +335,7 @@ describe("tiff loader", () => {
       tiles: {}
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -360,7 +356,7 @@ describe("tiff loader", () => {
       expect(fakeImage.readRGB).not.toHaveBeenCalled();
       expect(ds.ds.stats.decodeCalls).toBe(0);
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -387,7 +383,7 @@ describe("tiff loader", () => {
       tiles: {}
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -412,7 +408,7 @@ describe("tiff loader", () => {
       expect(Array.from(composite.bands[2])).toEqual([21, 22, 23, 24, 25, 26]);
       expect(fakeImage.readRGB).not.toHaveBeenCalled();
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -439,7 +435,7 @@ describe("tiff loader", () => {
       tiles: {}
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -476,7 +472,7 @@ describe("tiff loader", () => {
       expect(Number.isNaN(progressSnapshots[0][2])).toBe(true);
       expect(fakeImage.readRGB).not.toHaveBeenCalled();
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -502,7 +498,7 @@ describe("tiff loader", () => {
       tiles: {}
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -553,7 +549,7 @@ describe("tiff loader", () => {
       } else {
         globalThis.createImageBitmap = prevCreateImageBitmap;
       }
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -575,7 +571,7 @@ describe("tiff loader", () => {
       readRasters: vi.fn(async () => new Uint8Array([42]))
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -593,7 +589,7 @@ describe("tiff loader", () => {
       expect(Array.from(out)).toEqual([42]);
       expect(fakeImage.readRasters).toHaveBeenCalled();
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -615,7 +611,7 @@ describe("tiff loader", () => {
       tiles: {}
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -637,7 +633,7 @@ describe("tiff loader", () => {
       expect(ds.ds.stats.decodeCalls).toBe(0);
       expect(ds.ds.stats.decodedCacheHits).toBeGreaterThanOrEqual(2);
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -660,7 +656,7 @@ describe("tiff loader", () => {
       tiles: {}
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -683,7 +679,7 @@ describe("tiff loader", () => {
       expect(Array.from(out)).toEqual([1, 5, 9, 13]);
       expect(ds.ds.stats.decodeCalls).toBe(0);
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -707,7 +703,7 @@ describe("tiff loader", () => {
       })
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -725,7 +721,7 @@ describe("tiff loader", () => {
       expect(ds.meta.bands).toBe(1);
       expect(fakeImage.readRasters).not.toHaveBeenCalled();
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -751,7 +747,7 @@ describe("tiff loader", () => {
       ]))
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -771,7 +767,7 @@ describe("tiff loader", () => {
       ds.ds.close();
       expect(close).toHaveBeenCalled();
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });
@@ -793,7 +789,7 @@ describe("tiff loader", () => {
       tiles: {}
     };
     const close = vi.fn();
-    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedFromBlob(async () => ({
+    const { addDatasetFromFile: addDatasetFromMockedTiff } = await importLoaderWithMockedBackend(async () => ({
       getImageCount: async () => 1,
       getImage: async (index = 0) => {
         if (index === 0) return fakeImage;
@@ -810,7 +806,7 @@ describe("tiff loader", () => {
         .rejects
         .toThrow(/compressed-strip TIFF is not supported/i);
     } finally {
-      vi.doUnmock("geotiff");
+      vi.doUnmock("../../src/io/tiff/backend/index.js");
       vi.resetModules();
     }
   });

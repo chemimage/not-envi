@@ -59,7 +59,7 @@ function fmapSource(bytes, options = {}) {
       maxWorkingSetBytes: options.maxWorkingSetBytes ?? 256,
       maxLogicalResultBytes: options.maxLogicalResultBytes,
       maxQueuedReservations: 8,
-      maxQueuedReservationBytes: 1024
+      maxQueuedReservationBytes: Math.max(1024, (options.maxWorkingSetBytes ?? 256) * 2)
     })
   };
 }
@@ -111,7 +111,7 @@ function literalLzw(bytes) {
   return Uint8Array.from({ length: bits.length / 8 }, (_v, index) => Number.parseInt(bits.slice(index * 8, (index + 1) * 8), 2));
 }
 
-function blockSource({ encoded, compression, width = 4, height = 1, decodedCacheBytes = 64, workingBytes = 256 * 1024 }) {
+function blockSource({ encoded, compression, width = 4, height = 1, decodedCacheBytes = 64, workingBytes = 8 * 1024 * 1024 }) {
   const { source: rangeSource, range } = fmapSource(encoded, { maxWorkingSetBytes: workingBytes });
   const imageMeta = meta(width, height);
   const block = { key: `codec-${compression}`, x0: 0, y0: 0, w: width, h: height, offset: 0, byteCount: encoded.byteLength };
@@ -161,7 +161,7 @@ describe("TIFF fmap block path", () => {
       expect(stats.isFmap).toBe(true);
       expect(stats.retainedBackingBytes).toBe(4);
       expect(stats.decodedCacheHits).toBeGreaterThan(0);
-      expect(stats.peakReservationBytes).toBeLessThanOrEqual(256 * 1024);
+      expect(stats.peakReservationBytes).toBeLessThanOrEqual(8 * 1024 * 1024);
     } finally {
       source.close();
     }
@@ -258,7 +258,7 @@ describe("TIFF fmap block path", () => {
     const bytes = new Uint8Array(first.byteLength + last.byteLength);
     bytes.set(first, 0);
     bytes.set(last, first.byteLength);
-    const { source: rangeSource } = fmapSource(bytes, { maxWorkingSetBytes: 256 * 1024 });
+    const { source: rangeSource } = fmapSource(bytes, { maxWorkingSetBytes: 8 * 1024 * 1024 });
     const imageMeta = meta(2, 3);
     const fileDirectory = {
       Compression: 8, Predictor: 1, BitsPerSample: [8], SamplesPerPixel: 1,

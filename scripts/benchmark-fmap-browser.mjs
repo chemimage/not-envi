@@ -436,12 +436,14 @@ try {
           return blob;
         }
       }([fixture.file], fixture.file.name, { type: fixture.file.type }) : fixture.file;
-      const workingLimit = 262144;
+      // Raw-page residency remains 256 KiB; compressed admission also accounts
+      // for the separate WASM decoder memory and its private buffers.
+      const workingLimit = 8 * 1024 * 1024;
       const dataset = await addDatasetFromFile(file, {
         fmapEnabled: backend === "fmap", fmapWasmBytes: wasmBytes, cacheBytes: 8 * 1024 * 1024,
         fmapOptions: { pageSizeBytes: 65536, poolBytes: 262144, maxInflightRequests: 2,
           maxResultBytes: 65536, maxInflightBytes: 262144, maxQueuedBytes: 1048576 },
-        tiffFmapOptions: { maxWorkingSetBytes: workingLimit }, createDataset: (descriptor) => descriptor
+        tiffFmapOptions: { maxWorkingSetBytes: workingLimit, maxQueuedReservationBytes: workingLimit * 2 }, createDataset: (descriptor) => descriptor
       });
       try {
         const source = dataset.cached;

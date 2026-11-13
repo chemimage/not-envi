@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import { encodeTIFF_MultiPage_GrayRaw } from "../../src/core/tiff-encoder.js";
 
 function encodeFloat32Page(values) {
@@ -8,16 +8,6 @@ function encodeFloat32Page(values) {
     dv.setFloat32(index * 4, Number(values[index]), false);
   }
   return new Uint8Array(ab);
-}
-
-async function importBackendWithMockedFromBlob(fromBlobImpl) {
-  vi.resetModules();
-  const actual = await vi.importActual("geotiff");
-  vi.doMock("geotiff", () => ({
-    ...actual,
-    fromBlob: fromBlobImpl
-  }));
-  return import("../../src/io/tiff/backend/index.js");
 }
 
 describe("openTiffBackend", () => {
@@ -42,47 +32,8 @@ describe("openTiffBackend", () => {
     }
   });
 
-  test("falls back to geotiff when native parsing cannot open the file", async () => {
-    const fakeImage = {
-      getWidth: () => 3,
-      getHeight: () => 1,
-      getSamplesPerPixel: () => 1,
-      getBitsPerSample: () => 8,
-      getSampleFormat: () => 1,
-      getFileDirectory: () => ({
-        Compression: 1,
-        RowsPerStrip: 1,
-        StripOffsets: [0],
-        StripByteCounts: [3],
-        PhotometricInterpretation: 1
-      })
-    };
-    const fallbackTiff = {
-      littleEndian: true,
-      bigTiff: false,
-      getImageCount: vi.fn(async () => 1),
-      getImage: vi.fn(async (index = 0) => {
-        if (index !== 0) throw new Error(`No image at index ${index}`);
-        return fakeImage;
-      }),
-      close: vi.fn()
-    };
-    const { openTiffBackend } = await importBackendWithMockedFromBlob(async () => fallbackTiff);
-
-    try {
-      const file = new File([new Uint8Array([0, 0, 0])], "fallback.tif", { type: "image/tiff" });
-      const backend = await openTiffBackend(file, { ioConcurrency: 2 });
-      try {
-        expect(await backend.getImageCount()).toBe(1);
-        const image = await backend.getImage(0);
-        expect(image).toBe(fakeImage);
-        expect(fallbackTiff.getImageCount).toHaveBeenCalledTimes(1);
-      } finally {
-        backend.close();
-      }
-    } finally {
-      vi.doUnmock("geotiff");
-      vi.resetModules();
-    }
+  test("rejects an invalid TIFF without retrying another metadata parser", async () => {
+    const { openTiffBackend } = await import("../../src/io/tiff/backend/index.js");
+    await expect(openTiffBackend(new File([new Uint8Array([0, 0, 0])], "invalid.tif"))).rejects.toThrow();
   });
 });

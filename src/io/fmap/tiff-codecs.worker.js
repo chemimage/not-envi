@@ -1,13 +1,13 @@
-import { decodeBoundedTiffBlockDirect } from "./tiff-codecs-core.js";
+import { decodeLibtiffBlock } from "../tiff/libtiff/codec.js";
 
-self.onmessage = (event) => {
+self.onmessage = async (event) => {
   const message = event.data || {};
   try {
-    const buffer = decodeBoundedTiffBlockDirect(
+    const buffer = await decodeLibtiffBlock(
       message.fileDirectory,
       message.buffer,
       message.expectedBytes,
-      { littleEndian: message.littleEndian }
+      { littleEndian: message.littleEndian, wasmModule: message.wasmModule }
     );
     self.postMessage({ id: message.id, buffer }, [buffer]);
   } catch (error) {
