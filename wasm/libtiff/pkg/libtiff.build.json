@@ -7,11 +7,11 @@
     "LZW",
     "Deflate"
   ],
-  "wasmBytes": 346833,
+  "wasmBytes": 355126,
   "files": {
-    "wasm/libtiff/hyve_tiff.c": "37c08e49b446e390b33e1099a16282b8926502e9f850e40d7c75ea149443aa99",
+    "wasm/libtiff/hyve_tiff.c": "1e12aebf6c20cfafe1dbfdf79172317803dd7855e67d3c058fd73cbbd6872132",
     "scripts/build-libtiff-wasm.py": "ee7e93c8c3c64e1e07c27a9cbc2576fa28d090f353b860e6dc0753b31f65cac3",
-    "wasm/libtiff/pkg/libtiff.mjs": "b36c0448495a85708af5e25f92c47d56067244f2d52efca222de3e61fa666904",
-    "wasm/libtiff/pkg/libtiff-bytes.js": "f1424436156782b9aaa68088fbaa73f97ebcd58256dd3b661d91ebe22ea1ba3e"
+    "wasm/libtiff/pkg/libtiff.mjs": "1064b1c4d89e1a562f13679f9e647157f0457ac458703185376c8ee1ad70d3e3",
+    "wasm/libtiff/pkg/libtiff-bytes.js": "1d9b0d983ec62ff3229dcca67fae2aa97dbb88c40417039ad5fb52416e6fea15"
   }
 }

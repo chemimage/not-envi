@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <math.h>
 
 /* TIFF syntax, directory validation, predictors and codecs belong to libtiff.
  * This adapter owns only bounded client I/O and the application ABI. */
@@ -83,7 +84,7 @@ static TIFF *open_client(const char *mode) {
     TIFFOpenOptionsSetMaxCumulatedMemAlloc(options, metadata_limit);
     TIFFOpenOptionsSetErrorHandlerExtR(options, error_handler, NULL);
     TIFFOpenOptionsSetWarningHandlerExtR(options, warning_handler, NULL);
-    TIFF *result = TIFFClientOpenExt("Hyve client I/O", mode, (thandle_t)1, reader, writer, seeker, closer, sizer, NULL, NULL, options);
+    TIFF *result = TIFFClientOpenExt("not-envi client I/O", mode, (thandle_t)1, reader, writer, seeker, closer, sizer, NULL, NULL, options);
     TIFFOpenOptionsFree(options);
     return result;
 }
@@ -103,6 +104,62 @@ EMSCRIPTEN_KEEPALIVE int hyve_open(uint32_t limit) {
     image = open_client("rCm");
     return image != NULL;
 }
+
+/* Export uses the same client I/O, with bounded JS-owned output chunks. TIFF
+ * layout, compression, directory links and BigTIFF offsets stay in libtiff. */
+EMSCRIPTEN_KEEPALIVE int ne_tiff_write_open(uint32_t big_tiff) {
+    hyve_close();
+    metadata_limit = MAX_METADATA;
+    image = open_client(big_tiff ? "w8l" : "wl");
+    return image != NULL;
+}
+EMSCRIPTEN_KEEPALIVE int ne_tiff_write_image(uint32_t width, uint32_t height,
+    uint32_t bits, uint32_t samples, uint32_t format, uint32_t planar,
+    uint32_t alpha, uint32_t tile_width, uint32_t tile_height, uint32_t rows,
+    uint32_t compression, uint32_t reduced, uint32_t children, double xres, double yres) {
+    if (!image || !width || !height || children > 32) return 0;
+    int ok = TIFFSetField(image, TIFFTAG_IMAGEWIDTH, width)
+        && TIFFSetField(image, TIFFTAG_IMAGELENGTH, height)
+        && TIFFSetField(image, TIFFTAG_BITSPERSAMPLE, bits)
+        && TIFFSetField(image, TIFFTAG_SAMPLESPERPIXEL, samples)
+        && TIFFSetField(image, TIFFTAG_SAMPLEFORMAT, format)
+        && TIFFSetField(image, TIFFTAG_PLANARCONFIG, planar)
+        && TIFFSetField(image, TIFFTAG_PHOTOMETRIC, samples >= 3 ? PHOTOMETRIC_RGB : PHOTOMETRIC_MINISBLACK)
+        && TIFFSetField(image, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT)
+        && TIFFSetField(image, TIFFTAG_COMPRESSION, compression)
+        && TIFFSetField(image, TIFFTAG_SUBFILETYPE, reduced ? FILETYPE_REDUCEDIMAGE : 0)
+        && TIFFSetField(image, TIFFTAG_SOFTWARE, "not-envi");
+    if (tile_width) ok = ok && TIFFSetField(image, TIFFTAG_TILEWIDTH, tile_width)
+        && TIFFSetField(image, TIFFTAG_TILELENGTH, tile_height);
+    else ok = ok && TIFFSetField(image, TIFFTAG_ROWSPERSTRIP, rows);
+    if (alpha) {
+        uint16_t extra = EXTRASAMPLE_UNASSALPHA;
+        ok = ok && TIFFSetField(image, TIFFTAG_EXTRASAMPLES, 1, &extra);
+    }
+    if (children) {
+        toff_t offsets[32] = {0};
+        ok = ok && TIFFSetField(image, TIFFTAG_SUBIFD, children, offsets);
+    }
+    if (isfinite(xres) && isfinite(yres) && xres > 0 && yres > 0) {
+        ok = ok && TIFFSetField(image, TIFFTAG_RESOLUTIONUNIT, RESUNIT_CENTIMETER)
+            && TIFFSetField(image, TIFFTAG_XRESOLUTION, xres)
+            && TIFFSetField(image, TIFFTAG_YRESOLUTION, yres);
+    }
+    return ok;
+}
+EMSCRIPTEN_KEEPALIVE int ne_tiff_write_block(uint32_t index, uint32_t pointer, uint32_t count) {
+    if (!image || !count || count > MAX_BLOCK) return 0;
+    tmsize_t result = TIFFIsTiled(image)
+        ? TIFFWriteEncodedTile(image, index, (void *)(uintptr_t)pointer, count)
+        : TIFFWriteEncodedStrip(image, index, (void *)(uintptr_t)pointer, count);
+    return result >= 0;
+}
+EMSCRIPTEN_KEEPALIVE int ne_tiff_write_directory(void) { return image && TIFFWriteDirectory(image); }
+EMSCRIPTEN_KEEPALIVE int ne_tiff_write_finish(void) {
+    int ok = image && TIFFFlush(image);
+    hyve_close();
+    return ok;
+}
 static int array(uint32_t tag, uint32_t kind, uint32_t count, const void *pointer) {
     if ((uint64_t)kind * count > metadata_limit) return 0;
     emit_array(tag, kind, count, (uint32_t)(uintptr_t)pointer);
@@ -113,9 +170,12 @@ EMSCRIPTEN_KEEPALIVE int hyve_directory(double offset) {
     uint32_t value32;
     uint16_t value16;
     const uint32_t longs[] = {TIFFTAG_SUBFILETYPE, TIFFTAG_IMAGEWIDTH, TIFFTAG_IMAGELENGTH, TIFFTAG_ROWSPERSTRIP, TIFFTAG_TILEWIDTH, TIFFTAG_TILELENGTH};
-    const uint32_t shorts[] = {TIFFTAG_BITSPERSAMPLE, TIFFTAG_SAMPLESPERPIXEL, TIFFTAG_SAMPLEFORMAT, TIFFTAG_COMPRESSION, TIFFTAG_PHOTOMETRIC, TIFFTAG_PLANARCONFIG, TIFFTAG_FILLORDER, TIFFTAG_ORIENTATION};
+    const uint32_t shorts[] = {TIFFTAG_BITSPERSAMPLE, TIFFTAG_SAMPLESPERPIXEL, TIFFTAG_SAMPLEFORMAT, TIFFTAG_COMPRESSION, TIFFTAG_PHOTOMETRIC, TIFFTAG_PLANARCONFIG, TIFFTAG_FILLORDER, TIFFTAG_ORIENTATION, TIFFTAG_RESOLUTIONUNIT};
     for (unsigned i = 0; i < sizeof(longs) / sizeof(*longs); i++) if (TIFFGetField(image, longs[i], &value32)) emit_scalar(longs[i], value32);
     for (unsigned i = 0; i < sizeof(shorts) / sizeof(*shorts); i++) if (TIFFGetFieldDefaulted(image, shorts[i], &value16)) emit_scalar(shorts[i], value16);
+    float resolution;
+    if (TIFFGetField(image, TIFFTAG_XRESOLUTION, &resolution)) emit_scalar(TIFFTAG_XRESOLUTION, resolution);
+    if (TIFFGetField(image, TIFFTAG_YRESOLUTION, &resolution)) emit_scalar(TIFFTAG_YRESOLUTION, resolution);
     uint16_t compression;
     TIFFGetFieldDefaulted(image, TIFFTAG_COMPRESSION, &compression);
     if ((compression == COMPRESSION_LZW || compression == COMPRESSION_ADOBE_DEFLATE || compression == COMPRESSION_DEFLATE)
