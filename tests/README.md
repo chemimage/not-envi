@@ -24,9 +24,12 @@ The matrix stops remaining jobs on failure, and newer runs cancel superseded
 runs on the same ref. Packaging waits for every check: it builds one HTML file,
 tests that exact file offline, then retains `site-dist`. The stable `validate`
 check fails if any prerequisite failed, was cancelled or was skipped. These CI
-artifacts do not publish a release; release/Pages publication remains tag-based.
-Both publication workflows reuse `site-dist` from successful CI for the
-exact tagged commit, verifying its version and SHA-256 manifest. No release or
+artifacts are published by the separate `Publish release and Pages` workflow
+after successful push-to-main CI. That workflow creates the calculated version
+tag and reuses `site-dist` from that exact CI run. Tag pushes and manual runs
+with a stable version tag selected provide recovery in the same workflow,
+reusing successful CI for the exact tagged commit. Both paths verify the
+version and SHA-256 manifest. No release or
 Pages rebuild is performed; missing or expired artifacts require manually
 dispatching CI with the version tag selected, then rerunning publication. A
 successful main run or manual run on that exact tag is accepted only when the

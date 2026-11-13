@@ -1,6 +1,10 @@
 name: Publish release and Pages
 
 on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
   workflow_run:
     workflows: [CI]
     branches: [main]
@@ -17,32 +21,38 @@ jobs:
   publish:
     name: Publish release
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     permissions:
       actions: read
       contents: write
     outputs:
-      publish: ${{ steps.plan.outputs.publish }}
+      publish: ${{ steps.release.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Download this successful run's tested distribution
+        if: github.event_name == 'workflow_run'
         uses: actions/download-artifact@v8
         with:
           name: site-dist
           path: ${{ runner.temp }}/validated-dist
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
+      - name: Retrieve the validated tagged distribution for recovery
+        if: github.event_name != 'workflow_run'
+        uses: ./.github/actions/validated-dist
       - name: Verify publication identity and create the calculated version tag
+        if: github.event_name == 'workflow_run'
         id: plan
         uses: actions/github-script@v9
         env:
@@ -80,7 +90,7 @@ jobs:
             execFileSync(process.execPath, ['.github/actions/validated-dist/verify.mjs'], {
               stdio: 'inherit', env: { ...process.env, GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: tag }
             });
-            // Tag pushes made with GITHUB_TOKEN do not start the tag workflows;
+            // Tag pushes made with GITHUB_TOKEN do not trigger another run;
             // release and Pages publication are explicit steps of this workflow.
             if (plan.createTag) {
               try {
@@ -88,24 +98,35 @@ jobs:
               } catch (error) { if (await existingTag() !== manifest.commit) throw error; }
             }
             core.setOutput('tag', tag);
+      - name: Select release identity and notes
+        id: release
+        if: steps.plan.outputs.publish == 'true' || github.event_name != 'workflow_run'
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ steps.plan.outputs.tag || github.ref_name }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            core.setOutput('publish', 'true');
+            core.setOutput('tag', tag);
             const notes = `docs/releases/${tag}.md`;
             const { existsSync } = require('node:fs');
             core.setOutput('notes', existsSync(notes) ? notes : '');
       - name: Publish the exact tested release files
-        if: steps.plan.outputs.publish == 'true'
+        if: steps.release.outputs.publish == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.plan.outputs.tag }}
-          name: ${{ steps.plan.outputs.tag }}
-          target_commitish: ${{ github.event.workflow_run.head_sha }}
-          body_path: ${{ steps.plan.outputs.notes }}
-          generate_release_notes: ${{ steps.plan.outputs.notes == '' }}
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ github.event.workflow_run.head_sha || github.sha }}
+          body_path: ${{ steps.release.outputs.notes }}
+          generate_release_notes: ${{ steps.release.outputs.notes == '' }}
           files: |
             dist/index.html
             dist/coverage-summary.json
             dist/coverage-badge.json
       - uses: actions/upload-pages-artifact@v5
-        if: steps.plan.outputs.publish == 'true'
+        if: steps.release.outputs.publish == 'true'
         with:
           path: dist
 

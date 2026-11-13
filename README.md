@@ -68,8 +68,10 @@ moving its tag. Review `docs/releases/vX.Y.Z.md` before pushing a release batch;
 authored notes are used when present, otherwise GitHub generates release notes.
 Release titles exactly match the version tag.
 
-Manual tag publication remains available for recovery. Select a stable version
-tag for the Publish release or Deploy Pages workflow. They retrieve successful
+The repository has two workflows: `CI` and `Publish release and Pages`.
+Manual tag publication remains available for recovery in that same publication
+workflow. Select a stable version tag when running it manually; pushing a stable
+version tag also starts publication. Both entry points retrieve successful
 CI for that exact commit on main, normalize the build version, and verify the
 same artifact. CI retains artifacts for 30 days. If one expires, manually run
 CI selecting that tag and rerun the publication after CI succeeds.
