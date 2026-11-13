@@ -1438,6 +1438,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     confirmFn: (msg) => confirm(msg),
   });
   const exportDialog = createExportDialogController({
+    resolveDisplayRange,
     state,
     els,
     getActive,

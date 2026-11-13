@@ -1,3 +1,4 @@
+import { layoutExportBars } from "./export-bar-layout.js";
 import { encodeExportJob } from "./encode-job.js";
 import { createExportProgress, yieldExportUi } from "./export-progress.js";
 import { isThreeBandColorMode, resolveThreeBandChannelOrder } from "../app/three-band-display.js";
@@ -104,7 +105,8 @@ export function createExportService(deps) {
   }
 
   function finiteNumberFromInput(input) {
-    const value = Number(input?.value);
+    if (input?.value == null || String(input.value).trim() === "") return null;
+    const value = Number(input.value);
     return Number.isFinite(value) ? value : null;
   }
 
@@ -117,9 +119,11 @@ export function createExportService(deps) {
 
   function renderedExportOptionsFromDialog(kind = selectedKindFromDialog(), mode = selectedModeFromDialog(kind)) {
     if (mode !== "rendered") return {};
-    const minVal = finiteNumberFromInput(deps.els.expColorBarMin);
-    const maxVal = finiteNumberFromInput(deps.els.expColorBarMax);
-    const hasRange = minVal != null && maxVal != null && minVal !== maxVal;
+    const minInput = deps.els.expColorBarMin;
+    const maxInput = deps.els.expColorBarMax;
+    const minVal = finiteNumberFromInput(minInput) ?? finiteNumberFromInput({ value: minInput?.placeholder });
+    const maxVal = finiteNumberFromInput(maxInput) ?? finiteNumberFromInput({ value: maxInput?.placeholder });
+    const hasRange = !!(minInput?.value || maxInput?.value) && minVal != null && maxVal != null && minVal !== maxVal;
     const range = hasRange
       ? { minVal: Math.min(minVal, maxVal), maxVal: Math.max(minVal, maxVal) }
       : null;
@@ -127,7 +131,10 @@ export function createExportService(deps) {
       includeAnnotations: includeAnnotationsFromDialog(kind, mode),
       includeScaleBar: !!deps.els.expScaleBar?.checked,
       scaleBarSize: finiteNumberFromInput(deps.els.expScaleBarSize),
-      barCorner: normalizeExportBarCorner(deps.els.expBarCorner?.value),
+      scaleBarCorner: normalizeExportBarCorner(deps.els.expScaleBarCorner?.value),
+      scaleBarInside: deps.els.expScaleBarInside?.checked !== false,
+      colorBarCorner: normalizeExportBarCorner(deps.els.expColorBarCorner?.value),
+      colorBarInside: deps.els.expColorBarInside?.checked !== false,
       includeColorBar: !!deps.els.expColorBar?.checked,
       colorBarRange: range,
       displayRange: range
@@ -663,14 +670,13 @@ export function createExportService(deps) {
     const colorBarH = Math.max(10, Math.round(fontPx * 0.75));
     ctx.save();
     ctx.font = `${fontPx}px Arial, sans-serif`;
+    const colorBarW = Math.max(barW,
+      ctx.measureText(colorMinLabel).width + ctx.measureText(colorMaxLabel).width + pad);
     const labelTextW = Math.max(
-      ctx.measureText(scaleLabel).width,
-      ctx.measureText(colorMinLabel).width + ctx.measureText(colorMaxLabel).width + pad,
-      barW
+      opts.includeScaleBar ? Math.max(ctx.measureText(scaleLabel).width, barW) : 0,
+      opts.includeColorBar ? colorBarW : 0
     );
     ctx.restore();
-    const scaleH = fontPx + tick + colorGap;
-    const colorH = opts.includeColorBar ? (fontPx + colorBarH + colorGap) : 0;
     return {
       pad,
       tick,
@@ -679,24 +685,12 @@ export function createExportService(deps) {
       imgPx,
       barW,
       colorBarH,
+      colorBarW,
       scaleLabel,
       colorRange,
       colorMinLabel,
       colorMaxLabel,
-      boxW: Math.ceil(labelTextW + (pad * 2)),
-      boxH: Math.ceil(pad + colorH + scaleH + pad)
-    };
-  }
-
-  function resolveExportBarBox(outputW, outputH, metrics, corner) {
-    const pad = metrics.pad;
-    const normalized = normalizeExportBarCorner(corner);
-    const left = normalized.endsWith("left");
-    const top = normalized.startsWith("top");
-    return {
-      corner: normalized,
-      x0: left ? pad : outputW - metrics.boxW - pad,
-      y0: top ? pad : outputH - metrics.boxH - pad
+      boxW: Math.ceil(labelTextW + (pad * 2))
     };
   }
 
@@ -731,37 +725,36 @@ export function createExportService(deps) {
   function drawExportColorBar(ctx, metrics, x0, yCursor) {
     const bx = x0 + metrics.pad;
     const by = yCursor + metrics.fontPx + Math.round(metrics.colorGap * 0.35);
-    const grad = ctx.createLinearGradient(bx, 0, bx + metrics.barW, 0);
+    const grad = ctx.createLinearGradient(bx, 0, bx + metrics.colorBarW, 0);
     grad.addColorStop(0, "#000");
     grad.addColorStop(1, "#fff");
     ctx.fillStyle = grad;
-    ctx.fillRect(bx, by, metrics.barW, metrics.colorBarH);
+    ctx.fillRect(bx, by, metrics.colorBarW, metrics.colorBarH);
     ctx.strokeStyle = "rgba(255,255,255,0.86)";
     ctx.lineWidth = 1;
-    ctx.strokeRect(bx, by, metrics.barW, metrics.colorBarH);
+    ctx.strokeRect(bx, by, metrics.colorBarW, metrics.colorBarH);
     ctx.fillStyle = "rgba(255,255,255,0.95)";
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
     ctx.fillText(metrics.colorMinLabel, bx, yCursor + metrics.fontPx);
     ctx.textAlign = "right";
-    ctx.fillText(metrics.colorMaxLabel, bx + metrics.barW, yCursor + metrics.fontPx);
+    ctx.fillText(metrics.colorMaxLabel, bx + metrics.colorBarW, yCursor + metrics.fontPx);
   }
 
-  function drawExportBars(ctx, ds, rect, outputW, outputH, opts = {}) {
-    if (!opts.includeScaleBar && !opts.includeColorBar) return;
-    const metrics = exportBarMetrics(ctx, ds, rect, outputW, outputH, opts);
-    const { x0, y0 } = resolveExportBarBox(outputW, outputH, metrics, opts.barCorner);
+  function drawExportBars(ctx, metrics, layout) {
     ctx.save();
     ctx.font = `${metrics.fontPx}px Arial, sans-serif`;
-    let yCursor = y0 + metrics.pad;
-    if (opts.includeColorBar) {
-      drawExportColorBar(ctx, metrics, x0, yCursor);
-      yCursor += metrics.fontPx + metrics.colorBarH + (metrics.colorGap * 2);
+    for (const group of layout.groups) {
+      let yCursor = group.y + metrics.pad;
+      for (const type of group.bars) {
+        if (type === "color") {
+          drawExportColorBar(ctx, metrics, group.x, yCursor);
+          yCursor += metrics.fontPx + metrics.colorBarH + metrics.colorGap * 2;
+        } else {
+          drawExportScaleBar(ctx, metrics, group.x, yCursor);
+        }
+      }
     }
-    if (opts.includeScaleBar) {
-      drawExportScaleBar(ctx, metrics, x0, yCursor);
-    }
-    ctx.textBaseline = "bottom";
     ctx.restore();
   }
 
@@ -778,8 +771,18 @@ export function createExportService(deps) {
         omitSelectionOverlay: !!opts.omitSelectionOverlay
       });
     }
-    drawExportBars(ctx, ds, rect, canvas.width, canvas.height, opts);
-    return imageDataFromCanvas(canvas);
+    if (!opts.includeScaleBar && !opts.includeColorBar) return imageDataFromCanvas(canvas);
+    const metrics = exportBarMetrics(ctx, ds, rect, canvas.width, canvas.height, opts);
+    const layout = layoutExportBars(canvas.width, canvas.height, metrics, opts);
+    const output = document.createElement("canvas");
+    output.width = layout.width;
+    output.height = layout.height;
+    const outputCtx = output.getContext("2d", { alpha: false });
+    outputCtx.fillStyle = "#000";
+    outputCtx.fillRect(0, 0, output.width, output.height);
+    outputCtx.drawImage(canvas, layout.imageX, layout.imageY);
+    drawExportBars(outputCtx, metrics, layout);
+    return imageDataFromCanvas(output);
   }
 
   async function buildSelectionRenderedImageData(ds, bandIndex, job, opts = {}) {
@@ -825,6 +828,10 @@ export function createExportService(deps) {
       includeScaleBar: !!opts.includeScaleBar,
       scaleBarSize: opts.scaleBarSize,
       barCorner: opts.barCorner,
+      scaleBarCorner: opts.scaleBarCorner,
+      scaleBarInside: opts.scaleBarInside,
+      colorBarCorner: opts.colorBarCorner,
+      colorBarInside: opts.colorBarInside,
       includeColorBar: !!opts.includeColorBar,
       colorBarRange: opts.colorBarRange,
       bandIndex
@@ -851,14 +858,18 @@ export function createExportService(deps) {
       includeScaleBar: !!opts.includeScaleBar,
       scaleBarSize: opts.scaleBarSize,
       barCorner: opts.barCorner,
+      scaleBarCorner: opts.scaleBarCorner,
+      scaleBarInside: opts.scaleBarInside,
+      colorBarCorner: opts.colorBarCorner,
+      colorBarInside: opts.colorBarInside,
       includeColorBar: !!opts.includeColorBar,
       colorBarRange: opts.colorBarRange,
       bandIndex
     });
     return {
       imageData: finalImage,
-      outputW: target.outputW,
-      outputH: target.outputH,
+      outputW: finalImage.width,
+      outputH: finalImage.height,
       rect: target.rect,
       mode: target.mode
     };

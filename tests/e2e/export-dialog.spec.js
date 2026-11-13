@@ -26,6 +26,14 @@ test("export dialog stays centered and its controls remain reachable in small wi
   await page.screenshot({ path: testInfo.outputPath("export-dialog-desktop.png") });
   await page.locator("#expModeRendered").check();
   await expectCentered();
+  await expect(page.locator("#expColorBarMin")).toHaveAttribute("placeholder", /^-?[\d.]+$/);
+  await expect(page.locator("#expColorBarMax")).toHaveAttribute("placeholder", /^-?[\d.]+$/);
+  await expect(page.locator("#expScaleBarInside")).toBeChecked();
+  await expect(page.locator("#expColorBarInside")).toBeChecked();
+  await page.locator("#expScaleBarCorner").selectOption("top-left");
+  await page.locator("#expColorBarCorner").selectOption("bottom-right");
+  await page.locator("#expColorBarInside").uncheck();
+  await page.screenshot({ path: testInfo.outputPath("export-placement-controls.png") });
 
   await page.setViewportSize({ width: 420, height: 500 });
   await expectCentered();

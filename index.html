@@ -441,15 +441,18 @@
         <span>Size</span>
         <input type="number" id="expScaleBarSize" min="0" step="any" placeholder="auto" style="width:86px;" />
       </label>
-      <label class="toggle" title="Place export bars in a corner">
-        <span>Corner</span>
-        <select id="expBarCorner" style="width:118px;">
-          <option value="bottom-left">Bottom left</option>
-          <option value="bottom-right" selected>Bottom right</option>
-          <option value="top-left">Top left</option>
-          <option value="top-right">Top right</option>
-        </select>
-      </label>
+      <div class="row" style="flex-basis:100%; gap:14px; flex-wrap:wrap;">
+        <label class="toggle" title="Scale bar corner">
+          <span>Corner</span>
+          <select id="expScaleBarCorner" style="width:118px;">
+            <option value="bottom-left">Bottom left</option>
+            <option value="bottom-right" selected>Bottom right</option>
+            <option value="top-left">Top left</option>
+            <option value="top-right">Top right</option>
+          </select>
+        </label>
+        <label class="toggle"><input type="checkbox" id="expScaleBarInside" checked /><span>Inside the plot</span></label>
+      </div>
     </div>
     <div class="row" style="margin-top:6px; align-items:flex-start; gap:14px; flex-wrap:wrap;">
       <label class="toggle" title="Add a color bar to rendered exports">
@@ -458,13 +461,26 @@
       </label>
       <label class="toggle" title="Minimum value for export tone mapping and color bar">
         <span>Min</span>
-        <input type="number" id="expColorBarMin" step="any" placeholder="display" style="width:92px;" />
+        <input type="number" id="expColorBarMin" step="any" placeholder="" style="width:92px;" />
       </label>
       <label class="toggle" title="Maximum value for export tone mapping and color bar">
         <span>Max</span>
-        <input type="number" id="expColorBarMax" step="any" placeholder="display" style="width:92px;" />
+        <input type="number" id="expColorBarMax" step="any" placeholder="" style="width:92px;" />
       </label>
+      <div class="row" style="flex-basis:100%; gap:14px; flex-wrap:wrap;">
+        <label class="toggle" title="Color bar corner">
+          <span>Corner</span>
+          <select id="expColorBarCorner" style="width:118px;">
+            <option value="bottom-left">Bottom left</option>
+            <option value="bottom-right" selected>Bottom right</option>
+            <option value="top-left">Top left</option>
+            <option value="top-right">Top right</option>
+          </select>
+        </label>
+        <label class="toggle"><input type="checkbox" id="expColorBarInside" checked /><span>Inside the plot</span></label>
+      </div>
     </div>
+    <div class="hint tiny" style="margin-top:6px;">Uncheck Inside the plot to place a bar outside. Bars sharing a corner and placement stack color bar above scale bar.</div>
   </div>
 
   <div style="margin-top:10px;">

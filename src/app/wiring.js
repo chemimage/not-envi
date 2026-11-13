@@ -293,7 +293,10 @@ export function wireApp(deps) {
   if (els.expIncludeAnnotations) els.expIncludeAnnotations.oninput = () => updateExportEstimate();
   if (els.expScaleBar) els.expScaleBar.oninput = () => updateExportEstimate();
   if (els.expScaleBarSize) els.expScaleBarSize.oninput = () => updateExportEstimate();
-  if (els.expBarCorner) els.expBarCorner.oninput = () => updateExportEstimate();
+  if (els.expScaleBarCorner) els.expScaleBarCorner.oninput = () => updateExportEstimate();
+  if (els.expScaleBarInside) els.expScaleBarInside.oninput = () => updateExportEstimate();
+  if (els.expColorBarCorner) els.expColorBarCorner.oninput = () => updateExportEstimate();
+  if (els.expColorBarInside) els.expColorBarInside.oninput = () => updateExportEstimate();
   if (els.expColorBar) els.expColorBar.oninput = () => updateExportEstimate();
   if (els.expColorBarMin) els.expColorBarMin.oninput = () => updateExportEstimate();
   if (els.expColorBarMax) els.expColorBarMax.oninput = () => updateExportEstimate();

@@ -41,8 +41,9 @@ export function createExportDialogController(deps) {
   }
 
   function hasExportColorRange() {
-    const minVal = Number(els.expColorBarMin?.value);
-    const maxVal = Number(els.expColorBarMax?.value);
+    if (!els.expColorBarMin?.value && !els.expColorBarMax?.value) return false;
+    const minVal = Number(els.expColorBarMin?.value || els.expColorBarMin?.placeholder);
+    const maxVal = Number(els.expColorBarMax?.value || els.expColorBarMax?.placeholder);
     return Number.isFinite(minVal) && Number.isFinite(maxVal) && minVal !== maxVal;
   }
 
@@ -114,6 +115,13 @@ export function createExportDialogController(deps) {
     else if (selectionCount === 1) els.expTitle.textContent = "Export Selection";
     else els.expTitle.textContent = "Export";
 
+    const range = deps.resolveDisplayRange?.(ds, ds.activeBand, null);
+    for (const [input, value] of [[els.expColorBarMin, range?.minVal], [els.expColorBarMax, range?.maxVal]]) {
+      if (input) {
+        input.value = "";
+        input.placeholder = Number.isFinite(value) ? String(value) : "auto";
+      }
+    }
     const band = ds.activeBand;
     els.expInfo.textContent = `${ds.name} • ${bandLabel(ds, band)} (band ${band})`;
     if (els.expLblScopeSel) {
@@ -318,6 +326,10 @@ export function createExportDialogController(deps) {
       note += annotationsOn ? " Includes annotations." : " Annotations will be omitted.";
       if (els.expScaleBar?.checked) note += " Includes scale bar.";
       if (els.expColorBar?.checked) note += " Includes color bar.";
+      if ((els.expScaleBar?.checked && els.expScaleBarInside?.checked === false)
+        || (els.expColorBar?.checked && els.expColorBarInside?.checked === false)) {
+        note += " Outside bars add margins to the estimated image size.";
+      }
       if (hasExportColorRange()) note += " Uses the export color range for tone mapping.";
     }
 
