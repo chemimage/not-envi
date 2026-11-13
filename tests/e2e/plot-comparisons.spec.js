@@ -222,3 +222,34 @@ test("point spectra retain earlier colors in split windows and can stack", async
   await panels.getByRole("button", { name: "Split spectrum plots", exact: true }).click();
   await expect(panels).toHaveCount(2);
 });
+
+for (const [kind, grouped] of [["histogram", false], ["spectrum", false], ["histogram", true], ["spectrum", true]]) test(`moving a region refreshes its stacked ${grouped ? "grouped " : ""}${kind} on release`, async ({ page }, testInfo) => {
+  await loadImage(page);
+  const title = kind === "histogram" ? "Spatial histogram" : "Spectrum";
+  await drag(page, 300, 250, 500, 340);
+  if (grouped) {
+    await drag(page, 650, 180, 800, 260);
+    await page.locator("#btnToolAreaMode").click();
+  }
+  await color(page, "Blue");
+  await drag(page, 300, 440, 500, 530);
+  await page.getByRole("button", { name: title, exact: true }).click();
+  const panels = page.locator(`.plot-comparison-panel[data-plot-kind="${kind}"]`);
+  await expect(panels).toHaveCount(2);
+  await panels.last().getByRole("button", { name: `Stack ${title.toLowerCase()} plots`, exact: true }).click();
+  await expect(panels).toHaveCount(1);
+  if (grouped) await expect(panels.locator(".plot-legend-entry").first()).toContainText("Region 1 + 2");
+  await page.mouse.click(330, 280);
+  await expect(panels.locator('.plot-legend-entry[data-selected="true"] svg rect')).toHaveAttribute("fill", "#ff2d2d");
+  const before = await panels.locator("canvas").evaluate(canvas => canvas.toDataURL());
+  await page.mouse.move(330, 280); await page.mouse.down();
+  await page.mouse.move(370, 300, { steps: 8 });
+  await expect(panels.locator(".plot-legend-entry").first()).toContainText("changed; recalculate");
+  await page.mouse.up();
+  await expect(panels.locator(".plot-legend-entry").first()).not.toContainText("changed; recalculate");
+  await expect(panels).toHaveAttribute("data-trace-count", "2");
+  await expect(panels.getByRole("button", { name: `Split ${title.toLowerCase()} plots`, exact: true })).toBeVisible();
+  await expect.poll(() => panels.locator("canvas").evaluate(canvas => canvas.toDataURL())).not.toBe(before);
+  if (grouped) await expect(panels.locator(".plot-legend-entry").first()).toContainText("Region 1 + 2");
+  await page.screenshot({ path: testInfo.outputPath(`moved-region-${grouped ? "grouped-" : ""}${kind}.png`) });
+});

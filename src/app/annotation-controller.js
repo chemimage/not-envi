@@ -450,6 +450,7 @@ export function createAnnotationController(deps) {
       ? findAreaHitAtPointer(ds, ev, { toolFilter })
       : findAreaHitAtPointer(ds, ev);
     if (!hit) return false;
+    deps.onAreaEditStarted?.(ds);
     const changed = setSelectedAreaId(ds, hit.item.id);
     let mode = "move";
     let resizeHandle = null;
@@ -607,6 +608,7 @@ export function createAnnotationController(deps) {
     if (moved && ds && ds.id === move.dsId) {
       updateSelectionHistogramForDataset(ds);
       ensureMarqueeTicker();
+      if (move.moved) deps.onAreaGeometryChanged?.(ds, [move.itemId]);
     }
     refreshOverlayOnly();
     return true;
@@ -621,6 +623,7 @@ export function createAnnotationController(deps) {
     if (item && move.startPoints) item.points = move.startPoints;
     state.draw.areaMove = null;
     if (ds && move.selectionChanged) updateSelectionHistogramForDataset(ds);
+    if (ds?.id === move.dsId && move.moved) deps.onAreaGeometryChanged?.(ds, [move.itemId]);
     refreshOverlayOnly();
     return true;
   }

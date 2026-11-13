@@ -218,18 +218,30 @@ export function createPlotComparisons({ container, floatingWindows }) {
     if (kinds.size) refreshViews();
   }
 
-  function publish(entry) {
+  function publish(entry, { closeNative = true } = {}) {
     entry.status = entry.check();
     if (entry.status !== "ready" || !model.upsert(entry)) return;
     if (entry.kind !== "line" && !modes.has(entry.kind)
       && [...model.entries.values()].filter(item => item.kind === entry.kind).length > 1) modes.set(entry.kind, false);
     if (entry.kind !== "line") selected.set(entry.kind, selectedId(entry.kind));
-    if (modes.has(entry.kind)) { layout(entry.kind); if (entry.kind !== "line") closeSource(entry.kind); }
+    if (modes.has(entry.kind)) { layout(entry.kind); if (closeNative && entry.kind !== "line") closeSource(entry.kind); }
     refreshViews();
   }
 
   function clear() {
     model.clear(); modes.clear(); selected.clear(); placements.clear(); linePresentation.setStacked(false); refreshViews();
   }
-  return { attach, publish, sync, clear, concealSource, retainSource, setLinePresentation: (callback) => { linePresentation = callback; } };
+  function isVisibleSource(entry) {
+    return model.entries.get(entry.id) === entry && [...model.groups.values()].some(group => group.ids.includes(entry.id));
+  }
+  function changedAreaSources(dsId, slot, itemIds) {
+    return [...model.entries.values()].filter(entry => {
+      const source = entry.sourceDescriptor;
+      return (entry.kind === "histogram" || entry.kind === "spectrum") && source?.dsId === dsId
+        && source.slot === slot && !source.point && source.items.some(item => itemIds.includes(item.id))
+        && isVisibleSource(entry) && entry.check() === "changed";
+    });
+  }
+  return { attach, publish, sync, clear, concealSource, retainSource, isVisibleSource, changedAreaSources,
+    setLinePresentation: (callback) => { linePresentation = callback; } };
 }

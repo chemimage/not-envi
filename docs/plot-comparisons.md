@@ -32,6 +32,12 @@ The first result opens in its detailed native panel. When that result needs to
 be retained, a comparison window inherits its location. Splitting and stacking
 reuse completed arrays without rereading image data.
 
+Moving or resizing a displayed region refreshes its histogram and spectrum on
+release, including in stacked charts. Only affected visible results are read
+again; each keeps its original region membership, image panel, and band.
+Unchanged results stay cached. A newer edit, deleted source, closed chart, or
+closed dataset discards an unfinished refresh instead of publishing stale data.
+
 ## Point spectra
 
 Each dataset/panel keeps one point per brush color, just like its lines.
@@ -77,8 +83,9 @@ window again. Clearing annotations or closing the dataset retires its plots.
   its own first endpoint.
 - Histograms preserve original bin boundaries and offer Count per bin or
   Percentage per bin. They are not silently rebinned or averaged.
-- Sampled results are marked in the legend. Edited sources hide their stale
-  traces until recalculated; selecting a region alone does not calculate it.
+- Sampled results are marked in the legend. Edited sources hide stale traces
+  while their final geometry is recalculated. Selecting a region alone does not
+  calculate it.
 - Point spectra retain their calculated coordinates. Clear all annotations
   also discards retained point plots.
 

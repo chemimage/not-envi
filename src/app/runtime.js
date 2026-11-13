@@ -69,6 +69,7 @@ import {
 import { pointInPolygon } from "./draw-geometry.js";
 import { createPlotComparisons } from "./plot-comparisons.js";
 import { createComparisonSources } from "./comparison-sources.js";
+import { createAnalysisSourceRefresher } from "./analysis-source-refresh.js";
 import { createFloatingWindowManager } from "./floating-windows.js";
 import { createSourceAccessWarning } from "./source-access-warning.js";
 
@@ -494,7 +495,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
   let selectionActions = null;
   const annotationWork = createAnnotationWorkTracker(() => selectionActions?.refresh());
   const beginAnnotationWork = (ds, options) => annotationWork.begin(ds, {
-    ...options, slot: getActivePanel()?.slot || 1
+    ...options, slot: options?.slot ?? getActivePanel()?.slot ?? 1
   });
   let analysisPanelLayout = null;
   const arrangeAnalysisPanels = () => analysisPanelLayout?.arrange() || false;
@@ -526,6 +527,10 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     onLineProfileRequested: (ds, item) => {
       if (item) lineProfile?.open({ dsId: ds.id, itemId: item.id, slot: getActivePanel()?.slot || 1 });
     },
+    onAreaGeometryChanged: (ds, itemIds) => {
+      analysisSourceRefresher.refresh(ds, getActivePanel()?.slot || 1, itemIds).catch(error => console.warn("Analysis refresh failed", error));
+    },
+    onAreaEditStarted: retainAnalysisPlots,
     getSpectrumOpenForDatasetId: (dsId) => !!(spectrum && spectrum.isOpenForDatasetId(dsId)),
     openSpectrumAt: (ds, ix, iy, opts) => openSpectrumAt(ds, ix, iy, opts),
     positionAnalysisHistogramPanel,
@@ -1378,6 +1383,29 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     pointInPolygon,
     wavelengthArrayOrNull: (ds) => wavelengthArrayOrNullCore(ds),
     fmtNoGroup
+  });
+
+  const analysisSourceRefresher = createAnalysisSourceRefresher({
+    comparisons: plotComparisons,
+    getDataset: id => state.datasets.find(ds => ds.id === id),
+    getPanel: slot => getDisplayPanel(state, slot),
+    beginAnnotationWork,
+    compute: (entry, ds, items, { cancelled, onProgress }) => entry.kind === "histogram"
+      ? histogram.computeSelectionStats(ds, entry.band, items, { cancelled, priority: "background",
+          onProgress: ({ completed, total }) => onProgress(completed, total) })
+      : spectrumArea.computeAreaSpectrum(ds, items, { shouldAbort: cancelled,
+          onProgress: ({ completedBatches, totalBatches }) => onProgress(completedBatches, totalBatches) }),
+    publish: (entry, ds, slot, items, result) => {
+      if (entry.kind === "histogram") {
+        comparisonSources.histogram({ ds, slot, items, stats: result, band: entry.band, color: entry.color,
+          publishOptions: { closeNative: false } });
+      } else {
+        comparisonSources.spectrum({ ds, ix: 0, iy: 0, xVals: wavelengthArrayOrNullCore(ds), yVals: result.yVals,
+          opts: { plotSlot: slot, plotItems: items }, plotStyle: entry.plotStyle,
+          publishOptions: { closeNative: false },
+          source: { ...result, type: "area", color: entry.color } });
+      }
+    }
   });
 
   async function openSpectrumAt(ds, ix, iy, opts = {}) { await spectrumArea.openSpectrumAt(ds, ix, iy, opts); }

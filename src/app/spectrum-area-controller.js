@@ -294,6 +294,10 @@ export function createSpectrumAreaController(deps) {
   }
 
   return {
+    async computeAreaSpectrum(ds, items, options) {
+      const result = await buildAreaAverageSpectrum(ds, items, options);
+      return result === ABORTED ? null : result;
+    },
     cancel,
     openSpectrumAt,
     openSpectrumForEffectiveArea

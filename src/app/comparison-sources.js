@@ -12,6 +12,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
     let removed = false;
     const descriptor = { dsId: ds.id, slot, items: geometry, point };
     return {
+      sourceDescriptor: descriptor,
       isSelected: () => {
         const selection = getSelection?.();
         if (!selection || selection.dsId !== ds.id || selection.slot !== slot) return false;
@@ -47,7 +48,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
     };
   }
 
-  function publish(kind, ds, slot, items, point, detail) {
+  function publish(kind, ds, slot, items, point, detail, publishOptions) {
     const origin = source(ds, slot, items, point, kind !== "line");
     const scale = JSON.stringify(ds.meta.scale);
     comparisons.publish({ ...origin, ...detail, kind,
@@ -60,27 +61,27 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
         : kind !== "line" && detail.color && items.length ? `${kind}:${ds.id}:${slot}:color:${detail.color.toLowerCase()}:${detail.band ?? "all"}`
         : `${kind}:${origin.key}:${detail.band ?? "all"}`,
       label: `${detail.label || origin.label} · ${ds.name || "Image"}`,
-      color: detail.color || items.at(-1)?.color || "#e5e7eb" });
+      color: detail.color || items.at(-1)?.color || "#e5e7eb" }, publishOptions);
   }
 
-  function histogram({ ds, slot, items, stats, band, color }) {
+  function histogram({ ds, slot, items, stats, band, color, publishOptions }) {
     if (!stats?.bins?.length) return;
     publish("histogram", ds, slot, items, null, {
       compatibility: "histogram:value", band, color, approximate: stats.trueRawSamples === false,
       label: `${regionSourceLabel(items, getPanel(slot)?.annotations?.drawings || items)} · Band ${band + 1}`,
       data: { values: Float64Array.from(stats.bins), min: stats.min, max: stats.max,
         binWidth: stats.binWidth, count: stats.count }
-    });
+    }, publishOptions);
   }
 
-  function spectrum({ ds, ix, iy, xVals, yVals, opts, plotStyle = "line", source: metadata }) {
+  function spectrum({ ds, ix, iy, xVals, yVals, opts, plotStyle = "line", source: metadata, publishOptions }) {
     const unit = xVals ? resolveSpectralUnit(ds) || "spectral coordinate" : "band index";
     publish("spectrum", ds, opts.plotSlot || 1, opts.plotItems || [],
       metadata.type === "area" ? null : opts.plotPoint || { x: ix, y: iy }, {
         compatibility: `spectrum:${unit}`, color: metadata.color, approximate: metadata.sampleStep > 1, plotStyle,
         xLabel: xVals ? `Spectral coordinate (${unit})` : "Band index",
         data: { values: Float64Array.from(yVals), x: xVals ? Float64Array.from(xVals) : null }
-      });
+      }, publishOptions);
   }
 
   function line({ anchor, target, result }) {

@@ -256,6 +256,7 @@ describe("annotation-controller", () => {
     deps.getSpectrumOpenForDatasetId = () => true;
     deps.isAnalysisHistogramOpen = () => true;
     deps.openSpectrumAt = vi.fn(async () => {});
+    deps.onAreaGeometryChanged = vi.fn();
     const ann = createAnnotationController(deps);
     ann.beginAreaMoveAtPointer({ pointerId: 11, pointerType: "mouse", clientX: 4, clientY: 4 });
     for (let i = 1; i <= 60; i++) {
@@ -263,10 +264,12 @@ describe("annotation-controller", () => {
     }
     expect(deps.updateSelectionHistogramForDataset).not.toHaveBeenCalled();
     expect(deps.openSpectrumAt).not.toHaveBeenCalled();
+    expect(deps.onAreaGeometryChanged).not.toHaveBeenCalled();
     expect(render).not.toHaveBeenCalled();
     expect(drawOverlays).toHaveBeenCalled();
     ann.finishAreaMoveAtPointer({ pointerId: 11, pointerType: "mouse", clientX: 11, clientY: 4 });
     expect(deps.updateSelectionHistogramForDataset).toHaveBeenCalledTimes(1);
+    expect(deps.onAreaGeometryChanged).toHaveBeenCalledWith(ds, [1]);
     expect(ds.drawings[0].points[0]).toEqual({ x: 9, y: 2 });
     expect(render).not.toHaveBeenCalled();
   });
@@ -303,6 +306,7 @@ describe("annotation-controller", () => {
 
   test("rect tool corner hit resizes rectangle", () => {
     const { ds, deps } = makeBase();
+    deps.onAreaGeometryChanged = vi.fn();
     const ann = createAnnotationController(deps);
     ann.setDrawTool("rect");
 
@@ -312,6 +316,9 @@ describe("annotation-controller", () => {
     ann.updateAreaMoveAtPointer({ pointerId: 12, pointerType: "mouse", clientX: 1, clientY: 1 });
     expect(ds.drawings[0].points[0]).toEqual({ x: 1, y: 1 });
     expect(ds.drawings[0].points[1]).toEqual({ x: 8, y: 8 });
+    expect(deps.onAreaGeometryChanged).not.toHaveBeenCalled();
+    ann.finishAreaMoveAtPointer({ pointerId: 12, pointerType: "mouse", clientX: 1, clientY: 1 });
+    expect(deps.onAreaGeometryChanged).toHaveBeenCalledWith(ds, [1]);
   });
 
   test("spectral mode allows dragging selected area with no draw tool", () => {
