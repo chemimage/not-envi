@@ -2,8 +2,9 @@ import InlineCompositionWorker from "./workers/composition.worker.js?worker&inli
 
 function aborted() { return new DOMException("Composition superseded.", "AbortError"); }
 
-/** One worker job plus two latest pending views. Pending patch transport and
- * immutable fallback snapshots each have a maxBytes cap; idle mirrors retain
+/** One worker job plus two latest pending views. Pending immutable snapshots
+ * have a maxBytes cap; transport is packed only at dispatch against the latest
+ * acknowledged revisions. Idle mirrors retain
  * at most six planes/maxBytes. These are local pools, not a tab-wide heap cap.
  * Only owned patch copies are
  * transferred: renderer planes are never detached. The caller owns a returned
@@ -14,9 +15,9 @@ export function createCompositionWorkerClient({ fallback, workerFactory, timeout
   maxBytes = 64 * 1024 * 1024 } = {}) {
   let worker = null, unavailable = false, active = null, nextId = 0, disposed = false;
   const queued = new Map(), known = new Map(), mirrors = new Map();
-  const stats = { requests: 0, completed: 0, cancelled: 0, transferredBytes: 0,
+  const stats = { requests: 0, completed: 0, cancelled: 0, transferredBytes: 0, packedBytes: 0,
     queuedBytes: 0, peakQueuedBytes: 0, queuedSnapshotBytes: 0, peakQueuedSnapshotBytes: 0,
-    fallbackJobs: 0, workerPixelsColored: 0 };
+    fallbackJobs: 0, workerPixelsColored: 0, workerBackend: null, workerKernelBytes: 0 };
   const supported = () => workerFactory || (typeof Worker !== "undefined"
     && typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap === "function");
 
@@ -55,6 +56,8 @@ export function createCompositionWorkerClient({ fallback, workerFactory, timeout
       } else {
         known.clear(); for (const plane of data.planes || []) known.set(plane.id, plane);
         stats.completed += 1; stats.workerPixelsColored = data.pixelsColored || 0;
+        stats.workerBackend = data.kernel?.backend || "js";
+        stats.workerKernelBytes = data.kernel?.allocatedBytes || 0;
         settle(job, null, data.bitmap);
       }
       pump();
@@ -63,9 +66,8 @@ export function createCompositionWorkerClient({ fallback, workerFactory, timeout
   }
 
   function snapshot(rasters, id) {
-    let bytes = 0;
     const ownedRasters = [], heldMirrors = [];
-    const planes = rasters.map((raster, channel) => {
+    rasters.forEach((raster, channel) => {
       const tracked = Number.isSafeInteger(raster.compositionId) && Number.isSafeInteger(raster.revision);
       const planeId = tracked ? raster.compositionId : `direct:${id}:${channel}`;
       let mirror = mirrors.get(planeId);
@@ -85,30 +87,42 @@ export function createCompositionWorkerClient({ fallback, workerFactory, timeout
       }
       mirrors.delete(planeId); mirrors.set(planeId, mirror);
       mirror.holders += 1; heldMirrors.push(mirror);
-      ownedRasters.push({ ...raster, dataF32: mirror.data });
-      const previous = active ? null : known.get(planeId);
-      const incremental = tracked && previous?.w === raster.w && previous?.h === raster.h;
-      const unchanged = incremental && previous.revision === raster.revision;
-      const patchable = incremental && previous.revision === raster.previousRevision;
-      const rects = unchanged ? [] : patchable ? raster.dirtyRects : [{ x: 0, y: 0, w: raster.w, h: raster.h }];
-      const patches = rects.map((rect) => {
-        const values = new Float32Array(rect.w * rect.h);
-        for (let y = 0; y < rect.h; y += 1) values.set(mirror.data.subarray(
-          (rect.y + y) * raster.w + rect.x, (rect.y + y) * raster.w + rect.x + rect.w), y * rect.w);
-        bytes += values.byteLength;
-        return { ...rect, values };
-      });
-      return { id: planeId, w: raster.w, h: raster.h, revision: tracked ? raster.revision : 1,
-        previousRevision: incremental ? previous.revision : null,
-        full: !unchanged && !patchable, patches };
+      ownedRasters.push({ ...raster, dataF32: mirror.data,
+        dirtyRects: raster.dirtyRects?.map(rect => ({ ...rect })) });
     });
     let retainedBytes = [...mirrors.values()].reduce((sum, mirror) => sum + mirror.data.byteLength, 0);
     while (mirrors.size > 6 || retainedBytes > maxBytes) {
       const oldest = mirrors.keys().next().value;
       retainedBytes -= mirrors.get(oldest).data.byteLength; mirrors.delete(oldest);
     }
-    return { planes, bytes, rasters: ownedRasters, mirrors: heldMirrors,
+    return { bytes: 0, rasters: ownedRasters, mirrors: heldMirrors,
       snapshotBytes: [...new Set(heldMirrors)].reduce((sum, mirror) => sum + mirror.data.byteLength, 0) };
+  }
+
+  function pack(rasters, id) {
+    let bytes = 0;
+    const plans = rasters.map((raster, channel) => {
+      const tracked = Number.isSafeInteger(raster.compositionId) && Number.isSafeInteger(raster.revision);
+      const planeId = tracked ? raster.compositionId : `direct:${id}:${channel}`;
+      const previous = known.get(planeId);
+      const incremental = tracked && previous?.w === raster.w && previous?.h === raster.h;
+      const unchanged = incremental && previous.revision === raster.revision;
+      const patchable = incremental && previous.revision === raster.previousRevision;
+      const rects = unchanged ? [] : patchable ? raster.dirtyRects : [{ x: 0, y: 0, w: raster.w, h: raster.h }];
+      bytes += rects.reduce((sum, rect) => sum + rect.w * rect.h * 4, 0);
+      return { id: planeId, w: raster.w, h: raster.h, revision: tracked ? raster.revision : 1,
+        previousRevision: incremental ? previous.revision : null, full: !unchanged && !patchable, rects, raster };
+    });
+    if (bytes > maxBytes) return null;
+    const planes = plans.map(({ rects, raster, ...plane }) => ({ ...plane,
+      patches: rects.map((rect) => {
+        const values = new Float32Array(rect.w * rect.h);
+        for (let y = 0; y < rect.h; y += 1) values.set(raster.dataF32.subarray(
+          (rect.y + y) * raster.w + rect.x, (rect.y + y) * raster.w + rect.x + rect.w), y * rect.w);
+        return { ...rect, values };
+      }) }));
+    stats.packedBytes += bytes;
+    return { planes, bytes };
   }
 
   function pump() {
@@ -118,6 +132,9 @@ export function createCompositionWorkerClient({ fallback, workerFactory, timeout
     if (job.settled) return pump();
     const target = ensureWorker();
     if (!target) { local(job); return pump(); }
+    const packed = pack(job.rasters, job.id);
+    if (!packed) { local(job); return pump(); }
+    Object.assign(job, packed);
     active = job;
     job.timer = setTimeout(failWorker, timeoutMs);
     try {
@@ -150,8 +167,8 @@ export function createCompositionWorkerClient({ fallback, workerFactory, timeout
       if (!supported() || unavailable || rasters.reduce((sum, raster) => sum + raster.w * raster.h * 4, 0) > maxBytes) {
         local(job); return;
       }
-      // Snapshot at submission: mutable renderer planes may change before a
-      // queued job is dispatched. A worker checks the acknowledged base revision.
+      // Freeze source data/rectangles at submission, but allocate transferable
+      // patches only once this job survives coalescing and can be dispatched.
       const copied = snapshot(rasters, id); Object.assign(job, copied);
       if (job.bytes > maxBytes) { local(job); return; }
       queued.set(key, job); stats.queuedBytes += job.bytes; stats.queuedSnapshotBytes += job.snapshotBytes;

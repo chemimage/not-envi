@@ -48,7 +48,7 @@ describe("composition worker client", () => {
     expect(client.stats.cancelled).toBe(2); client.dispose();
   });
 
-  test("queued revisions rebase with full snapshots and immutable fallback data", async () => {
+  test("queued revisions pack against the completed active revision and preserve immutable fallback data", async () => {
     const { client, rasters, sent, respond, fallback } = fixture();
     const initial = client.compose(rasters, []); respond(0); await initial;
     rasters[0].dataF32[0] = 40; rasters[0].revision = 2; rasters[0].previousRevision = 1;
@@ -58,7 +58,8 @@ describe("composition worker client", () => {
     const queued = client.compose(rasters, [], {}, { key: "panel2" });
     rasters[0].dataF32[0] = 70;
     respond(1); await active;
-    expect(sent[2].message.planes.every((plane) => plane.full)).toBe(true);
+    expect(sent[2].message.planes.map(plane => plane.full)).toEqual([false, false, false]);
+    expect(sent[2].message.planes.map(plane => plane.patches.length)).toEqual([1, 0, 0]);
     expect(sent[2].message.planes[0].patches[0].values[0]).toBe(50);
     respond(2, { error: "controlled failure", bitmap: undefined }); await queued;
     expect(fallback.mock.calls[0][0][0].dataF32[0]).toBe(50);
@@ -97,7 +98,8 @@ describe("composition worker client", () => {
     const second = client.compose(rasters, [], {}, { key: "second" });
     const newest = client.compose(rasters, [], {}, { key: "newest" });
     await oldRejected;
-    expect(client.stats.queuedBytes).toBe(96);
+    expect(client.stats.queuedBytes).toBe(0);
+    expect(client.stats.queuedSnapshotBytes).toBe(96);
     expect(client.stats.peakQueuedBytes).toBeLessThanOrEqual(96);
     respond(0); await active; respond(1); await second; respond(2); await newest;
     expect(client.stats.queuedBytes).toBe(0); client.dispose();
@@ -109,5 +111,43 @@ describe("composition worker client", () => {
     expect(sent).toHaveLength(0);
     expect(fallback).toHaveBeenCalledOnce();
     expect(client.stats.transferredBytes).toBe(0); client.dispose();
+  });
+
+  test("tone bursts allocate no queued transport and pack no unchanged pixels at dispatch", async () => {
+    const { client, rasters, sent, respond } = fixture();
+    const initial = client.compose(rasters, []); respond(0); await initial;
+    const before = client.stats.packedBytes;
+    const jobs = Array.from({ length: 12 }, () => client.compose(rasters, []).then(() => "ok", error => error.name));
+    expect(client.stats.packedBytes).toBe(before);
+    expect(client.stats.queuedBytes).toBe(0);
+    respond(1); respond(2);
+    expect(await Promise.all(jobs)).toEqual([...Array(11).fill("AbortError"), "ok"]);
+    expect(client.stats.packedBytes).toBe(before);
+    expect(sent.at(-1).transfer).toHaveLength(0);
+    client.dispose();
+  });
+
+  test("eviction acknowledgements force a full queued snapshot instead of stale patches", async () => {
+    const { client, rasters, sent, respond } = fixture();
+    const initial = client.compose(rasters, []); respond(0); await initial;
+    const active = client.compose(rasters, [], {}, { key: "a" });
+    const pending = client.compose(rasters, [], {}, { key: "b" });
+    respond(1, { planes: [] }); await active;
+    expect(sent[2].message.planes.every(plane => plane.full)).toBe(true);
+    respond(2); await pending; client.dispose();
+  });
+
+  test("queued dirty rectangles are frozen before mutable renderer metadata changes", async () => {
+    const { client, rasters, sent, respond } = fixture();
+    const initial = client.compose(rasters, []); respond(0); await initial;
+    const active = client.compose(rasters, [], {}, { key: "a" });
+    Object.assign(rasters[0], { revision: 2, previousRevision: 1, dirtyRects: [{ x: 1, y: 0, w: 1, h: 1 }] });
+    rasters[0].dataF32[1] = 99;
+    const pending = client.compose(rasters, [], {}, { key: "b" });
+    rasters[0].dirtyRects[0].x = 0;
+    respond(1); await active;
+    expect(sent[2].message.planes[0].patches[0].x).toBe(1);
+    expect([...sent[2].message.planes[0].patches[0].values]).toEqual([99]);
+    respond(2); await pending; client.dispose();
   });
 });
