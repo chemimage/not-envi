@@ -7,9 +7,10 @@
 A lightweight, browser-based hyperspectral data viewer for band browsing,
 simple spatial-spectral statistics, and format conversion.
 
-Use **Combine…** in a plot to compare calculated spectra, histograms, or line
-profiles. Each legend entry can be opened separately without splitting the
-whole chart. See [plot comparisons](docs/plot-comparisons.md).
+Use **Stack all** / **Split all** in chart title bars to compare calculated
+spectra, histograms, or line profiles. Lines are solid and retain their source
+colors; each brush color owns one line and its profile window. See
+[plot comparisons](docs/plot-comparisons.md).
 
 ## Development
 
