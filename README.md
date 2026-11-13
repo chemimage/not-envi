@@ -7,7 +7,7 @@
 A lightweight, browser-based hyperspectral data viewer for band browsing,
 simple spatial-spectral statistics, and format conversion.
 
-Use **Stack all** / **Split all** in chart title bars to compare calculated
+Use **Stack** / **Split** in chart title bars to compare calculated
 spectra, histograms, or line profiles. Lines are solid and retain their source
 colors; each brush color owns one line and its profile window. See
 [plot comparisons](docs/plot-comparisons.md).
@@ -46,50 +46,17 @@ or Firefox 128+. See the [Tailwind browser requirements](https://tailwindcss.com
 
 ### Preparing a release
 
-`npm run version:calc` previews the next stable version using Git tags and
-`+semver:` commit-body annotations. It runs in Node.js, with no additional SDK.
-The highest bump wins across an unreleased batch; feature commits do not
-each add another minor version. Unannotated commits default to a patch;
-`+semver: none` leaves that commit out of the bump calculation. CI uses the same
-calculator. Full Git history and release tags must be available.
+Use `+semver:` annotations (`patch`, `minor`, `major`, or `none`) in commit bodies.
+Preview the next version with `npm run version:calc`.
 
-After a successful push-to-main CI run, `Publish release and Pages` automatically
-creates the calculated `vX.Y.Z` tag, publishes the release, and deploys Pages.
-It downloads `site-dist` from that exact run and verifies commit/version/hashes;
-it does not rebuild. CI stamps the calculated version into its build checkout
-before packaging and offline tests, so the viewer reports the published version.
-The source package files need not receive a separate version-bump commit.
-
-Only the latest main commit is eligible. Failed/canceled CI cannot publish.
-Commits containing only `+semver: none` do not create a new release when the
-calculated version already belongs to an earlier tag. Rerunning publication for
-the same tagged commit can repair a failed release/Pages publication without
-moving its tag. Review `docs/releases/vX.Y.Z.md` before pushing a release batch;
-authored notes are used when present, otherwise GitHub generates release notes.
-Release titles exactly match the version tag.
-
-The repository has two workflows: `CI` and `Publish release and Pages`.
-Manual tag publication remains available for recovery in that same publication
-workflow. Select a stable version tag when running it manually; pushing a stable
-version tag also starts publication. Both entry points retrieve successful
-CI for that exact commit on main, normalize the build version, and verify the
-same artifact. CI retains artifacts for 30 days. If one expires, manually run
-CI selecting that tag and rerun the publication after CI succeeds.
+Push to `main`; after CI passes, publication automatically creates the version
+tag and release, then deploys Pages using the tested build. Optional release
+notes go in `docs/releases/vX.Y.Z.md`.
 
 ### Deploy to the lab server
 
-Run `build-and-deploy-remote.bat` from Windows with Node.js 22+, an authenticated
-GitHub CLI (`gh auth login`), and working `ssh`/`scp` access through the local
-`inference` SSH alias. Remote installation may prompt for your sudo password.
+On Windows, run `build-and-deploy-remote.bat` with authenticated `gh` and
+`ssh`/`scp` access via the `inference` alias. It deploys the latest successful
+main CI build to `/srv/www/hyve`.
 
-The script downloads `site-dist` from the latest successful push-to-main CI run,
-verifies its commit and SHA-256 hashes, then deploys to `/srv/www/hyve`. It does
-not build your local checkout. If newer CI runs failed or are still running,
-the selected successful run can be older than main; its URL and commit are
-printed before deployment. Missing or expired artifacts stop deployment.
-
-Use `build-and-deploy-remote.bat --download-only` to download and verify without
-connecting to the server. The downloaded files remain in the printed temporary
-directory for inspection. Normal deployment verifies the uploaded files again
-on the server and replaces the single-file app by rename, without clearing the
-live directory. GitHub-hosted runners do not need access to the lab network.
+Add `--download-only` to download and verify without deploying.
