@@ -6,6 +6,7 @@ import { expect, test, vi } from "vitest";
 import workerSource from "../../src/io/fmap/fmap.worker.js?raw";
 import { FmapPageFillQueue } from "../../src/io/fmap/page-fill-queue.js";
 import { createReduction, REDUCTION_BYTES } from "../../src/io/fmap/reduction.js";
+import { createSourceReadMonitor } from "../../src/core/source-read-monitor.js";
 
 const wasmBytes = readFileSync(resolve("wasm/fmap/pkg/fmap_core.wasm"));
 
@@ -34,7 +35,7 @@ async function workerHarness() {
   // Production uses Vite's bundled module worker; its dependencies are injected.
   runInNewContext(workerSource.replace(/^import .*;\r?\n/gm, ""), {
     self, Blob: MemoryBlob, FmapPageFillQueue: Queue, MessageChannel: Channel,
-    createReduction, REDUCTION_BYTES,
+    createReduction, REDUCTION_BYTES, createSourceReadMonitor: () => createSourceReadMonitor({ now: () => 0 }),
     WebAssembly, Uint8Array, Float32Array, Float64Array, DataView,
     performance: { now: () => 0 }, setTimeout: timer
   });

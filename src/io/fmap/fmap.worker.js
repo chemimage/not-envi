@@ -1,5 +1,6 @@
 import { FmapPageFillQueue } from "./page-fill-queue.js";
 import { createReduction, REDUCTION_BYTES } from "./reduction.js";
+import { createSourceReadMonitor } from "../../core/source-read-monitor.js";
 /**
  * File range bridge and cooperative ENVI processing for one source. BSQ, BIL,
  * and BIP planners feed all nine supported numeric types through bounded C
@@ -20,6 +21,7 @@ const RASTER_TYPE_BYTES = Object.freeze({
 });
 const state = { file: null, meta: null, generation: 0, pageSize: 0, exports: null, fillQueue: null, closed: true,
   jobs: [], waiting: new Map(), jobById: new Map(), scheduled: false, order: 0, stats: {} };
+const sourceReads = createSourceReadMonitor();
 
 // The worker pulls queued jobs between bounded batches. A local message task
 // yields to incoming requests/cancellation without chained timers' minimum
@@ -81,7 +83,7 @@ function call(name, ...args) {
 }
 function counters() {
   const fills = state.fillQueue?.getStats() || {};
-  return { ...state.stats, ...fills,
+  return { ...state.stats, ...fills, ...sourceReads.snapshot(),
     copiedBytes: state.stats.copiedBytes + (fills.pageFillCopiedBytes || 0),
     cacheHits: Number(call("fmap_hits")), cacheMisses: Number(call("fmap_misses")),
     cacheEvictions: Number(call("fmap_evictions")), residentBytes: Number(call("fmap_resident_bytes")),
@@ -461,6 +463,7 @@ function resumeWaiting(job, lease, error) {
     return;
   }
   state.waiting.delete(job.message.id);
+  job.waitingRange = null;
   job.waitingCancel = null;
   if (error) job.resumeError = error;
   else job.resumeValue = lease;
@@ -494,6 +497,7 @@ function runBatch() {
       if (result.done) {
         didWork = true;
         removeJob(job);
+        sourceReads.finish(job.message.id);
         const buffer = result.value.buffer;
         self.postMessage({ id: job.message.id, generation: state.generation,
           result: { buffer, stats: counters() } }, [buffer]);
@@ -527,6 +531,8 @@ function runBatch() {
         throw new Error("Invalid fmap fill queue request.");
       }
       job.waitingCancel = request.cancel;
+      job.waitingRange = { offset: command.pageIndex * state.pageSize + command.offset,
+        length: command.length, since: performance.now() };
       state.waiting.set(job.message.id, job);
       request.promise.then(
         (lease) => resumeWaiting(job, lease, null),
@@ -535,6 +541,7 @@ function runBatch() {
       paused = true;
     }
   } catch (error) {
+    sourceReads.finish(job.message.id, false);
     releaseResumeLease(job);
     removeJob(job);
     job.iterator.return?.();
@@ -551,6 +558,7 @@ function runBatch() {
 function cancelJob(job) {
   if (job.cancelled) return;
   job.cancelled = true;
+  sourceReads.finish(job.message.id, false);
   const index = state.jobs.indexOf(job);
   if (index >= 0) state.jobs.splice(index, 1);
   state.waiting.delete(job.message.id);
@@ -604,7 +612,16 @@ async function open(message) {
   state.fillQueue = new FmapPageFillQueue({ core: state.exports, fileSize: sourceFile.size,
     pageSize, generation: state.generation, concurrency: readConcurrency,
     maxQueuedRequests, maxQueuedBytes,
-    readFile: (offset, length) => readFile(sourceFile, pageSize, sourceStats, offset, length) });
+    readFile: (offset, length) => readFile(sourceFile, pageSize, sourceStats, offset, length),
+    onRead: (timing) => {
+      const waiting = [...state.waiting.values()].filter((job) => !job.cancelled && job.message.priority === 0
+        && job.message.generation === state.generation && job.waitingRange
+        && job.waitingRange.offset < timing.offset + timing.length
+        && timing.offset < job.waitingRange.offset + job.waitingRange.length);
+      if (!waiting.length) return;
+      sourceReads.read({ ...timing, startMs: Math.max(timing.startMs, Math.min(...waiting.map((job) => job.waitingRange.since))) },
+        waiting.map((job) => job.message.id));
+    } });
   state.jobs.length = 0;
   state.waiting.clear();
   state.jobById.clear();
@@ -620,8 +637,10 @@ self.onmessage = async (event) => {
     } else if (message.type === "cancel") {
       const job = state.jobById.get(message.id);
       if (job) cancelJob(job);
+      else if (message.generation === state.generation) sourceReads.invalidate();
     } else if (message.type === "clear" || message.type === "close") {
       for (const job of [...state.jobById.values()]) cancelJob(job);
+      sourceReads.clear();
       state.generation = message.generation;
       if (message.type === "close") {
         state.fillQueue.close();
@@ -686,6 +705,7 @@ self.onmessage = async (event) => {
       if (state.jobById.has(message.id)) throw new Error("Duplicate fmap request id.");
       const job = { message, iterator, order: ++state.order, demandOrder: 0, cancelled: false,
         waitingCancel: null, resumeValue: undefined, resumeError: null };
+      sourceReads.begin(message.id, message.priority === 0, Number(message.sourceReadEpoch) || 0);
       state.jobs.push(job);
       state.jobById.set(message.id, job);
       schedule();

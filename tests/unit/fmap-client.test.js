@@ -75,6 +75,42 @@ class ManualWorker {
   requests() { return this.messages.filter((message) => message.type === "spectrum" || message.type === "window"); }
 }
 
+test("a late canceled reply cannot latch a slow-access warning or revive it through stats", async () => {
+  const worker = new ManualWorker();
+  const source = createSource(worker);
+  await source.ready;
+  const diagnostic = (id, epoch = 0) => ({ sourceReadQualifiedSamples: 40, sourceReadWarning: 1, sourceReadWarningEpoch: epoch,
+    sourceReadWarningRequestId: id, sourceReadWarningMedianMs: 6, sourceReadWarningWaitMs: 1200 });
+  try {
+    let canceled = false;
+    const rejected = source.readBandWindow(meta(), 0, 0, 0, 2, 2, 1, null, { cancelled: () => canceled })
+      .then(() => "success", (error) => error.name);
+    await vi.waitFor(() => expect(worker.requests()).toHaveLength(1));
+    const old = worker.requests()[0];
+    canceled = true;
+    worker.respond(old, { buffer: new Float32Array(4).buffer, stats: diagnostic(old.id) });
+    expect(await rejected).toBe("AbortError");
+    expect(source.stats.sourceReadWarning).toBe(0);
+    expect(worker.messages.some((message) => message.type === "cancel" && message.id === old.id)).toBe(true);
+    const snapshot = source.getStats();
+    await vi.waitFor(() => expect(worker.messages.some((message) => message.type === "stats")).toBe(true));
+    worker.respond(worker.messages.find((message) => message.type === "stats"), { stats: diagnostic(old.id) });
+    expect((await snapshot).sourceReadWarning).toBe(0);
+    const tainted = source.readBandWindow(meta(), 0, 0, 0, 2, 2, 1);
+    await vi.waitFor(() => expect(worker.requests()).toHaveLength(2));
+    const mixed = worker.requests()[1];
+    worker.respond(mixed, { buffer: new Float32Array(4).buffer, stats: diagnostic(mixed.id) });
+    await tainted;
+    expect(source.stats.sourceReadWarning).toBe(0); // Its burst still includes a canceled earlier epoch.
+    const accepted = source.readBandWindow(meta(), 0, 0, 0, 2, 2, 1);
+    await vi.waitFor(() => expect(worker.requests()).toHaveLength(3));
+    const current = worker.requests()[2];
+    worker.respond(current, { buffer: new Float32Array(4).buffer, stats: diagnostic(current.id, source.sourceReadEpoch) });
+    await accepted;
+    expect(source.stats.sourceReadWarning).toBe(1);
+  } finally { source.close(); }
+});
+
 function createSource(worker, options = {}) {
   const file = new Blob([new Uint8Array(32)]);
   return createFmapDataSource(file, meta(), {

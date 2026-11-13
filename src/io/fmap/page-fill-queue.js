@@ -25,7 +25,7 @@ const STAT_NAMES = [
  */
 export class FmapPageFillQueue {
   constructor({ core, fileSize, pageSize, generation = 1, concurrency = 2,
-    maxQueuedRequests = 64, maxQueuedBytes = 32 * 1024 * 1024, readFile, postTask } = {}) {
+    maxQueuedRequests = 64, maxQueuedBytes = 32 * 1024 * 1024, readFile, postTask, onRead } = {}) {
     this.core = core;
     this.fileSize = integer(fileSize, "file size");
     this.pageSize = integer(pageSize, "page size", 1, 0xffffffff);
@@ -36,6 +36,7 @@ export class FmapPageFillQueue {
     if (typeof readFile !== "function") throw new TypeError("fmap requires an asynchronous file reader.");
     if (Number(core.fmap_page_size()) !== pageSize) throw new RangeError("fmap page size does not match the C pool.");
     this.readFile = readFile;
+    this.onRead = onRead;
     this.callbacks = new Map();
     this.closed = false;
     this.scheduled = false;
@@ -120,13 +121,17 @@ export class FmapPageFillQueue {
       const command = new DataView(this.core.memory.buffer, pointer, 24);
       const id = command.getUint32(0, true), length = command.getUint32(12, true);
       const offset = Number(command.getBigUint64(16, true));
-      Promise.resolve().then(() => this.readFile(offset, length))
-        .then((raw) => this.#complete(id, length, raw), (error) => this.#complete(id, length, null, error));
+      let startMs;
+      Promise.resolve().then(() => {
+        startMs = performance.now();
+        return this.readFile(offset, length);
+      }).then((raw) => this.#complete(id, length, raw, null, { offset, length, startMs, endMs: performance.now() }),
+        (error) => this.#complete(id, length, null, error));
     }
     this.#events();
   }
 
-  #complete(id, length, raw, error) {
+  #complete(id, length, raw, error, timing) {
     let success = false;
     try {
       // Stale reads settle their charged command but cannot obtain a write
@@ -144,6 +149,7 @@ export class FmapPageFillQueue {
     } catch (cause) { error = cause; }
     this.core.fmap_fill_complete(id, success ? 1 : 0);
     this.#events(id, error);
+    if (success && timing) this.onRead?.(timing);
     this.#wake();
   }
 

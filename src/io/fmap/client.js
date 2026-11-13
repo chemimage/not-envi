@@ -94,6 +94,7 @@ export class FmapDataSource {
       throw new RangeError("Invalid fmap coalesced overread ratio.");
     }
     this.file = file;
+    this.sourceReadEpoch = 0;
     this.meta = meta;
     this.mode = mode;
     // Let the raster wrapper defer output allocation until our byte admission.
@@ -169,11 +170,25 @@ export class FmapDataSource {
     return opened;
   }
 
-  #mergeStats(stats) {
+  #mergeStats(stats, acceptedRequestId = 0) {
+    // A worker can finish just before the client cancels. Confirm a warning
+    // only with the successful, current read response that generated it.
+    if (!this.confirmedSourceReadWarning && acceptedRequestId && stats?.sourceReadWarning === 1
+      && stats.sourceReadWarningRequestId === acceptedRequestId && stats.sourceReadWarningEpoch === this.sourceReadEpoch) {
+      this.confirmedSourceReadWarning = { id: acceptedRequestId,
+        medianMs: stats.sourceReadWarningMedianMs, waitMs: stats.sourceReadWarningWaitMs };
+    }
     for (const [key, value] of Object.entries(stats || {})) {
+      if (key === "sourceReadWarning") continue;
       if (Number.isFinite(Number(value)) && !["cancelledRequests", "queuedRequests", "activeRequests", "inflightBytes"].includes(key)) {
         this.stats[key] = Number(value);
       }
+    }
+    this.stats.sourceReadWarning = this.confirmedSourceReadWarning ? 1 : 0;
+    if (this.confirmedSourceReadWarning) {
+      this.stats.sourceReadWarningRequestId = this.confirmedSourceReadWarning.id;
+      this.stats.sourceReadWarningMedianMs = this.confirmedSourceReadWarning.medianMs;
+      this.stats.sourceReadWarningWaitMs = this.confirmedSourceReadWarning.waitMs;
     }
   }
 
@@ -201,6 +216,7 @@ export class FmapDataSource {
 
   #cancel(request, reason = "Obsolete fmap request.") {
     if (request.cancelled) return;
+    if (!controlTypes.has(request.type) && request.priority === 0) this.sourceReadEpoch++;
     request.cancelled = true;
     this.stats.cancelledRequests += 1;
     this.#settle(request, createAbortError(reason));
@@ -224,9 +240,11 @@ export class FmapDataSource {
   #handleMessage(data) {
     const request = this.pending.get(Number(data.id));
     if (!request) return;
-    this.pending.delete(request.id);
-    this.#mergeStats(data.result?.stats || data.stats);
     if (!request.cancelled && this.#cancelledByCallback(request)) this.#cancel(request);
+    this.pending.delete(request.id);
+    const acceptedRead = !request.cancelled && request.generation === this.generation && !data.error
+      && ["window", "range", "spectrum", "reduce"].includes(request.type);
+    this.#mergeStats(data.result?.stats || data.stats, acceptedRead ? request.id : 0);
     if (request.cancelled || request.generation !== this.generation) {
       this.stats.staleResults += data.result?.buffer ? 1 : 0;
       this.#settle(request, createAbortError());
@@ -369,7 +387,7 @@ export class FmapDataSource {
     this.#updateStats();
     try {
       this.worker.postMessage({ id: request.id, type: request.type, generation: request.generation,
-        priority: request.priority, ...request.fields }, request.transfer);
+        priority: request.priority, sourceReadEpoch: this.sourceReadEpoch, ...request.fields }, request.transfer);
     } catch (error) {
       this.pending.delete(request.id);
       this.#settle(request, error);
