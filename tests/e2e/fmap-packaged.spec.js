@@ -130,14 +130,23 @@ test("single-file package reads and composes ENVI and TIFF through workers witho
   });
   await page.addInitScript(() => {
     const NativeWorker = globalThis.Worker;
-    globalThis.__fmapWorkerTrace = { results: [], decoded: [], pyramidFrames: [], rgbFrames: [], errors: [] };
+    globalThis.__fmapWorkerTrace = { results: [], decoded: [], pyramidFrames: [], rgbFrames: [], cancellations: [], errors: [] };
     globalThis.Worker = class TracedWorker extends NativeWorker {
       constructor(...args) {
         super(...args);
         this.fmapRequestTypes = new Map();
+        this.fmapCancelledRequests = new Set();
         this.addEventListener("message", (event) => {
           const data = event.data || {};
-          if (data.error) globalThis.__fmapWorkerTrace.errors.push(String(data.error.message || data.error));
+          if (data.error) {
+            // A newer view/dataset can retire an in-flight read. Accept only
+            // AbortError replies for requests this client explicitly canceled;
+            // all decoder faults and unexpected aborts still fail the test.
+            const expectedCancellation = data.error.name === "AbortError" && this.fmapCancelledRequests.has(data.id);
+            const destination = expectedCancellation ? "cancellations" : "errors";
+            globalThis.__fmapWorkerTrace[destination].push(String(data.error.message || data.error));
+          }
+          this.fmapCancelledRequests.delete(data.id);
           const type = this.fmapRequestTypes.get(data.id);
           this.fmapRequestTypes.delete(data.id);
           if ((type === "window" || type === "spectrum") && data.result?.buffer instanceof ArrayBuffer) {
@@ -164,6 +173,7 @@ test("single-file package reads and composes ENVI and TIFF through workers witho
         });
       }
       postMessage(message, ...args) {
+        if (message?.type === "cancel") this.fmapCancelledRequests.add(message.id);
         if (message?.type) this.fmapRequestTypes.set(message.id, message.type);
         if (message?.fileDirectory) this.fmapRequestTypes.set(message.id, `decode:${message.fileDirectory.Compression}`);
         if (Array.isArray(message?.operations)) this.fmapRequestTypes.set(message.id, "pyramid-composition");
