@@ -3,6 +3,23 @@ import { createPlotGroups } from "../../src/app/plot-groups.js";
 const entry = (id, kind = "line", compatibility = `${kind}:distance`) => ({ id, kind, compatibility, status: "ready" });
 
 describe("all split / all stacked plot layout", () => {
+  test("focused plots keep one panel identity while selection, stacking and spectral units change", () => {
+    const plots = createPlotGroups();
+    plots.upsert(entry("a", "spectrum", "nm")); plots.upsert(entry("b", "spectrum", "nm"));
+    plots.upsert(entry("c", "spectrum", "cm-1"));
+    plots.present("spectrum", "a", false);
+    const id = [...plots.groups.keys()][0];
+    expect(plots.groups.get(id)).toMatchObject({ selectedId: "a", stacked: false, ids: ["a", "b"] });
+    plots.present("spectrum", "b", true);
+    expect([...plots.groups.keys()]).toEqual([id]);
+    expect(plots.groups.get(id)).toMatchObject({ selectedId: "b", stacked: true, ids: ["a", "b"] });
+    plots.present("spectrum", "c", false);
+    expect(plots.groups.get(id)).toMatchObject({ selectedId: "c", ids: ["c"] });
+    plots.present("spectrum", null, true);
+    expect(plots.groups.get(id)).toMatchObject({ selectedId: null, ids: ["c"] });
+    expect(plots.entries.size).toBe(3);
+  });
+
   test("toggles every trace together and preserves stable chart identity on updates", () => {
     const plots = createPlotGroups();
     ["a", "b", "c"].forEach((id) => plots.upsert(entry(id)));

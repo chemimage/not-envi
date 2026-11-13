@@ -2,6 +2,24 @@ import { describe, expect, test, vi } from "vitest";
 import { createComparisonSources } from "../../src/app/comparison-sources.js";
 
 describe("comparison result provenance", () => {
+  test("selected source follows current regions, histogram band and point coordinates", () => {
+    const publish = vi.fn(), ds = { id: 1, meta: {}, ds: {} };
+    const item = { id: 7, points: [{ x: 0, y: 0 }, { x: 5, y: 5 }] };
+    let selection = { dsId: 1, slot: 1, items: [item], band: 0, point: null };
+    const sources = createComparisonSources({ comparisons: { publish }, getDataset: () => ds,
+      getPanel: () => ({ datasetId: 1, annotations: { drawings: [item] } }), getSelection: () => selection, deleteSources() {} });
+    sources.histogram({ ds, slot: 1, items: [item], stats: { bins: [1, 2], min: 0, max: 2, count: 3 }, band: 0 });
+    const hist = publish.mock.calls[0][0];
+    expect(hist.isSelected()).toBe(true);
+    selection.band = 1; expect(hist.isSelected()).toBe(false);
+    selection = { dsId: 1, slot: 1, items: [], point: { x: 3, y: 4 }, band: 0 };
+    sources.spectrum({ ds, ix: 3, iy: 4, xVals: null, yVals: [1, 2], opts: { plotSlot: 1 }, source: { type: "pixel" } });
+    const point = publish.mock.calls[1][0];
+    expect(point.isSelected()).toBe(true);
+    selection.point.x = 4; expect(point.isSelected()).toBe(false);
+    expect(hist.isSelected()).toBe(false);
+  });
+
   test("geometry and calibration changes invalidate results; recalculation replaces the same trace", () => {
     const publish = vi.fn(), remove = vi.fn();
     const ds = { id: 1, name: "Image", meta: { scale: { umPerPixelX: 2, umPerPixelY: 3 } }, ds: {} };

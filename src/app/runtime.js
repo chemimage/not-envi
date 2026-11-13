@@ -127,6 +127,12 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     comparisons: plotComparisons,
     getPanel: (slot) => getDisplayPanel(state, slot),
     getDataset: (id) => state.datasets.find((ds) => ds.id === id),
+    getSelection: () => {
+      const ds = getActive(), panel = getActivePanel();
+      if (!ds || !panel) return null;
+      const point = state.contextPoint?.dsId === ds.id && state.contextPoint.slot === panel.slot ? state.contextPoint : null;
+      return { dsId: ds.id, slot: panel.slot, items: getHistogramSelectionItems(ds), point, band: resolveDisplayControlBand(ds) };
+    },
     deleteSources: ({ dsId, slot, items, point }) => {
       const ds = state.datasets.find((dataset) => dataset.id === dsId);
       const panel = getDisplayPanel(state, slot);
@@ -697,6 +703,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
 
   const analysisHistogram = createAnalysisHistogramController({
     onResult: comparisonSources.histogram,
+    onPanelOpen: () => plotComparisons.concealSource("histogram"),
     getPanelSlot: () => getActivePanel()?.slot || 1,
     arrangeAnalysisPanels,
     state,
@@ -1252,6 +1259,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
 
   const spectrum = createSpectrumController({
     onResult: comparisonSources.spectrum,
+    onPanelOpen: () => plotComparisons.concealSource("spectrum"),
     arrangeAnalysisPanels,
     els,
     specCtx,

@@ -27,6 +27,7 @@ export function createSpectrumController(deps) {
     els,
     arrangeAnalysisPanels,
     onResult,
+    onPanelOpen,
     specCtx,
     getActive,
     bandLabel,
@@ -96,6 +97,7 @@ export function createSpectrumController(deps) {
     els.specPanel.style.display = show ? "flex" : "none";
     els.specPanel.setAttribute?.("aria-hidden", show ? "false" : "true");
     specState.open = !!show;
+    if (show) onPanelOpen?.();
   }
 
   function setSpecSub(text) {

@@ -2,7 +2,7 @@ import { resolveSpectralUnit } from "../render/spectrum-units.js";
 
 // The catalog owns small, completed plot arrays. Source geometry is retained
 // only to detect edits/deletion; viewing or regrouping never reads image data.
-export function createComparisonSources({ comparisons, getPanel, getDataset, deleteSources }) {
+export function createComparisonSources({ comparisons, getPanel, getDataset, deleteSources, getSelection }) {
   const pointEpoch = new Map();
 
   function source(ds, slot, items = [], point = null) {
@@ -11,6 +11,14 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
     let removed = false;
     const descriptor = { dsId: ds.id, slot, items: geometry, point };
     return {
+      isSelected: () => {
+        const selection = getSelection?.();
+        if (!selection || selection.dsId !== ds.id || selection.slot !== slot) return false;
+        if (point) return !!selection.point && selection.point.x === point.x && selection.point.y === point.y;
+        if (selection.point) return false;
+        const ids = (selection.items || []).map(item => item.id);
+        return ids.length === geometry.length && geometry.every(item => ids.includes(item.id));
+      },
       key: `${ds.id}:${slot}:${point ? `point:${point.x},${point.y}` : geometry.map((item) => item.id).sort((a, b) => a - b).join(",") || "whole"}`,
       label: point ? `Point (${point.x}, ${point.y})` : geometry.length ? `Region ${geometry.map((item) => item.id).join(" + ")}` : "Whole image",
       check: () => {
@@ -33,6 +41,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
     const origin = source(ds, slot, items, point);
     const scale = JSON.stringify(ds.meta.scale);
     comparisons.publish({ ...origin, ...detail, kind,
+      isSelected: () => origin.isSelected() && (kind !== "histogram" || getSelection?.()?.band === detail.band),
       check: () => {
         const status = origin.check();
         return kind === "line" && status === "ready" && JSON.stringify(ds.meta.scale) !== scale ? "changed" : status;

@@ -48,6 +48,19 @@ export function createPlotGroups({ maxEntries = 48, maxGroups = 12, maxTraces = 
     }
   }
 
-  return { entries, groups, upsert, remove, arrange,
+  // Histograms/spectra retain one presentation identity across selection and
+  // stack changes. Incompatible spectral units follow the selected source.
+  function present(kind, selectedId, stacked) {
+    const id = `plot-${kind}`, previous = groups.get(id);
+    const plots = [...entries.values()].filter(entry => entry.kind === kind);
+    const anchor = entries.get(selectedId) || entries.get(previous?.anchorId) || plots.at(-1);
+    if (!anchor) { groups.delete(id); return; }
+    if (!previous && groups.size >= maxGroups) throw new Error("Close a chart before opening another.");
+    const ids = plots.filter(entry => entry.compatibility === anchor.compatibility).map(entry => entry.id);
+    if (ids.length > maxTraces) throw new Error(`Compare up to ${maxTraces} traces in one chart.`);
+    groups.set(id, { id, ids, anchorId: anchor.id, selectedId: ids.includes(selectedId) ? selectedId : null, stacked, focused: true });
+  }
+
+  return { entries, groups, upsert, remove, arrange, present,
     close: (id) => groups.delete(id), clear: () => { entries.clear(); groups.clear(); creationOrder.clear(); } };
 }

@@ -85,7 +85,7 @@ test("color-owned line windows update in place and toggle all stacked / all spli
 });
 
 for (const kind of ["spectrum", "histogram"]) {
-  test(`${kind} plots toggle all together or all separate without a picker`, async ({ page }, testInfo) => {
+  test(`${kind} follows selection in one stable panel and emphasizes the selected stacked result`, async ({ page }, testInfo) => {
     await loadImage(page);
     const original = page.locator(kind === "spectrum" ? "#specPanel" : "#analysisHistPanel");
     for (let i = 0; i < 2; i++) {
@@ -99,25 +99,54 @@ for (const kind of ["spectrum", "histogram"]) {
       else await expect(page.locator("#analysisStatN")).not.toHaveText("—");
     }
     const name = kind === "spectrum" ? "spectrum" : "spatial histogram";
-    const initial = kind === "histogram" ? page.locator('.plot-comparison-panel[data-trace-count="1"]').last() : original;
-    if (kind === "histogram") await expect(page.locator('.plot-comparison-panel[data-trace-count="1"]')).toHaveCount(2);
+    const initial = page.locator(`.plot-comparison-panel[data-plot-kind="${kind}"]`);
+    await expect(initial).toHaveCount(1);
+    await expect(initial).toHaveAttribute("data-trace-count", "1");
+    await expect(initial.locator(".plot-legend-name")).toContainText("Region 2");
+    await initial.evaluate(node => { window.__retainedAnalysisPanel = node; });
     await expect(initial.getByRole("button", { name: `Stack ${name} plots`, exact: true })).toHaveText("Stack");
     await initial.getByRole("button", { name: `Stack ${name} plots`, exact: true }).click();
     const together = page.locator('.plot-comparison-panel[data-trace-count="2"]');
     await expect(together).toBeVisible();
     if (kind === "histogram") {
       await expect(together.locator(".plot-legend-entry svg rect")).toHaveCount(2);
-      await expect(together.locator(".plot-legend-entry svg rect").first()).toHaveAttribute("fill-opacity", "0.4");
+      await expect(together.locator('.plot-legend-entry[data-selected="false"] svg rect')).toHaveAttribute("fill-opacity", "0.4");
+      await expect(together.locator('.plot-legend-entry[data-selected="true"] svg rect')).toHaveAttribute("fill-opacity", "1");
       await together.getByRole("combobox", { name: "Histogram scale" }).selectOption("percentage");
     }
+    const selectedMark = kind === "histogram" ? "rect" : "line";
+    const opacityAttr = kind === "histogram" ? "fill-opacity" : "stroke-opacity";
+    // Changing image selection reuses calculated arrays and the same panel.
+    await page.mouse.click(330, 280);
+    await expect(together.locator('.plot-legend-entry[data-selected="true"]')).toContainText("Region 1");
+    await expect(together.locator(`.plot-legend-entry[data-selected="true"] svg ${selectedMark}`)).toHaveAttribute(opacityAttr, "1");
+    await expect(together.locator(`.plot-legend-entry[data-selected="false"] svg ${selectedMark}`)).toHaveAttribute(opacityAttr, "0.4");
     await page.screenshot({ path: testInfo.outputPath(`${kind}-stacked.png`) });
     await together.getByRole("button", { name: `Split ${name} plots`, exact: true }).click();
-    await expect(page.locator('.plot-comparison-panel[data-trace-count="1"]')).toHaveCount(2);
+    await expect(page.locator('.plot-comparison-panel[data-trace-count="1"]')).toHaveCount(1);
     await expect(page.locator('.plot-picker')).toHaveCount(0);
     const singles = page.locator('.plot-comparison-panel[data-trace-count="1"]');
     await expect(singles.first().locator(".analysis-hist-title")).toHaveCSS("color", "rgb(255, 45, 45)");
+    expect(await singles.evaluate(node => node === window.__retainedAnalysisPanel)).toBe(true);
+    await page.mouse.click(330, 480);
+    await expect(singles.locator(".plot-legend-name")).toContainText("Region 2");
+    await drag(page, 180, 620, 280, 700);
+    await expect(initial).toHaveAttribute("data-trace-count", "0");
+    await expect(initial.locator(".plot-legend-entry")).toHaveCount(0);
+    await initial.getByRole("button", { name: `Stack ${name} plots`, exact: true }).click();
+    await expect(together.locator('.plot-legend-entry[data-selected="true"]')).toHaveCount(0);
+    await expect(together.locator('.plot-legend-entry[data-selected="false"]')).toHaveCount(2);
+    await together.getByRole("button", { name: `Split ${name} plots`, exact: true }).click();
+    await page.mouse.click(330, 480);
+    await expect(singles.locator(".plot-legend-name")).toContainText("Region 2");
     await singles.last().getByRole("button", { name: `Stack ${name} plots`, exact: true }).click();
     await expect(together).toBeVisible();
+    // Explicit recalculation also stays in the shared panel.
+    await page.getByRole("button", { name: kind === "spectrum" ? "Spectrum" : "Spatial histogram", exact: true }).click();
+    await expect(initial).toHaveAttribute("data-trace-count", "2");
+    await expect(initial.locator('.plot-legend-entry[data-selected="true"]')).toContainText("Region 2");
+    await expect(original).toBeHidden();
+    expect(await initial.evaluate(node => node === window.__retainedAnalysisPanel)).toBe(true);
     await page.getByRole("button", { name: "Close dataset", exact: true }).click();
     await expect(page.locator(".plot-comparison-panel")).toHaveCount(0);
   });

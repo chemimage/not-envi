@@ -6,6 +6,7 @@ export function createAnalysisHistogramController(deps) {
     state,
     arrangeAnalysisPanels,
     onResult,
+    onPanelOpen,
     getPanelSlot,
     els,
     clamp,
@@ -377,6 +378,7 @@ export function createAnalysisHistogramController(deps) {
     syncButtonState();
     els.analysisHistPanel.style.display = "flex";
     els.analysisHistPanel.setAttribute("aria-hidden", "false");
+    onPanelOpen?.();
     positionPanel();
     refresh().catch(() => {});
   }

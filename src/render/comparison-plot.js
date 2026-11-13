@@ -1,6 +1,6 @@
 const number = (value) => Number.isFinite(value) ? Number(value.toPrecision(4)).toString() : "—";
 
-export function drawComparisonPlot(canvas, entries, { distance = "px", percentage = false } = {}) {
+export function drawComparisonPlot(canvas, entries, { distance = "px", percentage = false, selectedId } = {}) {
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.max(1, Math.round(rect.width * dpr));
@@ -8,7 +8,8 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, rect.width, rect.height);
-  const series = entries.map((entry) => {
+  const ordered = selectedId ? [...entries.filter(entry => entry.id !== selectedId), ...entries.filter(entry => entry.id === selectedId)] : entries;
+  const series = ordered.map((entry) => {
     if (entry.status !== "ready") return { entry, points: [] };
     const { data, kind } = entry;
     const points = [];
@@ -49,7 +50,7 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
   ctx.font = "12px system-ui";
   if (!Number.isFinite(xmin)) {
     ctx.textAlign = "center";
-    ctx.fillText(entries.some((entry) => entry.status === "changed")
+    ctx.fillText(!entries.length ? "No calculated result for the current selection." : entries.some((entry) => entry.status === "changed")
       ? "Source changed. Recalculate its plot to update this chart." : "No finite values in these plots.", rect.width / 2, rect.height / 2);
     return;
   }
@@ -82,12 +83,13 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
   ctx.save();
   ctx.beginPath(); ctx.rect(left, top, width, height); ctx.clip();
   for (const { entry, points } of series) {
+    const alpha = selectedId !== undefined ? (entry.id === selectedId ? 1 : 0.4) : (entry.kind === "histogram" && entries.length > 1 ? 0.4 : 1);
     if (entry.kind === "histogram") {
       const data = entry.data;
       const binWidth = data.binWidth || (data.max - data.min) / Math.max(1, data.values.length) || 1;
       ctx.save();
       ctx.fillStyle = entry.color;
-      ctx.globalAlpha = entries.length > 1 ? 0.4 : 1;
+      ctx.globalAlpha = alpha;
       if (entry.status === "ready") data.values.forEach((value, i) => {
         const y = percentage ? 100 * value / Math.max(1, data.count) : value;
         if (!Number.isFinite(y) || y <= 0) return;
@@ -97,6 +99,7 @@ export function drawComparisonPlot(canvas, entries, { distance = "px", percentag
       ctx.restore();
       continue;
     }
+    ctx.globalAlpha = alpha;
     ctx.strokeStyle = entry.color;
     ctx.lineWidth = 1.75;
     ctx.setLineDash([]);
