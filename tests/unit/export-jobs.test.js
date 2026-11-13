@@ -174,4 +174,34 @@ describe("export job correctness and lifecycle", () => {
       expect(deps.resolveDisplayRange).toHaveBeenCalledOnce();
     } finally { spy.mockRestore(); }
   });
+
+  test.each(["window", "view"])("rendered %s calibration follows native and viewport sampling", async scope => {
+    const { deps, ds } = fixture({ color: "gray" });
+    ds.meta.samples = 20; ds.meta.lines = 20;
+    ds.meta.scale = { umPerPixelX: 0.5, umPerPixelY: 1 };
+    ds.view.scale = 0.4;
+    deps.getActiveViewportCss = () => ({ width: 7, height: 5 });
+    deps.renderWindowToImageData = async (_ds, _band, _x, _y, width, height) => ({
+      width, height, data: new Uint8ClampedArray(width * height * 4)
+    });
+    const original = document.createElement.bind(document);
+    const spy = vi.spyOn(document, "createElement").mockImplementation(tag => {
+      if (tag !== "canvas") return original(tag);
+      const canvas = { width: 0, height: 0 };
+      canvas.getContext = () => ({ putImageData() {}, fillRect() {}, drawImage() {},
+        getImageData: () => ({ width: canvas.width, height: canvas.height, data: new Uint8ClampedArray(canvas.width * canvas.height * 4) })
+      });
+      return canvas;
+    });
+    try {
+      await createExportService(deps).exportRendered(ds, "tiff", { x0: 0, y0: 0, w: 20, h: 20 }, scope);
+      const image = await (await fromArrayBuffer(await readBlob(deps.downloadBlob.mock.calls[0][0]))).getImage();
+      const fd = image.fileDirectory;
+      const x = 10000 / (fd.XResolution[0] / fd.XResolution[1]);
+      const y = 10000 / (fd.YResolution[0] / fd.YResolution[1]);
+      // Zoom 0.4 uses step 3, a 6x5 raster, then stretches to 7x5 CSS pixels.
+      expect(x).toBeCloseTo(scope === "view" ? 0.5 * 18 / 7 : 0.5);
+      expect(y).toBeCloseTo(scope === "view" ? 3 : 1);
+    } finally { spy.mockRestore(); }
+  });
 });

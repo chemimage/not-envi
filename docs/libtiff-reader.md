@@ -34,6 +34,12 @@ with the worker rather than embedding another copy. Random output writes patch
 JS-owned 256 KiB chunks; only one pixel block is copied into WASM at a time.
 TIFF headers, tags, compression, IFD links and SubIFD offsets belong to libtiff.
 These are standard pyramidal TIFFs without Aperio/SVS metadata or OME-XML.
+Known physical pixel sizes are stored in standard X/YResolution tags with
+centimeter units, independently for each axis. Reduced levels retain the base
+image's physical extent, including odd dimensions. Rendered viewport exports
+adjust calibration to their actual sampled and resized pixels; outside bars
+add canvas space without changing image pixel size. Unknown calibration is
+omitted. TIFF imports restore valid inch/centimeter resolution metadata.
 Validation reads full-resolution and reduced data
 with GeoTIFF.js, discovers the independent pyramids with the app's libtiff
 backend, and downloads and reopens a large multiband file in the browser.

@@ -9,7 +9,7 @@ export async function exportPyramidFixture(page, testInfo, url = "/") {
   const width = 2048, height = 2048, pixels = width * height, data = Buffer.alloc(pixels * 2);
   for (let i = 0; i < pixels; i++) { data[i] = i % 251; data[pixels + i] = 250 - i % 251; }
   await page.locator("#filePicker").setInputFiles([
-    { name: "large.hdr", mimeType: "text/plain", buffer: Buffer.from(`ENVI\nsamples = ${width}\nlines = ${height}\nbands = 2\ndata type = 1\ninterleave = bsq\nbyte order = 0\n`) },
+    { name: "large.hdr", mimeType: "text/plain", buffer: Buffer.from(`ENVI\nsamples = ${width}\nlines = ${height}\nbands = 2\ndata type = 1\ninterleave = bsq\nbyte order = 0\npixel size (um) = {0.5, 1.25}\n`) },
     { name: "large.raw", mimeType: "application/octet-stream", buffer: data }
   ]);
   await expect(page.locator("#displayDock")).toBeVisible();
@@ -30,6 +30,11 @@ export async function exportPyramidFixture(page, testInfo, url = "/") {
     const image = await tiff.getImage(band), fd = image.fileDirectory;
     expect([image.getWidth(), image.getHeight()]).toEqual([width, height]);
     expect(fd.TileWidth).toBe(512);
+    expect(fd.Compression).toBe(8);
+    expect(fd.Software).toMatch(/^not-envi/);
+    expect(fd.ResolutionUnit).toBe(3);
+    expect(fd.XResolution[0] / fd.XResolution[1]).toBeCloseTo(20000);
+    expect(fd.YResolution[0] / fd.YResolution[1]).toBeCloseTo(8000);
     expect(Array.from(fd.SubIFDs)).toHaveLength(2);
     const raster = await image.readRasters({ interleave: true });
     expect(raster.every((value, i) => value === data[band * pixels + i])).toBe(true);
@@ -45,4 +50,5 @@ export async function exportPyramidFixture(page, testInfo, url = "/") {
   await page.locator("#filePicker").setInputFiles(path);
   await expect(page.locator("#displayDock")).toBeVisible();
   await expect(page.getByText(/2,?048\u00d72,?048\s+bands:2/, { exact: true })).toBeVisible();
+  await expect(page.locator("#metaScale")).toHaveText(/0\.5.*1\.25.*m\/px/);
 }

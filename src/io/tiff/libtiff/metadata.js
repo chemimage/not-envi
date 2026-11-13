@@ -9,6 +9,7 @@ const TAGS = new Map([
   [266, "FillOrder"], [270, "ImageDescription"], [273, "StripOffsets"],
   [274, "Orientation"], [277, "SamplesPerPixel"], [278, "RowsPerStrip"],
   [279, "StripByteCounts"], [284, "PlanarConfiguration"], [285, "PageName"],
+  [282, "XResolution"], [283, "YResolution"], [296, "ResolutionUnit"],
   [297, "PageNumber"], [317, "Predictor"], [322, "TileWidth"], [323, "TileLength"],
   [324, "TileOffsets"], [325, "TileByteCounts"], [330, "SubIFDs"],
   [339, "SampleFormat"], [347, "JPEGTables"]

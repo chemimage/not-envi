@@ -522,6 +522,14 @@ export function createExportService(deps) {
     return canvas;
   }
 
+  function renderedMeta(ds, sourcePixelsX = 1, sourcePixelsY = 1) {
+    const scale = ds.meta?.scale;
+    return { ...ds.meta, scale: scale ? { ...scale,
+      umPerPixelX: scale.umPerPixelX * sourcePixelsX,
+      umPerPixelY: scale.umPerPixelY * sourcePixelsY
+    } : null };
+  }
+
   async function renderViewportToImageData(ds, band, rect, opts = {}) {
     const viewport = viewportCssSize();
     const geom = resolveRasterSampling(ds, viewport.width, viewport.height, Number(ds?.view?.scale) || 1);
@@ -554,6 +562,7 @@ export function createExportService(deps) {
 
     return {
       imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+      meta: renderedMeta(ds, geom.step * geom.rasterW / canvas.width, geom.step * geom.rasterH / canvas.height),
       outputW: canvas.width,
       outputH: canvas.height,
       rect
@@ -848,6 +857,7 @@ export function createExportService(deps) {
           imageData: await renderExportWindow(ds, bandIndex, target.rect.x0, target.rect.y0, target.outputW, target.outputH, 1, {
             displayRange: opts.displayRange || opts.colorBarRange || null
           }),
+          meta: renderedMeta(ds),
           outputW: target.outputW,
           outputH: target.outputH,
           rect: target.rect
@@ -870,6 +880,7 @@ export function createExportService(deps) {
     });
     return {
       imageData: finalImage,
+      meta: rendered.meta,
       outputW: finalImage.width,
       outputH: finalImage.height,
       rect: target.rect,
@@ -913,7 +924,7 @@ export function createExportService(deps) {
         deps.downloadBlob(blob, `${selectionBaseName(ds, bandIndices, job)}.png`);
       } else {
         const base = selectionBaseName(ds, bandIndices, job, bandIndices.length > 1 ? "renderedstack" : "rendered");
-        const blob = await encode("rendered", { pages });
+        const blob = await encode("rendered", { pages, meta: renderedMeta(ds) });
         deps.downloadBlob(blob, `${base}.tiff`);
       }
     }
@@ -932,6 +943,7 @@ export function createExportService(deps) {
     }
 
     const pages = [];
+    let meta;
     for (let bandPos = 0; bandPos < bandIndices.length; bandPos += 1) {
       const bandIndex = bandIndices[bandPos];
       deps.setStatus(
@@ -939,6 +951,7 @@ export function createExportService(deps) {
         "warn"
       );
       const rendered = await buildRenderedImageData(ds, bandIndex, rect, scope, opts);
+      meta = rendered.meta;
       pages.push(rendered.imageData);
     }
 
@@ -951,7 +964,7 @@ export function createExportService(deps) {
       return;
     }
 
-    const blob = await encode("rendered", { pages });
+    const blob = await encode("rendered", { pages, meta });
     deps.downloadBlob(blob, `${base}.tiff`);
     deps.setStatus("ready", "ok");
   }

@@ -1,5 +1,6 @@
 import { BlobDataSource, ChunkCacheDataSource } from "../../core/data-source.js";
 import { APP_CONFIG } from "../../app/config.js";
+import { tiffPhysicalScale } from "./physical-scale.js";
 import {
   BandOffsetTiffDataSource,
   TiffBlockIndexedDataSource,
@@ -372,6 +373,7 @@ export async function describeTiffDataset(tiff, file, deps = {}) {
   const desc = images.length === 1
     ? await describeSingleImageDataset(tiff, images, file, deps, raw, sampleType, budgets)
     : await describeMultiPageDataset(tiff, images, file, deps, raw, sampleType, budgets);
+  desc.meta.scale = tiffPhysicalScale(first.fileDirectory);
   raw.overviewCount = Number(desc?.cached?.overviewCount || 0);
   if (index && desc.cached) desc.cached.tiffIndex = index;
   return desc;

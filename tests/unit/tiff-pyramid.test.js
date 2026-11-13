@@ -6,6 +6,8 @@ import { fromArrayBuffer, GeoTIFFImage } from "geotiff";
 import { encodePyramidalTiff, shouldPyramidTiff, tiffStoragePixels } from "../../src/export/tiff-pyramid.js";
 import { encodeRawMultipageTiff, encodeRawRgbTiff, encodeRenderedMultipageTiff } from "../../src/export/tiff-backend.js";
 import { openNativeTiffBackend } from "../../src/io/tiff/backend/native-backend.js";
+import { addDatasetFromFile } from "../../src/io/tiff-loader.js";
+import { tiffPhysicalScale } from "../../src/io/tiff/physical-scale.js";
 
 const readBlob = blob => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -134,6 +136,40 @@ describe("pyramidal TIFF export", () => {
     const rgba = new Uint8ClampedArray(pixels * 4).fill(255);
     const rendered = await fromArrayBuffer(await readBlob(await encodeRenderedMultipageTiff({ compiled: await loadLibtiffCompiled(), pages: [{ width, height, data: rgba }] })));
     expect((await children(rendered, await rendered.getImage())).length).toBe(2);
+  });
+
+  test("preserves anisotropic physical size in odd-sized levels and after reopening", async () => {
+    const meta = { dataType: 1, scale: { umPerPixelX: 0.5, umPerPixelY: 1.25 } };
+    const pages = [new Uint8Array(33 * 17).fill(3), new Uint8Array(33 * 17).fill(7)];
+    const blob = await encodePyramidalTiff({ compiled: await loadLibtiffCompiled(), width: 33, height: 17,
+      pages, meta, overviewMaxEdge: 16 });
+    const tiff = await fromArrayBuffer(await readBlob(blob));
+    for (let page = 0; page < 2; page++) {
+      const base = await tiff.getImage(page);
+      expect(base.fileDirectory.Compression).toBe(8);
+      expect(base.fileDirectory.Software).toMatch(/^not-envi/);
+      for (const image of [base, ...await children(tiff, base)]) {
+        const scale = tiffPhysicalScale(image.fileDirectory);
+        expect(scale.umPerPixelX * image.getWidth()).toBeCloseTo(33 * 0.5, 5);
+        expect(scale.umPerPixelY * image.getHeight()).toBeCloseTo(17 * 1.25, 5);
+      }
+    }
+    const ds = await addDatasetFromFile(new File([blob], "calibrated.tiff"), {
+      createDataset: ({ meta, cached }) => ({ meta, ds: cached })
+    });
+    try {
+      expect(ds.meta.bands).toBe(2);
+      expect(ds.meta.scale.umPerPixelX).toBeCloseTo(0.5);
+      expect(ds.meta.scale.umPerPixelY).toBeCloseTo(1.25);
+    } finally { ds.ds.close(); }
+  });
+
+  test("unknown physical size stays unspecified", async () => {
+    const blob = await encodeRawMultipageTiff({ compiled: await loadLibtiffCompiled(), width: 2, height: 2,
+      meta: { dataType: 1 }, pages: [new Uint8Array(4)] });
+    const image = await (await fromArrayBuffer(await readBlob(blob))).getImage();
+    expect(image.fileDirectory.XResolution).toBeUndefined();
+    expect(image.fileDirectory.YResolution).toBeUndefined();
   });
 
   test("rejects invalid plane dimensions and unsupported raw types", async () => {

@@ -5,7 +5,7 @@ import { fromArrayBuffer } from "geotiff";
 for (const scope of ["selection", "view"]) test(`outside export bars preserve ${scope} pixels in PNG and TIFF`, async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator("#filePicker").setInputFiles([
-    { name: "bars.hdr", mimeType: "text/plain", buffer: Buffer.from("ENVI\nsamples = 400\nlines = 300\nbands = 1\ndata type = 1\ninterleave = bsq\nbyte order = 0\n") },
+    { name: "bars.hdr", mimeType: "text/plain", buffer: Buffer.from("ENVI\nsamples = 400\nlines = 300\nbands = 1\ndata type = 1\ninterleave = bsq\nbyte order = 0\npixel size (um) = {0.5, 1.25}\n") },
     { name: "bars.raw", mimeType: "application/octet-stream", buffer: Buffer.alloc(400 * 300, 128) }
   ]);
   await expect(page.locator("#displayDock")).toBeVisible();
@@ -37,13 +37,19 @@ for (const scope of ["selection", "view"]) test(`outside export bars preserve ${
     if (format === "tiff") {
       const tiff = await fromArrayBuffer(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
       const image = await tiff.getImage();
+      const fd = image.fileDirectory;
+      const scale = [10000 / (fd.XResolution[0] / fd.XResolution[1]), 10000 / (fd.YResolution[0] / fd.YResolution[1])];
+      if (scope === "selection") {
+        expect(scale[0]).toBeCloseTo(0.5);
+        expect(scale[1]).toBeCloseTo(1.25);
+      }
       const raster = await image.readRasters({ interleave: true });
       const samples = image.getSamplesPerPixel();
       const data = Buffer.alloc(image.getWidth() * image.getHeight() * 3);
       for (let pixel = 0; pixel < data.length / 3; pixel++) {
         for (let channel = 0; channel < 3; channel++) data[pixel * 3 + channel] = raster[pixel * samples + channel];
       }
-      return { width: image.getWidth(), height: image.getHeight(), data };
+      return { width: image.getWidth(), height: image.getHeight(), data, scale };
     }
     const decoded = await page.evaluate(async (data) => {
       const bitmap = await createImageBitmap(new Blob([new Uint8Array(data)], { type: "image/png" }));
@@ -69,8 +75,13 @@ for (const scope of ["selection", "view"]) test(`outside export bars preserve ${
   };
 
   const plot = await download("png", false);
+  const tiffPlot = await download("tiff", false);
   for (const format of ["png", "tiff"]) {
     const output = await download(format, true);
+    if (format === "tiff") {
+      expect(output.scale[0]).toBeCloseTo(tiffPlot.scale[0], 6);
+      expect(output.scale[1]).toBeCloseTo(tiffPlot.scale[1], 6);
+    }
     expect(output.width).toBeGreaterThanOrEqual(plot.width);
     expect(output.height).toBeGreaterThan(plot.height);
     const imageX = Math.floor((output.width - plot.width) / 2);

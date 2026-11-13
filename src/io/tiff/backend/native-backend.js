@@ -3,6 +3,7 @@ import { buildTiffImageCatalog } from "../metadata-index.js";
 import { TiffBlockIndexedDataSource, buildRawBandSpecs, buildRgbBandSpecs } from "../data-sources.js";
 import { openGeotiffFallback } from "./geotiff-fallback.js";
 import { LibtiffMetadataReader, metadataLimitError } from "../libtiff/metadata.js";
+import { tiffPhysicalScale } from "../physical-scale.js";
 
 const MAX_SAMPLES_PER_PIXEL = 4096;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -139,7 +140,8 @@ class NativeTiffImage {
       defaultBands: summary.samplesPerPixel === 3 ? [0, 1, 2] : null,
       defaultDisplayMode: summary.samplesPerPixel === 3 ? "rgb" : null,
       defaultAdjustColor: summary.samplesPerPixel === 3 ? "red" : null,
-      description: this.backend.file?.name || "TIFF"
+      description: this.backend.file?.name || "TIFF",
+      scale: tiffPhysicalScale(this.fileDirectory)
     });
   }
 

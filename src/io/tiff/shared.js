@@ -5,6 +5,7 @@ import {
 import { DATA_TYPES } from "../../core/envi-types.js";
 import { APP_CONFIG, detectDeviceMemoryGiB } from "../../app/config.js";
 import { resolveTiffWorkerPoolSize } from "./scheduler.js";
+import { tiffPhysicalScale } from "./physical-scale.js";
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -255,7 +256,8 @@ export function buildMeta({
   defaultBands = null,
   defaultDisplayMode = null,
   defaultAdjustColor = null,
-  description = ""
+  description = "",
+  scale = null
 }) {
   return {
     samples: width,
@@ -274,7 +276,7 @@ export function buildMeta({
     sourceFormat: "tiff",
     wlUnits: null,
     wavelengths: null,
-    scale: null
+    scale
   };
 }
 
@@ -337,7 +339,8 @@ export function buildRgbDisplayMeta(summary, description) {
     defaultBands: [0, 1, 2],
     defaultDisplayMode: "rgb",
     defaultAdjustColor: "red",
-    description
+    description,
+    scale: tiffPhysicalScale(summary.fileDirectory)
   });
 }
 

@@ -17,6 +17,7 @@ for zooming. Pyramids preserve the chosen export's full-resolution samples and
 band/page layout; smaller TIFFs remain flat. TIFF encoding uses libtiff, with
 lossless Deflate for pyramids and automatic BigTIFF when needed. Estimates
 include uncompressed overview data, so compressed downloads may be smaller.
+Known physical pixel sizes are preserved, including resized rendered exports.
 
 ## Development
 
