@@ -1,4 +1,4 @@
-import { resolveAnalysisColor } from "./analysis-color.js";
+import { groupAnalysisRegions, resolveAnalysisColor } from "./analysis-color.js";
 import { choosePanelPlacementNearSelection } from "./panel-placement.js";
 
 export function createAnalysisHistogramController(deps) {
@@ -348,19 +348,11 @@ export function createAnalysisHistogramController(deps) {
     setBusy(true);
     setStatus("histogram…", "warn");
     try {
-      const groups = new Map();
       const allItems = listHistogramSelectionItems?.(ds) || items;
-      for (const source of allItems.length ? allItems : items) {
-        const item = { ...source, points: source.points?.map(point => ({ ...point })) };
-        const key = item.color?.toLowerCase() || "";
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(item);
-      }
+      const groups = groupAnalysisRegions(allItems.length ? allItems : items, ds.selectedAreaId, state.areaSelectionMode);
       const results = [];
-      if (groups.size > 1) {
-        for (const group of groups.values()) {
-          const selections = state.areaSelectionMode === "single"
-            ? [group.find(item => item.id === ds.selectedAreaId) || group.at(-1)] : group;
+      if (groups.length > 1) {
+        for (const selections of groups) {
           const stats = await deps.computeSelectionStats(ds, band, selections, { cancelled: () => sequence !== refreshSequence });
           if (sequence !== refreshSequence) return;
           if (stats) results.push({ items: selections, stats, color: resolveAnalysisColor(selections, ds.selectedAreaId) });

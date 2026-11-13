@@ -2,6 +2,34 @@ import { describe, expect, test, vi } from "vitest";
 import { createSpectrumAreaController } from "../../src/app/spectrum-area-controller.js";
 
 describe("spectrum-area-controller", () => {
+  test.each(["single", "group"])("%s mode calculates separate color spectra with the same grouping rules as histograms", async mode => {
+    const items = [
+      { id: 1, tool: "rect", color: "red", points: [{ x: 0, y: 0 }, { x: 0, y: 0 }] },
+      { id: 2, tool: "rect", color: "red", points: [{ x: 1, y: 0 }, { x: 1, y: 0 }] },
+      { id: 3, tool: "rect", color: "blue", points: [{ x: 2, y: 0 }, { x: 2, y: 0 }] }
+    ];
+    const ds = { id: 1, selectedAreaId: 3, meta: { samples: 3, lines: 1, bands: 2, interleave: "bsq" }, ds: {} };
+    const open = vi.fn(), work = { update: vi.fn(), done: vi.fn() };
+    const ctrl = createSpectrumAreaController({ spectrum: { openSpectrumAt: open },
+      getAreaSelectionMode: () => mode, getHistogramSelectionItems: () => mode === "single" ? [items[2]] : items,
+      listHistogramSelectionItems: () => items, isHistogramSelectionTool: () => true,
+      resolveSelectionBoundsForSpectrum: (_ds, item) => ({ x0: item.points[0].x, y0: 0, width: 1, height: 1 }),
+      resolveEffectiveSelectionBounds: () => ({}), resolveSelectionBoundsList: () => [],
+      readBandWindow: async (_meta, _source, band, x0) => new Float32Array([10 + x0 + band * 100]),
+      toFloat32: data => data, wavelengthArrayOrNull: () => null, fmtNoGroup: String,
+      beginAnnotationWork: () => work
+    });
+    await ctrl.openSpectrumAt(ds, 0, 0, { forceArea: true });
+    expect(open).toHaveBeenCalledTimes(2);
+    const results = open.mock.calls.map(call => call[3]);
+    expect(results.map(result => result.sourceColor)).toEqual(["red", "blue"]);
+    expect(results.map(result => result.plotItems.map(item => item.id))).toEqual([mode === "single" ? [2] : [1, 2], [3]]);
+    expect([...results[0].yVals]).toEqual(mode === "single" ? [11, 111] : [10.5, 110.5]);
+    expect([...results[1].yVals]).toEqual([12, 112]);
+    expect(work.update).toHaveBeenLastCalledWith(2, 2);
+    expect(work.done).toHaveBeenCalledTimes(1);
+  });
+
   test("failed point reads release annotation work and allow a successful retry", async () => {
     const handles = [];
     const open = vi.fn().mockRejectedValueOnce(new Error("source read failed")).mockResolvedValueOnce(undefined);

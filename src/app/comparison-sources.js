@@ -48,7 +48,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
   }
 
   function publish(kind, ds, slot, items, point, detail) {
-    const origin = source(ds, slot, items, point, kind === "histogram");
+    const origin = source(ds, slot, items, point, kind !== "line");
     const scale = JSON.stringify(ds.meta.scale);
     comparisons.publish({ ...origin, ...detail, kind,
       isSelected: () => origin.isSelected() && (kind !== "histogram" || getSelection?.()?.band === detail.band),
@@ -57,7 +57,7 @@ export function createComparisonSources({ comparisons, getPanel, getDataset, del
         return kind === "line" && status === "ready" && JSON.stringify(ds.meta.scale) !== scale ? "changed" : status;
       },
       id: kind === "line" ? `${kind}:${origin.key}`
-        : kind === "histogram" && detail.color && items.length ? `${kind}:${ds.id}:${slot}:color:${detail.color.toLowerCase()}:${detail.band}`
+        : kind !== "line" && detail.color && items.length ? `${kind}:${ds.id}:${slot}:color:${detail.color.toLowerCase()}:${detail.band ?? "all"}`
         : `${kind}:${origin.key}:${detail.band ?? "all"}`,
       label: `${detail.label || origin.label} · ${ds.name || "Image"}`,
       color: detail.color || items.at(-1)?.color || "#e5e7eb" });

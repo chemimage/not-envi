@@ -1,4 +1,4 @@
-import { resolveAnalysisColor } from "./analysis-color.js";
+import { groupAnalysisRegions, resolveAnalysisColor } from "./analysis-color.js";
 import { createFloat32ScratchPool } from "../core/float-scratch.js";
 import { APP_CONFIG } from "./config.js";
 import { ANALYSIS_BATCH_VALUES, createAnalysisPlan } from "../core/analysis-batches.js";
@@ -145,14 +145,17 @@ export function createSpectrumAreaController(deps) {
       }
       return;
     }
+    const allItems = listHistogramSelectionItems?.(ds) || selections;
+    const groups = groupAnalysisRegions(allItems.length ? allItems : selections, ds.selectedAreaId, deps.getAreaSelectionMode?.());
     areaPending?.work?.done();
     areaPending = {
       ds,
       ix,
       iy,
       opts: { ...opts },
+      groups,
       reqSeq: ++areaReqSeq,
-      work: deps.beginAnnotationWork?.(ds, { items: selections, label: "Computing spectrum" })
+      work: deps.beginAnnotationWork?.(ds, { items: groups.flat(), label: "Computing spectrum" })
     };
     if (areaInFlight) return areaPromise;
 
@@ -164,83 +167,97 @@ export function createSpectrumAreaController(deps) {
           areaPending = null;
           try {
             const seqAtStart = nonAreaSeq;
-            const reqSelections = getHistogramSelectionItems(req.ds);
-            const selectionCount = reqSelections.length;
-            const sourceColor = resolveAnalysisColor(reqSelections, req.ds.selectedAreaId);
             const shouldAbort = () => seqAtStart !== nonAreaSeq || req.reqSeq !== areaReqSeq;
-            if (!selectionCount) {
+            const groups = req.groups.length ? req.groups : [[]];
+            const results = [];
+            for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+              if (shouldAbort() || areaPending) break;
+              const reqSelections = groups[groupIndex];
+              const selectionCount = reqSelections.length;
+              const sourceColor = resolveAnalysisColor(reqSelections, req.ds.selectedAreaId);
+              if (!selectionCount) {
+                if (shouldAbort()) continue;
+                await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
+                continue;
+              }
+              const selectionBounds = resolveEffectiveSelectionBounds(req.ds, reqSelections);
+              const effectiveIds = new Set(reqSelections.map((item) => item.id));
+              const occluderBounds = resolveSelectionBoundsList(req.ds, listHistogramSelectionItems(req.ds))
+                .filter((b) => !effectiveIds.has(b.id))
+                .map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
+              if (spectrum && typeof spectrum.showPendingSpectrum === "function") {
+                await spectrum.showPendingSpectrum(req.ds, req.ix, req.iy, {
+                  ...req.opts,
+                  subLabel: `Area average (${fmtNoGroup(selectionCount)} region${selectionCount > 1 ? "s" : ""}, computing...)`,
+                  footLabel: `Computing 0/${fmtNoGroup(req.ds.meta.bands)} bands`,
+                  placeholderText: "Computing area average...",
+                  plotItems: reqSelections.map((item) => ({ ...item, points: item.points.map((p) => ({ ...p })) })),
+                  sourceColor,
+                  sourceType: "area",
+                  sourceMeta: {
+                    sampleCount: 0,
+                    selectionCount,
+                    sampleStep: 1,
+                    complete: false
+                  },
+                  selectionBounds,
+                  selectionOccluders: occluderBounds
+                });
+              }
               if (shouldAbort()) continue;
-              await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
-              continue;
-            }
-            const selectionBounds = resolveEffectiveSelectionBounds(req.ds, reqSelections);
-            const effectiveIds = new Set(reqSelections.map((item) => item.id));
-            const occluderBounds = resolveSelectionBoundsList(req.ds, listHistogramSelectionItems(req.ds))
-              .filter((b) => !effectiveIds.has(b.id))
-              .map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
-            if (spectrum && typeof spectrum.showPendingSpectrum === "function") {
-              await spectrum.showPendingSpectrum(req.ds, req.ix, req.iy, {
+              const areaWithProgress = await buildAreaAverageSpectrum(req.ds, reqSelections, {
+                shouldAbort,
+                onProgress: ({ completedBands, totalBands, completedBatches, totalBatches }) => {
+                  if (!shouldAbort()) {
+                    if (groups.length === 1) req.work?.update(completedBatches, totalBatches);
+                    else req.work?.update(groupIndex + (totalBatches ? completedBatches / totalBatches : 0), groups.length);
+                  }
+                  if (!spectrum || typeof spectrum.updateSpectrumStatus !== "function" || shouldAbort()) return;
+                  spectrum.updateSpectrumStatus({
+                    footLabel: `Computing ${fmtNoGroup(completedBatches)}/${fmtNoGroup(totalBatches)} batches (${fmtNoGroup(Math.floor(completedBands))}/${fmtNoGroup(totalBands)} bands)`,
+                    placeholderText: "Computing area average..."
+                  });
+                }
+              });
+              if (areaPending) continue;
+              if (areaWithProgress === ABORTED || shouldAbort()) continue;
+              if (!areaWithProgress || !areaWithProgress.yVals || !areaWithProgress.yVals.length) {
+                if (shouldAbort()) continue;
+                await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
+                continue;
+              }
+
+              const sampled = areaWithProgress.sampleStep > 1;
+              const sampleLabel = sampled
+                ? `${fmtNoGroup(areaWithProgress.sampleCount)} sampled px (step ${areaWithProgress.sampleStep})`
+                : `${fmtNoGroup(areaWithProgress.sampleCount)} px`;
+              const subLabel = `Area average (${sampleLabel}, ${fmtNoGroup(areaWithProgress.selectionCount)} region${areaWithProgress.selectionCount > 1 ? "s" : ""})`;
+              if (shouldAbort()) continue;
+              results.push({
                 ...req.opts,
-                subLabel: `Area average (${fmtNoGroup(selectionCount)} region${selectionCount > 1 ? "s" : ""}, computing...)`,
-                footLabel: `Computing 0/${fmtNoGroup(req.ds.meta.bands)} bands`,
-                placeholderText: "Computing area average...",
+                yVals: areaWithProgress.yVals,
+                stdVals: areaWithProgress.stdVals,
+                xVals: wavelengthArrayOrNull(req.ds),
+                subLabel,
                 plotItems: reqSelections.map((item) => ({ ...item, points: item.points.map((p) => ({ ...p })) })),
                 sourceColor,
                 sourceType: "area",
                 sourceMeta: {
-                  sampleCount: 0,
-                  selectionCount,
-                  sampleStep: 1,
-                  complete: false
+                  sampleCount: areaWithProgress.sampleCount,
+                  selectionCount: areaWithProgress.selectionCount,
+                  sampleStep: areaWithProgress.sampleStep,
+                  finiteCounts: areaWithProgress.finiteCounts, complete: true
                 },
                 selectionBounds,
                 selectionOccluders: occluderBounds
               });
             }
-            if (shouldAbort()) continue;
-            const areaWithProgress = await buildAreaAverageSpectrum(req.ds, reqSelections, {
-              shouldAbort,
-              onProgress: ({ completedBands, totalBands, completedBatches, totalBatches }) => {
-                if (!shouldAbort()) req.work?.update(completedBatches, totalBatches);
-                if (!spectrum || typeof spectrum.updateSpectrumStatus !== "function" || shouldAbort()) return;
-                spectrum.updateSpectrumStatus({
-                  footLabel: `Computing ${fmtNoGroup(completedBatches)}/${fmtNoGroup(totalBatches)} batches (${fmtNoGroup(Math.floor(completedBands))}/${fmtNoGroup(totalBands)} bands)`,
-                  placeholderText: "Computing area average..."
-                });
-              }
-            });
-            if (areaPending) continue;
-            if (areaWithProgress === ABORTED || shouldAbort()) continue;
-            if (!areaWithProgress || !areaWithProgress.yVals || !areaWithProgress.yVals.length) {
-              if (shouldAbort()) continue;
-              await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, req.opts);
-              continue;
+            // Finish the color batch before handing completed results to the
+            // shared windows, just as the histogram controller does.
+            for (const options of results) {
+              if (shouldAbort() || areaPending) break;
+              await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, options);
             }
-
-            const sampled = areaWithProgress.sampleStep > 1;
-            const sampleLabel = sampled
-              ? `${fmtNoGroup(areaWithProgress.sampleCount)} sampled px (step ${areaWithProgress.sampleStep})`
-              : `${fmtNoGroup(areaWithProgress.sampleCount)} px`;
-            const subLabel = `Area average (${sampleLabel}, ${fmtNoGroup(areaWithProgress.selectionCount)} region${areaWithProgress.selectionCount > 1 ? "s" : ""})`;
-            if (shouldAbort()) continue;
-            await spectrum.openSpectrumAt(req.ds, req.ix, req.iy, {
-              ...req.opts,
-              yVals: areaWithProgress.yVals,
-              stdVals: areaWithProgress.stdVals,
-              xVals: wavelengthArrayOrNull(req.ds),
-              subLabel,
-              plotItems: reqSelections.map((item) => ({ ...item, points: item.points.map((p) => ({ ...p })) })),
-              sourceColor,
-              sourceType: "area",
-              sourceMeta: {
-                sampleCount: areaWithProgress.sampleCount,
-                selectionCount: areaWithProgress.selectionCount,
-                sampleStep: areaWithProgress.sampleStep,
-                finiteCounts: areaWithProgress.finiteCounts, complete: true
-              },
-              selectionBounds,
-              selectionOccluders: occluderBounds
-            });
           } finally {
             req.work?.done();
           }

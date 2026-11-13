@@ -3,37 +3,37 @@ import { createPlotGroups } from "../../src/app/plot-groups.js";
 const entry = (id, kind = "line", compatibility = `${kind}:distance`) => ({ id, kind, compatibility, status: "ready" });
 
 describe("all split / all stacked plot layout", () => {
-  test("histograms split every retained source and new results join an existing stack", () => {
+  test.each(["histogram", "spectrum"])("%s splits every source and adds new results to an existing stack", (kind) => {
     const plots = createPlotGroups();
-    plots.upsert(entry("red", "histogram", "histogram:value"));
-    plots.upsert(entry("blue", "histogram", "histogram:value"));
-    plots.present("histogram", "blue", false);
+    plots.upsert(entry("red", kind, `${kind}:value`));
+    plots.upsert(entry("blue", kind, `${kind}:value`));
+    plots.present(kind, "blue", false);
     expect([...plots.groups.values()].map(group => group.ids)).toEqual([["red"], ["blue"]]);
-    plots.present("histogram", "red", true);
+    plots.present(kind, "red", true);
     expect([...plots.groups.values()]).toMatchObject([{ ids: ["red", "blue"], selectedId: "red", stacked: true }]);
-    plots.upsert(entry("orange", "histogram", "histogram:value"));
-    plots.present("histogram", "orange", true);
+    plots.upsert(entry("orange", kind, `${kind}:value`));
+    plots.present(kind, "orange", true);
     expect([...plots.groups.values()]).toMatchObject([{ ids: ["red", "blue", "orange"], selectedId: "orange" }]);
-    plots.present("histogram", "orange", false);
+    plots.present(kind, "orange", false);
     expect([...plots.groups.values()].map(group => group.ids)).toEqual([["red"], ["blue"], ["orange"]]);
     plots.remove("blue");
-    plots.present("histogram", "red", false);
+    plots.present(kind, "red", false);
     expect([...plots.groups.values()].map(group => group.ids)).toEqual([["red"], ["orange"]]);
   });
-  test("focused plots keep one panel identity while selection, stacking and spectral units change", () => {
+  test("spectra share split/stack behavior while incompatible units stay in separate windows", () => {
     const plots = createPlotGroups();
     plots.upsert(entry("a", "spectrum", "nm")); plots.upsert(entry("b", "spectrum", "nm"));
     plots.upsert(entry("c", "spectrum", "cm-1"));
     plots.present("spectrum", "a", false);
-    const id = [...plots.groups.keys()][0];
-    expect(plots.groups.get(id)).toMatchObject({ selectedId: "a", stacked: false, ids: ["a", "b"] });
+    expect([...plots.groups.values()].map(group => group.ids)).toEqual([["a"], ["b"], ["c"]]);
+    const first = [...plots.groups.keys()][0];
     plots.present("spectrum", "b", true);
-    expect([...plots.groups.keys()]).toEqual([id]);
-    expect(plots.groups.get(id)).toMatchObject({ selectedId: "b", stacked: true, ids: ["a", "b"] });
-    plots.present("spectrum", "c", false);
-    expect(plots.groups.get(id)).toMatchObject({ selectedId: "c", ids: ["c"] });
+    expect(plots.groups.get(first)).toMatchObject({ selectedId: "b", stacked: true, ids: ["a", "b"] });
+    expect([...plots.groups.values()].map(group => group.ids)).toEqual([["a", "b"], ["c"]]);
     plots.present("spectrum", null, true);
-    expect(plots.groups.get(id)).toMatchObject({ selectedId: null, ids: ["c"] });
+    expect([...plots.groups.values()].every(group => group.selectedId === null)).toBe(true);
+    plots.present("spectrum", "c", false);
+    expect([...plots.groups.values()].map(group => group.ids)).toEqual([["a"], ["b"], ["c"]]);
     expect(plots.entries.size).toBe(3);
   });
 

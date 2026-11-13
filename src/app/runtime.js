@@ -123,6 +123,9 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
   const els = collectElements();
   const floatingWindows = createFloatingWindowManager({ container: els.main, onInteractionEnd: () => drawOverlays() });
   const plotComparisons = createPlotComparisons({ container: els.main, floatingWindows });
+  function retainAnalysisPlots() {
+    for (const kind of ["histogram", "spectrum"]) plotComparisons.retainSource(kind);
+  }
   const comparisonSources = createComparisonSources({
     comparisons: plotComparisons,
     getPanel: (slot) => getDisplayPanel(state, slot),
@@ -1141,7 +1144,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     clearSelectionHistogram,
     invalidateAnalysis: (ds) => {
       if (ds.id !== state.activeId) return;
-      plotComparisons.retainSource("histogram");
+      retainAnalysisPlots();
       spectrumArea.cancel();
       analysisHistogram.invalidateSelection(ds);
       spectrum.invalidateSelection(ds);
@@ -1327,7 +1330,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
 
   analysisPanelLayout = createAnalysisPanelLayout({ els, getWindow: (id) => floatingWindows.get(id) });
   plotComparisons.attach("histogram", els.analysisHistPanel, () => analysisHistogram.closePanel());
-  plotComparisons.attach("spectrum", els.specPanel, () => closeSpectrum());
+  plotComparisons.attach("spectrum", els.specPanel, () => spectrum.closeSpectrum());
 
   function resetDatasetSession() {
     plotComparisons.clear();
@@ -1358,6 +1361,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
   });
 
   const spectrumArea = createSpectrumAreaController({
+    getAreaSelectionMode,
     getPanelSlot: () => getActivePanel()?.slot || 1,
     beginAnnotationWork,
     getActive,
@@ -1489,7 +1493,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     beginAreaMoveAtPointer, updateAreaMoveAtPointer, finishAreaMoveAtPointer, cancelAreaMove,
     selectAreaAtPointer, openSpectrumAt, openSpectrumForEffectiveArea,
     closeSpectrum, setAnalysisHistogramOpen, closeAnalysisHistogramPanel,
-    retainHistogram: () => plotComparisons.retainSource("histogram"),
+    retainAnalysisPlots,
     drawOverlays, onPointerDown,
     removeAreaAnnotations: (ids) => annotation.removeAreaAnnotations(ids)
   });

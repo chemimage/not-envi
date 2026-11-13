@@ -1,42 +1,36 @@
 # Comparing plots
 
-Spatial histograms open separate windows for each brush color by default.
-Clicking Histogram calculates every region color on the active image panel.
-In selected-area mode, each color uses its selected region, or its newest region
-when another color is selected. In grouped-area mode, regions of the same color
-contribute to one distribution. Different colors remain separate. Recalculating
-a color updates its existing result for that band.
-Drawing another region keeps an already calculated histogram visible, including
-the first result before any comparison window has been opened. Every region
-shows its index inside its upper-left corner in bold app typography and its
-saved color. Regions are numbered independently within each color (for example,
-red 1, red 2, yellow 1); these indices match the region names in plot legends.
-**Stack** overlays retained histograms; new results join that stack while it is
-open. **Split** restores independent histogram windows. Closing the stack and
-reopening Histogram returns to separate windows.
+Histograms and spectra share the same window behavior. Results from different
+brush colors open in separate windows by default. Drawing another region or
+point keeps completed plots visible, including the first result before any
+comparison window has been opened. Recalculating a color updates that color's
+region result without replacing results from other colors.
 
-Spectra use one panel. Normally only the selected
-source's calculated result is shown. **Stack** overlays the compatible retained
-results in that same panel; **Split** returns to showing only the selected
-result. Changing the image selection updates the panel without recalculating
-stored results. An uncalculated selection shows no stale result in single mode;
-in stacked mode the retained results remain visible without an opaque trace.
-Spectral coordinate units are never mixed: the panel follows the selected
-source's compatible set. Grouping does not merge source regions, average values,
-or reread calculated data.
+Clicking either analysis action calculates every region color on the active
+image panel. In selected-area mode, each color uses its selected region, or its
+newest region when another color is selected. In grouped-area mode, regions of
+the same color contribute to one result. Different colors remain separate.
+Every region shows its index inside its upper-left corner in bold app typography
+and its saved color. Indices count independently within each color (for example,
+red 1, red 2, yellow 1) and match the region names in plot legends.
 
-Line traces are solid and keep their source annotation color. Histograms use
-bars. In stacked histogram/spectrum views, unselected results are translucent
-and the selected result is opaque, labeled selected, and drawn last. The single
-result's title uses its source color; combined titles are plain. The legend
-retains source labels and its trash action deletes that source.
-Discrete spectra retain bar mode in both views: stacked results use grouped,
-side-by-side bars at each band. Continuous spectra retain their line rendering.
+**Stack** overlays compatible retained results. New results join that stack
+while it is open. **Split** restores independent windows for all retained
+results. Closing the stack and reopening the analysis returns to separate
+windows. Selection changes highlight cached results without recalculating them;
+uncalculated selections do not replace completed plots. Spectra with different
+coordinate units remain in separate windows even in stack mode.
 
-The first result opens in its detailed native panel. Once retained comparisons
-are needed, comparison windows inherit that location. The spectrum panel keeps
-one window identity across selections and stack changes. Recalculating a source
-updates its existing result.
+In stacked views, unselected results are translucent and the selected result is
+opaque, labeled selected, and drawn last. A single result's title uses its
+source color; combined titles are plain. The legend retains source labels and
+its trash action deletes that source. Discrete spectra retain bar mode, with
+side-by-side bars in stacked views. Continuous spectra retain solid lines.
+Histograms display distributions as bars.
+
+The first result opens in its detailed native panel. When that result needs to
+be retained, a comparison window inherits its location. Splitting and stacking
+reuse completed arrays without rereading image data.
 
 ## Point spectra
 
@@ -97,8 +91,8 @@ same-color copies from previous bands.
 ## Implementation
 
 `comparison-sources.js` supplies completed arrays and source provenance.
-`plot-groups.js` owns bounded catalog membership, selected-result presentation
-and compatible line layouts. `plot-comparisons.js` supplies title-bar toggles, legends, and floating
+`plot-groups.js` owns bounded catalog membership and shared split/stack layouts.
+`analysis-color.js` supplies the common per-color region grouping rules. `plot-comparisons.js` supplies title-bar toggles, legends, and floating
 windows; `comparison-plot.js` renders solid traces. `line-profile-windows.js`
 owns independent profile controllers, read generations, window state and
 cleanup. Geometry/calculation and annotation deletion remain in their existing

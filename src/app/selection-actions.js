@@ -200,8 +200,8 @@ export function createSelectionActionsController(deps) {
     }
   }
 
-  function clearAnalysis(retainHistogram = false) {
-    if (retainHistogram) deps.retainHistogram?.();
+  function clearAnalysis(retainPlots = false) {
+    if (retainPlots) deps.retainAnalysisPlots?.();
     state.spectrumPickEnabled = false;
     closeSpectrum();
     closeAnalysisHistogramPanel();

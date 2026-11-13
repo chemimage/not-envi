@@ -63,8 +63,7 @@ export function createPlotComparisons({ container, floatingWindows }) {
   }
   function selectedId(kind) { return [...model.entries.values()].filter(entry => entry.kind === kind && entry.isSelected?.()).at(-1)?.id || null; }
   function shownEntries(group) {
-    const ids = group.focused && !group.stacked ? (group.selectedId ? [group.selectedId] : []) : group.ids;
-    return ids.map(id => model.entries.get(id));
+    return group.ids.map(id => model.entries.get(id));
   }
 
   function toggle(kind) {
@@ -107,7 +106,7 @@ export function createPlotComparisons({ container, floatingWindows }) {
     actions.append(control, button("×", "Close comparison chart", () => {
       model.close(group.id);
       if (first.kind === "line") { modes.delete("line"); linePresentation.close(); }
-      if (first.kind === "histogram" && ![...model.groups.values()].some(item => model.entries.get(item.ids[0])?.kind === "histogram")) modes.delete("histogram");
+      if (first.kind !== "line" && ![...model.groups.values()].some(item => model.entries.get(item.ids[0])?.kind === first.kind)) modes.delete(first.kind);
       refreshViews();
     }));
     header.append(title, actions);
@@ -134,7 +133,7 @@ export function createPlotComparisons({ container, floatingWindows }) {
     view.window = floatingWindows.register({ id: group.id, element: panel,
       dragHandle: ".floating-window-header", minWidth: 320, minHeight: 300, onResize: () => drawView(group.id) });
     const placement = { ...(placements.get(first.kind) || { x: 120 + views.size * 28, y: 70 + views.size * 28, width: 450, height: 370 }) };
-    if (first.kind === "histogram" && !group.stacked) {
+    if (first.kind !== "line" && !group.stacked) {
       const siblings = [...views.values()].filter(item => item.panel.dataset.plotKind === first.kind);
       if (siblings.length) {
         const parent = container.getBoundingClientRect(), previous = siblings.at(-1).panel.getBoundingClientRect();
