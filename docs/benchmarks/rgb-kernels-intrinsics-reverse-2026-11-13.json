@@ -1,0 +1,2108 @@
+{
+  "date": "2026-11-13T20:24:35.951Z",
+  "commit": "d320a5d83990b0c0eeb296bfab234b70322ffa7b",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-12700K",
+  "compiler": "clang version 18.1.2 (https://github.com/llvm/llvm-project 26a1d6601d727a96f4301d0d8647b5a42760ae0c)",
+  "flags": [
+    "--target=wasm32-unknown-unknown",
+    "-O3",
+    "-msimd128",
+    "-ffp-contract=off",
+    "-nostdlib",
+    "-fno-builtin",
+    "-Wl,--no-entry",
+    "-Wl,--export-memory",
+    "-Wl,--export=__heap_base",
+    "-Wl,--initial-memory=131072",
+    "-Wl,--max-memory=268435456",
+    "-o",
+    "test-results/rgb-experiment.wasm",
+    "scripts/rgb-experiment/rgb.c"
+  ],
+  "reverseCandidateOrder": true,
+  "sourceSha256": {
+    "scripts/benchmark-rgb-kernels.mjs": "73e7f5e4780181f3165744b131677b94a78516ff3c4a96a941076f3151eb8a92",
+    "scripts/rgb-experiment/rgb.c": "32f097f1f1a962a40265b8decd698e37f93b2da302773da30ec7d2e04960479b",
+    "scripts/rgb-experiment/kernels.js": "09065c7f86a380579898a0199894d88c748171e4024fcbd340a446b2d6a3a578",
+    "scripts/rgb-experiment/compositor.js": "6ce32ce23081a796c9d1a303ac90ac846acaf6b4eace7e011c1d450be4543eef",
+    "scripts/rgb-experiment/worker.js": "ba12792984e1e2a0f3717556b75313f7a0c77dc121b7c39d5c258f7df42bccd4",
+    "scripts/rgb-experiment/wasm.js": "667188566882bdaa4c9a19b99cf6bc0f9ef389a0c6f2f0667b07b9db0efcc7f7",
+    "src/render/composition-worker-client.js": "107285acdc31f7330b08b9a70113ea4f5177c01c369ec8f9f691e92b9db8cc1f"
+  },
+  "wasmSha256": "a35dea7d9a6cd25be6860faa5823affe10649f786a361a063391b8b166444eaf",
+  "limitations": "Sequential worker timings: 8 startup/warmup + 16 measured. Separate synchronous 12-tone-change burst checks coalescing, obsolete promise rejection and final pixels. Explicit WASM staging and RGBA copy included. Prototype worker mirrors production protocol but omits eviction (3 planes retained). Double-precision SIMD, no relaxed math. GPU completion is not fenced; presentation measures submission only. No application-integrated WASM packaging, fallback, eviction or lifecycle validation. Candidate client reuse tested only in these synthetic workloads.",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+  "parityBytes": 17975296,
+  "results": [
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "tone",
+      "mode": "wasm-simd-resident",
+      "coldMs": {
+        "submit": 5.100000023841858,
+        "roundTrip": 35.5,
+        "ingest": 2.2999999821186066,
+        "color": 11.100000023841858,
+        "upload": 1,
+        "bitmap": 0.19999998807907104
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.19999998807907104
+        },
+        "roundTrip": {
+          "p50": 5.200000017881393,
+          "p95": 8.400000005960464
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 4.700000017881393,
+          "p95": 6.5
+        },
+        "upload": {
+          "p50": 0.20000001788139343,
+          "p95": 1.199999988079071
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 0.6000000238418579,
+          "p95": 2
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 9437184,
+        "copiedOutputBytes": 75497472
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "tone",
+      "mode": "wasm-simd",
+      "coldMs": {
+        "submit": 4.799999982118607,
+        "roundTrip": 32.099999994039536,
+        "ingest": 2.899999976158142,
+        "color": 9.000000029802322,
+        "upload": 1.0999999940395355,
+        "bitmap": 0.09999999403953552
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.19999998807907104
+        },
+        "roundTrip": {
+          "p50": 5.199999988079071,
+          "p95": 7.9000000059604645
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "color": {
+          "p50": 4.799999982118607,
+          "p95": 6.5999999940395355
+        },
+        "upload": {
+          "p50": 0.20000001788139343,
+          "p95": 1
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.20000001788139343
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 0.5999999940395355,
+          "p95": 2.7999999821186066
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 9437184,
+        "copiedOutputBytes": 75497472
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "tone",
+      "mode": "wasm-scalar",
+      "coldMs": {
+        "submit": 11.700000017881393,
+        "roundTrip": 57.900000005960464,
+        "ingest": 3.5,
+        "color": 21.200000017881393,
+        "upload": 1.5999999940395355,
+        "bitmap": 0.09999999403953552
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "roundTrip": {
+          "p50": 12.599999994039536,
+          "p95": 12.900000005960464
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 12,
+          "p95": 12.400000005960464
+        },
+        "upload": {
+          "p50": 0.29999998211860657,
+          "p95": 0.30000001192092896
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 0.699999988079071,
+          "p95": 0.9000000059604645
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 9437184,
+        "copiedOutputBytes": 75497472
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "tone",
+      "mode": "fused",
+      "coldMs": {
+        "submit": 4.5,
+        "roundTrip": 37.30000001192093,
+        "ingest": 2.699999988079071,
+        "color": 17.200000017881393,
+        "upload": 1.0999999940395355,
+        "bitmap": 0.09999999403953552
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "roundTrip": {
+          "p50": 16.900000005960464,
+          "p95": 21.30000001192093
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 16.19999998807907,
+          "p95": 20.600000023841858
+        },
+        "upload": {
+          "p50": 0.4000000059604645,
+          "p95": 1.199999988079071
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 0.699999988079071,
+          "p95": 3.5
+        }
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "tone",
+      "mode": "planar",
+      "coldMs": {
+        "submit": 5.100000023841858,
+        "roundTrip": 35.20000001788139,
+        "ingest": 2.4000000059604645,
+        "color": 15.500000029802322,
+        "upload": 0.8999999761581421,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 11.599999994039536,
+          "p95": 14.199999988079071
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 11.100000023841858,
+          "p95": 13.199999988079071
+        },
+        "upload": {
+          "p50": 0.29999998211860657,
+          "p95": 0.5
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 0.699999988079071,
+          "p95": 1.4000000059604645
+        }
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "tone",
+      "mode": "reference",
+      "coldMs": {
+        "submit": 5.0999999940395355,
+        "roundTrip": 40.79999998211861,
+        "ingest": 2.5999999940395355,
+        "color": 20.400000005960464,
+        "upload": 1,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "roundTrip": {
+          "p50": 17.80000001192093,
+          "p95": 44.099999994039536
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 17.200000017881393,
+          "p95": 42.70000001788139
+        },
+        "upload": {
+          "p50": 0.30000001192092896,
+          "p95": 1.4000000059604645
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "timerDelay": {
+          "p50": 0.7000000178813934,
+          "p95": 1
+        }
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "patch",
+      "mode": "wasm-simd-resident",
+      "coldMs": {
+        "submit": 5.5999999940395355,
+        "roundTrip": 30.30000001192093,
+        "ingest": 2.5999999940395355,
+        "color": 9,
+        "upload": 1.2999999821186066,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.19999998807907104,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 1.300000011920929,
+          "p95": 1.5999999940395355
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "color": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "upload": {
+          "p50": 0.9000000059604645,
+          "p95": 1.2000000178813934
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 0.9000000059604645,
+          "p95": 1.4000000059604645
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 12767124,
+        "copiedOutputBytes": 4255708
+      },
+      "transferBytes": 12767124,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "patch",
+      "mode": "wasm-simd",
+      "coldMs": {
+        "submit": 5.4000000059604645,
+        "roundTrip": 29.599999994039536,
+        "ingest": 2.5999999940395355,
+        "color": 8.800000011920929,
+        "upload": 1,
+        "bitmap": 0.09999999403953552
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.10000002384185791,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 1.2999999821186066,
+          "p95": 1.5
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "color": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "upload": {
+          "p50": 0.8999999761581421,
+          "p95": 1
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 0.699999988079071,
+          "p95": 1
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 12767124,
+        "copiedOutputBytes": 4255708
+      },
+      "transferBytes": 12767124,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "patch",
+      "mode": "wasm-scalar",
+      "coldMs": {
+        "submit": 5.600000023841858,
+        "roundTrip": 40.20000001788139,
+        "ingest": 3,
+        "color": 16.19999998807907,
+        "upload": 1,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.19999998807907104,
+          "p95": 0.30000001192092896
+        },
+        "roundTrip": {
+          "p50": 1.4000000059604645,
+          "p95": 1.699999988079071
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "color": {
+          "p50": 0.19999998807907104,
+          "p95": 0.30000001192092896
+        },
+        "upload": {
+          "p50": 0.9000000059604645,
+          "p95": 1.0999999940395355
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 0.7999999821186066,
+          "p95": 1.199999988079071
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 12767124,
+        "copiedOutputBytes": 4255708
+      },
+      "transferBytes": 12767124,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "patch",
+      "mode": "fused",
+      "coldMs": {
+        "submit": 5.5,
+        "roundTrip": 37.79999998211861,
+        "ingest": 2.699999988079071,
+        "color": 17.5,
+        "upload": 1.100000023841858,
+        "bitmap": 0.19999998807907104
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.19999998807907104,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 1.2999999821186066,
+          "p95": 1.600000023841858
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 0.20000001788139343,
+          "p95": 0.30000001192092896
+        },
+        "upload": {
+          "p50": 0.8999999761581421,
+          "p95": 1.0999999940395355
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 0.699999988079071,
+          "p95": 1
+        }
+      },
+      "transferBytes": 12767124,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "patch",
+      "mode": "planar",
+      "coldMs": {
+        "submit": 5.5,
+        "roundTrip": 34.60000002384186,
+        "ingest": 2.800000011920929,
+        "color": 14.599999994039536,
+        "upload": 1,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.19999998807907104,
+          "p95": 0.29999998211860657
+        },
+        "roundTrip": {
+          "p50": 1.5,
+          "p95": 2
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "color": {
+          "p50": 0.20000001788139343,
+          "p95": 0.5
+        },
+        "upload": {
+          "p50": 1,
+          "p95": 1.2000000178813934
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 0.7999999821186066,
+          "p95": 1.2999999821186066
+        }
+      },
+      "transferBytes": 12767124,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "patch",
+      "mode": "reference",
+      "coldMs": {
+        "submit": 5.5999999940395355,
+        "roundTrip": 41.80000001192093,
+        "ingest": 2.9000000059604645,
+        "color": 21.400000005960464,
+        "upload": 1.0999999940395355,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 1.300000011920929,
+          "p95": 1.5999999940395355
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 0.29999998211860657,
+          "p95": 0.4000000059604645
+        },
+        "upload": {
+          "p50": 0.800000011920929,
+          "p95": 1
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 0.5999999940395355,
+          "p95": 0.800000011920929
+        }
+      },
+      "transferBytes": 12767124,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "bgr-nodata",
+      "mode": "wasm-simd-resident",
+      "coldMs": {
+        "submit": 6.0999999940395355,
+        "roundTrip": 33.5,
+        "ingest": 3.300000011920929,
+        "color": 9.599999994039536,
+        "upload": 1.2999999821186066,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "roundTrip": {
+          "p50": 5.5999999940395355,
+          "p95": 5.799999982118607
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 5.0999999940395355,
+          "p95": 5.4000000059604645
+        },
+        "upload": {
+          "p50": 0.30000001192092896,
+          "p95": 0.4000000059604645
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 0.5999999940395355,
+          "p95": 0.9000000059604645
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 9437184,
+        "copiedOutputBytes": 75497472
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "bgr-nodata",
+      "mode": "wasm-simd",
+      "coldMs": {
+        "submit": 5.5999999940395355,
+        "roundTrip": 34.400000005960464,
+        "ingest": 2.800000011920929,
+        "color": 9.799999982118607,
+        "upload": 1,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "roundTrip": {
+          "p50": 5.300000011920929,
+          "p95": 5.699999988079071
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 4.999999970197678,
+          "p95": 5.199999988079071
+        },
+        "upload": {
+          "p50": 0.20000001788139343,
+          "p95": 0.4000000059604645
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 0.5,
+          "p95": 0.800000011920929
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 9437184,
+        "copiedOutputBytes": 75497472
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "bgr-nodata",
+      "mode": "wasm-scalar",
+      "coldMs": {
+        "submit": 5.4000000059604645,
+        "roundTrip": 39.5,
+        "ingest": 2.899999976158142,
+        "color": 17,
+        "upload": 1,
+        "bitmap": 0.10000002384185791
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "roundTrip": {
+          "p50": 14,
+          "p95": 14.199999988079071
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 13.5,
+          "p95": 13.699999988079071
+        },
+        "upload": {
+          "p50": 0.29999998211860657,
+          "p95": 0.4000000059604645
+        },
+        "bitmap": {
+          "p50": 0.09999999403953552,
+          "p95": 0.09999999403953552
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 0.6000000238418579,
+          "p95": 0.800000011920929
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 12713984,
+        "stagedBytes": 9437184,
+        "copiedOutputBytes": 75497472
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "bgr-nodata",
+      "mode": "fused",
+      "coldMs": {
+        "submit": 5.899999976158142,
+        "roundTrip": 36.89999997615814,
+        "ingest": 2.7999999821186066,
+        "color": 17.600000023841858,
+        "upload": 1.199999988079071,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "roundTrip": {
+          "p50": 14.5,
+          "p95": 15.400000005960464
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 14.099999994039536,
+          "p95": 14.700000017881393
+        },
+        "upload": {
+          "p50": 0.29999998211860657,
+          "p95": 0.4000000059604645
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 0.5,
+          "p95": 0.7000000178813934
+        }
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "bgr-nodata",
+      "mode": "planar",
+      "coldMs": {
+        "submit": 5.199999988079071,
+        "roundTrip": 40.29999998211861,
+        "ingest": 2.5,
+        "color": 20.299999982118607,
+        "upload": 1.7000000178813934,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.30000001192092896
+        },
+        "roundTrip": {
+          "p50": 20.80000001192093,
+          "p95": 26.5
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "color": {
+          "p50": 19.400000005960464,
+          "p95": 24
+        },
+        "upload": {
+          "p50": 0.800000011920929,
+          "p95": 4.200000017881393
+        },
+        "bitmap": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "presentation": {
+          "p50": 0.09999999403953552,
+          "p95": 0.19999998807907104
+        },
+        "timerDelay": {
+          "p50": 1.699999988079071,
+          "p95": 4.700000017881393
+        }
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "workload": "bgr-nodata",
+      "mode": "reference",
+      "coldMs": {
+        "submit": 9.199999988079071,
+        "roundTrip": 68.19999998807907,
+        "ingest": 3.0999999940395355,
+        "color": 33.599999994039536,
+        "upload": 1,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 23.099999994039536,
+          "p95": 27
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 22,
+          "p95": 26.19999998807907
+        },
+        "upload": {
+          "p50": 0.30000001192092896,
+          "p95": 1.0999999940395355
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.20000001788139343
+        },
+        "timerDelay": {
+          "p50": 0.5999999940395355,
+          "p95": 2.5
+        }
+      },
+      "transferBytes": 9437184,
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "tone",
+      "mode": "wasm-simd-resident",
+      "burst": {
+        "changes": 12,
+        "submissionCpuMs": 0.3999999761581421,
+        "elapsedMs": 42.69999998807907,
+        "perSubmitMs": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "canceled": 11,
+        "transferredBytes": 0,
+        "latestResultParity": true
+      },
+      "coldMs": {
+        "submit": 19.69999998807907,
+        "roundTrip": 76.09999999403954,
+        "ingest": 10.5,
+        "color": 30.80000001192093,
+        "upload": 4.0999999940395355,
+        "bitmap": 0.4000000059604645
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.19999998807907104,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 23.599999994039536,
+          "p95": 28.5
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 21.899999976158142,
+          "p95": 26.600000023841858
+        },
+        "upload": {
+          "p50": 1.4000000059604645,
+          "p95": 2.5999999940395355
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "presentation": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 3.0999999940395355,
+          "p95": 6.799999982118607
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 37748736,
+        "copiedOutputBytes": 327155712
+      },
+      "transferBytes": 37748736,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "tone",
+      "mode": "wasm-simd",
+      "burst": {
+        "changes": 12,
+        "submissionCpuMs": 136.59999999403954,
+        "elapsedMs": 167.69999998807907,
+        "perSubmitMs": {
+          "p50": 12.300000011920929,
+          "p95": 14.899999976158142
+        },
+        "canceled": 11,
+        "transferredBytes": 37748736,
+        "latestResultParity": true
+      },
+      "coldMs": {
+        "submit": 20.200000017881393,
+        "roundTrip": 82.5,
+        "ingest": 10.599999994039536,
+        "color": 32.69999998807907,
+        "upload": 4.800000011920929,
+        "bitmap": 0.5
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 21.200000017881393,
+          "p95": 22.19999998807907
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "color": {
+          "p50": 19.100000023841858,
+          "p95": 19.80000001192093
+        },
+        "upload": {
+          "p50": 1.0999999940395355,
+          "p95": 1.5
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.5
+        },
+        "timerDelay": {
+          "p50": 2.5999999940395355,
+          "p95": 3.4000000059604645
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 37748736,
+        "copiedOutputBytes": 327155712
+      },
+      "transferBytes": 75497472,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "tone",
+      "mode": "wasm-scalar",
+      "burst": {
+        "changes": 12,
+        "submissionCpuMs": 108.80000001192093,
+        "elapsedMs": 181.30000001192093,
+        "perSubmitMs": {
+          "p50": 9.800000011920929,
+          "p95": 13.599999994039536
+        },
+        "canceled": 11,
+        "transferredBytes": 37748736,
+        "latestResultParity": true
+      },
+      "coldMs": {
+        "submit": 18.099999994039536,
+        "roundTrip": 106.90000000596046,
+        "ingest": 11,
+        "color": 60.5,
+        "upload": 4.699999988079071,
+        "bitmap": 0.4000000059604645
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.30000001192092896
+        },
+        "roundTrip": {
+          "p50": 51.599999994039536,
+          "p95": 67.30000001192093
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "color": {
+          "p50": 49.80000001192093,
+          "p95": 64.89999997615814
+        },
+        "upload": {
+          "p50": 1.300000011920929,
+          "p95": 1.699999988079071
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 2.899999976158142,
+          "p95": 3.9000000059604645
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 37748736,
+        "copiedOutputBytes": 327155712
+      },
+      "transferBytes": 75497472,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "tone",
+      "mode": "fused",
+      "burst": {
+        "changes": 12,
+        "submissionCpuMs": 115.2999999821186,
+        "elapsedMs": 181,
+        "perSubmitMs": {
+          "p50": 10.5,
+          "p95": 14.400000005960464
+        },
+        "canceled": 11,
+        "transferredBytes": 37748736,
+        "latestResultParity": true
+      },
+      "coldMs": {
+        "submit": 15.199999988079071,
+        "roundTrip": 109.5,
+        "ingest": 9.199999988079071,
+        "color": 64.59999999403954,
+        "upload": 4.4000000059604645,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.19999998807907104
+        },
+        "roundTrip": {
+          "p50": 48,
+          "p95": 96.5
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 46.099999994039536,
+          "p95": 94.59999999403954
+        },
+        "upload": {
+          "p50": 1.5,
+          "p95": 1.9000000059604645
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.20000001788139343
+        },
+        "presentation": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 3,
+          "p95": 3.800000011920929
+        }
+      },
+      "transferBytes": 75497472,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "tone",
+      "mode": "planar",
+      "burst": {
+        "changes": 12,
+        "submissionCpuMs": 110,
+        "elapsedMs": 169.60000002384186,
+        "perSubmitMs": {
+          "p50": 9.5,
+          "p95": 12.200000017881393
+        },
+        "canceled": 11,
+        "transferredBytes": 37748736,
+        "latestResultParity": true
+      },
+      "coldMs": {
+        "submit": 16.099999994039536,
+        "roundTrip": 88.69999998807907,
+        "ingest": 7.300000011920929,
+        "color": 52.69999998807907,
+        "upload": 3.300000011920929,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 45.400000005960464,
+          "p95": 46.900000005960464
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 43.69999998807907,
+          "p95": 45.10000002384186
+        },
+        "upload": {
+          "p50": 1,
+          "p95": 2.4000000059604645
+        },
+        "bitmap": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "timerDelay": {
+          "p50": 2.300000011920929,
+          "p95": 4.600000023841858
+        }
+      },
+      "transferBytes": 75497472,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "tone",
+      "mode": "reference",
+      "burst": {
+        "changes": 12,
+        "submissionCpuMs": 143.40000000596046,
+        "elapsedMs": 236.30000001192093,
+        "perSubmitMs": {
+          "p50": 12.200000017881393,
+          "p95": 17
+        },
+        "canceled": 11,
+        "transferredBytes": 37748736,
+        "latestResultParity": true
+      },
+      "coldMs": {
+        "submit": 16.5,
+        "roundTrip": 135.7999999821186,
+        "ingest": 8.200000017881393,
+        "color": 98.59999999403954,
+        "upload": 3.0999999940395355,
+        "bitmap": 0.09999999403953552
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.09999999403953552
+        },
+        "roundTrip": {
+          "p50": 97.40000000596046,
+          "p95": 192.39999997615814
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 95,
+          "p95": 190.90000000596046
+        },
+        "upload": {
+          "p50": 1.300000011920929,
+          "p95": 4.199999988079071
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 2.0999999940395355,
+          "p95": 3.199999988079071
+        }
+      },
+      "transferBytes": 75497472,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "patch",
+      "mode": "wasm-simd-resident",
+      "coldMs": {
+        "submit": 14.5,
+        "roundTrip": 74.80000001192093,
+        "ingest": 8,
+        "color": 32.099999994039536,
+        "upload": 4.800000011920929,
+        "bitmap": 0.5
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.30000001192092896,
+          "p95": 0.5
+        },
+        "roundTrip": {
+          "p50": 5.4000000059604645,
+          "p95": 11.200000017881393
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 0.19999998807907104,
+          "p95": 0.4000000059604645
+        },
+        "upload": {
+          "p50": 4.399999976158142,
+          "p95": 7.9000000059604645
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.20000001788139343
+        },
+        "timerDelay": {
+          "p50": 4,
+          "p95": 7.0999999940395355
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 41078676,
+        "copiedOutputBytes": 13692892
+      },
+      "transferBytes": 41078676,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "patch",
+      "mode": "wasm-simd",
+      "coldMs": {
+        "submit": 22.599999994039536,
+        "roundTrip": 93.19999998807907,
+        "ingest": 12.800000011920929,
+        "color": 36.39999997615814,
+        "upload": 4.9000000059604645,
+        "bitmap": 0.4000000059604645
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.20000001788139343,
+          "p95": 0.6000000238418579
+        },
+        "roundTrip": {
+          "p50": 5.300000011920929,
+          "p95": 10.699999988079071
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.20000001788139343
+        },
+        "color": {
+          "p50": 0.10000002384185791,
+          "p95": 0.5
+        },
+        "upload": {
+          "p50": 4.5,
+          "p95": 6.700000017881393
+        },
+        "bitmap": {
+          "p50": 0.09999999403953552,
+          "p95": 0.19999998807907104
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 4,
+          "p95": 7.100000023841858
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 41078676,
+        "copiedOutputBytes": 13692892
+      },
+      "transferBytes": 41078676,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "patch",
+      "mode": "wasm-scalar",
+      "coldMs": {
+        "submit": 16.200000017881393,
+        "roundTrip": 110.7000000178814,
+        "ingest": 8.599999994039536,
+        "color": 63.599999994039536,
+        "upload": 8,
+        "bitmap": 0.9000000059604645
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.29999998211860657,
+          "p95": 0.5999999940395355
+        },
+        "roundTrip": {
+          "p50": 5.5999999940395355,
+          "p95": 9.299999982118607
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "color": {
+          "p50": 0.30000001192092896,
+          "p95": 0.5000000298023224
+        },
+        "upload": {
+          "p50": 4.299999982118607,
+          "p95": 7.699999988079071
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "timerDelay": {
+          "p50": 4.699999988079071,
+          "p95": 9.299999982118607
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 41078676,
+        "copiedOutputBytes": 13692892
+      },
+      "transferBytes": 41078676,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "patch",
+      "mode": "fused",
+      "coldMs": {
+        "submit": 16.099999994039536,
+        "roundTrip": 106.90000000596046,
+        "ingest": 8.799999982118607,
+        "color": 64,
+        "upload": 4,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.30000001192092896,
+          "p95": 0.5
+        },
+        "roundTrip": {
+          "p50": 5.5,
+          "p95": 9.400000005960464
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "color": {
+          "p50": 0.20000001788139343,
+          "p95": 0.30000004172325134
+        },
+        "upload": {
+          "p50": 4.300000011920929,
+          "p95": 7.699999988079071
+        },
+        "bitmap": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 4.0999999940395355,
+          "p95": 9.300000011920929
+        }
+      },
+      "transferBytes": 41078676,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "patch",
+      "mode": "planar",
+      "coldMs": {
+        "submit": 19.299999982118607,
+        "roundTrip": 107,
+        "ingest": 9.600000023841858,
+        "color": 56.39999997615814,
+        "upload": 5.100000023841858,
+        "bitmap": 0.09999999403953552
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.30000001192092896,
+          "p95": 0.9000000059604645
+        },
+        "roundTrip": {
+          "p50": 6.9000000059604645,
+          "p95": 13.200000017881393
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.30000001192092896
+        },
+        "color": {
+          "p50": 0.20000001788139343,
+          "p95": 0.4000000059604645
+        },
+        "upload": {
+          "p50": 4.5999999940395355,
+          "p95": 10.400000005960464
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 6.300000011920929,
+          "p95": 13.100000023841858
+        }
+      },
+      "transferBytes": 41078676,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "patch",
+      "mode": "reference",
+      "coldMs": {
+        "submit": 28.299999982118607,
+        "roundTrip": 146.09999999403954,
+        "ingest": 12.599999994039536,
+        "color": 78.7999999821186,
+        "upload": 5.800000011920929,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.5,
+          "p95": 1.4000000059604645
+        },
+        "roundTrip": {
+          "p50": 8.5,
+          "p95": 12
+        },
+        "ingest": {
+          "p50": 0.09999999403953552,
+          "p95": 0.30000001192092896
+        },
+        "color": {
+          "p50": 0.4000000059604645,
+          "p95": 0.9000000059604645
+        },
+        "upload": {
+          "p50": 5.9000000059604645,
+          "p95": 9.199999988079071
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "presentation": {
+          "p50": 0.09999999403953552,
+          "p95": 0.19999998807907104
+        },
+        "timerDelay": {
+          "p50": 7.699999988079071,
+          "p95": 11.900000005960464
+        }
+      },
+      "transferBytes": 41078676,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "bgr-nodata",
+      "mode": "wasm-simd-resident",
+      "coldMs": {
+        "submit": 26.900000005960464,
+        "roundTrip": 98.80000001192093,
+        "ingest": 9.700000017881393,
+        "color": 35.30000001192093,
+        "upload": 5.5999999940395355,
+        "bitmap": 0.5
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 23.799999982118607,
+          "p95": 42.900000005960464
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 21.30000001192093,
+          "p95": 40
+        },
+        "upload": {
+          "p50": 1.5999999940395355,
+          "p95": 5
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 3.300000011920929,
+          "p95": 7.5999999940395355
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 37748736,
+        "copiedOutputBytes": 301989888
+      },
+      "transferBytes": 37748736,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "bgr-nodata",
+      "mode": "wasm-simd",
+      "coldMs": {
+        "submit": 19.600000023841858,
+        "roundTrip": 88.90000000596046,
+        "ingest": 13.599999994039536,
+        "color": 33,
+        "upload": 4.0999999940395355,
+        "bitmap": 0.5999999940395355
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 23,
+          "p95": 26.5
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "color": {
+          "p50": 20.600000023841858,
+          "p95": 24.099999994039536
+        },
+        "upload": {
+          "p50": 1.4000000059604645,
+          "p95": 1.5999999940395355
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 2.9000000059604645,
+          "p95": 4.5
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 37748736,
+        "copiedOutputBytes": 301989888
+      },
+      "transferBytes": 37748736,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "bgr-nodata",
+      "mode": "wasm-scalar",
+      "coldMs": {
+        "submit": 14.099999994039536,
+        "roundTrip": 103.09999999403954,
+        "ingest": 8.099999994039536,
+        "color": 63.599999994039536,
+        "upload": 4.0999999940395355,
+        "bitmap": 0.4000000059604645
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.30000001192092896
+        },
+        "roundTrip": {
+          "p50": 57.80000001192093,
+          "p95": 63.099999994039536
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 55.30000001192093,
+          "p95": 60.69999998807907
+        },
+        "upload": {
+          "p50": 1.5999999940395355,
+          "p95": 2.0999999940395355
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 3.4000000059604645,
+          "p95": 5.199999988079071
+        }
+      },
+      "wasm": {
+        "allocatedWasmBytes": 50462720,
+        "stagedBytes": 37748736,
+        "copiedOutputBytes": 301989888
+      },
+      "transferBytes": 37748736,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "bgr-nodata",
+      "mode": "fused",
+      "coldMs": {
+        "submit": 14.300000011920929,
+        "roundTrip": 98.90000000596046,
+        "ingest": 9.900000005960464,
+        "color": 58.599999994039536,
+        "upload": 3.5,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "roundTrip": {
+          "p50": 57.5,
+          "p95": 62.599999994039536
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 55.5,
+          "p95": 60.5
+        },
+        "upload": {
+          "p50": 1.2999999821186066,
+          "p95": 1.600000023841858
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "timerDelay": {
+          "p50": 2.5,
+          "p95": 3.0999999940395355
+        }
+      },
+      "transferBytes": 37748736,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "bgr-nodata",
+      "mode": "planar",
+      "coldMs": {
+        "submit": 13.400000005960464,
+        "roundTrip": 94.90000000596046,
+        "ingest": 8,
+        "color": 58,
+        "upload": 4.699999988079071,
+        "bitmap": 0.09999999403953552
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "roundTrip": {
+          "p50": 51.70000001788139,
+          "p95": 52.900000005960464
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0
+        },
+        "color": {
+          "p50": 49.79999998211861,
+          "p95": 51.20000001788139
+        },
+        "upload": {
+          "p50": 1.300000011920929,
+          "p95": 1.5
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0.09999999403953552,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 2.300000011920929,
+          "p95": 3.399999976158142
+        }
+      },
+      "transferBytes": 37748736,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "workload": "bgr-nodata",
+      "mode": "reference",
+      "coldMs": {
+        "submit": 18.5,
+        "roundTrip": 132.7000000178814,
+        "ingest": 9,
+        "color": 92.59999999403954,
+        "upload": 4.299999982118607,
+        "bitmap": 0
+      },
+      "samples": 16,
+      "timingMs": {
+        "submit": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "roundTrip": {
+          "p50": 87.60000002384186,
+          "p95": 243.59999999403954
+        },
+        "ingest": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "color": {
+          "p50": 86.09999999403954,
+          "p95": 242
+        },
+        "upload": {
+          "p50": 1.2999999821186066,
+          "p95": 1.5
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "presentation": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "timerDelay": {
+          "p50": 2,
+          "p95": 2.7999999821186066
+        }
+      },
+      "transferBytes": 37748736,
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "finalPixelParity": true
+    }
+  ]
+}

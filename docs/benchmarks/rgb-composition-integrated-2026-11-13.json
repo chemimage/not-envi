@@ -1,0 +1,556 @@
+{
+  "date": "2026-11-13T20:33:15.716Z",
+  "commit": "b625cb35ec978ef394f4a38715aa72730a541534",
+  "sourceSha256": {
+    "scripts/benchmark-rgb-composition.mjs": "55511483a5ca0931ffc26db53ef3014a1960522319361e0cee35febff4b3dae6",
+    "src/render/rgb-simd.js": "98cc5c9ddfb854be4b0397e0362161cecd280b4ae5781a4713958b8e3c601a3e",
+    "src/render/workers/composition.worker.js": "0083a3efe60782758c349ee965c02fefbdd4075b6550b582616f0cf00a881327",
+    "src/render/composition-worker-client.js": "227cb47f478331cddae369b3f65eb6dc544857f390a1c79c2796892093b218ef",
+    "wasm/rgb/pkg/rgb.wasm": "da33084cce7e187bf20668b63b65c57ac1de4d046dc24b4f0f55bfd14cde4eed"
+  },
+  "scope": "Production worker versus synchronous JS compositor. Sequential synthetic frames: 6 cold/warmup + 20 measured; separate 12-tone-change burst. Kernel timing is synchronous JS including bookkeeping; worker RTT includes actual SIMD staging and delivery. Canvas presentation is submission, not GPU-fenced completion. Memory counters describe owned allocations, not browser/process memory.",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+  "hardwareConcurrency": 20,
+  "results": [
+    {
+      "w": 512,
+      "h": 384,
+      "mode": "tone",
+      "samples": 20,
+      "cold": {
+        "composeMs": 9.299999982118607,
+        "workerRoundTripMs": 27.19999998807907,
+        "submitMs": 2.0999999940395355
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 6.100000023841858,
+          "p95": 10.899999976158142
+        },
+        "canvasUpload": {
+          "p50": 0.09999999403953552,
+          "p95": 0.19999998807907104
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "workerRoundTrip": {
+          "p50": 1.699999988079071,
+          "p95": 2.199999988079071
+        },
+        "timerDelay": {
+          "p50": 0.29999998211860657,
+          "p95": 0.5
+        }
+      },
+      "sourcePlaneBytes": 2359296,
+      "rgbaBytes": 786432,
+      "workerStats": {
+        "requests": 26,
+        "completed": 26,
+        "cancelled": 0,
+        "transferredBytes": 2359296,
+        "packedBytes": 2359296,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 2359296,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 5111808,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    },
+    {
+      "w": 512,
+      "h": 384,
+      "mode": "patch",
+      "samples": 20,
+      "cold": {
+        "composeMs": 13.800000011920929,
+        "workerRoundTripMs": 19,
+        "submitMs": 1.5
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 0.5999999940395355,
+          "p95": 1.399999976158142
+        },
+        "canvasUpload": {
+          "p50": 0,
+          "p95": 0
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.4000000059604645
+        },
+        "workerRoundTrip": {
+          "p50": 0.4000000059604645,
+          "p95": 1
+        },
+        "timerDelay": {
+          "p50": 0.30000001192092896,
+          "p95": 0.7999999821186066
+        }
+      },
+      "sourcePlaneBytes": 2359296,
+      "rgbaBytes": 786432,
+      "workerStats": {
+        "requests": 26,
+        "completed": 26,
+        "cancelled": 0,
+        "transferredBytes": 6045696,
+        "packedBytes": 6045696,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 2359296,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 503808,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    },
+    {
+      "w": 512,
+      "h": 384,
+      "mode": "bgr-nodata",
+      "samples": 20,
+      "cold": {
+        "composeMs": 14.699999988079071,
+        "workerRoundTripMs": 17.19999998807907,
+        "submitMs": 1.199999988079071
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 8.599999994039536,
+          "p95": 9
+        },
+        "canvasUpload": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0
+        },
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "workerRoundTrip": {
+          "p50": 1.5999999940395355,
+          "p95": 1.9000000059604645
+        },
+        "timerDelay": {
+          "p50": 0.19999998807907104,
+          "p95": 0.3999999761581421
+        }
+      },
+      "sourcePlaneBytes": 2359296,
+      "rgbaBytes": 786432,
+      "workerStats": {
+        "requests": 26,
+        "completed": 26,
+        "cancelled": 0,
+        "transferredBytes": 2359296,
+        "packedBytes": 2359296,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 2359296,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 5111808,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "mode": "tone",
+      "samples": 20,
+      "cold": {
+        "composeMs": 32,
+        "workerRoundTripMs": 26.5,
+        "submitMs": 7.0999999940395355
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 30.69999998807907,
+          "p95": 31.19999998807907
+        },
+        "canvasUpload": {
+          "p50": 0.30000001192092896,
+          "p95": 0.4000000059604645
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.19999998807907104
+        },
+        "workerRoundTrip": {
+          "p50": 5.4000000059604645,
+          "p95": 7.199999988079071
+        },
+        "timerDelay": {
+          "p50": 0.5,
+          "p95": 0.8999999761581421
+        }
+      },
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "workerStats": {
+        "requests": 26,
+        "completed": 26,
+        "cancelled": 0,
+        "transferredBytes": 9437184,
+        "packedBytes": 9437184,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 9437184,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 20447232,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "mode": "patch",
+      "samples": 20,
+      "cold": {
+        "composeMs": 31.799999982118607,
+        "workerRoundTripMs": 25.200000017881393,
+        "submitMs": 7.200000017881393
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 0.5,
+          "p95": 0.5
+        },
+        "canvasUpload": {
+          "p50": 0,
+          "p95": 0
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0
+        },
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.20000001788139343
+        },
+        "workerRoundTrip": {
+          "p50": 0.30000001192092896,
+          "p95": 0.9000000059604645
+        },
+        "timerDelay": {
+          "p50": 0.30000001192092896,
+          "p95": 0.5999999940395355
+        }
+      },
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "workerStats": {
+        "requests": 26,
+        "completed": 26,
+        "cancelled": 0,
+        "transferredBytes": 13123584,
+        "packedBytes": 13123584,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 9437184,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 1093632,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    },
+    {
+      "w": 1024,
+      "h": 768,
+      "mode": "bgr-nodata",
+      "samples": 20,
+      "cold": {
+        "composeMs": 37.400000005960464,
+        "workerRoundTripMs": 22.5,
+        "submitMs": 4
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 34.79999998211861,
+          "p95": 36.80000001192093
+        },
+        "canvasUpload": {
+          "p50": 0.4000000059604645,
+          "p95": 0.8999999761581421
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.10000002384185791
+        },
+        "workerRoundTrip": {
+          "p50": 6.300000011920929,
+          "p95": 8.300000011920929
+        },
+        "timerDelay": {
+          "p50": 0.7000000178813934,
+          "p95": 1.5999999940395355
+        }
+      },
+      "sourcePlaneBytes": 9437184,
+      "rgbaBytes": 3145728,
+      "workerStats": {
+        "requests": 26,
+        "completed": 26,
+        "cancelled": 0,
+        "transferredBytes": 9437184,
+        "packedBytes": 9437184,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 9437184,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 20447232,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "mode": "tone",
+      "burst": {
+        "changes": 12,
+        "submissionCpuMs": 1.2000000178813934,
+        "elapsedMs": 45.60000002384186,
+        "canceled": 11,
+        "packedBytes": 0,
+        "transferredBytes": 0,
+        "latestResultParity": true
+      },
+      "samples": 20,
+      "cold": {
+        "composeMs": 130.30000001192093,
+        "workerRoundTripMs": 74.59999999403954,
+        "submitMs": 20.69999998807907
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 125.19999998807907,
+          "p95": 127
+        },
+        "canvasUpload": {
+          "p50": 1.2000000178813934,
+          "p95": 1.7999999821186066
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.19999998807907104
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "submit": {
+          "p50": 0.09999999403953552,
+          "p95": 0.30000001192092896
+        },
+        "workerRoundTrip": {
+          "p50": 23,
+          "p95": 24.299999982118607
+        },
+        "timerDelay": {
+          "p50": 2.0999999940395355,
+          "p95": 3.2999999821186066
+        }
+      },
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "workerStats": {
+        "requests": 38,
+        "completed": 28,
+        "cancelled": 11,
+        "transferredBytes": 37748736,
+        "packedBytes": 37748736,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 37748736,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 88080384,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "mode": "patch",
+      "samples": 20,
+      "cold": {
+        "composeMs": 129.69999998807907,
+        "workerRoundTripMs": 72.30000001192093,
+        "submitMs": 21.400000005960464
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 0.5,
+          "p95": 0.6000000238418579
+        },
+        "canvasUpload": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0
+        },
+        "submit": {
+          "p50": 0.29999998211860657,
+          "p95": 0.699999988079071
+        },
+        "workerRoundTrip": {
+          "p50": 3.199999988079071,
+          "p95": 5.5999999940395355
+        },
+        "timerDelay": {
+          "p50": 3.0999999940395355,
+          "p95": 5.5
+        }
+      },
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "workerStats": {
+        "requests": 26,
+        "completed": 26,
+        "cancelled": 0,
+        "transferredBytes": 41435136,
+        "packedBytes": 41435136,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 37748736,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 3452928,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    },
+    {
+      "w": 2048,
+      "h": 1536,
+      "mode": "bgr-nodata",
+      "samples": 20,
+      "cold": {
+        "composeMs": 142.90000000596046,
+        "workerRoundTripMs": 68.09999999403954,
+        "submitMs": 16.69999998807907
+      },
+      "timingsMs": {
+        "kernelAndBookkeeping": {
+          "p50": 139.2999999821186,
+          "p95": 145.39999997615814
+        },
+        "canvasUpload": {
+          "p50": 1.4000000059604645,
+          "p95": 3.899999976158142
+        },
+        "bitmap": {
+          "p50": 0,
+          "p95": 0.10000002384185791
+        },
+        "present": {
+          "p50": 0,
+          "p95": 0.09999999403953552
+        },
+        "submit": {
+          "p50": 0.19999998807907104,
+          "p95": 0.4000000059604645
+        },
+        "workerRoundTrip": {
+          "p50": 24.799999982118607,
+          "p95": 29.599999994039536
+        },
+        "timerDelay": {
+          "p50": 2.600000023841858,
+          "p95": 3.7000000178813934
+        }
+      },
+      "sourcePlaneBytes": 37748736,
+      "rgbaBytes": 12582912,
+      "workerStats": {
+        "requests": 26,
+        "completed": 26,
+        "cancelled": 0,
+        "transferredBytes": 37748736,
+        "packedBytes": 37748736,
+        "queuedBytes": 0,
+        "peakQueuedBytes": 0,
+        "queuedSnapshotBytes": 0,
+        "peakQueuedSnapshotBytes": 37748736,
+        "fallbackJobs": 0,
+        "workerPixelsColored": 81788928,
+        "workerBackend": "simd",
+        "workerKernelBytes": 393216
+      },
+      "finalFramePixelParity": true
+    }
+  ]
+}
