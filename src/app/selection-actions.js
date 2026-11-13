@@ -200,7 +200,8 @@ export function createSelectionActionsController(deps) {
     }
   }
 
-  function clearAnalysis() {
+  function clearAnalysis(retainHistogram = false) {
+    if (retainHistogram) deps.retainHistogram?.();
     state.spectrumPickEnabled = false;
     closeSpectrum();
     closeAnalysisHistogramPanel();
@@ -256,7 +257,7 @@ export function createSelectionActionsController(deps) {
         return;
       } else {
         gesture = { start: ev, type: "pending", dsId: ds.id, slot: slot() };
-        clearAnalysis();
+        clearAnalysis(true);
       }
       refresh();
       consume(ev);

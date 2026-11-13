@@ -1141,6 +1141,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     clearSelectionHistogram,
     invalidateAnalysis: (ds) => {
       if (ds.id !== state.activeId) return;
+      plotComparisons.retainSource("histogram");
       spectrumArea.cancel();
       analysisHistogram.invalidateSelection(ds);
       spectrum.invalidateSelection(ds);
@@ -1488,6 +1489,7 @@ import { createSourceAccessWarning } from "./source-access-warning.js";
     beginAreaMoveAtPointer, updateAreaMoveAtPointer, finishAreaMoveAtPointer, cancelAreaMove,
     selectAreaAtPointer, openSpectrumAt, openSpectrumForEffectiveArea,
     closeSpectrum, setAnalysisHistogramOpen, closeAnalysisHistogramPanel,
+    retainHistogram: () => plotComparisons.retainSource("histogram"),
     drawOverlays, onPointerDown,
     removeAreaAnnotations: (ids) => annotation.removeAreaAnnotations(ids)
   });

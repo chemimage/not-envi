@@ -150,6 +150,26 @@ test("a single histogram in stack mode accepts new colors and replaces recalcula
   await expect(panels.locator(".plot-legend-name").filter({ hasText: "Region 1" })).toHaveCount(0);
 });
 
+test("drawing another color retains the first histogram before the next calculation", async ({ page }, testInfo) => {
+  await loadImage(page);
+  await drag(page, 300, 250, 500, 340);
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(page.locator("#analysisStatN")).not.toHaveText("—");
+  await expect(page.locator("#analysisHistPanel")).toBeVisible();
+  await color(page, "Blue");
+  await drag(page, 300, 440, 500, 530);
+  const panels = page.locator('.plot-comparison-panel[data-plot-kind="histogram"]');
+  await expect(panels).toHaveCount(1);
+  await expect(panels).toBeVisible();
+  await expect(panels.locator(".plot-legend-name")).toContainText("Region 1");
+  await expect(panels).toHaveAttribute("data-trace-count", "1");
+  await page.screenshot({ path: testInfo.outputPath("first-histogram-retained.png") });
+  await page.getByRole("button", { name: "Spatial histogram", exact: true }).click();
+  await expect(panels).toHaveCount(2);
+  await expect(panels.nth(0).locator(".plot-legend-name")).toContainText("Region 1");
+  await expect(panels.nth(1).locator(".plot-legend-name")).toContainText("Region 2");
+});
+
 for (const [kind, bands] of [["spectrum", 4], ["spectrum", 24]]) {
   test(`${bands}-band ${kind} follows selection in one stable panel and emphasizes the selected stacked result`, async ({ page }, testInfo) => {
     await loadImage(page, bands);

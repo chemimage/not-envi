@@ -46,6 +46,15 @@ export function createPlotComparisons({ container, floatingWindows }) {
   }
 
   function closeSource(kind) { for (const source of sources) if (source.kind === kind) source.close(); }
+  function retainSource(kind) {
+    if (modes.has(kind) || ![...model.entries.values()].some(entry => entry.kind === kind && entry.status === "ready")) return;
+    if (![...sources].some(source => source.kind === kind && source.panel.style.display !== "none")) return;
+    modes.set(kind, false);
+    selected.set(kind, selectedId(kind));
+    layout(kind);
+    closeSource(kind);
+    refreshViews();
+  }
   function concealSource(kind) {
     if (!modes.has(kind)) return;
     for (const source of sources) if (source.kind === kind && source.panel.style.display !== "none") {
@@ -186,7 +195,8 @@ export function createPlotComparisons({ container, floatingWindows }) {
         row.append(swatch, name, trash); view.legend.append(row);
       }
       view.status.textContent = entries.some((entry) => entry.status === "changed") ? "Changed traces are hidden until recalculated."
-        : kind === "histogram" ? "Distributions retain their original bins." : "";
+        : "";
+      view.status.hidden = !view.status.textContent;
       drawView(group.id);
     }
     for (const source of sources) updateToggle(source.control, source.kind);
@@ -222,5 +232,5 @@ export function createPlotComparisons({ container, floatingWindows }) {
   function clear() {
     model.clear(); modes.clear(); selected.clear(); placements.clear(); linePresentation.setStacked(false); refreshViews();
   }
-  return { attach, publish, sync, clear, concealSource, setLinePresentation: (callback) => { linePresentation = callback; } };
+  return { attach, publish, sync, clear, concealSource, retainSource, setLinePresentation: (callback) => { linePresentation = callback; } };
 }
