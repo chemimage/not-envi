@@ -37,16 +37,35 @@ for (const scope of ["selection", "view"]) test(`outside export bars preserve ${
     if (format === "tiff") {
       const tiff = await fromArrayBuffer(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
       const image = await tiff.getImage();
-      return { width: image.getWidth(), height: image.getHeight(), data: Array.from(await image.readRasters({ interleave: true })).filter((_v, i) => i % image.getSamplesPerPixel() < 3) };
+      const raster = await image.readRasters({ interleave: true });
+      const samples = image.getSamplesPerPixel();
+      const data = Buffer.alloc(image.getWidth() * image.getHeight() * 3);
+      for (let pixel = 0; pixel < data.length / 3; pixel++) {
+        for (let channel = 0; channel < 3; channel++) data[pixel * 3 + channel] = raster[pixel * samples + channel];
+      }
+      return { width: image.getWidth(), height: image.getHeight(), data };
     }
-    return page.evaluate(async (data) => {
+    const decoded = await page.evaluate(async (data) => {
       const bitmap = await createImageBitmap(new Blob([new Uint8Array(data)], { type: "image/png" }));
       const canvas = document.createElement("canvas");
       canvas.width = bitmap.width; canvas.height = bitmap.height;
       const ctx = canvas.getContext("2d"); ctx.drawImage(bitmap, 0, 0);
       const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      return { width: canvas.width, height: canvas.height, data: Array.from(rgba).filter((_v, i) => i % 4 !== 3) };
+      const rgb = new Uint8Array(canvas.width * canvas.height * 3);
+      for (let pixel = 0; pixel < rgb.length / 3; pixel++) {
+        for (let channel = 0; channel < 3; channel++) rgb[pixel * 3 + channel] = rgba[pixel * 4 + channel];
+      }
+      // A compact string avoids serializing millions of individual numbers
+      // through Playwright's browser protocol, especially slowly in WebKit.
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(new Blob([rgb]));
+      });
+      return { width: canvas.width, height: canvas.height, base64 };
     }, [...bytes]);
+    return { width: decoded.width, height: decoded.height, data: Buffer.from(decoded.base64, "base64") };
   };
 
   const plot = await download("png", false);
@@ -56,13 +75,13 @@ for (const scope of ["selection", "view"]) test(`outside export bars preserve ${
     expect(output.height).toBeGreaterThan(plot.height);
     const imageX = Math.floor((output.width - plot.width) / 2);
     const imageY = output.height - plot.height;
-    const image = [];
+    const image = Buffer.alloc(plot.data.length);
     for (let row = 0; row < plot.height; row++) {
       const start = ((imageY + row) * output.width + imageX) * 3;
-      image.push(...output.data.slice(start, start + plot.width * 3));
+      output.data.copy(image, row * plot.width * 3, start, start + plot.width * 3);
     }
     expect(image.length).toBe(plot.data.length);
-    expect(image.filter((value, i) => value !== plot.data[i]).length, `${format} plot pixel differences`).toBe(0);
+    expect(image.equals(plot.data), `${format} preserves every plot pixel`).toBe(true);
     const margin = output.data.slice(0, imageY * output.width * 3);
     expect(margin.some((value) => value > 0)).toBe(true);
     expect(margin.some((value) => value === 0)).toBe(true);
