@@ -109,6 +109,8 @@ export function typeDefaultRange(meta) {
   if (t === 2) return { min: -32768, max: 32767 };
   if (t === 3) return { min: -2147483648, max: 2147483647 };
   if (t === 13) return { min: 0, max: 4294967295 };
+  if (t === 14) return { min: -(2 ** 63), max: 2 ** 63 - 1 };
+  if (t === 15) return { min: 0, max: 2 ** 64 - 1 };
   return { min: null, max: null };
 }
 

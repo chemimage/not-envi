@@ -16,6 +16,7 @@ import {
 } from "./display-panels.js";
 import { remapAnnotationState } from "./linked-annotations.js";
 import { APP_CONFIG } from "./config.js";
+import { typeDefaultRange } from "../render/display-math.js";
 
 export function createDatasetRuntime(deps) {
   const {
@@ -432,7 +433,14 @@ export function createDatasetRuntime(deps) {
       lastScreenFrame: null,
       lastScreenFrames: new Map()
     };
-    ds.bandSettings.set(ds.activeBand, { min: null, max: null, brightness: 0, gain: 1, contrast: 1, gamma: 1 });
+    const colorImage = ds.displayMode === "rgb" || ds.displayMode === "bgr";
+    const range = colorImage ? typeDefaultRange(meta) : null;
+    const initialBands = colorImage ? Array.from({ length: meta.bands }, (_, band) => band) : [ds.activeBand];
+    for (const band of initialBands) ds.bandSettings.set(band, {
+      min: colorImage ? (range.min ?? 0) : null,
+      max: colorImage ? (range.max ?? 1) : null,
+      brightness: 0, gain: 1, contrast: 1, gamma: 1
+    });
     return ds;
   }
 

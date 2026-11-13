@@ -29,6 +29,30 @@ function makeDeps(state) {
 }
 
 describe("dataset runtime", () => {
+  test.each([
+    [1, "rgb", 0, 255], [12, "rgb", 0, 65535], [4, "rgb", 0, 1],
+    [14, "rgb", -(2 ** 63), 2 ** 63 - 1], [15, "rgb", 0, 2 ** 64 - 1],
+    [1, "bgr", 0, 255], [1, "gray", null, null], [4, undefined, null, null]
+  ])("initializes loaded type %s / %s with range %s to %s", async (dataType, defaultDisplayMode, min, max) => {
+    const deps = makeDeps({ datasets: [] });
+    let dataset;
+    const stop = new Error("stop before attaching");
+    deps.addDatasetFromFilesMod = async (hdrFile, dataFile, { createDataset }) => {
+      dataset = createDataset({ hdrFile, dataFile, base: {}, cached: {},
+        meta: { samples: 4, lines: 4, bands: 3, dataType, defaultDisplayMode, defaultBands: [0, 1, 2] } });
+      throw stop;
+    };
+    const runtime = createDatasetRuntime(deps);
+    await expect(runtime.addDatasetFromFiles(new File([], "image.hdr"), new File([], "image.raw"))).rejects.toBe(stop);
+    const color = defaultDisplayMode === "rgb" || defaultDisplayMode === "bgr";
+    expect(dataset.bandSettings.size).toBe(color ? 3 : 1);
+    for (const settings of dataset.bandSettings.values()) expect(settings).toMatchObject({ min, max, brightness: 0, gain: 1, contrast: 1 });
+    if (color) {
+      dataset.bandSettings.get(0).min = 0.25;
+      expect(dataset.bandSettings.get(1).min).toBe(min);
+    }
+  });
+
   test("passes the built-in fmap backend to dataset importers", async () => {
     const deps = makeDeps({ datasets: [] });
     deps.addDatasetsFromFileListMod = vi.fn(async () => ({ datasets: [], missing: [], headersFound: false }));
