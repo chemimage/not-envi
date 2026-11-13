@@ -30,6 +30,9 @@ html = html.replace(/<script\s+[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/g, (
 });
 
 html = compactHtml(html);
+const tiffNotices = ["docs/licenses/libtiff.md", "docs/licenses/zlib.txt", "docs/licenses/emscripten.txt", "docs/licenses/musl.txt"]
+  .map((name) => readFileSync(name, "utf8")).join("\n\n").replace(/<\/script/gi, "<\\/script");
+html = html.replace("</body>", `<script type="text/plain" id="tiffLicenses">${tiffNotices}</script></body>`);
 
 const assetsDir = path.join(distDir, "assets");
 if (statSafe(assetsDir)?.isDirectory()) {

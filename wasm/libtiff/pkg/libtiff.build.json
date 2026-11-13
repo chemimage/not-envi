@@ -1,0 +1,17 @@
+{
+  "libtiff": "d01a94be176f5f6a87f7ee1c0b32e65416aa2b4d",
+  "emscripten": "4.0.22",
+  "codecs": [
+    "raw",
+    "PackBits",
+    "LZW",
+    "Deflate"
+  ],
+  "wasmBytes": 346833,
+  "files": {
+    "wasm/libtiff/hyve_tiff.c": "37c08e49b446e390b33e1099a16282b8926502e9f850e40d7c75ea149443aa99",
+    "scripts/build-libtiff-wasm.py": "ee7e93c8c3c64e1e07c27a9cbc2576fa28d090f353b860e6dc0753b31f65cac3",
+    "wasm/libtiff/pkg/libtiff.mjs": "b36c0448495a85708af5e25f92c47d56067244f2d52efca222de3e61fa666904",
+    "wasm/libtiff/pkg/libtiff-bytes.js": "f1424436156782b9aaa68088fbaa73f97ebcd58256dd3b661d91ebe22ea1ba3e"
+  }
+}
