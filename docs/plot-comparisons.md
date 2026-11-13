@@ -7,7 +7,9 @@ when another color is selected. In grouped-area mode, regions of the same color
 contribute to one distribution. Different colors remain separate. Recalculating
 a color updates its existing result for that band.
 Drawing another region keeps an already calculated histogram visible, including
-the first result before any comparison window has been opened.
+the first result before any comparison window has been opened. Every region
+shows its annotation index inside its upper-left corner in bold app typography
+and its saved color; these indices match the region names in plot legends.
 **Stack** overlays retained histograms; new results join that stack while it is
 open. **Split** restores independent histogram windows. Closing the stack and
 reopening Histogram returns to separate windows.

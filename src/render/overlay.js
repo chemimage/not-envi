@@ -1,5 +1,6 @@
 import { fmtNoGroup } from "../core/utils.js";
 import { resolveRasterSampling } from "./raster-geometry.js";
+import { pointInPolygon } from "../app/draw-geometry.js";
 
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
@@ -41,6 +42,57 @@ export function createOverlayRenderer(deps) {
     getDevicePixelRatio,
     getDrawData
   } = deps;
+  let regionLabelStyle;
+
+  function drawRegionIndex(ds, item, eff, dpr, viewport) {
+    if (!Number.isFinite(item.id) || !item.points?.length) return;
+    if (!regionLabelStyle) {
+      const style = window.getComputedStyle(document.body);
+      regionLabelStyle = { family: style.fontFamily || "system-ui, sans-serif", size: Number.parseFloat(style.fontSize) || 14 };
+    }
+    const points = item.points.map(point => toScreen(ds, point, eff, viewport));
+    const left = Math.min(...points.map(point => point.x)), top = Math.min(...points.map(point => point.y));
+    const right = Math.max(...points.map(point => point.x)), bottom = Math.max(...points.map(point => point.y));
+    const inset = 6 * dpr, fontPx = regionLabelStyle.size * dpr;
+    overlayCtx.save();
+    overlayCtx.font = `700 ${fontPx}px ${regionLabelStyle.family}`;
+    const text = String(item.id), width = overlayCtx.measureText(text).width;
+    let position = right - left >= width + inset * 2 && bottom - top >= fontPx + inset * 2
+      ? { x: left + inset, y: top + inset } : null;
+    if (position && item.tool === "shape") {
+      position = null;
+      // Find the first row wide enough for the label, starting at the top.
+      // This keeps labels inside triangles and other nonrectangular regions.
+      for (let y = top + inset; !position && y + fontPx <= bottom - inset; y += Math.max(1, fontPx / 2)) {
+        const scanY = y + fontPx / 2, crossings = [];
+        for (let i = 0; i < points.length; i++) {
+          const a = points[i], b = points[(i + 1) % points.length];
+          if ((a.y > scanY) !== (b.y > scanY)) crossings.push(a.x + (scanY - a.y) * (b.x - a.x) / (b.y - a.y));
+        }
+        crossings.sort((a, b) => a - b);
+        for (let i = 0; i + 1 < crossings.length; i += 2) {
+          const x = crossings[i] + inset;
+          if (x + width > crossings[i + 1] - inset) continue;
+          if ([{ x, y }, { x: x + width, y }, { x, y: y + fontPx }, { x: x + width, y: y + fontPx }]
+            .every(point => pointInPolygon(point, points))) { position = { x, y }; break; }
+        }
+      }
+    }
+    if (position) {
+      if (item.tool === "shape" && typeof overlayCtx.clip === "function") {
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(points[0].x, points[0].y);
+        for (const point of points.slice(1)) overlayCtx.lineTo(point.x, point.y);
+        overlayCtx.closePath();
+        overlayCtx.clip();
+      }
+      overlayCtx.fillStyle = item.color || "#ff2d2d";
+      overlayCtx.textAlign = "left";
+      overlayCtx.textBaseline = "top";
+      overlayCtx.fillText(text, position.x, position.y);
+    }
+    overlayCtx.restore();
+  }
 
   function colorWithAlpha(color, alpha) {
     if (!color) return `rgba(255,45,45,${alpha})`;
@@ -416,6 +468,7 @@ export function createOverlayRenderer(deps) {
       drawOneAnnotation(ds, items[i], eff, dpr, viewport, i, rulerProfileHover, selectionIds, marqueeOffset, opts);
     }
     if (drawData.draft) drawOneAnnotation(ds, drawData.draft, eff, dpr, viewport, -1, null, null, 0, opts);
+    for (const item of items) if (item.tool === "rect" || item.tool === "shape") drawRegionIndex(ds, item, eff, dpr, viewport);
     if (opts.active !== false && !items.some(item => item.tool === "point" && item.id === drawData.spectrumPoint?.id)) {
       drawSpectrumPointCrosshair(ds, viewport, drawData.spectrumPoint || null, dpr);
     }

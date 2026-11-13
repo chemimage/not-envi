@@ -25,6 +25,38 @@ function makeCtx() {
 }
 
 describe("overlay renderer", () => {
+  test.each([1, 2])("region indices use bold app typography and saved colors inside their bounds at DPR %s", (dpr) => {
+    const ctx = makeCtx(), labels = [];
+    ctx.measureText.mockReturnValue({ width: 12 * dpr });
+    ctx.fillText.mockImplementation(function (text, x, y) {
+      labels.push({ text, x, y, font: this.font, color: this.fillStyle, baseline: this.textBaseline });
+    });
+    const previous = document.body.style.cssText;
+    document.body.style.fontFamily = "Arial";
+    document.body.style.fontSize = "16px";
+    try {
+      const items = [
+        { id: 7, tool: "rect", color: "#ff2d2d", points: [{ x: 120, y: 100 }, { x: 20, y: 30 }] },
+        { id: 8, tool: "rect", color: "#ff2d2d", points: [{ x: 140, y: 30 }, { x: 240, y: 100 }] },
+        { id: 9, tool: "shape", color: "#0ea5e9", points: [{ x: 300, y: 20 }, { x: 260, y: 120 }, { x: 340, y: 120 }] },
+        { id: 10, tool: "rect", points: [{ x: 1, y: 1 }, { x: 3, y: 3 }] }
+      ];
+      const overlay = createOverlayRenderer({ overlayCtx: ctx, getDevicePixelRatio: () => dpr,
+        els: { overlayCanvas: { width: 400 * dpr, height: 200 * dpr } },
+        getDrawData: () => ({ items, draft: { tool: "rect", points: [{ x: 10, y: 10 }, { x: 100, y: 90 }] } }) });
+      overlay.drawOverlaysForPanel({ view: { x: 0, y: 0, scale: 1 }, meta: { samples: 400, lines: 200 } },
+        { x: 0, y: 0, w: 400 * dpr, h: 200 * dpr }, { showImageBounds: false });
+      expect(labels).toHaveLength(3);
+      expect(labels[0]).toEqual({ text: "7", x: 26 * dpr, y: 36 * dpr, font: `700 ${16 * dpr}px Arial`, color: "#ff2d2d", baseline: "top" });
+      expect(labels[1]).toMatchObject({ text: "8", color: "#ff2d2d", x: 146 * dpr, y: 36 * dpr });
+      expect(labels[2]).toMatchObject({ text: "9", color: "#0ea5e9" });
+      expect(labels[2].x).toBeGreaterThan(260 * dpr);
+      expect(labels[2].y).toBeGreaterThan(20 * dpr);
+      expect(labels[2].x + 12 * dpr).toBeLessThan(340 * dpr);
+      expect(labels[2].y + 16 * dpr).toBeLessThan(120 * dpr);
+    } finally { document.body.style.cssText = previous; }
+  });
+
   test("drawOverlays clears overlay even when dataset is missing", () => {
     const ctx = makeCtx();
     const els = {

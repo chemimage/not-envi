@@ -12,6 +12,42 @@ async function loadImage(page, bands = 2) {
   await expect(page.locator("#displayDock")).toBeVisible();
 }
 
+test("same-colored regions keep distinct bold indices inside their top-left corners", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    const fillText = CanvasRenderingContext2D.prototype.fillText;
+    window.__regionLabels = {};
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...args) {
+      if (this.canvas.id === "overlayCanvas" && /^\d+$/.test(text)) {
+        window.__regionLabels[text] = { x, y, font: this.font, color: this.fillStyle, baseline: this.textBaseline };
+      }
+      return fillText.call(this, text, x, y, ...args);
+    };
+  });
+  await loadImage(page);
+  for (const [x, y, x1, y1] of [[400, 290, 620, 440], [600, 500, 800, 610]]) {
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x1, y1, { steps: 8 }); await page.mouse.up();
+  }
+  await page.locator("#drawColorPreview").click();
+  await page.getByRole("button", { name: "Blue swatch", exact: true }).click();
+  await page.mouse.move(800, 260); await page.mouse.down();
+  await page.mouse.move(1000, 400, { steps: 8 }); await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => Object.keys(window.__regionLabels).sort())).toEqual(["1", "2", "3"]);
+  const labels = await page.evaluate(() => window.__regionLabels);
+  expect(labels["1"].color).toBe("#ff2d2d");
+  expect(labels["2"].color).toBe("#ff2d2d");
+  expect(labels["3"].color).toBe("#0ea5e9");
+  for (const [index, x, y] of [["1", 400, 290], ["2", 600, 500], ["3", 800, 260]]) {
+    expect(labels[index].font).toMatch(/^(700|bold) /);
+    expect(labels[index].baseline).toBe("top");
+    expect(labels[index].x).toBeGreaterThan(x);
+    expect(labels[index].x).toBeLessThan(x + 10);
+    expect(labels[index].y).toBeGreaterThan(y);
+    expect(labels[index].y).toBeLessThan(y + 10);
+  }
+  await page.screenshot({ path: testInfo.outputPath("indexed-regions.png") });
+});
+
 test("point crosshairs belong to colors and survive switching, new selections, and plot close", async ({ page }) => {
   await loadImage(page);
   const toolbar = page.locator("#selectionActions");
