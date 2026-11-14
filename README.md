@@ -15,15 +15,19 @@ for offline use.
 
 Requires Node.js 22 and Git.
 
-- `npm ci`
-- `npm run dev`
+```sh
+npm ci
+npm run dev
+```
 
 ## Tests
 
-- `npm run test:unit`
-- `npm run test:e2e`
-- `npm test`
-- `npm run test:coverage`
+```sh
+npm run test:unit
+npm run test:e2e
+npm test
+npm run test:coverage
+```
 
 The coverage badge reports JavaScript line coverage from the published release's
 unit and controller tests. It includes all `src/**/*.js` files; browser tests and
@@ -32,8 +36,11 @@ Local coverage reports are written to `coverage/`.
 
 ## Production build (single file)
 
-- `npm run build`
-- Output: `dist/index.html` (self-contained single file)
+```sh
+npm run build
+```
+
+Output: `dist/index.html` (self-contained single file).
 
 The built viewer uses Tailwind CSS 4 and targets Safari 16.4+, Chrome 111+,
 or Firefox 128+. See the [Tailwind browser requirements](https://tailwindcss.com/docs/compatibility).
@@ -41,7 +48,11 @@ or Firefox 128+. See the [Tailwind browser requirements](https://tailwindcss.com
 ## Preparing a release
 
 Use `+semver:` annotations (`patch`, `minor`, `major`, or `none`) in commit bodies.
-Preview the next version with `npm run version:calc`.
+Preview the next version:
+
+```sh
+npm run version:calc
+```
 
 Push to `main`; after CI passes, publication automatically creates the version
 tag and release, then deploys Pages using the tested build. Optional release
@@ -49,8 +60,17 @@ notes go in `docs/releases/vX.Y.Z.md`.
 
 ## Deploy to the lab server
 
-On Windows, run `build-and-deploy-remote.bat` with authenticated `gh` and
-`ssh`/`scp` access via the `inference` alias. It deploys the latest successful
-main CI build to `/srv/www/hyve`.
+On Windows, authenticate `gh` and configure `ssh`/`scp` access via the `inference`
+alias, then run:
 
-Add `--download-only` to download and verify without deploying.
+```bat
+build-and-deploy-remote.bat
+```
+
+This deploys the latest successful main CI build to `/srv/www/hyve`.
+
+To download and verify without deploying:
+
+```bat
+build-and-deploy-remote.bat --download-only
+```
