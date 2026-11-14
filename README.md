@@ -7,63 +7,18 @@
 A lightweight, browser-based hyperspectral data viewer for band browsing,
 simple spatial-spectral statistics, and format conversion.
 
-Use **Stack** / **Split** in chart title bars to compare calculated
-spectra, histograms, or line profiles. Lines are solid and retain their source
-colors; each brush color owns one line and its profile window. See
-[plot comparisons](docs/plot-comparisons.md).
-
-TIFF exports of 4 megapixels or more automatically include tiled image pyramids
-for zooming. Pyramids preserve the chosen export's full-resolution samples and
-band/page layout; smaller TIFFs remain flat. TIFF encoding uses libtiff, with
-lossless Deflate for pyramids and automatic BigTIFF when needed. Estimates
-include uncompressed overview data, so compressed downloads may be smaller.
-Known physical pixel sizes are preserved, including resized rendered exports.
+[Open the viewer](https://chemimage.github.io/not-envi/) or
+[download the standalone HTML](https://github.com/chemimage/not-envi/releases/latest)
+for offline use.
 
 ## Development
 
-Requires Node.js 22 and Git.
+With Node.js 22:
 
-- `npm ci`
-- `npm run dev`
+```sh
+npm ci
+npm run dev
+```
 
-The C/WASM fmap backend is built in and always enabled. TIFF formats outside
-its supported paths continue to use the compatible decoder automatically.
-TIFF parsing and bounded compressed decoding use a pinned libtiff WASM build;
-see [reader architecture and rebuild instructions](docs/libtiff-reader.md).
-
-### Tests
-
-- `npm run test:unit`
-- `npm run test:e2e`
-- `npm test`
-- `npm run test:coverage`
-
-The coverage badge reports JavaScript line coverage from the published release's
-unit and controller tests. It includes all `src/**/*.js` files; browser tests and
-C/WASM coverage are separate. The badge updates when a release deploys to Pages.
-Local coverage reports are written to `coverage/`.
-
-## Production build (single file)
-
-- `npm run build`
-- Output: `dist/index.html` (self-contained single file)
-
-The built viewer uses Tailwind CSS 4 and targets Safari 16.4+, Chrome 111+,
-or Firefox 128+. See the [Tailwind browser requirements](https://tailwindcss.com/docs/compatibility).
-
-### Preparing a release
-
-Use `+semver:` annotations (`patch`, `minor`, `major`, or `none`) in commit bodies.
-Preview the next version with `npm run version:calc`.
-
-Push to `main`; after CI passes, publication automatically creates the version
-tag and release, then deploys Pages using the tested build. Optional release
-notes go in `docs/releases/vX.Y.Z.md`.
-
-### Deploy to the lab server
-
-On Windows, run `build-and-deploy-remote.bat` with authenticated `gh` and
-`ssh`/`scp` access via the `inference` alias. It deploys the latest successful
-main CI build to `/srv/www/hyve`.
-
-Add `--download-only` to download and verify without deploying.
+Run `npm run build` to create `dist/index.html`.
+See [development notes](docs/development.md) for testing, builds, and releases.
