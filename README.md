@@ -13,12 +13,44 @@ for offline use.
 
 ## Development
 
-With Node.js 22:
+Requires Node.js 22 and Git.
 
-```sh
-npm ci
-npm run dev
-```
+- `npm ci`
+- `npm run dev`
 
-Run `npm run build` to create `dist/index.html`.
-See [development notes](docs/development.md) for testing, builds, and releases.
+## Tests
+
+- `npm run test:unit`
+- `npm run test:e2e`
+- `npm test`
+- `npm run test:coverage`
+
+The coverage badge reports JavaScript line coverage from the published release's
+unit and controller tests. It includes all `src/**/*.js` files; browser tests and
+C/WASM coverage are separate. The badge updates when a release deploys to Pages.
+Local coverage reports are written to `coverage/`.
+
+## Production build (single file)
+
+- `npm run build`
+- Output: `dist/index.html` (self-contained single file)
+
+The built viewer uses Tailwind CSS 4 and targets Safari 16.4+, Chrome 111+,
+or Firefox 128+. See the [Tailwind browser requirements](https://tailwindcss.com/docs/compatibility).
+
+## Preparing a release
+
+Use `+semver:` annotations (`patch`, `minor`, `major`, or `none`) in commit bodies.
+Preview the next version with `npm run version:calc`.
+
+Push to `main`; after CI passes, publication automatically creates the version
+tag and release, then deploys Pages using the tested build. Optional release
+notes go in `docs/releases/vX.Y.Z.md`.
+
+## Deploy to the lab server
+
+On Windows, run `build-and-deploy-remote.bat` with authenticated `gh` and
+`ssh`/`scp` access via the `inference` alias. It deploys the latest successful
+main CI build to `/srv/www/hyve`.
+
+Add `--download-only` to download and verify without deploying.
